@@ -39,7 +39,6 @@ build/
 # Environment variable/config files
 .env
 *.env
-config.yml
 
 # Model and data files
 *.pt
