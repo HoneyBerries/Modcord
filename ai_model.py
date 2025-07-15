@@ -420,7 +420,7 @@ async def get_appropriate_action(current_message: str, history: list[dict[str, s
     user_text = f"User {username} says: {current_message}" if username else current_message
     user_msg = {"role": "user", "content": user_text}
 
-    # Format up to 20 most recent valid history messages
+    # Format up to 48 most recent valid history messages
     formatted_history = []
     if history:
         for msg in reversed(history[-48:]):
