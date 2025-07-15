@@ -9,7 +9,6 @@ Functions:
     load_config(path): Load and parse the YAML configuration file.
     get_server_rules(config): Extract server rules from the config dictionary.
     get_system_prompt(config, server_rules): Format and return the system prompt using server rules.
-    init_config(): Load config and return config, server_rules, and system_prompt.
 """
 
 import yaml
@@ -84,21 +83,4 @@ def get_system_prompt(config, server_rules=None):
     return prompt
 
 
-def init_config(guild_rules=None):
-    """
-    Load the configuration, extract server rules, and generate the system prompt.
 
-    Args:
-        guild_rules (str, optional): Dynamic rules fetched from Discord channels.
-                                     If provided, these will be used instead of config rules.
-
-    Returns:
-        tuple:
-            - config (dict): The full configuration dictionary.
-            - server_rules (str): Extracted server rules (dynamic or from config).
-            - system_prompt (str): The final formatted system prompt string.
-    """
-    config = load_config()
-    server_rules = get_server_rules(config, guild_rules)
-    system_prompt = get_system_prompt(config, server_rules)
-    return config, server_rules, system_prompt
