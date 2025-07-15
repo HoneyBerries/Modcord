@@ -51,6 +51,8 @@ config.yml
 *.tmp
 *.bak
 .cache/
+__pycache__/
+
 __pypackages__/
 
 # Test output

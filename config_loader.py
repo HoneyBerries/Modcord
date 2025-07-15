@@ -42,17 +42,23 @@ def load_config(path=CONFIG_PATH):
         return {}
 
 
-def get_server_rules(config):
+def get_server_rules(config, guild_rules=None):
     """
-    Extract the server rules from the configuration.
+    Extract the server rules from the configuration or use dynamic guild rules.
 
     Args:
         config (dict): The configuration dictionary.
+        guild_rules (str, optional): Dynamic rules fetched from Discord channels.
+                                     If provided, this takes precedence over config rules.
 
     Returns:
         str: Server rules as a single formatted string.
+             Returns guild_rules if provided, otherwise falls back to config rules.
              Returns an empty string if no rules are found.
     """
+    # Prioritize dynamic guild rules over config.yml rules
+    if guild_rules:
+        return guild_rules
     return config.get("server_rules", "")
 
 
@@ -78,17 +84,21 @@ def get_system_prompt(config, server_rules=None):
     return prompt
 
 
-def init_config():
+def init_config(guild_rules=None):
     """
     Load the configuration, extract server rules, and generate the system prompt.
+
+    Args:
+        guild_rules (str, optional): Dynamic rules fetched from Discord channels.
+                                     If provided, these will be used instead of config rules.
 
     Returns:
         tuple:
             - config (dict): The full configuration dictionary.
-            - server_rules (str): Extracted server rules.
+            - server_rules (str): Extracted server rules (dynamic or from config).
             - system_prompt (str): The final formatted system prompt string.
     """
     config = load_config()
-    server_rules = get_server_rules(config)
+    server_rules = get_server_rules(config, guild_rules)
     system_prompt = get_system_prompt(config, server_rules)
     return config, server_rules, system_prompt
