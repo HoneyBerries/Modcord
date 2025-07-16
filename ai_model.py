@@ -1,10 +1,30 @@
+import asyncio
 import logging
 import re
+from typing import Dict, List, Optional, Tuple, Union
+
 import torch
-import asyncio
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.utils.quantization_config import BitsAndBytesConfig
+
 import config_loader as cfg
+
+# ==============================
+# Configuration Constants
+# ==============================
+MODEL_ID = "meta-llama/Llama-3.2-3B-Instruct"
+MAX_INPUT_TOKENS = 6144
+MAX_NEW_TOKENS = 256
+BATCH_WAIT_TIME = 5.0
+QUEUE_POLL_INTERVAL = 0.1
+AI_TIMEOUT_DURATION = 10 * 60  # 10 minutes for AI-triggered timeouts
+MAX_HISTORY_MESSAGES = 48
+
+# Generation parameters
+TEMPERATURE = 0.1
+TOP_P = 0.7
+TOP_K = 50
+REPETITION_PENALTY = 1.2
 
 # ==============================
 # Logging configuration
@@ -15,7 +35,7 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 
 # ==============================
 # Model, Tokenizer, and System Prompt Initialization
-def init_ai_model():
+def init_ai_model() -> Tuple[AutoModelForCausalLM, AutoTokenizer, str]:
     """
     Initializes the LLaMA AI model, tokenizer, and loads base configuration.
 
@@ -34,7 +54,7 @@ def init_ai_model():
     config = cfg.load_config()
     BASE_SYSTEM_PROMPT = config.get("system_prompt", "")
 
-    model_id = "meta-llama/Llama-3.2-3B-Instruct"
+    model_id = MODEL_ID
 
     # Configure 4-bit quantization for efficient GPU memory usage
     bnb_config = BitsAndBytesConfig(
@@ -96,12 +116,12 @@ async def inference_worker():
             first_item = await inference_queue.get()
             batch.append(first_item)
             
-            # Collect more items for up to 5 seconds
-            end_time = asyncio.get_event_loop().time() + 5.0
+            # Collect more items for up to the configured wait time
+            end_time = asyncio.get_event_loop().time() + BATCH_WAIT_TIME
             while asyncio.get_event_loop().time() < end_time:
                 try:
                     # Try to get more items with a short timeout
-                    item = await asyncio.wait_for(inference_queue.get(), timeout=0.1)
+                    item = await asyncio.wait_for(inference_queue.get(), timeout=QUEUE_POLL_INTERVAL)
                     batch.append(item)
                 except asyncio.TimeoutError:
                     continue
@@ -136,7 +156,7 @@ async def inference_worker():
                 for _ in batch:
                     inference_queue.task_done()
 
-def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
+def run_inference_batch(batch_messages: List[List[Dict[str, str]]]) -> List[str]:
     """
     Process multiple inference requests in a single batch.
     
@@ -176,7 +196,7 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
             return_tensors="pt", 
             padding=True, 
             truncation=True, 
-            max_length=6144
+            max_length=MAX_INPUT_TOKENS
         )
         
         input_ids = inputs["input_ids"].to(model.device)
@@ -196,11 +216,11 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
             outputs = model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                max_new_tokens=256,
-                temperature=0.1,
-                top_p=0.7,
-                top_k=50,
-                repetition_penalty=1.2,
+                max_new_tokens=MAX_NEW_TOKENS,
+                temperature=TEMPERATURE,
+                top_p=TOP_P,
+                top_k=TOP_K,
+                repetition_penalty=REPETITION_PENALTY,
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
@@ -224,7 +244,7 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
         logger.error(f"[BATCH] Error in batch processing: {e}")
         return ["null: batch processing error"] * len(batch_messages)
 
-async def submit_inference(messages: list[dict]) -> str:
+async def submit_inference(messages: List[Dict[str, str]]) -> str:
     """
     Submit an inference request to the batch processing queue.
     
@@ -250,7 +270,7 @@ async def submit_inference(messages: list[dict]) -> str:
     # Wait for result
     return await future
 
-def start_batch_worker():
+def start_batch_worker() -> None:
     """Start the batch processing worker. Call this when the bot starts."""
     global _worker_task
     if _worker_task is None or _worker_task.done():
@@ -265,6 +285,12 @@ def parse_action(assistant_response: str) -> str:
     """
     Parses the AI model's response to extract the moderation action and reason.
     Supports actions: warn, timeout, kick, ban, null.
+    
+    Args:
+        assistant_response: The raw response from the AI model
+        
+    Returns:
+        Formatted action string in the format "action: reason"
     """
     action_pattern = r"^(delete|warn|timeout|kick|ban|null)\s*:\s*(.+)$"
     match = re.match(action_pattern, assistant_response.strip(), re.IGNORECASE | re.DOTALL)
@@ -273,28 +299,39 @@ def parse_action(assistant_response: str) -> str:
         action, reason = match.groups()
         action = action.strip().lower()
         reason = reason.strip()
-        # Fix: Remove redundant <action>: prefix from reason if present
-        action_prefixes = ["delete", "warn", "timeout", "kick", "ban", "null"]
-        for prefix in action_prefixes:
-            if reason.lower().startswith(f"{prefix}:"):
-                reason = reason[len(prefix)+1:].strip()
-                logger.info(f"Stripped redundant action prefix '{prefix}:' from reason in AI response.")
-                break
+        
+        # Remove redundant action prefix from reason if present
+        reason = _clean_reason_text(reason)
         
         # Accept 'null: no action needed' as a valid no-action response
         if action == "null":
-            return f"null: no action needed"
+            return "null: no action needed"
         else:
-            # Return the valid action and reason without modification
             return f"{action}: {reason}"
 
     # Fallback: Try to extract just the action if parsing failed
+    return _handle_simple_action_response(assistant_response)
+
+
+def _clean_reason_text(reason: str) -> str:
+    """Remove redundant action prefixes from reason text."""
+    action_prefixes = ["delete", "warn", "timeout", "kick", "ban", "null"]
+    for prefix in action_prefixes:
+        if reason.lower().startswith(f"{prefix}:"):
+            reason = reason[len(prefix)+1:].strip()
+            logger.info(f"Stripped redundant action prefix '{prefix}:' from reason in AI response.")
+            break
+    return reason
+
+
+def _handle_simple_action_response(assistant_response: str) -> str:
+    """Handle responses that are just action names without reasons."""
     simple_pattern = r"^(delete|warn|timeout|kick|ban|null)$"
     simple_match = re.match(simple_pattern, assistant_response.strip(), re.IGNORECASE)
+    
     if simple_match:
         action = simple_match.group(1).lower()
-        # Only issue a warning if not 'null'
-        if action == "null: no action needed":
+        if action == "null":
             return "null: no action needed"
         logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
         return f"{action}: AI response incomplete"
@@ -304,7 +341,12 @@ def parse_action(assistant_response: str) -> str:
 
 # ==============================
 # Main Moderation Action Function
-async def get_appropriate_action(current_message: str, history: list[dict[str, str]], username: str, server_rules: str = "") -> str:
+async def get_appropriate_action(
+    current_message: str, 
+    history: List[Dict[str, str]], 
+    username: str, 
+    server_rules: str = ""
+) -> str:
     """
     Determines the appropriate moderation action for a user's message based on chat history.
 
@@ -334,10 +376,10 @@ async def get_appropriate_action(current_message: str, history: list[dict[str, s
     user_text = f"User {username} says: {current_message}" if username else current_message
     user_msg = {"role": "user", "content": user_text}
 
-    # Format up to 48 most recent valid history messages
+    # Format up to the configured number of most recent valid history messages
     formatted_history = []
     if history:
-        for msg in reversed(history[-48:]):
+        for msg in reversed(history[-MAX_HISTORY_MESSAGES:]):
             content = msg.get("content", "")
             if not isinstance(content, str) or not content.strip():
                 continue

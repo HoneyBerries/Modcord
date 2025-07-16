@@ -22,6 +22,7 @@ import datetime
 import logging
 import os
 from pathlib import Path
+from typing import List, Optional
 
 import discord
 from discord import Option
@@ -29,6 +30,28 @@ from discord.ext import commands
 from dotenv import load_dotenv
 
 import ai_model as ai
+
+# ==========================================
+# Configuration Constants
+# ==========================================
+DEFAULT_AI_TIMEOUT_MINUTES = 10
+RULES_CACHE_REFRESH_INTERVAL = 300  # 5 minutes
+MAX_CHANNEL_HISTORY = 50
+EMBED_DESCRIPTION_LIMIT = 4000
+PREVIEW_TEXT_LIMIT = 500
+
+# Duration mappings for user commands
+DURATION_MAPPINGS = {
+    "60 secs": 60,
+    "5 mins": 5 * 60,
+    "10 mins": 10 * 60,
+    "30 mins": 30 * 60,
+    "1 hour": 60 * 60,
+    "2 hours": 2 * 60 * 60,
+    "1 day": 24 * 60 * 60,
+    "1 week": 7 * 24 * 60 * 60,
+    "Till the end of time": 0,
+}
 
 # ==========================================
 # Configuration and Logging Setup
@@ -65,7 +88,7 @@ bot = discord.Bot(intents=intents)
 
 # Per-channel chat history, using a defaultdict with a deque for efficient, capped storage.
 # This provides conversational context for the AI model.
-db_history = collections.defaultdict(lambda: collections.deque(maxlen=50))
+db_history = collections.defaultdict(lambda: collections.deque(maxlen=MAX_CHANNEL_HISTORY))
 
 # ==========================================
 # Utility Functions
@@ -76,18 +99,7 @@ def parse_duration_to_seconds(duration_str: str) -> int:
     Parses a human-readable duration string into seconds.
     Returns 0 if the duration is permanent ("Till the end of time").
     """
-    mapping = {
-        "60 secs": 60,
-        "5 mins": 5 * 60,
-        "10 mins": 10 * 60,
-        "30 mins": 30 * 60,
-        "1 hour": 60 * 60,
-        "2 hours": 2 * 60 * 60,
-        "1 day": 24 * 60 * 60,
-        "1 week": 7 * 24 * 60 * 60,
-        "Till the end of time": 0,
-    }
-    return mapping.get(duration_str, 0)
+    return DURATION_MAPPINGS.get(duration_str, 0)
 
 
 async def send_dm_to_user(user: discord.Member, message: str) -> bool:
@@ -112,8 +124,8 @@ async def create_punishment_embed(
     action_type: str,
     user: discord.User | discord.Member,
     reason: str,
-    duration_str: str | None = None,
-    issuer: discord.User | discord.Member | discord.ClientUser | None = None
+    duration_str: Optional[str] = None,
+    issuer: Optional[discord.User | discord.Member | discord.ClientUser] = None
 ) -> discord.Embed:
     """
     Creates a standardized embed for logging moderation actions.
@@ -200,8 +212,8 @@ async def take_action(action: str, reason: str, message: discord.Message):
             embed = await create_punishment_embed("Kick", user, reason, issuer=bot.user)
 
         elif action in ("timeout", "mute"):
-            duration_seconds = 10 * 60  # Default 10 minutes for AI timeouts.
-            duration_str = "10 mins"
+            duration_seconds = DEFAULT_AI_TIMEOUT_MINUTES * 60
+            duration_str = f"{DEFAULT_AI_TIMEOUT_MINUTES} mins"
             until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
             dm_message = f"You have been timed out in {guild.name} for {duration_str}.\n**Reason**: {reason}"
             await user.timeout(until, reason=f"AI Mod: {reason}")
@@ -249,31 +261,60 @@ async def unban_later(guild: discord.Guild, user_id: int, channel: discord.abc.M
 # ==========================================
 
 async def fetch_server_rules_from_channel(guild: discord.Guild) -> str:
-    rule_keywords = ["guidelines", "regulations", "policy", "policies", "server-rules", "rule"]  # updated
-    messages = []
+    """
+    Fetch server rules from channels with rule-related keywords in their names.
+    
+    Args:
+        guild: The Discord guild to fetch rules from
+        
+    Returns:
+        Combined rules text from all rule channels, or empty string if none found
+    """
+    rule_keywords = ["guidelines", "regulations", "policy", "policies", "server-rules", "rule"]
+    all_messages = []
+    
     for channel in guild.text_channels:
-        channel_name_lower = channel.name.lower()
-        if any(keyword in channel_name_lower for keyword in rule_keywords):
-            try:
-                async for message in channel.history(oldest_first=True):
-                    if message.content.strip():
-                        messages.append(message.content.strip())
-                    for embed in message.embeds:
-                        if embed.description:
-                            messages.append(embed.description.strip())
-                        for field in embed.fields:
-                            if field.value:
-                                messages.append(f"{field.name}: {field.value}".strip())
-            except discord.Forbidden:
-                logger.warning(f"No permission to read rules channel: {channel.name} in {guild.name}")
-            except Exception as e:
-                logger.error(f"Error fetching rules from channel {channel.name} in {guild.name}: {e}")
-    if messages:
-        rules_text = "\n\n".join(messages)
-        logger.info(f"Successfully fetched {len(messages)} rule messages from all rule channels")
+        if _is_rules_channel(channel, rule_keywords):
+            messages = await _extract_messages_from_channel(channel, guild.name)
+            all_messages.extend(messages)
+    
+    if all_messages:
+        rules_text = "\n\n".join(all_messages)
+        logger.info(f"Successfully fetched {len(all_messages)} rule messages from all rule channels")
         return rules_text
+    
     logger.warning(f"No rules channel found in {guild.name}")
     return ""
+
+
+def _is_rules_channel(channel: discord.TextChannel, rule_keywords: List[str]) -> bool:
+    """Check if a channel is likely a rules channel based on its name."""
+    channel_name_lower = channel.name.lower()
+    return any(keyword in channel_name_lower for keyword in rule_keywords)
+
+
+async def _extract_messages_from_channel(channel: discord.TextChannel, guild_name: str) -> List[str]:
+    """Extract all text content from a channel including embeds."""
+    messages = []
+    try:
+        async for message in channel.history(oldest_first=True):
+            if message.content.strip():
+                messages.append(message.content.strip())
+            
+            # Extract embed content
+            for embed in message.embeds:
+                if embed.description:
+                    messages.append(embed.description.strip())
+                for field in embed.fields:
+                    if field.value:
+                        messages.append(f"{field.name}: {field.value}".strip())
+                        
+    except discord.Forbidden:
+        logger.warning(f"No permission to read rules channel: {channel.name} in {guild_name}")
+    except Exception as e:
+        logger.error(f"Error fetching rules from channel {channel.name} in {guild_name}: {e}")
+    
+    return messages
 
 async def refresh_rules_cache():
     """
@@ -304,8 +345,8 @@ async def refresh_rules_cache():
         except Exception as e:
             logger.error(f"Error during rules cache refresh: {e}")
         
-        # Wait 5 minutes before next refresh (avoid hitting rate limits)
-        await asyncio.sleep(300)
+        # Wait for the configured interval before next refresh (avoid hitting rate limits)
+        await asyncio.sleep(RULES_CACHE_REFRESH_INTERVAL)
 
 def get_server_rules(guild_id: int) -> str:
     """
@@ -499,7 +540,7 @@ async def refresh_rules_command(ctx: discord.ApplicationContext):
                 color=discord.Color.green(),
                 timestamp=datetime.datetime.now(datetime.timezone.utc)
             )
-            embed.add_field(name="Rules Preview", value=rules_text[:500] + ("..." if len(rules_text) > 500 else ""), inline=False)
+            embed.add_field(name="Rules Preview", value=rules_text[:PREVIEW_TEXT_LIMIT] + ("..." if len(rules_text) > PREVIEW_TEXT_LIMIT else ""), inline=False)
         else:
             embed = discord.Embed(
                 title="⚠️ No Rules Found",
@@ -526,7 +567,7 @@ async def show_rules(ctx: discord.ApplicationContext):
     if rules_text:
         embed = discord.Embed(
             title="📋 Server Rules",
-            description=rules_text[:4000],  # Discord embed limit
+            description=rules_text[:EMBED_DESCRIPTION_LIMIT],  # Discord embed limit
             color=discord.Color.blue(),
             timestamp=datetime.datetime.now(datetime.timezone.utc)
         )
