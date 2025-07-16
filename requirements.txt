@@ -1,0 +1,7 @@
+torch
+transformers
+bitsandbytes
+accelerate
+py-cord
+python-dotenv
+pyyaml
