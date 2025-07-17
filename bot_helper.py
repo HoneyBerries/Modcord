@@ -10,24 +10,58 @@ handling moderation actions, scheduling unbans, and managing server rules.
 import asyncio
 import datetime
 import logging
+
 import discord
+
 from actions import ActionType
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
 
 # ==========================================
+# Constants
+# ==========================================
+
+PERMANENT_DURATION = "Till the end of time"
+
+DURATIONS = {
+    "60 secs": 60,
+    "5 mins": 5 * 60,
+    "10 mins": 10 * 60,
+    "30 mins": 30 * 60,
+    "1 hour": 60 * 60,
+    "2 hours": 2 * 60 * 60,
+    "1 day": 24 * 60 * 60,
+    "1 week": 7 * 24 * 60 * 60,
+    PERMANENT_DURATION: 0,
+}
+
+DURATION_CHOICES = list(DURATIONS.keys())
+
+# ==========================================
 # Utility Functions
 # ==========================================
+
+
+def has_permissions(ctx: discord.ApplicationContext, **perms) -> bool:
+    """
+    Check if the command issuer has the required permissions.
+
+    Args:
+        ctx (discord.ApplicationContext): The context of the command.
+        **perms: The permissions to check.
+
+    Returns:
+        bool: True if the user has permissions, False otherwise.
+    """
+    if not isinstance(ctx.author, discord.Member):
+        return False
+    return all(getattr(ctx.author.guild_permissions, perm, False) for perm in perms)
 
 
 def parse_duration_to_seconds(duration_str: str) -> int:
     """
     Convert a human-readable duration string to its equivalent in seconds.
-
-    Supported formats:
-        "60 secs", "5 mins", "10 mins", "30 mins", "1 hour",
-        "2 hours", "1 day", "1 week", and "Till the end of time" for permanent duration.
 
     Args:
         duration_str (str): The duration string to parse.
@@ -35,18 +69,7 @@ def parse_duration_to_seconds(duration_str: str) -> int:
     Returns:
         int: The duration in seconds, or 0 if permanent or unrecognized.
     """
-    mapping: dict[str, int] = {
-        "60 secs": 60,
-        "5 mins": 5 * 60,
-        "10 mins": 10 * 60,
-        "30 mins": 30 * 60,
-        "1 hour": 60 * 60,
-        "2 hours": 2 * 60 * 60,
-        "1 day": 24 * 60 * 60,
-        "1 week": 7 * 24 * 60 * 60,
-        "Till the end of time": 0,
-    }
-    return mapping.get(duration_str, 0)
+    return DURATIONS.get(duration_str, 0)
 
 
 async def send_dm_to_user(user: discord.Member, message: str) -> bool:
@@ -127,7 +150,7 @@ async def create_punishment_embed(
     embed.add_field(name="Reason", value=reason, inline=False)
 
     # Add duration field if applicable and not permanent.
-    if duration_str and duration_str != "Till the end of time":
+    if duration_str and duration_str != PERMANENT_DURATION:
         duration_seconds = parse_duration_to_seconds(duration_str)
         if duration_seconds > 0:
             expire_time = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
@@ -146,6 +169,49 @@ async def create_punishment_embed(
 # ==========================================
 # Moderation Action Handler
 # ==========================================
+
+async def handle_error(ctx: discord.ApplicationContext, error: Exception):
+    """
+    Handle common errors in moderation commands.
+
+    Args:
+        ctx (discord.ApplicationContext): The context of the command.
+        error (Exception): The error that occurred.
+    """
+    if isinstance(error, discord.Forbidden):
+        await ctx.followup.send("I do not have permissions to perform this action.", ephemeral=True)
+    elif isinstance(error, AttributeError):
+        await ctx.followup.send("Failed: Target is not a valid server member.", ephemeral=True)
+    else:
+        logger.error(f"An unexpected error occurred: {error}", exc_info=True)
+        await ctx.followup.send("An unexpected error occurred.", ephemeral=True)
+
+
+async def send_dm_and_embed(
+    ctx: discord.ApplicationContext,
+    user: discord.Member,
+    action_type: ActionType,
+    reason: str,
+    duration_str: str | None = None
+):
+    """
+    Send a DM to the user and an embed to the channel.
+
+    Args:
+        ctx (discord.ApplicationContext): The context of the command.
+        user (discord.Member): The user to send the DM to.
+        action_type (ActionType): The type of action being taken.
+        reason (str): The reason for the action.
+        duration_str (str | None): The duration of the action, if applicable.
+    """
+    dm_message = f"You have been {action_type.value} in {ctx.guild.name}.\n**Reason**: {reason}"
+    await send_dm_to_user(user, dm_message)
+
+    embed = await create_punishment_embed(
+        action_type, user, reason, duration_str, ctx.user, ctx.bot.user
+    )
+    await ctx.followup.send(embed=embed)
+
 
 async def take_action(action: ActionType, reason: str, message: discord.Message, bot_user: discord.ClientUser | None = None):
     """
@@ -187,7 +253,7 @@ async def take_action(action: ActionType, reason: str, message: discord.Message,
             await send_dm_to_user(user, dm_message)
             await message.delete()
             await guild.ban(user, reason=f"AI Mod: {reason}")
-            embed = await create_punishment_embed(ActionType.BAN, user, reason, "Till the end of time", bot_user, bot_user)
+            embed = await create_punishment_embed(ActionType.BAN, user, reason, PERMANENT_DURATION, bot_user, bot_user)
 
         elif action == ActionType.KICK:
             dm_message = f"You have been kicked from {guild.name}.\n**Reason**: {reason}"

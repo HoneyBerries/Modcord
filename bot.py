@@ -22,11 +22,13 @@ import datetime
 import logging
 import os
 from pathlib import Path
+
 import discord
 from discord import Option
 from discord.ext import commands
-from dotenv import load_dotenv
 from discord.ext.commands.errors import MissingPermissions
+from dotenv import load_dotenv
+
 from actions import ActionType
 import ai_model as ai
 import bot_helper
@@ -94,38 +96,10 @@ mod_group = bot.create_group("mod", "Moderation commands")
 debug_group = bot.create_group("debug", "Debugging commands")
 
 # ==========================================
-# Moderation Command Error Handler
-# ==========================================
-
-@mod_group.error
-async def mod_group_error_handler(ctx, error):
-    """
-    Handles errors for moderation commands, providing user-friendly feedback.
-
-    Args:
-        ctx (discord.ApplicationContext): The context of the command.
-        error (Exception): The error raised.
-
-    Returns:
-        None
-    """
-    if isinstance(error, MissingPermissions):
-        await ctx.respond(
-            "❌ You do not have the required permissions to use this command.", ephemeral=True
-        )
-    else:
-        logger.error(f"Error in moderation command: {type(error).__name__}: {error}", exc_info=True)
-        await ctx.respond(
-            "❌ An unexpected error occurred while processing your moderation command.", ephemeral=True
-        )
-
-
-# ==========================================
 # Moderation Commands
 # ==========================================
 
 @mod_group.command(name="warn", description="Warn a user for a specified reason.")
-@commands.has_permissions(manage_messages=True)
 async def warn(
     ctx: discord.ApplicationContext,
     user: Option(discord.Member, "The user to warn.", required=True),  # type: ignore
@@ -142,29 +116,21 @@ async def warn(
     Returns:
         None
     """
+    if not bot_helper.has_permissions(ctx, manage_messages=True):
+        return await ctx.respond("You don't have permission to warn members.", ephemeral=True)
+
     await ctx.defer()  # Immediately acknowledge the interaction
 
     try:
-        dm_message: str = f"You have been warned in {ctx.guild.name}.\n**Reason**: {reason}"
-        await bot_helper.send_dm_to_user(user, dm_message)
-
-        embed: discord.Embed = await bot_helper.create_punishment_embed(
-            ActionType.WARN, user, reason, issuer=ctx.user, bot_user=bot.user
-        )
-        await ctx.followup.send(embed=embed)
-    except discord.Forbidden:
-        await ctx.followup.send("I do not have permissions to warn this user.", ephemeral=True)
+        await bot_helper.send_dm_and_embed(ctx, user, ActionType.WARN, reason)
     except Exception as e:
-        logger.error(f"Failed to warn {user.display_name}: {e}")
-        await ctx.followup.send("An unexpected error occurred.", ephemeral=True)
+        await bot_helper.handle_error(ctx, e)
 
 @mod_group.command(name="timeout", description="Timeout a user for a specified duration.")
-@commands.has_permissions(moderate_members=True)
 async def timeout(
     ctx: discord.ApplicationContext,
     user: Option(discord.Member, "The user to timeout.", required=True),  # type: ignore
-    duration: Option(str, "Duration of the timeout.", choices=[
-        "60 secs", "5 mins", "10 mins", "30 mins", "1 hour", "2 hours", "1 day"], default="10 mins"), # type: ignore
+    duration: Option(str, "Duration of the timeout.", choices=bot_helper.DURATION_CHOICES, default="10 mins"), # type: ignore
     reason: Option(str, "Reason for the timeout.", default="No reason provided.")  # type: ignore
 ) -> None:
     """
@@ -179,6 +145,9 @@ async def timeout(
     Returns:
         None
     """
+    if not bot_helper.has_permissions(ctx, moderate_members=True):
+        return await ctx.respond("You don't have permission to timeout members.", ephemeral=True)
+
     await ctx.defer()
     try:
         if not isinstance(user, discord.Member):
@@ -192,22 +161,11 @@ async def timeout(
         until: datetime.datetime = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
 
         await user.timeout(until, reason=reason)
-        dm_message: str = f"You have been timed out in {ctx.guild.name} for {duration}.\n**Reason**: {reason}"
-        await bot_helper.send_dm_to_user(user, dm_message)
-        embed: discord.Embed = await bot_helper.create_punishment_embed(
-            ActionType.TIMEOUT, user, reason, duration, ctx.user, bot.user
-        )
-        await ctx.followup.send(embed=embed)
-    except discord.Forbidden:
-        await ctx.followup.send("I do not have permissions to timeout this user.", ephemeral=True)
-    except AttributeError:
-        await ctx.followup.send("Failed: Target is not a valid server member.", ephemeral=True)
+        await bot_helper.send_dm_and_embed(ctx, user, ActionType.TIMEOUT, reason, duration)
     except Exception as e:
-        logger.error(f"Failed to timeout {getattr(user, 'display_name', str(user))}: {e}")
-        await ctx.followup.send("An unexpected error occurred.", ephemeral=True)
+        await bot_helper.handle_error(ctx, e)
 
 @mod_group.command(name="kick", description="Kick a user from the server.")
-@commands.has_permissions(kick_members=True)
 async def kick(
     ctx: discord.ApplicationContext,
     user: Option(discord.Member, "The user to kick.", required=True),  # type: ignore
@@ -224,6 +182,9 @@ async def kick(
     Returns:
         None
     """
+    if not bot_helper.has_permissions(ctx, kick_members=True):
+        return await ctx.respond("You don't have permission to kick members.", ephemeral=True)
+
     await ctx.defer()
     
     try:
@@ -234,28 +195,16 @@ async def kick(
         if user.guild_permissions.administrator:
             return await ctx.followup.send("You cannot kick an administrator.", ephemeral=True)
 
-        dm_message: str = f"You have been kicked from {ctx.guild.name}.\n**Reason**: {reason}"
-        await bot_helper.send_dm_to_user(user, dm_message)
         await user.kick(reason=reason)
-        embed: discord.Embed = await bot_helper.create_punishment_embed(
-            ActionType.KICK, user, reason, issuer=ctx.user, bot_user=bot.user
-        )
-        await ctx.followup.send(embed=embed)
-    except discord.Forbidden:
-        await ctx.followup.send("I do not have permissions to kick this user.", ephemeral=True)
-    except AttributeError:
-        await ctx.followup.send("Failed: Target is not a valid server member.", ephemeral=True)
+        await bot_helper.send_dm_and_embed(ctx, user, ActionType.KICK, reason)
     except Exception as e:
-        logger.error(f"Failed to kick {getattr(user, 'display_name', str(user))}: {e}")
-        await ctx.followup.send("An unexpected error occurred.", ephemeral=True)
+        await bot_helper.handle_error(ctx, e)
 
 @mod_group.command(name="ban", description="Ban a user from the server.")
-@commands.has_permissions(ban_members=True)
 async def ban(
     ctx: discord.ApplicationContext,
     user: Option(discord.Member, "The user to ban.", required=True),  # type: ignore
-    duration: Option(str, "Duration of the ban.", choices=[
-        "60 secs", "5 mins", "10 mins", "1 hour", "1 day", "1 week", "Till the end of time"], default="Till the end of time"), # type: ignore
+    duration: Option(str, "Duration of the ban.", choices=bot_helper.DURATION_CHOICES, default=bot_helper.PERMANENT_DURATION), # type: ignore
     reason: Option(str, "Reason for the ban.", default="No reason provided."),  # type: ignore
     delete_message_days: Option(int, "Number of days of messages to delete (0-7).", choices=[0, 1, 7], default=1)  # type: ignore
 ) -> None:
@@ -272,6 +221,9 @@ async def ban(
     Returns:
         None
     """
+    if not bot_helper.has_permissions(ctx, ban_members=True):
+        return await ctx.respond("You don't have permission to ban members.", ephemeral=True)
+
     await ctx.defer()
     
     try:
@@ -283,24 +235,14 @@ async def ban(
             return await ctx.followup.send("You cannot ban an administrator.", ephemeral=True)
 
         duration_seconds: int = bot_helper.parse_duration_to_seconds(duration)
-        dm_message: str = f"You have been banned from {ctx.guild.name} for: {duration}.\n**Reason**: {reason}"
-        await bot_helper.send_dm_to_user(user, dm_message)
         await ctx.guild.ban(user, reason=reason, delete_message_days=delete_message_days)
-        embed: discord.Embed = await bot_helper.create_punishment_embed(
-            ActionType.BAN, user, reason, duration, ctx.user, bot.user
-        )
-        await ctx.followup.send(embed=embed)
+        await bot_helper.send_dm_and_embed(ctx, user, ActionType.BAN, reason, duration)
 
         if duration_seconds > 0:
             logger.info(f"Scheduling unban for {getattr(user, 'display_name', str(user))} in {duration_seconds} seconds.")
             asyncio.create_task(bot_helper.unban_later(ctx.guild, user.id, ctx.channel, duration_seconds, bot))
-    except discord.Forbidden:
-        await ctx.followup.send("I do not have permissions to ban this user.", ephemeral=True)
-    except AttributeError:
-        await ctx.followup.send("Failed: Target is not a valid server member.", ephemeral=True)
     except Exception as e:
-        logger.error(f"Failed to ban {getattr(user, 'display_name', str(user))}: {e}")
-        await ctx.followup.send("An unexpected error occurred.", ephemeral=True)
+        await bot_helper.handle_error(ctx, e)
 
 
 # ==========================================
