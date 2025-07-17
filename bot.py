@@ -300,7 +300,6 @@ async def refresh_rules_command(ctx: discord.ApplicationContext):
 
 
 @debug_group.command(name="show_rules", description="Display the current cached server rules.")
-@commands.has_permissions(manage_messages=True)
 async def show_rules(ctx: discord.ApplicationContext):
     """
     Display the current cached server rules.

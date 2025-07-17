@@ -31,7 +31,7 @@ def setup_logger(name: str) -> logging.Logger:
     if logger.handlers:
         return logger
     
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.DEBUG)  # All logs (including debug) go to handlers
     
     # Create formatters
     detailed_formatter = logging.Formatter(
@@ -44,37 +44,42 @@ def setup_logger(name: str) -> logging.Logger:
         datefmt='%H:%M:%S'
     )
     
-    # File handler for all logs (with rotation)
+    # File handler for all logs (with daily rotation and timestamped filenames)
     all_logs_file = LOGS_DIR / "bot.log"
-    file_handler = logging.handlers.RotatingFileHandler(
+    file_handler = logging.handlers.TimedRotatingFileHandler(
         all_logs_file,
-        maxBytes=10*1024*1024,
-        backupCount=5,
-        encoding='utf-8'
+        when="midnight",           # Rotate at midnight
+        interval=1,                # Every day
+        backupCount=14,            # Keep 14 days of logs
+        encoding='utf-8',
+        utc=True                   # Use UTC timestamps
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(detailed_formatter)
-    
-    # File handler for errors only
+
+    # File handler for errors only (also timestamped)
     error_logs_file = LOGS_DIR / "errors.log"
-    error_handler = logging.handlers.RotatingFileHandler(
+    error_handler = logging.handlers.TimedRotatingFileHandler(
         error_logs_file,
-        maxBytes=5*1024*1024,
-        backupCount=3,
-        encoding='utf-8'
+        when="midnight",
+        interval=1,
+        backupCount=14,
+        encoding='utf-8',
+        utc=True
     )
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(detailed_formatter)
     
     # Console handler
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)  # Only show warnings and above in console
+    console_handler.setLevel(logging.WARNING)  # Only warnings and above to console
     console_handler.setFormatter(simple_formatter)
     
     # Add handlers to logger
     logger.addHandler(file_handler)
     logger.addHandler(error_handler)
     logger.addHandler(console_handler)
+    logger.propagate = False  # <-- Prevent messages from going to the root logger
     
     return logger
 
