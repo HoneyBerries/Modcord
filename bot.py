@@ -5,51 +5,34 @@ Discord Moderation Bot
 A Discord bot that uses an AI model to moderate chat, handle rule violations,
 and provide server administration commands for manual moderation actions like
 banning, kicking, and timing out users.
-
-Features:
-- Automated message moderation using a custom AI model.
-- Slash commands for manual moderation (`/timeout`, `/kick`, `/ban`).
-- Per-channel chat history context for the AI model.
-- Standardized and informative punishment embeds.
-- Temporary ban and timeout support with automatic unbanning/un-timing out.
-- Configuration loaded from `config.yml` for server rules.
-- Graceful reload notifications.
 """
 
 import asyncio
 import collections
 import datetime
-import logging
 import os
 from pathlib import Path
-
 import discord
 from discord import Option
 from discord.ext import commands
-from discord.ext.commands.errors import MissingPermissions
 from dotenv import load_dotenv
-
 from actions import ActionType
 import ai_model as ai
 import bot_helper
+from logger import get_logger
 
 # ==========================================
 # Configuration and Logging Setup
 # ==========================================
 
-# Use pathlib for robust path management, ensuring paths are relative to the script's location.
+# Use pathlib for robust path management
 BASE_DIR = Path(__file__).resolve().parent
-os.chdir(BASE_DIR)  # Set working directory for compatibility with relative paths if needed.
+os.chdir(BASE_DIR)
 
-# Configure logging for better debugging and monitoring.
-logging.basicConfig(
-    level=logging.INFO,  # Set to INFO for more detailed operational logs.
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+# Get logger for this module
+logger = get_logger("bot")
 
-# Load environment variables from a .env file.
+# Load environment variables
 load_dotenv()
 DISCORD_BOT_TOKEN = os.getenv('Mod_Bot_Token')
 
@@ -59,10 +42,7 @@ SERVER_RULES_CACHE = {}  # guild_id -> rules_text
 # ==========================================
 # Bot Initialization & State
 # ==========================================
-intents = discord.Intents.default()
-intents.messages = True
-intents.guilds = True
-intents.members = True
+intents = discord.Intents.all()
 
 bot = discord.Bot(intents=intents)
 
@@ -103,26 +83,37 @@ debug_group = bot.create_group("debug", "Debugging commands")
 async def warn(
     ctx: discord.ApplicationContext,
     user: Option(discord.Member, "The user to warn.", required=True),  # type: ignore
-    reason: Option(str, "Reason for the warning.", default="Breaking server rules")  # type: ignore
+    reason: Option(str, "Reason for the warning.", default="No reason provided."),  # type: ignore
+    delete_message_seconds: Option(
+        int,
+        "Delete messages from (choose time range)",
+        choices=bot_helper.DELETE_MESSAGE_CHOICES,
+        default=0
+    )  # type: ignore
 ) -> None:
     """
-    Issues a warning to a user and sends a DM notification.
-
-    Args:
-        ctx (discord.ApplicationContext): The context of the command.
-        user (discord.Member): The user to warn.
-        reason (str): Reason for the warning.
-
-    Returns:
-        None
+    Issues a warning to a user, sends a DM notification, and optionally deletes recent messages.
     """
     if not bot_helper.has_permissions(ctx, manage_messages=True):
-        return await ctx.respond("You don't have permission to warn members.", ephemeral=True)
+        await ctx.respond("You don't have permission to warn members.", ephemeral=True)
+        return
 
-    await ctx.defer()  # Immediately acknowledge the interaction
-
+    await ctx.defer()
     try:
+        if not isinstance(user, discord.Member):
+            return await ctx.followup.send("This user is not a member of the server.", ephemeral=True)
+        if user.id == ctx.user.id:
+            return await ctx.followup.send("You cannot warn yourself.", ephemeral=True)
+        if user.guild_permissions.administrator:
+            return await ctx.followup.send("You cannot warn an administrator.", ephemeral=True)
+
+        # Send DM and embed first for immediate response
         await bot_helper.send_dm_and_embed(ctx, user, ActionType.WARN, reason)
+        
+        # Delete messages in the background if requested
+        if delete_message_seconds > 0:
+            asyncio.create_task(bot_helper.delete_messages_background(ctx, user, delete_message_seconds))
+            
     except Exception as e:
         await bot_helper.handle_error(ctx, e)
 
@@ -131,22 +122,20 @@ async def timeout(
     ctx: discord.ApplicationContext,
     user: Option(discord.Member, "The user to timeout.", required=True),  # type: ignore
     duration: Option(str, "Duration of the timeout.", choices=bot_helper.DURATION_CHOICES, default="10 mins"), # type: ignore
-    reason: Option(str, "Reason for the timeout.", default="No reason provided.")  # type: ignore
+    reason: Option(str, "Reason for the timeout.", default="No reason provided."),  # type: ignore
+    delete_message_seconds: Option(
+        int,
+        "Delete messages from (choose time range)",
+        choices=bot_helper.DELETE_MESSAGE_CHOICES,
+        default=0
+    )  # type: ignore
 ) -> None:
     """
-    Applies a timeout to a user for a specified duration.
-
-    Args:
-        ctx (discord.ApplicationContext): The context of the command.
-        user (discord.Member): The user to timeout.
-        duration (str): Duration of the timeout.
-        reason (str): Reason for the timeout.
-
-    Returns:
-        None
+    Applies a timeout to a user, sends a DM notification, and optionally deletes recent messages.
     """
     if not bot_helper.has_permissions(ctx, moderate_members=True):
-        return await ctx.respond("You don't have permission to timeout members.", ephemeral=True)
+        await ctx.respond("You don't have permission to timeout members.", ephemeral=True)
+        return
 
     await ctx.defer()
     try:
@@ -161,7 +150,12 @@ async def timeout(
         until: datetime.datetime = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
 
         await user.timeout(until, reason=reason)
+        # Send DM and embed first for immediate response
         await bot_helper.send_dm_and_embed(ctx, user, ActionType.TIMEOUT, reason, duration)
+        
+        # Delete messages in the background if requested
+        if delete_message_seconds > 0:
+            asyncio.create_task(bot_helper.delete_messages_background(ctx, user, delete_message_seconds))
     except Exception as e:
         await bot_helper.handle_error(ctx, e)
 
@@ -169,24 +163,22 @@ async def timeout(
 async def kick(
     ctx: discord.ApplicationContext,
     user: Option(discord.Member, "The user to kick.", required=True),  # type: ignore
-    reason: Option(str, "Reason for the kick.", default="No reason provided.")  # type: ignore
+    reason: Option(str, "Reason for the kick.", default="No reason provided."),  # type: ignore
+    delete_message_seconds: Option(
+        int,
+        "Delete messages from (choose time range)",
+        choices=bot_helper.DELETE_MESSAGE_CHOICES,
+        default=0
+    )  # type: ignore
 ) -> None:
     """
-    Kicks a user from the server and sends a DM notification.
-
-    Args:
-        ctx (discord.ApplicationContext): The context of the command.
-        user (discord.Member): The user to kick.
-        reason (str): Reason for the kick.
-
-    Returns:
-        None
+    Kicks a user from the server, sends a DM notification, and optionally deletes recent messages.
     """
     if not bot_helper.has_permissions(ctx, kick_members=True):
-        return await ctx.respond("You don't have permission to kick members.", ephemeral=True)
+        await ctx.respond("You don't have permission to kick members.", ephemeral=True)
+        return
 
     await ctx.defer()
-    
     try:
         if not isinstance(user, discord.Member):
             return await ctx.followup.send("This user is not a member of the server.", ephemeral=True)
@@ -195,8 +187,13 @@ async def kick(
         if user.guild_permissions.administrator:
             return await ctx.followup.send("You cannot kick an administrator.", ephemeral=True)
 
-        await user.kick(reason=reason)
+        # Send DM and embed first, then kick user
         await bot_helper.send_dm_and_embed(ctx, user, ActionType.KICK, reason)
+        await user.kick(reason=reason)
+        
+        # Delete messages in the background if requested
+        if delete_message_seconds > 0:
+            asyncio.create_task(bot_helper.delete_messages_background(ctx, user, delete_message_seconds))
     except Exception as e:
         await bot_helper.handle_error(ctx, e)
 
@@ -206,7 +203,12 @@ async def ban(
     user: Option(discord.Member, "The user to ban.", required=True),  # type: ignore
     duration: Option(str, "Duration of the ban.", choices=bot_helper.DURATION_CHOICES, default=bot_helper.PERMANENT_DURATION), # type: ignore
     reason: Option(str, "Reason for the ban.", default="No reason provided."),  # type: ignore
-    delete_message_days: Option(int, "Number of days of messages to delete (0-7).", choices=[0, 1, 7], default=1)  # type: ignore
+    delete_message_seconds: Option(
+        int,
+        "Delete messages from (choose time range)",
+        choices=bot_helper.DELETE_MESSAGE_CHOICES,
+        default=0
+    )  # type: ignore
 ) -> None:
     """
     Bans a user from the server, optionally for a temporary duration.
@@ -216,13 +218,14 @@ async def ban(
         user (discord.Member): The user to ban.
         duration (str): Duration of the ban.
         reason (str): Reason for the ban.
-        delete_message_days (int): Number of days of messages to delete.
+        delete_message_seconds (int): Number of seconds of messages to delete.
 
     Returns:
         None
     """
     if not bot_helper.has_permissions(ctx, ban_members=True):
-        return await ctx.respond("You don't have permission to ban members.", ephemeral=True)
+        await ctx.respond("You don't have permission to ban members.", ephemeral=True)
+        return
 
     await ctx.defer()
     
@@ -235,8 +238,14 @@ async def ban(
             return await ctx.followup.send("You cannot ban an administrator.", ephemeral=True)
 
         duration_seconds: int = bot_helper.parse_duration_to_seconds(duration)
-        await ctx.guild.ban(user, reason=reason, delete_message_days=delete_message_days)
+        
+        # Send DM and embed first, then ban user
         await bot_helper.send_dm_and_embed(ctx, user, ActionType.BAN, reason, duration)
+        await ctx.guild.ban(user, reason=reason)
+
+        # Delete messages in the background if requested (separate from Discord's ban deletion)
+        if delete_message_seconds > 0:
+            asyncio.create_task(bot_helper.delete_messages_background(ctx, user, delete_message_seconds))
 
         if duration_seconds > 0:
             logger.info(f"Scheduling unban for {getattr(user, 'display_name', str(user))} in {duration_seconds} seconds.")
@@ -340,10 +349,10 @@ async def on_ready():
     """
     if bot.user:
         await bot.change_presence(
-            status=discord.Status.offline,
+            status=discord.Status.online,
             activity=discord.Activity(
-            type=discord.ActivityType.playing,
-            name="Moderating Discord Servers and Playing Minecraft"
+                type=discord.ActivityType.watching,
+                name="for rule violations"
             )
         )
         logger.info(f"Bot connected as {bot.user} (ID: {bot.user.id})")
@@ -357,7 +366,7 @@ async def on_ready():
     logger.info("Starting AI batch processing worker...")
     ai.start_batch_worker()
     logger.info("[AI] Batch processing worker started.")
-    print("=============================================================")
+    logger.info("=" * 60)
 
 
 @bot.event
@@ -372,21 +381,28 @@ async def on_message(message: discord.Message):
         None
     """
     # Ignore messages from bots and administrators to prevent loops and unwanted moderation.
+
+    logger.debug(f"Received message from {message.author}: {message.clean_content}")
     if message.author.bot or (isinstance(message.author, discord.Member) and message.author.guild_permissions.administrator):
+        return
+
+    # Skip empty messages or messages with only whitespace
+    actual_content = message.clean_content
+    if not actual_content:
         return
 
     # Store message in the channel's history for contextual analysis.
     hist = db_history[message.channel.id]
-    hist.append({"role": "user", "content": message.content, "username": str(message.author)})
+    hist.append({"role": "user", "content": actual_content, "username": str(message.author)})
 
-    # Get server rules for this guild (if available)
+    # Get server rules
     server_rules = bot_helper.get_server_rules(message.guild.id, SERVER_RULES_CACHE) if message.guild else ""
 
     # Get a moderation action from the AI model with server rules
     action, reason = await ai.get_appropriate_action(
-        current_message=message.content,
+        current_message=actual_content,
         history=list(hist),
-        username=str(message.author),
+        username=message.author.name,
         server_rules=server_rules
     )
 
@@ -400,20 +416,20 @@ async def on_message(message: discord.Message):
 def main():
     """
     Main function to run the bot. Handles startup and fatal errors.
-
-    Returns:
-        None
     """
+    logger.info("Starting Discord Moderation Bot...")
+    
     if not DISCORD_BOT_TOKEN:
         logger.critical("FATAL: 'Mod_Bot_Token' environment variable not set. Bot cannot start.")
         return
 
     try:
+        logger.info("Attempting to connect to Discord...")
         bot.run(DISCORD_BOT_TOKEN)
     except discord.LoginFailure:
         logger.critical("FATAL: Login failed. Please check if the bot token is correct.")
     except Exception as e:
-        logger.critical(f"FATAL: An unexpected error occurred while running the bot: {e}")
+        logger.critical(f"FATAL: An unexpected error occurred while running the bot: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

@@ -19,4 +19,4 @@ This bot is currently in a very early alpha stage. It is buggy and may not work 
 1. Clone the repository.
 2. Install the dependencies with `pip install -r requirements.txt`.
 3. Create a `.env` file and add your bot token (see `.env.example`).
-4. Run the bot with `python main.py`.
+4. Run the bot with `python bot.py`.

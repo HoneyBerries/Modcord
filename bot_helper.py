@@ -3,20 +3,15 @@ Bot Helper Functions
 ===================
 
 This module provides helper functions for the Discord Moderation Bot.
-Includes utilities for parsing durations, sending DMs, building embeds,
-handling moderation actions, scheduling unbans, and managing server rules.
 """
-
 import asyncio
 import datetime
-import logging
-
 import discord
-
 from actions import ActionType
+from logger import get_logger
 
 # Get logger for this module
-logger = logging.getLogger(__name__)
+logger = get_logger("bot_helper")
 
 # ==========================================
 # Constants
@@ -37,6 +32,18 @@ DURATIONS = {
 }
 
 DURATION_CHOICES = list(DURATIONS.keys())
+
+DELETE_MESSAGE_CHOICES = [
+    discord.OptionChoice(name="Don't Delete Any", value=0),
+    discord.OptionChoice(name="Previous Hour", value=60 * 60),
+    discord.OptionChoice(name="Previous 6 Hours", value=6 * 60 * 60),
+    discord.OptionChoice(name="Previous 12 Hours", value=12 * 60 * 60),
+    discord.OptionChoice(name="Previous 24 Hours", value=24 * 60 * 60),
+    discord.OptionChoice(name="Previous 3 Days", value=3 * 24 * 60 * 60),
+    discord.OptionChoice(name="Previous 7 Days", value=7 * 24 * 60 * 60),
+]
+
+
 
 # ==========================================
 # Utility Functions
@@ -88,7 +95,7 @@ async def send_dm_to_user(user: discord.Member, message: str) -> bool:
         return True
     except discord.Forbidden:
         # User may have DMs disabled or bot blocked.
-        logger.warning(f"Could not DM {user.display_name}: They may have DMs disabled.")
+        logger.info(f"Could not DM {user.display_name}: They may have DMs disabled.")
     except Exception as e:
         logger.error(f"Failed to send DM to {user.display_name}: {e}")
     return False
@@ -414,3 +421,42 @@ def get_server_rules(guild_id: int, server_rules_cache: dict) -> str:
         str: Cached rules text, or empty string if not found.
     """
     return server_rules_cache.get(guild_id, "")
+
+
+async def delete_recent_messages(guild, member, seconds) -> int:
+    """
+    Deletes recent messages from a member in all text channels within the given time window.
+    Returns the number of messages deleted.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    deleted_count = 0
+    for channel in guild.text_channels:
+        try:
+            async for msg in channel.history(limit=100, after=now - datetime.timedelta(seconds=seconds)):
+                if msg.author.id == member.id:
+                    await msg.delete()
+                    deleted_count += 1
+        except Exception:
+            continue
+    return deleted_count
+
+
+async def delete_messages_background(ctx: discord.ApplicationContext, user: discord.Member, delete_message_seconds: int):
+    """
+    Deletes messages in the background and sends a follow-up notification.
+    This function runs asynchronously without blocking the main command response.
+    
+    Args:
+        ctx (discord.ApplicationContext): The context of the command.
+        user (discord.Member): The user whose messages to delete.
+        delete_message_seconds (int): Number of seconds of messages to delete.
+    """
+    try:
+        deleted = await delete_recent_messages(ctx.guild, user, delete_message_seconds)
+        if deleted:
+            await ctx.followup.send(f"🗑️ Deleted {deleted} recent messages from {user.mention}.", ephemeral=True)
+        else:
+            await ctx.followup.send(f"No recent messages found to delete from {user.mention}.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error deleting messages in background: {e}")
+        await ctx.followup.send("⚠️ Action completed, but failed to delete some messages.", ephemeral=True)

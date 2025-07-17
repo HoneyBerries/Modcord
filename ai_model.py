@@ -1,4 +1,3 @@
-import logging
 import re
 import torch
 import asyncio
@@ -6,13 +5,12 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.utils.quantization_config import BitsAndBytesConfig
 import config_loader as cfg
 from actions import ActionType
+from logger import get_logger
 
 # ==============================
 # Logging configuration
 # ==============================
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
-logging.getLogger("transformers").setLevel(logging.ERROR)
+logger = get_logger("ai_model")
 
 # ==============================
 # Model, Tokenizer, and System Prompt Initialization

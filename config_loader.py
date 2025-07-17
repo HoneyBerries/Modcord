@@ -11,15 +11,16 @@ Functions:
     get_system_prompt(config, server_rules): Format and return the system prompt using server rules.
 """
 
+from pathlib import Path
 import yaml
-import logging
+from logger import get_logger
 
 # Default path to the YAML configuration file
-CONFIG_PATH = "config.yml"
+CONFIG_PATH = str(Path(__file__).parent / "config.yml")
+
 
 # Logger for this module
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+logger = get_logger("config_loader")
 
 
 def load_config(path=CONFIG_PATH):
