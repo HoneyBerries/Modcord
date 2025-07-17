@@ -82,5 +82,3 @@ def get_system_prompt(config, server_rules=None):
         return prompt.format(SERVER_RULES=server_rules)
     return prompt
 
-
-

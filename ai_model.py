@@ -5,6 +5,7 @@ import asyncio
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.utils.quantization_config import BitsAndBytesConfig
 import config_loader as cfg
+from actions import ActionType
 
 # ==============================
 # Logging configuration
@@ -257,24 +258,36 @@ def start_batch_worker():
         _worker_task = asyncio.create_task(inference_worker())
         logger.info("[BATCH] Started inference worker")
 
-
-
 # ==============================
 # Action Parsing and Moderation Logic
-def parse_action(assistant_response: str) -> str:
+def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     """
     Parses the AI model's response to extract the moderation action and reason.
-    Supports actions: warn, timeout, kick, ban, null.
+    Supports actions: delete, warn, timeout, kick, ban, null.
+
+    Args:
+        assistant_response (str): The raw response from the AI model.
+
+    Returns:
+        tuple[ActionType, str]: Action type and reason string.
     """
     action_pattern = r"^(delete|warn|timeout|kick|ban|null)\s*:\s*(.+)$"
     match = re.match(action_pattern, assistant_response.strip(), re.IGNORECASE | re.DOTALL)
 
     if match:
-        action, reason = match.groups()
-        action = action.strip().lower()
+        action_str, reason = match.groups()
+        action_str = action_str.strip().lower()
         reason = reason.strip()
+        
+        # Convert string to ActionType enum
+        try:
+            action = ActionType(action_str)
+        except ValueError:
+            logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
+            return ActionType.NULL, "unknown action type"
+        
         # Fix: Remove redundant <action>: prefix from reason if present
-        action_prefixes = ["delete", "warn", "timeout", "kick", "ban", "null"]
+        action_prefixes = [at.value for at in ActionType]
         for prefix in action_prefixes:
             if reason.lower().startswith(f"{prefix}:"):
                 reason = reason[len(prefix)+1:].strip()
@@ -282,29 +295,33 @@ def parse_action(assistant_response: str) -> str:
                 break
         
         # Accept 'null: no action needed' as a valid no-action response
-        if action == "null":
-            return f"null: no action needed"
+        if action == ActionType.NULL:
+            return ActionType.NULL, "no action needed"
         else:
             # Return the valid action and reason without modification
-            return f"{action}: {reason}"
+            return action, reason
 
     # Fallback: Try to extract just the action if parsing failed
     simple_pattern = r"^(delete|warn|timeout|kick|ban|null)$"
     simple_match = re.match(simple_pattern, assistant_response.strip(), re.IGNORECASE)
     if simple_match:
-        action = simple_match.group(1).lower()
-        # Only issue a warning if not 'null'
-        if action == "null: no action needed":
-            return "null: no action needed"
-        logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
-        return f"{action}: AI response incomplete"
+        action_str = simple_match.group(1).lower()
+        try:
+            action = ActionType(action_str)
+            if action == ActionType.NULL:
+                return ActionType.NULL, "no action needed"
+            logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
+            return action, "AI response incomplete"
+        except ValueError:
+            logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
+            return ActionType.NULL, "unknown action type"
 
     logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
-    return "null: invalid AI response format"
+    return ActionType.NULL, "invalid AI response format"
 
 # ==============================
 # Main Moderation Action Function
-async def get_appropriate_action(current_message: str, history: list[dict[str, str]], username: str, server_rules: str = "") -> str:
+async def get_appropriate_action(current_message: str, history: list[dict[str, str]], username: str, server_rules: str = "") -> tuple[ActionType, str]:
     """
     Determines the appropriate moderation action for a user's message based on chat history.
 
@@ -317,14 +334,14 @@ async def get_appropriate_action(current_message: str, history: list[dict[str, s
         server_rules (str): The server rules to use for moderation context.
 
     Returns:
-        str: Moderation action and reason, or an error/null string.
+        tuple[ActionType, str]: Moderation action type and reason, or an error/null action.
     """
     logger.debug(f"Received message: '{current_message}' from user: '{username}'")
     logger.debug(f"Chat history: {history}")
 
     if not current_message or not current_message.strip():
         logger.info("[AI MODEL] Empty input message. Returning null.")
-        return "null: empty message"
+        return ActionType.NULL, "empty message"
 
     # Prepare system message with rules prompt (using dynamic rules)
     system_prompt = get_system_prompt(server_rules)
