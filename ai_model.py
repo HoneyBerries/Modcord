@@ -14,7 +14,7 @@ logger = get_logger("ai_model")
 
 # ==============================
 # Model, Tokenizer, and System Prompt Initialization
-def init_ai_model():
+def init_ai_model(model=None, tokenizer=None):
     """
     Initializes the LLaMA AI model, tokenizer, and loads base configuration.
 
@@ -33,31 +33,32 @@ def init_ai_model():
     config = cfg.load_config()
     BASE_SYSTEM_PROMPT = config.get("system_prompt", "")
 
-    model_id = "meta-llama/Llama-3.2-3B-Instruct"
+    if model is None and tokenizer is None:
+        model_id = "meta-llama/Llama-3.2-3B-Instruct"
 
-    # Configure 4-bit quantization for efficient GPU memory usage
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16
-    )
+        # Configure 4-bit quantization for efficient GPU memory usage
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16
+        )
 
-    # Load the quantized model and tokenizer
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        quantization_config=bnb_config,
-        device_map="auto",  # Automatically assign model parts to available GPUs
-        trust_remote_code=True
-    ).eval()  # Set to inference mode (disables dropout)
+        # Load the quantized model and tokenizer
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=bnb_config,
+            device_map="auto",  # Automatically assign model parts to available GPUs
+            trust_remote_code=True
+        ).eval()  # Set to inference mode (disables dropout)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-    
-    # Set pad token for batch processing (required for padding in batches)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-        logger.info("[AI MODEL] Set pad_token to eos_token for batch processing")
-    
-    logger.info(f"[AI MODEL] Model loaded on device: {model.device}")
+        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+
+        # Set pad token for batch processing (required for padding in batches)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            logger.info("[AI MODEL] Set pad_token to eos_token for batch processing")
+
+        logger.info(f"[AI MODEL] Model loaded on device: {model.device}")
     return model, tokenizer, BASE_SYSTEM_PROMPT
 
 # ==============================
@@ -269,7 +270,7 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     Returns:
         tuple[ActionType, str]: Action type and reason string.
     """
-    action_pattern = r"^(delete|warn|timeout|kick|ban|null)\s*:\s*(.+)$"
+    action_pattern = r"^(delete|warn|timeout|kick|ban|null)\s*[:\s]+(.+)$"
     match = re.match(action_pattern, assistant_response.strip(), re.IGNORECASE | re.DOTALL)
 
     if match:
