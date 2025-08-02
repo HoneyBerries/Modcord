@@ -6,6 +6,34 @@ from datetime import datetime
 LOGS_DIR = Path(__file__).parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
+# Global shared handlers - created once and reused
+_shared_file_handler = None
+_shared_console_handler = None
+
+def _get_shared_handlers():
+    """Get or create shared file and console handlers."""
+    global _shared_file_handler, _shared_console_handler
+    
+    if _shared_file_handler is None:
+        log_formatter = logging.Formatter(
+            '[%(asctime)s %(levelname)s] [%(name)s]: %(message)s',
+            datefmt='%H:%M:%S'
+        )
+
+        # Create a single log file for the entire application
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        log_file = LOGS_DIR / f"{timestamp}.log"
+        _shared_file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        _shared_file_handler.setLevel(logging.DEBUG)
+        _shared_file_handler.setFormatter(log_formatter)
+
+        # Console handler
+        _shared_console_handler = logging.StreamHandler()
+        _shared_console_handler.setLevel(logging.WARNING)
+        _shared_console_handler.setFormatter(log_formatter)
+
+    return _shared_file_handler, _shared_console_handler
+
 def setup_logger(name: str) -> logging.Logger:
     """
     Set up a logger with file and console handlers.
@@ -19,26 +47,14 @@ def setup_logger(name: str) -> logging.Logger:
 
     logger.setLevel(logging.INFO)
 
-    log_formatter = logging.Formatter(
-        '[%(asctime)s %(levelname)s]: %(message)s',
-        datefmt='%H:%M:%S'
-    )
-
-    # Create a new log file for each run, named with the current timestamp
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_file = LOGS_DIR / f"bot_{timestamp}.log"
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(log_formatter)
-
-    # Console handler (still only warnings and above)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)
-    console_handler.setFormatter(log_formatter)
+    # Get shared handlers
+    file_handler, console_handler = _get_shared_handlers()
 
     # Add handlers to logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+    if file_handler is not None:
+        logger.addHandler(file_handler)
+    if console_handler is not None:
+        logger.addHandler(console_handler)
     logger.propagate = False
 
     return logger

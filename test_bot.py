@@ -1,13 +1,12 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
-import asyncio
 from actions import ActionType
 import discord
 import ai_model
 
-class TestBot(unittest.TestCase):
+class TestBot(unittest.IsolatedAsyncioTestCase):
     @patch.object(ai_model, 'init_ai_model', return_value=(None, None, None))
-    def test_on_message_action(self, mock_init_ai_model):
+    async def test_on_message_action(self):
         with patch('bot.ai.get_appropriate_action', new_callable=AsyncMock) as mock_get_appropriate_action, \
              patch('bot.bot_helper.take_action', new_callable=AsyncMock) as mock_take_action:
             # Mock the AI model to return a specific action
@@ -24,7 +23,7 @@ class TestBot(unittest.TestCase):
 
             # Run the on_message event handler
             from bot import on_message
-            asyncio.run(on_message(message))
+            await on_message(message)
 
             # Check if the AI model was called with the correct arguments
             mock_get_appropriate_action.assert_called_once()

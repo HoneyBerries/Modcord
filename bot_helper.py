@@ -336,6 +336,8 @@ async def unban_later(guild: discord.Guild, user_id: int, channel: discord.abc.M
 # Server Rules Management
 # ==========================================
 
+import re
+
 async def fetch_server_rules_from_channel(guild: discord.Guild) -> str:
     """
     Fetches server rules from channels that contain rule-related keywords.
@@ -346,17 +348,15 @@ async def fetch_server_rules_from_channel(guild: discord.Guild) -> str:
     Returns:
         str: Combined rules text from all found channels.
     """
-    rule_keywords = ["guidelines", "regulations", "policy", "policies", "server-rules", "rule"]
+    rule_channel_pattern = re.compile(r"(guidelines|regulations|policy|policies|server[-_]?rules|rules)", re.IGNORECASE)
+
     messages = []
     for channel in guild.text_channels:
-        channel_name_lower = channel.name.lower()
-        if any(keyword in channel_name_lower for keyword in rule_keywords):
+        if rule_channel_pattern.search(channel.name):
             try:
                 async for message in channel.history(oldest_first=True):
-                    # Add message content if present.
                     if message.content.strip():
                         messages.append(message.content.strip())
-                    # Add embed descriptions and fields if present.
                     for embed in message.embeds:
                         if embed.description:
                             messages.append(embed.description.strip())

@@ -7,19 +7,23 @@ and provide server administration commands for manual moderation actions like
 banning, kicking, and timing out users.
 """
 
+import os
+import sys
 import asyncio
 import collections
 import datetime
-import os
 from pathlib import Path
+
 import discord
 from discord import Option
 from discord.ext import commands
 from dotenv import load_dotenv
+
+from logger import get_logger
 from actions import ActionType
 import ai_model as ai
 import bot_helper
-from logger import get_logger
+
 
 # ==========================================
 # Configuration and Logging Setup
@@ -419,16 +423,16 @@ def main():
     logger.info("Starting Discord Moderation Bot...")
     
     if not DISCORD_BOT_TOKEN:
-        logger.critical("FATAL: 'Mod_Bot_Token' environment variable not set. Bot cannot start.")
-        return
+        logger.critical("'Mod_Bot_Token' environment variable not set. Bot cannot start.")
+        sys.exit(1)
 
     try:
         logger.info("Attempting to connect to Discord...")
         bot.run(DISCORD_BOT_TOKEN)
     except discord.LoginFailure:
-        logger.critical("FATAL: Login failed. Please check if the bot token is correct.")
+        logger.critical("Login failed. Please check if the bot token is correct.")
     except Exception as e:
-        logger.critical(f"FATAL: An unexpected error occurred while running the bot: {e}", exc_info=True)
+        logger.critical(f"An unexpected error occurred while running the bot: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()
