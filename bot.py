@@ -43,7 +43,6 @@ SERVER_RULES_CACHE = {}  # guild_id -> rules_text
 # Bot Initialization & State
 # ==========================================
 intents = discord.Intents.all()
-intents.message_content = True
 
 bot = discord.Bot(intents=intents)
 

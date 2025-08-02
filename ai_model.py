@@ -14,7 +14,7 @@ logger = get_logger("ai_model")
 
 # ==============================
 # Model, Tokenizer, and System Prompt Initialization
-def init_ai_model(model=None, tokenizer=None):
+def init_ai_model(model=None, tokenizer_param=None) -> tuple:
     """
     Initializes the LLaMA AI model, tokenizer, and loads base configuration.
 
@@ -33,7 +33,7 @@ def init_ai_model(model=None, tokenizer=None):
     config = cfg.load_config()
     BASE_SYSTEM_PROMPT = config.get("system_prompt", "")
 
-    if model is None and tokenizer is None:
+    if model is None and tokenizer_param is None:
         model_id = "meta-llama/Llama-3.2-3B-Instruct"
 
         # Configure 4-bit quantization for efficient GPU memory usage
@@ -51,15 +51,14 @@ def init_ai_model(model=None, tokenizer=None):
             trust_remote_code=True
         ).eval()  # Set to inference mode (disables dropout)
 
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-
-        # Set pad token for batch processing (required for padding in batches)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-            logger.info("[AI MODEL] Set pad_token to eos_token for batch processing")
+        tokenizer_local: AutoTokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    
 
         logger.info(f"[AI MODEL] Model loaded on device: {model.device}")
-    return model, tokenizer, BASE_SYSTEM_PROMPT
+        return model, tokenizer_local, BASE_SYSTEM_PROMPT
+    
+    else:
+        return model, tokenizer_param, BASE_SYSTEM_PROMPT
 
 # ==============================
 # Global model initialization (singleton)
@@ -77,6 +76,7 @@ def get_system_prompt(server_rules: str = "") -> str:
         str: The formatted system prompt with rules.
     """
     return BASE_SYSTEM_PROMPT.format(SERVER_RULES=server_rules)
+
 
 # ==============================
 # Batch Processing Queue System
@@ -107,9 +107,9 @@ async def inference_worker():
                     continue
                 
             # Process the batch
-            batch_messages = [item[0] for item in batch]
-            batch_futures = [item[1] for item in batch]
-            
+            batch_messages: list = [item[0] for item in batch]
+            batch_futures: list[asyncio.Future] = [item[1] for item in batch]
+
             logger.info(f"[BATCH] Processing batch of {len(batch)} requests")
             
             try:
@@ -117,6 +117,7 @@ async def inference_worker():
                 for result, future in zip(results, batch_futures):
                     if not future.cancelled():
                         future.set_result(result)
+
             except Exception as e:
                 logger.error(f"[BATCH] Error processing batch: {e}")
                 for future in batch_futures:
@@ -147,47 +148,23 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
         List of response strings (one per request)
     """
     try:
-        prompts = []
-        
-        # Format all prompts as strings
-        for messages in batch_messages:
-            if hasattr(tokenizer, "apply_chat_template"):
-                # Get the string prompt first
-                prompt = tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,  # Return string, not tokens
-                    add_generation_prompt=True
-                )
-            else:
-                prompt = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
-            
-            # Ensure prompt is a string
-            if isinstance(prompt, str):
-                prompts.append(prompt)
-            else:
-                logger.warning(f"[BATCH] Non-string prompt type: {type(prompt)}, converting to string")
-                prompts.append(str(prompt))
-        
-        logger.info(f"[BATCH] Formatted {len(prompts)} string prompts")
-        
-        # Tokenize all prompts together - now all prompts are guaranteed to be strings
-        inputs = tokenizer(
-            prompts, 
-            return_tensors="pt", 
-            padding=True, 
-            truncation=True, 
-            max_length=6144
-        )
-        
-        input_ids = inputs["input_ids"].to(model.device)
-        attention_mask = inputs["attention_mask"].to(model.device)
-        
-        # Calculate original prompt lengths for each item in batch
+        # Prepare input_ids for each conversation in the batch
+        input_ids_list = []
         prompt_lengths = []
-        for i in range(input_ids.shape[0]):
-            # Find the actual length (excluding padding)
-            prompt_length = (attention_mask[i] == 1).sum().item()
-            prompt_lengths.append(prompt_length)
+        
+        for messages in batch_messages:     
+            ids = tokenizer.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_tensors="pt"
+            )
+            input_ids_list.append(ids)
+            prompt_lengths.append(ids.shape[1])
+
+        # Concatenate for batch processing
+        input_ids = torch.cat(input_ids_list, dim=0).to(model.device)
+        attention_mask = torch.ones_like(input_ids).to(model.device)
         
         logger.info(f"[BATCH] Processing batch with input shape: {input_ids.shape}")
         
@@ -196,11 +173,10 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
             outputs = model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                max_new_tokens=256,
-                temperature=0.1,
-                top_p=0.7,
-                top_k=50,
-                repetition_penalty=1.2,
+                max_new_tokens=128,
+                temperature=0.01,
+                top_p=0.9,
+                repetition_penalty=1.1,
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
