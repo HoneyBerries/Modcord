@@ -13,11 +13,11 @@ import asyncio
 import collections
 import datetime
 from pathlib import Path
+from dotenv import load_dotenv
 
 import discord
 from discord import Option
 from discord.ext import commands
-from dotenv import load_dotenv
 
 from logger import get_logger
 from actions import ActionType
@@ -314,27 +314,26 @@ async def show_rules(ctx: discord.ApplicationContext):
     Returns:
         None
     """
-    await ctx.defer()
     
     rules_text = bot_helper.get_server_rules(ctx.guild.id, SERVER_RULES_CACHE)
     
     if rules_text:
         embed = discord.Embed(
             title="📋 Server Rules",
-            description=rules_text[:4000],  # Discord embed limit
+            description=rules_text[:4000],
             color=discord.Color.blue(),
             timestamp=datetime.datetime.now(datetime.timezone.utc)
         )
         embed.set_footer(text=f"Rules for {ctx.guild.name}")
-        await ctx.followup.send(embed=embed)
+        await ctx.respond(embed=embed)
     else:
         embed = discord.Embed(
             title="❌ No Rules Available",
-            description="No server rules are currently cached. Try `/mod refresh_rules` first.",
+            description="No server rules are currently cached. Try `/debug refresh_rules` first.",
             color=discord.Color.red(),
             timestamp=datetime.datetime.now(datetime.timezone.utc)
         )
-        await ctx.followup.send(embed=embed, ephemeral=True)
+        await ctx.respond(embed=embed, ephemeral=True)
 
 
 # ==========================================
