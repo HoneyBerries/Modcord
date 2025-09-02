@@ -56,7 +56,7 @@ class DebugCog(commands.Cog):
             await ctx.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
-            logger.error(f"Failed to refresh rules for {ctx.guild.name}: {e}")
+            logger.error(f"Failed to refresh rules for {ctx.guild.name}: {e}", exc_info=True)
             await ctx.followup.send("An error occurred while refreshing rules.", ephemeral=True)
 
     @commands.slash_command(name="show_rules", description="Display the current cached server rules.")

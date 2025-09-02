@@ -111,6 +111,27 @@ class EventsCog(commands.Cog):
             logger.error(f"Error in AI moderation for message from {message.author}: {e}")
 
 
+    @commands.Cog.listener()
+    async def on_application_command_error(self, ctx: discord.ApplicationContext, error: discord.DiscordException):
+        """
+        Global error handler for all application commands.
+        Logs the error and sends a generic error message to the user.
+        """
+        # Ignore commands that don't exist
+        if isinstance(error, commands.CommandNotFound):
+            return
+
+        # Log the error with traceback
+        logger.error(f"Error in command '{ctx.command.name}': {error}", exc_info=True)
+
+        # Respond to the user with a generic error message
+        # Use a try-except block in case the interaction has already been responded to
+        try:
+            await ctx.respond("An unexpected error occurred while running this command.", ephemeral=True)
+        except discord.InteractionResponded:
+            await ctx.followup.send("An unexpected error occurred while running this command.", ephemeral=True)
+
+
 def setup(bot):
     """Setup function for the cog."""
     bot.add_cog(EventsCog(bot))

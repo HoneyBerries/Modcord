@@ -63,7 +63,17 @@ def init_ai_model(model=None, tokenizer_param=None) -> tuple:
 # ==============================
 # Global model initialization (singleton)
 # ==============================
-model, tokenizer, BASE_SYSTEM_PROMPT = init_ai_model()
+model, tokenizer, BASE_SYSTEM_PROMPT = (None, None, None)
+
+def get_model() -> tuple:
+    """
+    Initializes and returns the AI model, tokenizer, and base system prompt.
+    Uses a singleton pattern to ensure the model is loaded only once.
+    """
+    global model, tokenizer, BASE_SYSTEM_PROMPT
+    if model is None:
+        model, tokenizer, BASE_SYSTEM_PROMPT = init_ai_model()
+    return model, tokenizer, BASE_SYSTEM_PROMPT
 
 def get_system_prompt(server_rules: str = "") -> str:
     """
@@ -75,7 +85,8 @@ def get_system_prompt(server_rules: str = "") -> str:
     Returns:
         str: The formatted system prompt with rules.
     """
-    return BASE_SYSTEM_PROMPT.format(SERVER_RULES=server_rules)
+    _, _, prompt = get_model()
+    return prompt.format(SERVER_RULES=server_rules)
 
 
 # ==============================
@@ -119,7 +130,7 @@ async def inference_worker():
                         future.set_result(result)
 
             except Exception as e:
-                logger.error(f"[BATCH] Error processing batch: {e}")
+                logger.error(f"[BATCH] Error processing batch: {e}", exc_info=True)
                 for future in batch_futures:
                     if not future.cancelled():
                         future.set_result("null: batch processing error")
@@ -129,7 +140,7 @@ async def inference_worker():
                 inference_queue.task_done()
                 
         except Exception as e:
-            logger.error(f"[BATCH] Worker error: {e}")
+            logger.error(f"[BATCH] Worker error: {e}", exc_info=True)
             if batch:
                 for _, future in batch:
                     if not future.cancelled():
@@ -148,6 +159,7 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
         List of response strings (one per request)
     """
     try:
+        model, tokenizer, _ = get_model()
         # Prepare input_ids for each conversation in the batch
         input_ids_list = []
         prompt_lengths = []
@@ -193,11 +205,11 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
         logger.info(f"[BATCH] Generated {len(responses)} responses")
         return responses
         
-    except torch.cuda.OutOfMemoryError:
-        logger.critical("[BATCH] GPU ran out of memory during batch processing")
+    except torch.cuda.OutOfMemoryError as e:
+        logger.critical("[BATCH] GPU ran out of memory during batch processing", exc_info=True)
         return ["null: GPU memory error"] * len(batch_messages)
     except Exception as e:
-        logger.error(f"[BATCH] Error in batch processing: {e}")
+        logger.error(f"[BATCH] Error in batch processing: {e}", exc_info=True)
         return ["null: batch processing error"] * len(batch_messages)
 
 async def submit_inference(messages: list[dict]) -> str:
