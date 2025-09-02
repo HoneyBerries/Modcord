@@ -18,6 +18,7 @@ import discord
 
 from logger import get_logger
 from bot_config import bot_config
+import asyncio
 
 # ==========================================
 # Configuration and Logging Setup
@@ -80,7 +81,7 @@ def main():
         logger.info("Loading cogs...")
         
         # Create an event loop and load cogs
-        import asyncio
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(load_cogs())

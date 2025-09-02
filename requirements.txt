@@ -5,4 +5,3 @@ accelerate
 py-cord
 python-dotenv
 pyyaml
-python-json-logger
