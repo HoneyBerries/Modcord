@@ -6,10 +6,9 @@ def run_tests():
     """
     Discover and run all tests in the 'tests/' directory.
     """
-    # Add the root directory to the Python path
-    # This allows the tests to import the main application modules
-    root_dir = Path(__file__).parent
-    sys.path.insert(0, str(root_dir))
+    # Add the src directory to the Python path
+    src_dir = Path(__file__).parent / 'src'
+    sys.path.insert(0, str(src_dir))
 
     # Create a TestLoader instance
     loader = unittest.TestLoader()

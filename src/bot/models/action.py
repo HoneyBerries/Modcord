@@ -1,3 +1,7 @@
+"""
+Action model for the bot.
+"""
+
 import enum
 
 class ActionType(enum.Enum):

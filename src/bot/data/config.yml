@@ -51,3 +51,15 @@ system_prompt: >
   
   If uncertain, use "null: no action needed". Never respond with anything other than the required format.
 
+logging:
+  level: "INFO"
+  console_level: "INFO"
+  file_level: "DEBUG"
+  third_party_level: "WARNING"
+  handlers:
+    console: true
+    file: true
+  log_file: "logs/bot.log"
+  levels:
+    "cogs.moderation": "DEBUG"
+    "services.ai_service": "DEBUG"

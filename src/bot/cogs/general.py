@@ -5,10 +5,9 @@ General commands cog for the Discord Moderation Bot.
 import discord
 from discord.ext import commands
 
-from logger import get_logger
+from ..config.logger import get_logger
 
-logger = get_logger("general_cog")
-
+logger = get_logger(__name__)
 
 class GeneralCog(commands.Cog):
     """
@@ -29,7 +28,6 @@ class GeneralCog(commands.Cog):
             f":white_check_mark: I am online and working!\n**Latency**: {latency_ms:.2f} ms.", 
             ephemeral=True
         )
-
 
 def setup(bot):
     """Setup function for the cog."""

@@ -3,17 +3,16 @@ Event handlers cog for the Discord Moderation Bot.
 """
 
 import asyncio
-
 import discord
 from discord.ext import commands
 
-from logger import get_logger
-from actions import ActionType
-import bot_helper
-from bot_config import bot_config
+from ..config.logger import get_logger
+from ..models.action import ActionType
+from ..services.ai_service import get_ai_service
+from ..services.moderation_service import ModerationService
+from ..bot_state import bot_state
 
-logger = get_logger("events_cog")
-
+logger = get_logger(__name__)
 
 class EventsCog(commands.Cog):
     """
@@ -22,13 +21,14 @@ class EventsCog(commands.Cog):
     
     def __init__(self, bot):
         self.bot = bot
+        self.moderation_service = ModerationService(bot)
+        self.ai_service = get_ai_service()
         logger.info("Events cog loaded")
 
     @commands.Cog.listener()
     async def on_ready(self):
         """
         Fired when the bot successfully connects to Discord.
-        Sets presence, starts background tasks, and logs connection.
         """
         if self.bot.user:
             await self.bot.change_presence(
@@ -42,96 +42,87 @@ class EventsCog(commands.Cog):
         else:
             logger.warning("Bot connected, but user information not yet available.")
         
-        # Start the rules cache refresh task
-        logger.info("Starting server rules cache refresh task...")
+        logger.info("Starting background tasks...")
         asyncio.create_task(self._refresh_rules_cache_task())
-        
-        # Start AI batch processing worker
-        logger.info("Starting AI batch processing worker...")
-        try:
-            import ai_model as ai
-            ai.start_batch_worker()
-            logger.info("[AI] Batch processing worker started.")
-        except Exception as e:
-            logger.error(f"Failed to start AI batch processing worker: {e}")
+        self.ai_service.start()
         logger.info("=" * 60)
 
     async def _refresh_rules_cache_task(self):
         """
         Background task to refresh server rules cache.
         """
-        try:
-            await bot_helper.refresh_rules_cache(self.bot, bot_config.server_rules_cache)
-        except Exception as e:
-            logger.error(f"Error in rules cache refresh task: {e}")
+        while True:
+            try:
+                logger.info("Refreshing server rules cache...")
+                for guild in self.bot.guilds:
+                    try:
+                        rules_text = await self.moderation_service.fetch_server_rules_from_channel(guild)
+                        bot_state.set_server_rules(guild.id, rules_text)
+                        if rules_text:
+                            logger.info(f"Cached rules for {guild.name} ({len(rules_text)} characters)")
+                        else:
+                            logger.warning(f"No rules found for {guild.name}")
+                    except Exception as e:
+                        logger.error(f"Failed to fetch rules for {guild.name}: {e}")
+                        if guild.id not in bot_state.server_rules_cache:
+                            bot_state.set_server_rules(guild.id, "")
+                logger.info(f"Rules cache refreshed for {len(bot_state.server_rules_cache)} guilds")
+            except Exception as e:
+                logger.error(f"Error during rules cache refresh: {e}")
+            await asyncio.sleep(300)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """
         Processes incoming messages for AI-powered moderation.
         """
-        # Ignore messages from bots and administrators
-        logger.debug(f"Received message from {message.author}: {message.clean_content}")
         if message.author.bot or (
             isinstance(message.author, discord.Member) and 
             message.author.guild_permissions.administrator
         ):
             return
 
-        # Skip empty messages or messages with only whitespace
         actual_content = message.clean_content
         if not actual_content:
             return
 
-        # Store message in the channel's history for contextual analysis
         message_data = {
             "role": "user", 
             "content": actual_content, 
             "username": str(message.author)
         }
-        bot_config.add_message_to_history(message.channel.id, message_data)
+        bot_state.add_message_to_history(message.channel.id, message_data)
 
-        # Get server rules
-        server_rules = bot_config.get_server_rules(message.guild.id) if message.guild else ""
+        server_rules = bot_state.get_server_rules(message.guild.id) if message.guild else ""
 
-        # Get a moderation action from the AI model
         try:
-            import ai_model as ai
-            action, reason = await ai.get_appropriate_action(
+            action, reason = await self.ai_service.get_appropriate_action(
                 current_message=actual_content,
-                history=bot_config.get_chat_history(message.channel.id),
+                history=bot_state.get_chat_history(message.channel.id),
                 username=message.author.name,
                 server_rules=server_rules
             )
 
             if action != ActionType.NULL:
-                await bot_helper.take_action(action, reason, message, self.bot.user)
+                await self.moderation_service.take_action(action, reason, message)
                 
         except Exception as e:
             logger.error(f"Error in AI moderation for message from {message.author}: {e}")
-
 
     @commands.Cog.listener()
     async def on_application_command_error(self, ctx: discord.ApplicationContext, error: discord.DiscordException):
         """
         Global error handler for all application commands.
-        Logs the error and sends a generic error message to the user.
         """
-        # Ignore commands that don't exist
         if isinstance(error, commands.CommandNotFound):
             return
 
-        # Log the error with traceback
         logger.error(f"Error in command '{ctx.command.name}': {error}", exc_info=True)
 
-        # Respond to the user with a generic error message
-        # Use a try-except block in case the interaction has already been responded to
         try:
             await ctx.respond("An unexpected error occurred while running this command.", ephemeral=True)
         except discord.InteractionResponded:
             await ctx.followup.send("An unexpected error occurred while running this command.", ephemeral=True)
 
-
 def setup(bot):
-    """Setup function for the cog."""
     bot.add_cog(EventsCog(bot))
