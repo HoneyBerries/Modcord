@@ -76,11 +76,11 @@ def test_individual_cogs():
     mock_bot.latency = 0.05
     
     try:
-        # Test General Cog
-        from cogs.general import GeneralCog
-        general_cog = GeneralCog(mock_bot)
-        print("OK GeneralCog instantiated")
-        
+        # Test Util Cog
+        from cogs.util import UtilCog
+        util_cog = UtilCog(mock_bot)
+        print("OK UtilCog instantiated")
+
         # Test Moderation Cog
         from cogs.moderation import ModerationCog
         mod_cog = ModerationCog(mock_bot)

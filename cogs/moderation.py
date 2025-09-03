@@ -14,7 +14,7 @@ from logger import get_logger
 from actions import ActionType
 import bot_helper
 
-logger = get_logger("moderation_cog")
+logger = get_logger("Moderation_Cog")
 
 
 class ModerationCog(commands.Cog):

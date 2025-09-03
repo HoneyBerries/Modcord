@@ -7,10 +7,10 @@ from discord.ext import commands
 
 from logger import get_logger
 
-logger = get_logger("general_cog")
+logger = get_logger("util_cog")
 
 
-class GeneralCog(commands.Cog):
+class UtilCog(commands.Cog):
     """
     Cog containing general utility commands.
     """
@@ -33,4 +33,4 @@ class GeneralCog(commands.Cog):
 
 def setup(bot):
     """Setup function for the cog."""
-    bot.add_cog(GeneralCog(bot))
+    bot.add_cog(UtilCog(bot))

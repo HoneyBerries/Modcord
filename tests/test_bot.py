@@ -75,18 +75,18 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
         self.mock_bot = MagicMock()
         self.mock_bot.latency = 0.05  # 50ms latency
 
-    async def test_general_cog_test_command(self, mock_get_model):
-        """Test the general cog test command."""
-        from cogs.general import GeneralCog
+    async def test_util_cog_test_command(self, mock_get_model):
+        """Test the util cog test command."""
+        from cogs.util import UtilCog
 
-        cog = GeneralCog(self.mock_bot)
+        cog = UtilCog(self.mock_bot)
 
         # Create mock context
         ctx = MagicMock(spec=discord.ApplicationContext)
         ctx.respond = AsyncMock()
 
-        # Test the command directly
-        await cog.test.callback(cog, ctx)
+        # Test the command directly by calling the actual callback
+        await cog.test.callback(cog, ctx) # type: ignore
 
         # Verify response
         ctx.respond.assert_called_once()
@@ -117,7 +117,7 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
     def test_cog_loading(self, mock_get_model):
         """Test that all cogs can be imported successfully."""
         try:
-            from cogs.general import GeneralCog
+            from cogs.util import UtilCog
             from cogs.moderation import ModerationCog
             from cogs.debug import DebugCog
             from cogs.events import EventsCog

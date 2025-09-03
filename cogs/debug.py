@@ -11,7 +11,7 @@ from logger import get_logger
 import bot_helper
 from bot_config import bot_config
 
-logger = get_logger("debug_cog")
+logger = get_logger("Debug_Cog")
 
 
 class DebugCog(commands.Cog):

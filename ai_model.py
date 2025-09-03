@@ -75,7 +75,7 @@ def get_model() -> tuple:
         model, tokenizer, BASE_SYSTEM_PROMPT = init_ai_model()
     return model, tokenizer, BASE_SYSTEM_PROMPT
 
-def get_system_prompt(server_rules: str = "") -> str:
+def get_dynamic_system_prompt(server_rules: str = "") -> str:
     """
     Generate the system prompt with dynamic server rules.
     
@@ -202,7 +202,9 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
             response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
             responses.append(response)
         
-        logger.info(f"[BATCH] Generated {len(responses)} responses")
+        logger.debug(f"[BATCH] Generated {len(responses)} responses")
+        for i, response in enumerate(responses):
+            logger.debug(f"[BATCH] Response {i}: {response}")
         return responses
         
     except torch.cuda.OutOfMemoryError as e:
@@ -331,7 +333,7 @@ async def get_appropriate_action(current_message: str, history: list[dict[str, s
         return ActionType.NULL, "empty message"
 
     # Prepare system message with rules prompt (using dynamic rules)
-    system_prompt = get_system_prompt(server_rules)
+    system_prompt = get_dynamic_system_prompt(server_rules)
     system_msg = {"role": "system", "content": system_prompt}
 
     # Format user message with username context

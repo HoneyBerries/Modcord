@@ -12,7 +12,7 @@ from actions import ActionType
 import bot_helper
 from bot_config import bot_config
 
-logger = get_logger("events_cog")
+logger = get_logger("Event_Cog")
 
 
 class EventsCog(commands.Cog):

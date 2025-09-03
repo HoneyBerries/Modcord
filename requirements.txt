@@ -1,7 +1,25 @@
+# AI & Deep Learning
 torch
 transformers
 bitsandbytes
 accelerate
+
+# Discord Bot
 py-cord
+
+# Configuration & Environment
 python-dotenv
 pyyaml
+
+# Logging
+# (Standard library logging is used, no extra package required)
+
+# Testing
+unittest  # (Standard library, no install needed)
+pytest    # (Recommended for running tests)
+pytest-asyncio  # For async test support
+
+# Other utilities
+# If you use re, datetime, asyncio, etc., these are standard library modules.
+
+# If you use ai_model with external LLM APIs, add those packages here (e.g., openai, requests, etc.)

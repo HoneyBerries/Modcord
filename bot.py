@@ -15,7 +15,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 import discord
-
 from logger import get_logger
 from bot_config import bot_config
 import asyncio
@@ -49,7 +48,7 @@ bot = discord.Bot(intents=intents)
 async def load_cogs():
     """Load all bot cogs."""
     cog_files = [
-        'cogs.general',
+        'cogs.util',
         'cogs.moderation', 
         'cogs.debug',
         'cogs.events'
@@ -71,6 +70,15 @@ def main():
     """
     Main function to run the bot. Handles startup and fatal errors.
     """
+
+    logger.debug(f"Current working directory: {BASE_DIR}")
+
+    logger.debug("Debug logging is enabled")
+    logger.info("Info logging is enabled")
+    logger.warning("Warning logging is enabled")
+    logger.error("Error logging is enabled")
+    logger.critical("Critical logging is enabled")
+
     logger.info("Starting Discord Moderation Bot...")
     
     if not DISCORD_BOT_TOKEN:
@@ -87,6 +95,7 @@ def main():
         loop.run_until_complete(load_cogs())
         
         logger.info("Attempting to connect to Discord...")
+        logger.debug("Debugging is enabled")
         bot.run(DISCORD_BOT_TOKEN)
     except discord.LoginFailure:
         logger.critical("Login failed. Please check if the bot token is correct.")
