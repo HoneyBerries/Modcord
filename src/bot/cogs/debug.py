@@ -7,12 +7,11 @@ import datetime
 import discord
 from discord.ext import commands
 
-from logger import get_logger
-import bot_helper
-from bot_config import bot_config
+from ..config.logger import get_logger
+from ..services.moderation_service import ModerationService
+from ..bot_state import bot_state
 
-logger = get_logger("debug_cog")
-
+logger = get_logger(__name__)
 
 class DebugCog(commands.Cog):
     """
@@ -21,6 +20,7 @@ class DebugCog(commands.Cog):
     
     def __init__(self, bot):
         self.bot = bot
+        self.moderation_service = ModerationService(bot)
         logger.info("Debug cog loaded")
 
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
@@ -30,8 +30,8 @@ class DebugCog(commands.Cog):
         await ctx.defer()
         
         try:
-            rules_text = await bot_helper.fetch_server_rules_from_channel(ctx.guild)
-            bot_config.set_server_rules(ctx.guild.id, rules_text)
+            rules_text = await self.moderation_service.fetch_server_rules_from_channel(ctx.guild)
+            bot_state.set_server_rules(ctx.guild.id, rules_text)
             
             if rules_text:
                 embed = discord.Embed(
@@ -62,12 +62,12 @@ class DebugCog(commands.Cog):
     @commands.slash_command(name="show_rules", description="Display the current cached server rules.")
     async def show_rules(self, ctx: discord.ApplicationContext):
         """Display the current cached server rules."""
-        rules_text = bot_config.get_server_rules(ctx.guild.id)
+        rules_text = bot_state.get_server_rules(ctx.guild.id)
         
         if rules_text:
             embed = discord.Embed(
                 title="📋 Server Rules",
-                description=rules_text[:4000],  # Discord embed description limit
+                description=rules_text[:4000],
                 color=discord.Color.blue(),
                 timestamp=datetime.datetime.now(datetime.timezone.utc)
             )

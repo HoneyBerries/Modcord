@@ -1,31 +1,26 @@
 """
-Shared configuration and state management for the Discord Moderation Bot.
+Shared state management for the Discord Moderation Bot.
 """
 
 import collections
 from typing import Dict, DefaultDict
 from collections import deque
 
-from logger import get_logger
+from .config.logger import get_logger
 
-logger = get_logger("bot_config")
+logger = get_logger(__name__)
 
-
-class BotConfig:
+class BotState:
     """
-    Centralized configuration and state management for the bot.
+    Centralized state management for the bot.
     """
     
     def __init__(self):
-        # Server rules cache - populated dynamically from Discord channels
-        self.server_rules_cache: Dict[int, str] = {}  # guild_id -> rules_text
-        
-        # Per-channel chat history for AI context
+        self.server_rules_cache: Dict[int, str] = {}
         self.chat_history: DefaultDict[int, deque] = collections.defaultdict(
             lambda: collections.deque(maxlen=50)
         )
-        
-        logger.info("Bot configuration initialized")
+        logger.info("Bot state initialized")
     
     def get_server_rules(self, guild_id: int) -> str:
         """Get server rules for a guild."""
@@ -44,6 +39,4 @@ class BotConfig:
         """Get chat history for a channel."""
         return list(self.chat_history[channel_id])
 
-
-# Global bot configuration instance
-bot_config = BotConfig()
+bot_state = BotState()

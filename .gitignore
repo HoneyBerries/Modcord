@@ -35,6 +35,7 @@ build/
 
 # Log files
 *.log
+logs/
 
 # Environment variable/config files
 .env
