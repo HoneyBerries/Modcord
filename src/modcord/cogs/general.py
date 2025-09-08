@@ -5,7 +5,7 @@ General commands cog for the Discord Moderation Bot.
 import discord
 from discord.ext import commands
 
-from src.logger import get_logger
+from modcord.logger import get_logger
 
 logger = get_logger("general_cog")
 

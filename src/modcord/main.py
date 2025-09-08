@@ -16,21 +16,20 @@ from dotenv import load_dotenv
 
 import discord
 
-from logger import get_logger
+from modcord.logger import get_logger
 
 # ==========================================
 # Configuration and Logging Setup
 # ==========================================
 
 # Use pathlib for robust path management
-BASE_DIR = Path(__file__).resolve().parent
-os.chdir(BASE_DIR)
-
+# Set the base directory to the project root (up two levels from this file)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # Get logger for this module
 logger = get_logger("main")
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from the .env file in the project root
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 DISCORD_BOT_TOKEN = os.getenv('Mod_Bot_Token')
 
 # ==========================================
@@ -44,13 +43,13 @@ bot = discord.Bot(intents=intents)
 # Cog Loading
 # ==========================================
 
-async def load_cogs():
+def load_cogs():
     """Load all bot cogs."""
     cog_files = [
-        'cogs.general',
-        'cogs.moderation', 
-        'cogs.debug',
-        'cogs.events'
+        'modcord.cogs.general',
+        'modcord.cogs.moderation',
+        'modcord.cogs.debug',
+        'modcord.cogs.events'
     ]
     
     for cog in cog_files:
@@ -77,12 +76,7 @@ def main():
 
     try:
         logger.info("Loading cogs...")
-        
-        # Create an event loop and load cogs
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        #loop.run_until_complete(load_cogs())
+        load_cogs()
         
         logger.info("Attempting to connect to Discord...")
         bot.run(DISCORD_BOT_TOKEN)

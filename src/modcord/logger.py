@@ -4,8 +4,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Create a logs directory
-LOGS_DIR = Path(__file__).parent / "logs"
+# Create a logs directory at the project root
+LOGS_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
 # Define the log format and date format for log messages
@@ -36,7 +36,7 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)
 
     # If the logger is already configured, just return it
-    if logger.handlers is not None:
+    if logger.handlers:
         return logger
 
     logger.setLevel(level)
