@@ -13,10 +13,10 @@ Functions:
 
 from pathlib import Path
 import yaml
-from logger import get_logger
+from .logger import get_logger
 
-# Default path to the YAML configuration file
-CONFIG_PATH = str(Path(__file__).parent / "data/config.yml")
+# Default path to the YAML configuration file (root-level data/config.yml)
+CONFIG_PATH = str(Path(__file__).resolve().parent / "data/config.yml")
 
 
 # Logger for this module

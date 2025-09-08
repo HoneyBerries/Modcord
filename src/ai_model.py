@@ -3,9 +3,9 @@ import torch
 import asyncio
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.utils.quantization_config import BitsAndBytesConfig
-import config_loader as cfg
-from actions import ActionType
-from logger import get_logger
+from . import config_loader as cfg
+from .actions import ActionType
+from .logger import get_logger
 
 # ==============================
 # Logging configuration

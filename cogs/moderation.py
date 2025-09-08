@@ -10,9 +10,9 @@ import discord
 from discord import Option
 from discord.ext import commands
 
-from logger import get_logger
-from actions import ActionType
-import bot_helper
+from src.logger import get_logger
+from src.actions import ActionType
+from src import bot_helper
 
 logger = get_logger("moderation_cog")
 

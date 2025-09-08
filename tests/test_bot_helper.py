@@ -1,8 +1,9 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
 import discord
-from actions import ActionType
-import bot_helper
+from src.actions import ActionType
+from src import bot_helper
+
 
 class TestBotHelper(unittest.IsolatedAsyncioTestCase):
     def test_parse_duration_to_seconds(self):

@@ -7,9 +7,9 @@ import datetime
 import discord
 from discord.ext import commands
 
-from logger import get_logger
-import bot_helper
-from bot_config import bot_config
+from src.logger import get_logger
+from src import bot_helper
+from src.bot_config import bot_config
 
 logger = get_logger("debug_cog")
 

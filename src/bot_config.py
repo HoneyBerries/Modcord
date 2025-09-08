@@ -6,7 +6,7 @@ import collections
 from typing import Dict, DefaultDict
 from collections import deque
 
-from logger import get_logger
+from .logger import get_logger
 
 logger = get_logger("bot_config")
 

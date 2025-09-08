@@ -15,7 +15,7 @@ def run_tests():
     loader = unittest.TestLoader()
 
     # Discover tests in the 'tests' directory
-    suite = loader.discover(start_dir='tests')
+    suite = loader.discover(start_dir='')
 
     # Create a TestRunner instance
     runner = unittest.TextTestRunner(verbosity=2)
@@ -25,7 +25,10 @@ def run_tests():
 
     # Exit with a non-zero status code if any tests failed
     if not result.wasSuccessful():
+        print("Some tests failed. Please check the logs above.")
         sys.exit(1)
+    else:
+        print("All tests passed successfully. Good job!!!")
 
 if __name__ == '__main__':
     run_tests()

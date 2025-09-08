@@ -55,7 +55,7 @@ This bot is currently in a very early alpha stage. It is buggy and may not work 
 To run the bot, simply execute the `bot.py` script:
 
 ```bash
-python bot.py
+python main.py
 ```
 
 ## Configuration
@@ -75,7 +75,7 @@ The logging system can be configured with the following environment variable:
 This project includes a full suite of unit tests. To run the tests, use the provided `run_tests.py` script:
 
 ```bash
-python run_tests.py
+python RUN_ALL_TESTS.py
 ```
 
 ## Project Structure
@@ -91,4 +91,26 @@ python run_tests.py
 ├── logger.py       # The logging system module.
 ├── requirements.txt # Project dependencies.
 └── run_tests.py    # Script to run all unit tests.
+```
+
+
+## Source Layout and Entrypoint
+
+- Authoritative modules live at the repository root (bot.py, ai_model.py, bot_helper.py, actions.py, logger.py, config_loader.py, bot_config.py, and cogs/).
+- Use bot.py as the main entrypoint: `python bot.py`.
+- The src/ directory contains legacy duplicates retained temporarily for reference; production code and tests do not import from src/. Prefer the root-level modules for any development.
+
+## Testing Coverage
+
+This project includes comprehensive unit tests that verify real functionality.
+- AI model parsing and action selection (tests/test_ai_model.py)
+- Cog behaviors and event handling with proper mocking (tests/test_bot.py)
+- Helper utilities for moderation flows (tests/test_bot_helper.py)
+- Configuration loading, rules precedence, and prompt formatting (tests/test_config_loader.py)
+- Logging setup and file output via rotating handler (tests/test_logger.py)
+
+Run the full suite:
+
+```bash
+python RUN_ALL_TESTS.py
 ```

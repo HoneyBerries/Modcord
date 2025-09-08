@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
-from actions import ActionType
+from src.actions import ActionType
 import discord
 
 @patch('ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
@@ -128,7 +128,7 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
 class TestBotConfig(unittest.TestCase):
     def test_bot_config(self):
         """Test the bot configuration module."""
-        from bot_config import BotConfig
+        from src.bot_config import BotConfig
 
         config = BotConfig()
 

@@ -1,11 +1,11 @@
 import unittest
 from unittest.mock import MagicMock, patch, AsyncMock
-from actions import ActionType
+from src.actions import ActionType
 
 @patch('ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
 class TestAIModel(unittest.IsolatedAsyncioTestCase):
     def test_parse_action(self, mock_get_model):
-        from ai_model import parse_action
+        from src.ai_model import parse_action
         # Test ban action
         action, reason = parse_action("ban: User was spamming")
         self.assertEqual(action, ActionType.BAN)
@@ -31,7 +31,7 @@ class TestAIModel(unittest.IsolatedAsyncioTestCase):
         """
         Unit test for get_appropriate_action. Mocks the inference call.
         """
-        from ai_model import get_appropriate_action
+        from src.ai_model import get_appropriate_action
 
         # Mock the AI's response
         mock_submit_inference.return_value = "kick: User was being disruptive."

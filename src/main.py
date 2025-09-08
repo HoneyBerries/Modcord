@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 import discord
 
 from logger import get_logger
-from bot_config import bot_config
 
 # ==========================================
 # Configuration and Logging Setup
@@ -28,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 os.chdir(BASE_DIR)
 
 # Get logger for this module
-logger = get_logger("bot")
+logger = get_logger("main")
 
 # Load environment variables
 load_dotenv()
@@ -83,7 +82,7 @@ def main():
         import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(load_cogs())
+        #loop.run_until_complete(load_cogs())
         
         logger.info("Attempting to connect to Discord...")
         bot.run(DISCORD_BOT_TOKEN)
