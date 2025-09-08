@@ -3,7 +3,7 @@ from pathlib import Path
 
 class TestConfigLoader(unittest.TestCase):
     def test_load_config_default_path(self):
-        from src.config_loader import load_config
+        from modcord.config_loader import load_config
         cfg = load_config()
         self.assertIsInstance(cfg, dict)
         self.assertIn('server_rules', cfg)
@@ -11,12 +11,12 @@ class TestConfigLoader(unittest.TestCase):
         self.assertTrue(len(cfg['system_prompt']) > 0)
 
     def test_load_config_invalid_path(self):
-        from src.config_loader import load_config
+        from modcord.config_loader import load_config
         cfg = load_config(path=str(Path('does_not_exist_12345.yml')))
         self.assertEqual(cfg, {})
 
     def test_get_server_rules_precedence(self):
-        from src.config_loader import load_config, get_server_rules
+        from modcord.config_loader import load_config, get_server_rules
         cfg = load_config()
         default_rules = get_server_rules(cfg)
         self.assertIsInstance(default_rules, str)
@@ -25,7 +25,7 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(overridden, "Guild overrides config")
 
     def test_get_system_prompt_formatting(self):
-        from src.config_loader import load_config, get_system_prompt
+        from modcord.config_loader import load_config, get_system_prompt
         cfg = load_config()
         # When server_rules provided, placeholder should be replaced
         rules = "Rule A; Rule B"

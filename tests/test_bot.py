@@ -1,18 +1,18 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
-from src.actions import ActionType
+from modcord.actions import ActionType
 import discord
 
-@patch('ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
+@patch('modcord.ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
 class TestBotEvents(unittest.IsolatedAsyncioTestCase):
 
-    @patch('ai_model.get_appropriate_action', new_callable=AsyncMock)
-    @patch('bot_helper.take_action', new_callable=AsyncMock)
+    @patch('modcord.ai_model.get_appropriate_action', new_callable=AsyncMock)
+    @patch('modcord.bot_helper.take_action', new_callable=AsyncMock)
     async def test_on_message_moderation_action(self, mock_take_action, mock_get_appropriate_action, mock_get_model):
         """
         Test that the on_message event triggers a moderation action when the AI returns a non-null action.
         """
-        from cogs.events import EventsCog
+        from modcord.cogs.events import EventsCog
 
         # Mock the AI model to return a ban action
         mock_get_appropriate_action.return_value = (ActionType.BAN, "User was spamming")
@@ -37,13 +37,13 @@ class TestBotEvents(unittest.IsolatedAsyncioTestCase):
         mock_get_appropriate_action.assert_called_once()
         mock_take_action.assert_called_once_with(ActionType.BAN, "User was spamming", message, mock_bot.user)
 
-    @patch('ai_model.get_appropriate_action', new_callable=AsyncMock)
-    @patch('bot_helper.take_action', new_callable=AsyncMock)
+    @patch('modcord.ai_model.get_appropriate_action', new_callable=AsyncMock)
+    @patch('modcord.bot_helper.take_action', new_callable=AsyncMock)
     async def test_on_message_no_action(self, mock_take_action, mock_get_appropriate_action, mock_get_model):
         """
         Test that the on_message event does not trigger a moderation action when the AI returns a null action.
         """
-        from cogs.events import EventsCog
+        from modcord.cogs.events import EventsCog
 
         # Mock the AI model to return a null action
         mock_get_appropriate_action.return_value = (ActionType.NULL, "No action needed")
@@ -68,7 +68,7 @@ class TestBotEvents(unittest.IsolatedAsyncioTestCase):
         mock_get_appropriate_action.assert_called_once()
         mock_take_action.assert_not_called()
 
-@patch('ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
+@patch('modcord.ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
 class TestCogs(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         """Set up test fixtures."""
@@ -77,7 +77,7 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
 
     async def test_general_cog_test_command(self, mock_get_model):
         """Test the general cog test command."""
-        from cogs.general import GeneralCog
+        from modcord.cogs.general import GeneralCog
 
         cog = GeneralCog(self.mock_bot)
 
@@ -96,9 +96,9 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
 
     async def test_moderation_cog_permission_checks(self, mock_get_model):
         """Test moderation cog permission checking."""
-        from cogs.moderation import ModerationCog
+        from modcord.cogs.moderation import ModerationCog
 
-        with patch('bot_helper.has_permissions') as mock_has_perms:
+        with patch('modcord.bot_helper.has_permissions') as mock_has_perms:
             mock_has_perms.return_value = False
 
             cog = ModerationCog(self.mock_bot)
@@ -117,10 +117,10 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
     def test_cog_loading(self, mock_get_model):
         """Test that all cogs can be imported successfully."""
         try:
-            from cogs.general import GeneralCog
-            from cogs.moderation import ModerationCog
-            from cogs.debug import DebugCog
-            from cogs.events import EventsCog
+            from modcord.cogs.general import GeneralCog
+            from modcord.cogs.moderation import ModerationCog
+            from modcord.cogs.debug import DebugCog
+            from modcord.cogs.events import EventsCog
             self.assertTrue(True)  # If we get here, imports succeeded
         except ImportError as e:
             self.fail(f"Failed to import cogs: {e}")
@@ -128,7 +128,7 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
 class TestBotConfig(unittest.TestCase):
     def test_bot_config(self):
         """Test the bot configuration module."""
-        from src.bot_config import BotConfig
+        from modcord.bot_config import BotConfig
 
         config = BotConfig()
 

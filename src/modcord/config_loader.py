@@ -16,7 +16,7 @@ import yaml
 from .logger import get_logger
 
 # Default path to the YAML configuration file (root-level data/config.yml)
-CONFIG_PATH = str(Path(__file__).resolve().parent / "data/config.yml")
+CONFIG_PATH = str(Path(__file__).resolve().parent.parent.parent / "data/config.yml")
 
 
 # Logger for this module

@@ -7,10 +7,10 @@ import asyncio
 import discord
 from discord.ext import commands
 
-from src.logger import get_logger
-from src.actions import ActionType
-from src import bot_helper
-from src.bot_config import bot_config
+from modcord.logger import get_logger
+from modcord.actions import ActionType
+from modcord import bot_helper
+from modcord.bot_config import bot_config
 
 logger = get_logger("events_cog")
 
@@ -49,7 +49,7 @@ class EventsCog(commands.Cog):
         # Start AI batch processing worker
         logger.info("Starting AI batch processing worker...")
         try:
-            from src import ai_model as ai
+            from modcord import ai_model as ai
             ai.start_batch_worker()
             logger.info("[AI] Batch processing worker started.")
         except Exception as e:
@@ -96,7 +96,7 @@ class EventsCog(commands.Cog):
 
         # Get a moderation action from the AI model
         try:
-            from src import ai_model as ai
+            from modcord import ai_model as ai
             action, reason = await ai.get_appropriate_action(
                 current_message=actual_content,
                 history=bot_config.get_chat_history(message.channel.id),
