@@ -1,6 +1,6 @@
 ai_settings:
   enabled: true
-  allow_gpu: false
+  allow_gpu: true # Highly recommended if your hardware supports it
   model_id: "meta-llama/Llama-3.2-3B-Instruct"
   use_4bit: true
 
