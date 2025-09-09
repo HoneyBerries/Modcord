@@ -78,8 +78,8 @@ class TestBotHelper(unittest.IsolatedAsyncioTestCase):
         self.assertIn("1 hour", embed.fields[4].value)
 
 
-    @patch('modcord.bot_helper.send_dm_to_user', new_callable=AsyncMock)
-    @patch('modcord.bot_helper.create_punishment_embed', new_callable=AsyncMock)
+    @patch('src.modcord.bot_helper.send_dm_to_user', new_callable=AsyncMock)
+    @patch('src.modcord.bot_helper.create_punishment_embed', new_callable=AsyncMock)
     async def test_take_action_ban(self, mock_create_embed, mock_send_dm):
         mock_message = MagicMock(spec=discord.Message)
         mock_message.author = MagicMock(spec=discord.Member)
@@ -95,8 +95,8 @@ class TestBotHelper(unittest.IsolatedAsyncioTestCase):
         mock_create_embed.assert_called_once()
         mock_message.delete.assert_called_once()
 
-    @patch('modcord.bot_helper.send_dm_to_user', new_callable=AsyncMock)
-    @patch('modcord.bot_helper.create_punishment_embed', new_callable=AsyncMock)
+    @patch('src.modcord.bot_helper.send_dm_to_user', new_callable=AsyncMock)
+    @patch('src.modcord.bot_helper.create_punishment_embed', new_callable=AsyncMock)
     async def test_take_action_warn(self, mock_create_embed, mock_send_dm):
         mock_message = MagicMock(spec=discord.Message)
         mock_message.author = MagicMock(spec=discord.Member)

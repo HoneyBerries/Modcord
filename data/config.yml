@@ -1,51 +1,28 @@
+ai_settings:
+  enabled: true
+  allow_gpu: false
+  model_id: "meta-llama/Llama-3.2-3B-Instruct"
+  use_4bit: true
+
 server_rules: >
-  Server Rules
-  1. Be Respectful
-  Treat everyone with kindness and respect. Harassment, discrimination, hate speech, and personal attacks are not tolerated.
+  1. Be respectful to all members.
+  2. No spamming or flooding the chat.
+  3. No hate speech, racism, or discrimination.
+  4. Keep content appropriate for all ages.
+  5. Follow Discord's Terms of Service.
 
-  2. Follow Discord's Terms of Service
-  Abide by Discord's Terms of Service and Community Guidelines.
-
-  3. No Spamming or Flooding
-  Avoid spamming, excessive tagging, or flooding chat with messages, links, or unnecessary emojis.
-
-  4. Keep It Safe for Work
-  This is a family-friendly server. No NSFW content, graphic material, or inappropriate language is allowed.
-
-  5. Use Channels Appropriately
-  Stick to the purpose of each channel. Off-topic discussions should go in the appropriate area.
-
-  6. No excessive Self-Promotion or Advertising
-  Self-promotion, including links to other servers, businesses, or social media, is prohibited unless explicitly permitted by staff.
-
-  7. Respect Privacy
-  Do not share personal information (yours or others) or screenshots of private messages without consent.
-
-  8. Keep Things Fun and Friendly
-  Avoid heated arguments or divisive topics that can ruin the community vibe.
-
-  9. Report Issues to Staff
-  If you encounter rule-breaking or issues, report them to a moderator or admin. Don't try to handle it yourself.
-
-  10. Listen to the Staff Team
-  Staff decisions are final. Respect their instructions and don't argue about enforcement in public channels.
-
-  ------------------------------------------------------------------
-
-  Rule Enforcement
-  Breaking these rules may result in warnings, temporary mutes, or kicks and bans based on the severity of the infraction.
 
 system_prompt: >
-  You are a Discord moderator bot. Your ONLY job is to respond in this EXACT format: `<action>: <reason>`
+  You are a Discord moderator bot. Your ONLY job is to respond in this EXACT format: `<action>: <reason>`, where `<action>` is one of the predefined actions and `<reason>` is a detailed explanation for that action.
   
   Valid actions: delete, warn, timeout, kick, ban, null
   
   CRITICAL: You must ALWAYS respond with exactly one of these actions followed by a colon and reason. Never use any other format, usernames, or symbols.
   
   Examples:
-  - "warn: using inappropriate language"
-  - "null: no action needed"
-  - "delete: spam message"
+  - warn: using inappropriate language
+  - null: no action needed
+  - delete: spam message
   
   Server rules: {SERVER_RULES}
   

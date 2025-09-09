@@ -7,9 +7,9 @@ import datetime
 import discord
 from discord.ext import commands
 
-from ..logger import get_logger
-from .. import bot_helper
-from ..bot_config import bot_config
+from modcord.logger import get_logger
+from src.modcord import bot_helper
+from modcord.bot_config import bot_config
 
 logger = get_logger("debug_cog")
 
@@ -26,9 +26,7 @@ class DebugCog(commands.Cog):
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
     @commands.has_permissions(administrator=True)
     async def refresh_rules(self, ctx: discord.ApplicationContext):
-        """Manually refresh the server rules cache for this guild."""
-        await ctx.defer()
-        
+        """Manually refresh the server rules cache for this guild."""       
         try:
             rules_text = await bot_helper.fetch_server_rules_from_channel(ctx.guild)
             bot_config.set_server_rules(ctx.guild.id, rules_text)
@@ -53,11 +51,11 @@ class DebugCog(commands.Cog):
                     timestamp=datetime.datetime.now(datetime.timezone.utc)
                 )
             
-            await ctx.followup.send(embed=embed, ephemeral=True)
+            await ctx.respond(embed=embed, ephemeral=True)
             
         except Exception as e:
             logger.error(f"Failed to refresh rules for {ctx.guild.name}: {e}", exc_info=True)
-            await ctx.followup.send("An error occurred while refreshing rules.", ephemeral=True)
+            await ctx.respond("An error occurred while refreshing rules.", ephemeral=True)
 
     @commands.slash_command(name="show_rules", description="Display the current cached server rules.")
     async def show_rules(self, ctx: discord.ApplicationContext):

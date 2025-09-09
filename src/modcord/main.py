@@ -28,6 +28,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # Get logger for this module
 logger = get_logger("main")
 
+# Test logging system
+def test_logging():
+    """Test logging at all levels."""
+    logger.debug("Debug logging initialized.")
+    logger.info("Info logging initialized.")
+    logger.warning("Warning logging initialized.")
+    logger.error("Error logging initialized.")
+    logger.critical("Critical logging initialized.")
+
 # Load environment variables from the .env file in the project root
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 DISCORD_BOT_TOKEN = os.getenv('Mod_Bot_Token')
@@ -49,7 +58,8 @@ def load_cogs():
         'modcord.cogs.general',
         'modcord.cogs.moderation',
         'modcord.cogs.debug',
-        'modcord.cogs.events'
+    'modcord.cogs.events',
+    'modcord.cogs.settings',
     ]
     
     for cog in cog_files:
@@ -68,6 +78,9 @@ def main():
     """
     Main function to run the bot. Handles startup and fatal errors.
     """
+
+    test_logging()
+
     logger.info("Starting Discord Moderation Bot...")
     
     if not DISCORD_BOT_TOKEN:

@@ -55,12 +55,12 @@ class ModerationCog(commands.Cog):
         
         # Check if user is trying to moderate themselves
         if user.id == ctx.user.id:
-            await ctx.followup.send("You cannot moderate yourself.", ephemeral=True)
+            await ctx.followup.send("Don't do self harm.", ephemeral=True)
             return False
         
         # Check if target is an administrator
         if user.guild_permissions.administrator:
-            await ctx.followup.send("You cannot moderate an administrator.", ephemeral=True)
+            await ctx.followup.send("You cannot bully admins.", ephemeral=True)
             return False
         
         return True

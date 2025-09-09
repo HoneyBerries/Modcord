@@ -10,6 +10,9 @@ ENV/
 .venv/
 .env/
 
+# Ignore per-guild settings file
+data/guild_settings.json
+
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 

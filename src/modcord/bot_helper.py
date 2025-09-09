@@ -366,10 +366,10 @@ async def fetch_server_rules_from_channel(guild: discord.Guild) -> str:
             except discord.Forbidden:
                 logger.warning(f"No permission to read rules channel: {channel.name} in {guild.name}")
             except Exception as e:
-                logger.error(f"Error fetching rules from channel {channel.name} in {guild.name}: {e}")
+                logger.warning(f"Error fetching rules from channel {channel.name} in {guild.name}: {e}")
     if messages:
         rules_text = "\n\n".join(messages)
-        logger.info(f"Successfully fetched {len(messages)} rule messages from all rule channels")
+        logger.debug(f"Successfully fetched {len(messages)} rule messages from all rule channels")
         return rules_text
     logger.warning(f"No rules channel found in {guild.name}")
     return ""
@@ -388,21 +388,29 @@ async def refresh_rules_cache(bot, server_rules_cache: dict):
     """
     while True:
         try:
-            logger.info("Refreshing server rules cache...")
+            logger.debug("Refreshing server rules cache...")
             for guild in bot.guilds:
                 try:
                     rules_text = await fetch_server_rules_from_channel(guild)
+                    # Update shared cache
                     server_rules_cache[guild.id] = rules_text
+                    # Persist to disk via bot_config
+                    try:
+                        from .bot_config import bot_config
+                        bot_config.set_server_rules(guild.id, rules_text)
+                    except Exception:
+                        # If import or persist fails, continue; cache already updated
+                        pass
                     if rules_text:
-                        logger.info(f"Cached rules for {guild.name} ({len(rules_text)} characters)")
+                        logger.debug(f"Cached rules for {guild.name} ({len(rules_text)} characters)")
                     else:
                         logger.warning(f"No rules found for {guild.name}")
                 except Exception as e:
-                    logger.error(f"Failed to fetch rules for {guild.name}: {e}")
+                    logger.warning(f"Failed to fetch rules for {guild.name}: {e}")
                     # Keep existing cache if fetch fails
                     if guild.id not in server_rules_cache:
                         server_rules_cache[guild.id] = ""
-            logger.info(f"Rules cache refreshed for {len(server_rules_cache)} guilds")
+            logger.debug(f"Rules cache refreshed for {len(server_rules_cache)} guilds")
         except Exception as e:
             logger.error(f"Error during rules cache refresh: {e}")
         # Wait 5 minutes before next refresh (avoid hitting rate limits)

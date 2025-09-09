@@ -3,10 +3,8 @@ Event handlers cog for the Discord Moderation Bot.
 """
 
 import asyncio
-
 import discord
 from discord.ext import commands
-
 from ..logger import get_logger
 from ..actions import ActionType
 from .. import bot_helper
@@ -71,7 +69,7 @@ class EventsCog(commands.Cog):
         Processes incoming messages for AI-powered moderation.
         """
         # Ignore messages from bots and administrators
-        logger.debug(f"Received message from {message.author}: {message.clean_content}")
+        logger.debug(f"Received message from {message.author}: {message.content}")
         if message.author.bot or (
             isinstance(message.author, discord.Member) and 
             message.author.guild_permissions.administrator
@@ -93,6 +91,11 @@ class EventsCog(commands.Cog):
 
         # Get server rules
         server_rules = bot_config.get_server_rules(message.guild.id) if message.guild else ""
+
+        # Respect per-guild AI moderation toggle
+        if message.guild and not bot_config.is_ai_enabled(message.guild.id):
+            logger.debug(f"AI moderation disabled for guild {message.guild.id}; skipping AI.")
+            return
 
         # Get a moderation action from the AI model
         try:
@@ -122,7 +125,7 @@ class EventsCog(commands.Cog):
             return
 
         # Log the error with traceback
-        logger.error(f"Error in command '{ctx.command.name}': {error}", exc_info=True)
+        logger.debug(f"[Error] Error in command '{ctx.command.name}': {error}", exc_info=True)
 
         # Respond to the user with a generic error message
         # Use a try-except block in case the interaction has already been responded to

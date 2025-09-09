@@ -12,7 +12,7 @@ logger = get_logger("general_cog")
 
 class GeneralCog(commands.Cog):
     """
-    Cog containing general utility commands.
+    Cog containing general utility and test commands.
     """
     
     def __init__(self, bot):

@@ -12,5 +12,5 @@ sys.path.insert(0, str(src_path))
 
 # Run the main module
 if __name__ == "__main__":
-    from modcord.main import main
+    from src.modcord.main import main
     main()

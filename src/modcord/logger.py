@@ -8,23 +8,44 @@ from pathlib import Path
 LOGS_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
+
 # Define the log format and date format for log messages
 log_format = '[%(asctime)s] [%(levelname)s] [%(name)s:%(funcName)s:%(lineno)d] %(message)s'
 date_format = '%Y-%m-%d %H:%M:%S'
-formatter = logging.Formatter(log_format, datefmt=date_format)
+
+# ANSI color codes for log levels
+LOG_COLORS = {
+    'DEBUG': '\033[36m',    # Cyan
+    'INFO': '\033[32m',     # Green
+    'WARNING': '\033[33m',  # Yellow
+    'ERROR': '\033[31m',    # Red
+    'CRITICAL': '\033[38;5;88m', # Dark Red (ANSI 256-color)
+}
+RESET_COLOR = '\033[0m'
+
+class ColorFormatter(logging.Formatter):
+    def format(self, record):
+        color = LOG_COLORS.get(record.levelname, '')
+        message = super().format(record)
+        if color:
+            message = f"{color}{message}{RESET_COLOR}"
+        return message
+
+plain_formatter = logging.Formatter(log_format, datefmt=date_format)
+color_formatter = ColorFormatter(log_format, datefmt=date_format)
 
 # Generate a timestamped log filename (e.g. 2025-09-07_23-01-45.log)
 LOG_FILENAME = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.log")
 LOG_FILEPATH = LOGS_DIR / LOG_FILENAME
 
 
-def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     """
     Set up a logger with file and console handlers.
 
     Args:
         name (str): The name of the logger.
-        level (int): The logging level (default: logging.INFO).
+        level (int): The logging level (default: logging.DEBUG).
 
     Returns:
         logging.Logger: Configured logger instance.
@@ -42,18 +63,19 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     logger.setLevel(level)
     logger.propagate = False
 
-    # Console handler (warnings and above)
+
+    # Console handler (DEBUG and above, colored)
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)
-    console_handler.setFormatter(formatter)
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(color_formatter)
     logger.addHandler(console_handler)
 
-    # Rotating file handler (DEBUG and above)
+    # Rotating file handler (DEBUG and above, plain)
     file_handler = logging.handlers.RotatingFileHandler(
         LOG_FILEPATH, encoding="utf-8"
     )
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(plain_formatter)
     logger.addHandler(file_handler)
 
     return logger

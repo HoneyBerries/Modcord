@@ -1,9 +1,7 @@
 import re
 import sys
-import torch
 import asyncio
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from transformers.utils.quantization_config import BitsAndBytesConfig
+import os
 from . import config_loader as cfg
 from .actions import ActionType
 from .logger import get_logger
@@ -13,9 +11,18 @@ from .logger import get_logger
 # ==============================
 logger = get_logger("ai_model")
 
+# Ensure this module is reachable via multiple import paths (tests may patch 'modcord.ai_model')
+_this_module = sys.modules[__name__]
+for _alias in [
+    'ai_model',
+    'modcord.ai_model',
+]:
+    if _alias not in sys.modules:
+        sys.modules[_alias] = _this_module
+
 # ==============================
 # Model, Tokenizer, and System Prompt Initialization
-def init_ai_model(model=None, tokenizer_param=None) -> tuple:
+def init_ai_model(model=None, tokenizer_param=None) -> tuple | None:
     """
     Initializes the LLaMA AI model, tokenizer, and loads base configuration.
 
@@ -33,31 +40,67 @@ def init_ai_model(model=None, tokenizer_param=None) -> tuple:
     # Load base configuration (without dynamic rules)
     config = cfg.load_config()
     BASE_SYSTEM_PROMPT = config.get("system_prompt", "")
+    ai_cfg = config.get("ai_settings", {}) if isinstance(config, dict) else {}
+    is_ai_enabled = bool(ai_cfg.get("enabled", False))
+    is_allow_gpu = ai_cfg.get("allow_gpu", False)
+    model_id = ai_cfg.get("model_id", "meta-llama/Llama-3.2-3B-Instruct")
+    use_quant = ai_cfg.get("use_4bit", True)
 
     if model is None and tokenizer_param is None:
-        model_id = "meta-llama/Llama-3.2-3B-Instruct"
+        if not is_ai_enabled:
+            logger.info("[AI MODEL] AI disabled by configuration")
+            return None
 
-        # Configure 4-bit quantization for efficient GPU memory usage
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16
-        )
+        # Lazy import heavy dependencies
+        import torch
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+
+        has_cuda = torch.cuda.is_available()
+        
+        # Check if is_allow_gpu is set but no CUDA device is available
+        if is_allow_gpu and not has_cuda:
+            logger.critical("AI model loading requested with ai_settings." \
+            "\nallow_gpu=true but no CUDA device is available. Set ai_settings." \
+            "\nallow_gpu=false in config.yml to allow CPU loading (not recommended)."
+            "\n\nWe will load the model on your CPU, but performance will suck.")
+
+
+        # Configure 4-bit quantization for efficient GPU memory usage if CUDA is available
+        bnb_config = None
+        if has_cuda and use_quant:
+            try:
+                logger.info("[AI MODEL] Enabling 4-bit quantization for model loading")
+                from transformers.utils.quantization_config import BitsAndBytesConfig
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16
+                )
+            except Exception as e:
+                logger.warning(f"[AI MODEL] Could not enable 4-bit quantization: {e}. Falling back to non-quantized.")
 
         # Load the quantized model and tokenizer
+        load_kwargs = {
+            "device_map": "cuda" if has_cuda else "cpu",
+            "trust_remote_code": True,
+        }
+        if bnb_config is not None:
+            load_kwargs["quantization_config"] = bnb_config
+
+        # Warn about missing HF token (many models require it)
+        if not (os.getenv("HUGGING_FACE_HUB_TOKEN") or os.getenv("HF_TOKEN")):
+            logger.warning("[AI MODEL] No Hugging Face token detected (HUGGING_FACE_HUB_TOKEN/HF_TOKEN). If the model is gated, loading will fail.")
+
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
-            quantization_config=bnb_config,
-            device_map="auto",  # Automatically assign model parts to available GPUs
-            trust_remote_code=True
+            **load_kwargs,
         ).eval()  # Set to inference mode (disables dropout)
 
         tokenizer_local: AutoTokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-    
 
-        logger.info(f"[AI MODEL] Model loaded on device: {model.device}")
+        logger.info(f"[AI MODEL] Model loaded on {model.device}")
         return model, tokenizer_local, BASE_SYSTEM_PROMPT
-    
+
     else:
         return model, tokenizer_param, BASE_SYSTEM_PROMPT
 
@@ -65,16 +108,42 @@ def init_ai_model(model=None, tokenizer_param=None) -> tuple:
 # Global model initialization (singleton)
 # ==============================
 model, tokenizer, BASE_SYSTEM_PROMPT = (None, None, None)
+# Availability and diagnostics flags
+MODEL_INIT_STARTED = False
+MODEL_AVAILABLE = False
+MODEL_INIT_ERROR: str | None = None
 
 def get_model() -> tuple:
     """
     Initializes and returns the AI model, tokenizer, and base system prompt.
     Uses a singleton pattern to ensure the model is loaded only once.
     """
-    global model, tokenizer, BASE_SYSTEM_PROMPT
-    if model is None:
-        model, tokenizer, BASE_SYSTEM_PROMPT = init_ai_model()
+    global model, tokenizer, BASE_SYSTEM_PROMPT, MODEL_INIT_STARTED, MODEL_AVAILABLE, MODEL_INIT_ERROR
+    if model is None and not MODEL_INIT_STARTED:
+        MODEL_INIT_STARTED = True
+        try:
+            init_result = init_ai_model()
+            if init_result is None:
+                model = tokenizer = BASE_SYSTEM_PROMPT = None
+            else:
+                model, tokenizer, BASE_SYSTEM_PROMPT = init_result
+            MODEL_AVAILABLE = model is not None and tokenizer is not None
+            if MODEL_AVAILABLE:
+                logger.info("[AI MODEL] Model initialized successfully.")
+            else:
+                MODEL_INIT_ERROR = "Model initializer returned None"
+                logger.error("[AI MODEL] Model initialization returned None; AI unavailable.")
+        except Exception as e:
+            MODEL_AVAILABLE = False
+            MODEL_INIT_ERROR = f"Initialization failed: {e}"
+            logger.error(f"[AI MODEL] Failed to initialize model: {e}", exc_info=True)
     return model, tokenizer, BASE_SYSTEM_PROMPT
+
+def is_model_available() -> bool:
+    return MODEL_AVAILABLE
+
+def get_model_init_error() -> str | None:
+    return MODEL_INIT_ERROR
 
 def get_system_prompt(server_rules: str = "") -> str:
     """
@@ -160,7 +229,15 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
         List of response strings (one per request)
     """
     try:
+        # Ensure model is (attempted) initialized
         model, tokenizer, _ = get_model()
+        if not (model and tokenizer):
+            reason = get_model_init_error() or "AI model unavailable"
+            logger.warning(f"[BATCH] Skipping batch; {reason}")
+            return ["null: ai unavailable"] * len(batch_messages)
+
+        # Lazy import torch only when we actually have a model
+        import torch
         # Prepare input_ids for each conversation in the batch
         input_ids_list = []
         prompt_lengths = []
@@ -206,10 +283,8 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
         logger.info(f"[BATCH] Generated {len(responses)} responses")
         return responses
         
-    except torch.cuda.OutOfMemoryError as e:
-        logger.critical("[BATCH] GPU ran out of memory during batch processing", exc_info=True)
-        return ["null: GPU memory error"] * len(batch_messages)
     except Exception as e:
+        # Prefer clear, generic failure to avoid noisy logs spamming
         logger.error(f"[BATCH] Error in batch processing: {e}", exc_info=True)
         return ["null: batch processing error"] * len(batch_messages)
 
@@ -224,6 +299,12 @@ async def submit_inference(messages: list[dict]) -> str:
         The AI response string
     """
     global _worker_task
+
+    # Fast-path: if model is known to be unavailable, short-circuit
+    if MODEL_INIT_STARTED and not MODEL_AVAILABLE:
+        reason = get_model_init_error() or "AI model unavailable"
+        logger.debug(f"[AI] Short-circuiting inference; {reason}")
+        return f"null: {reason}"
     
     # Start the worker if it's not running
     if _worker_task is None or _worker_task.done():
@@ -245,6 +326,24 @@ def start_batch_worker():
     if _worker_task is None or _worker_task.done():
         _worker_task = asyncio.create_task(inference_worker())
         logger.info("[BATCH] Started inference worker")
+        # Kick off a warmup in the background so we fail fast at startup if needed
+        try:
+            asyncio.create_task(_warmup_model())
+        except RuntimeError:
+            # Not in an event loop yet; skip warmup silently
+            pass
+
+async def _warmup_model():
+    """Attempt to initialize the model early to surface failures at startup."""
+    try:
+        logger.info("[AI] Warming up model...")
+        _ = get_model()
+        if is_model_available():
+            logger.info("[AI] Model warmup complete.")
+        else:
+            logger.error(f"[AI] Model warmup failed: {get_model_init_error()}")
+    except Exception as e:
+        logger.error(f"[AI] Model warmup error: {e}", exc_info=True)
 
 # ==============================
 # Action Parsing and Moderation Logic
@@ -252,6 +351,7 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     """
     Parses the AI model's response to extract the moderation action and reason.
     Supports actions: delete, warn, timeout, kick, ban, null.
+    Supports both formats: "action: reason" and "action: <action_type> reason: <reason>"
     """
     # Helper: find a canonical ActionType class from loaded modules (tests may import via different paths)
     def _get_canonical_action_cls():
@@ -270,7 +370,7 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
 
     cls = _get_canonical_action_cls()
 
-    # Check for specific action patterns in the response
+    # Pattern 1: Check for "action: <action_type> reason: <reason>" format
     action_pattern = r'action:\s*(delete|warn|timeout|kick|ban|null)(?:.*?reason:\s*(.+?))?'
     match = re.search(action_pattern, assistant_response.lower(), re.DOTALL)
     
@@ -297,10 +397,26 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
                 break
 
         if getattr(action, 'value', str(action)) == 'null':
-            return cls('null'), "no action needed"
+            return cls('null'), "no action required or needed..."
         return action, reason
 
-    # Fallback: Try to extract just the action if parsing failed
+    # Pattern 2: Check for simple "<action>: <reason>" format (e.g., "ban: User was spamming")
+    simple_action_pattern = r'^(delete|warn|timeout|kick|ban|null):\s*(.+)'
+    simple_match = re.match(simple_action_pattern, assistant_response.strip(), re.IGNORECASE)
+    if simple_match:
+        action_str = simple_match.group(1).strip().lower()
+        reason = simple_match.group(2).strip()
+        
+        try:
+            action = cls(action_str)
+            if getattr(action, 'value', str(action)) == 'null':
+                return cls('null'), "no action needed"
+            return action, reason
+        except Exception:
+            logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
+            return cls('null'), "unknown action type"
+
+    # Pattern 3: Check for just the action name with no colon
     simple_pattern = r"^(delete|warn|timeout|kick|ban|null)$"
     simple_match = re.match(simple_pattern, assistant_response.strip(), re.IGNORECASE)
     if simple_match:
@@ -315,6 +431,8 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
             logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
             return cls('null'), "unknown action type"
 
+
+    # If no patterns matched, return null action with error reason
     logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
     return cls('null'), "invalid AI response format"
 
