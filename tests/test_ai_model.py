@@ -1,11 +1,11 @@
 import unittest
 from unittest.mock import MagicMock, patch, AsyncMock
-from modcord.actions import ActionType
+from src.modcord.actions import ActionType
 
 @patch('modcord.ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
 class TestAIModel(unittest.IsolatedAsyncioTestCase):
     def test_parse_action(self, mock_get_model):
-        from modcord.ai_model import parse_action
+        from src.modcord.ai_model import parse_action
         # Test ban action
         action, reason = parse_action("ban: User was spamming")
         self.assertEqual(action, ActionType.BAN)

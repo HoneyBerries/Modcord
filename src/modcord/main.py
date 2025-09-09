@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 import discord
 
-from modcord.logger import get_logger
+from .logger import get_logger
 
 # ==========================================
 # Configuration and Logging Setup

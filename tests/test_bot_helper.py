@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
 import discord
-from modcord.actions import ActionType
-from modcord import bot_helper
+from src.modcord.actions import ActionType
+from src.modcord import bot_helper
 
 
 class TestBotHelper(unittest.IsolatedAsyncioTestCase):

@@ -8,6 +8,7 @@ import asyncio
 import datetime
 import discord
 from .actions import ActionType
+import importlib
 from .logger import get_logger
 
 # Get logger for this module
@@ -214,10 +215,10 @@ async def send_dm_and_embed(
     dm_message = f"You have been {action_type.value} in {ctx.guild.name}.\n**Reason**: {reason}"
     await send_dm_to_user(user, dm_message)
 
-    embed = await create_punishment_embed(
-        action_type, user, reason, duration_str, ctx.user, ctx.bot.user
-    )
+    # Create and send embed
+    embed = await create_punishment_embed(action_type, user, reason, duration_str, bot_user=ctx.bot.user)
     await ctx.followup.send(embed=embed)
+
 
 
 async def take_action(action: ActionType, reason: str, message: discord.Message, bot_user: discord.ClientUser | None = None):
@@ -248,7 +249,6 @@ async def take_action(action: ActionType, reason: str, message: discord.Message,
         if action == ActionType.DELETE:
             # Only delete the message, no further action.
             await message.delete()
-            logger.info(f"Deleted message from {user.display_name}.")
             return
 
         # Prepare DM and embed for other actions.

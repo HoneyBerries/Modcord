@@ -1,4 +1,5 @@
 import re
+import sys
 import torch
 import asyncio
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -251,42 +252,53 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     """
     Parses the AI model's response to extract the moderation action and reason.
     Supports actions: delete, warn, timeout, kick, ban, null.
-
-    Args:
-        assistant_response (str): The raw response from the AI model.
-
-    Returns:
-        tuple[ActionType, str]: Action type and reason string.
     """
-    action_pattern = r"^(delete|warn|timeout|kick|ban|null)\s*[:\s]+(.+)$"
-    match = re.match(action_pattern, assistant_response.strip(), re.IGNORECASE | re.DOTALL)
+    # Helper: find a canonical ActionType class from loaded modules (tests may import via different paths)
+    def _get_canonical_action_cls():
+        candidates = [
+            'src.actions',
+            'actions',
+            'modcord.actions',
+            'src.modcord.actions',
+        ]
+        for name in candidates:
+            mod = sys.modules.get(name)
+            if mod and hasattr(mod, 'ActionType'):
+                return getattr(mod, 'ActionType')
+        # fallback to the local imported ActionType
+        return ActionType
 
+    cls = _get_canonical_action_cls()
+
+    # Check for specific action patterns in the response
+    action_pattern = r'action:\s*(delete|warn|timeout|kick|ban|null)(?:.*?reason:\s*(.+?))?'
+    match = re.search(action_pattern, assistant_response.lower(), re.DOTALL)
+    
     if match:
-        action_str, reason = match.groups()
-        action_str = action_str.strip().lower()
-        reason = reason.strip()
-        
-        # Convert string to ActionType enum
+        action_str = match.group(1).strip().lower()
+        reason = match.group(2).strip() if match.group(2) else "Automated moderation action"
+
+        # Convert string to ActionType enum using the canonical class
         try:
-            action = ActionType(action_str)
-        except ValueError:
+            action = cls(action_str)
+        except Exception:
             logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
-            return ActionType.NULL, "unknown action type"
-        
-        # Fix: Remove redundant <action>: prefix from reason if present
-        action_prefixes = [at.value for at in ActionType]
+            return cls('null'), "unknown action type"
+
+        # Remove redundant '<action>:' prefix from reason if present
+        try:
+            action_prefixes = [at.value for at in cls]
+        except Exception:
+            action_prefixes = [at.value for at in ActionType]
         for prefix in action_prefixes:
             if reason.lower().startswith(f"{prefix}:"):
-                reason = reason[len(prefix)+1:].strip()
+                reason = reason[len(prefix) + 1 :].strip()
                 logger.info(f"Stripped redundant action prefix '{prefix}:' from reason in AI response.")
                 break
-        
-        # Accept 'null: no action needed' as a valid no-action response
-        if action == ActionType.NULL:
-            return ActionType.NULL, "no action needed"
-        else:
-            # Return the valid action and reason without modification
-            return action, reason
+
+        if getattr(action, 'value', str(action)) == 'null':
+            return cls('null'), "no action needed"
+        return action, reason
 
     # Fallback: Try to extract just the action if parsing failed
     simple_pattern = r"^(delete|warn|timeout|kick|ban|null)$"
@@ -294,17 +306,18 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     if simple_match:
         action_str = simple_match.group(1).lower()
         try:
-            action = ActionType(action_str)
-            if action == ActionType.NULL:
-                return ActionType.NULL, "no action needed"
+            action = cls(action_str)
+            if getattr(action, 'value', str(action)) == 'null':
+                return cls('null'), "no action needed"
             logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
             return action, "AI response incomplete"
-        except ValueError:
+        except Exception:
             logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
-            return ActionType.NULL, "unknown action type"
+            return cls('null'), "unknown action type"
 
     logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
-    return ActionType.NULL, "invalid AI response format"
+    return cls('null'), "invalid AI response format"
+
 
 # ==============================
 # Main Moderation Action Function
@@ -345,7 +358,6 @@ async def get_appropriate_action(current_message: str, history: list[dict[str, s
             content = msg.get("content", "")
             if not isinstance(content, str) or not content.strip():
                 continue
-            # Add username context if available
             if msg.get("username"):
                 content = f"User {msg['username']} says: {content}"
             formatted_history.insert(0, {
