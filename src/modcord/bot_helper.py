@@ -51,54 +51,54 @@ DELETE_MESSAGE_CHOICES = [
 # ==========================================
 
 
-def has_permissions(ctx: discord.ApplicationContext, **perms) -> bool:
+def has_permissions(application_context: discord.ApplicationContext, **required_permissions) -> bool:
     """
     Check if the command issuer has the required permissions.
 
     Args:
-        ctx (discord.ApplicationContext): The context of the command.
-        **perms: The permissions to check.
+        application_context (discord.ApplicationContext): The context of the command.
+        **required_permissions: The permissions to check.
 
     Returns:
         bool: True if the user has permissions, False otherwise.
     """
-    if not isinstance(ctx.author, discord.Member):
+    if not isinstance(application_context.author, discord.Member):
         return False
-    return all(getattr(ctx.author.guild_permissions, perm, False) for perm in perms)
+    return all(getattr(application_context.author.guild_permissions, permission_name, False) for permission_name in required_permissions)
 
 
-def parse_duration_to_seconds(duration_str: str) -> int:
+def parse_duration_to_seconds(human_readable_duration: str) -> int:
     """
     Convert a human-readable duration string to its equivalent in seconds.
 
     Args:
-        duration_str (str): The duration string to parse.
+        human_readable_duration (str): The duration string to parse.
 
     Returns:
         int: The duration in seconds, or 0 if permanent or unrecognized.
     """
-    return DURATIONS.get(duration_str, 0)
+    return DURATIONS.get(human_readable_duration, 0)
 
 
-async def send_dm_to_user(user: discord.Member, message: str) -> bool:
+async def send_dm_to_user(target_user: discord.Member, message_content: str) -> bool:
     """
     Attempt to send a direct message to a user.
 
     Args:
-        user (discord.Member): The user to DM.
-        message (str): The message content.
+        target_user (discord.Member): The user to DM.
+        message_content (str): The message content.
 
     Returns:
         bool: True if DM sent successfully, False otherwise.
     """
     try:
-        await user.send(message)
+        await target_user.send(message_content)
         return True
     except discord.Forbidden:
         # User may have DMs disabled or bot blocked.
-        logger.info(f"Could not DM {user.display_name}: They may have DMs disabled.")
+        logger.info(f"Could not DM {target_user.display_name}: They may have DMs disabled.")
     except Exception as e:
-        logger.error(f"Failed to send DM to {user.display_name}: {e}")
+        logger.error(f"Failed to send DM to {target_user.display_name}: {e}")
     return False
 
 

@@ -25,11 +25,11 @@ class DebugCog(commands.Cog):
 
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
     @commands.has_permissions(administrator=True)
-    async def refresh_rules(self, ctx: discord.ApplicationContext):
+    async def refresh_rules(self, application_context: discord.ApplicationContext):
         """Manually refresh the server rules cache for this guild."""       
         try:
-            rules_text = await bot_helper.fetch_server_rules_from_channel(ctx.guild)
-            bot_config.set_server_rules(ctx.guild.id, rules_text)
+            rules_text = await bot_helper.fetch_server_rules_from_channel(application_context.guild)
+            bot_config.set_server_rules(application_context.guild.id, rules_text)
             
             if rules_text:
                 embed = discord.Embed(
@@ -51,16 +51,16 @@ class DebugCog(commands.Cog):
                     timestamp=datetime.datetime.now(datetime.timezone.utc)
                 )
             
-            await ctx.respond(embed=embed, ephemeral=True)
+            await application_context.respond(embed=embed, ephemeral=True)
             
         except Exception as e:
-            logger.error(f"Failed to refresh rules for {ctx.guild.name}: {e}", exc_info=True)
-            await ctx.respond("An error occurred while refreshing rules.", ephemeral=True)
+            logger.error(f"Failed to refresh rules for {application_context.guild.name}: {e}", exc_info=True)
+            await application_context.respond("An error occurred while refreshing rules.", ephemeral=True)
 
     @commands.slash_command(name="show_rules", description="Display the current cached server rules.")
-    async def show_rules(self, ctx: discord.ApplicationContext):
+    async def show_rules(self, application_context: discord.ApplicationContext):
         """Display the current cached server rules."""
-        rules_text = bot_config.get_server_rules(ctx.guild.id)
+        rules_text = bot_config.get_server_rules(application_context.guild.id)
         
         if rules_text:
             embed = discord.Embed(
@@ -69,8 +69,8 @@ class DebugCog(commands.Cog):
                 color=discord.Color.blue(),
                 timestamp=datetime.datetime.now(datetime.timezone.utc)
             )
-            embed.set_footer(text=f"Rules for {ctx.guild.name}")
-            await ctx.respond(embed=embed)
+            embed.set_footer(text=f"Rules for {application_context.guild.name}")
+            await application_context.respond(embed=embed)
         else:
             embed = discord.Embed(
                 title="❌ No Rules Available",
@@ -78,7 +78,7 @@ class DebugCog(commands.Cog):
                 color=discord.Color.red(),
                 timestamp=datetime.datetime.now(datetime.timezone.utc)
             )
-            await ctx.respond(embed=embed, ephemeral=True)
+            await application_context.respond(embed=embed, ephemeral=True)
 
 
 def setup(discord_bot_instance):
