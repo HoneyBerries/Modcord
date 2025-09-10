@@ -57,6 +57,117 @@ class EventsCog(commands.Cog):
 			except Exception as e:
 				logger.error(f"Failed to refresh rules cache for channel {channel}: {e}")
 
+	async def _process_message_batch(self, channel_id: int, messages: list[dict]) -> None:
+		"""
+		Process a batch of messages from a single channel after 15-second collection period.
+		
+		Args:
+			channel_id: The Discord channel ID
+			messages: List of message dicts collected over 15 seconds
+		"""
+		try:
+			logger.info(f"Processing batch of {len(messages)} messages for channel {channel_id}")
+			
+			if not messages:
+				logger.debug(f"Empty batch for channel {channel_id}, skipping")
+				return
+			
+			# Get guild info from the first message for server rules
+			first_message = messages[0]
+			guild_id = first_message.get("guild_id")
+			server_rules = bot_config.get_server_rules(guild_id) if guild_id else ""
+			
+			# Check if AI moderation is enabled for this guild
+			if guild_id and not bot_config.is_ai_enabled(guild_id):
+				logger.debug(f"AI moderation disabled for guild {guild_id}, skipping batch")
+				return
+			
+			# Prepare messages for AI processing (remove Discord-specific data)
+			ai_messages = []
+			for msg in messages:
+				ai_messages.append({
+					"user_id": msg["user_id"],
+					"username": msg["username"], 
+					"content": msg["content"],
+					"timestamp": msg["timestamp"],
+					"image_summary": msg["image_summary"]
+				})
+			
+			# Process the batch with AI
+			actions = await ai.get_batch_moderation_actions(
+				channel_id=channel_id,
+				messages=ai_messages,
+				server_rules=server_rules
+			)
+			
+			logger.info(f"AI returned {len(actions)} actions for channel {channel_id}")
+			
+			# Apply each action
+			for action_data in actions:
+				try:
+					await self._apply_batch_action(action_data, messages, channel_id)
+				except Exception as e:
+					logger.error(f"Error applying action {action_data} in channel {channel_id}: {e}")
+					
+		except Exception as e:
+			logger.error(f"Error processing message batch for channel {channel_id}: {e}")
+
+	async def _apply_batch_action(self, action_data: dict, original_messages: list[dict], channel_id: int) -> None:
+		"""
+		Apply a single moderation action from a batch response.
+		
+		Args:
+			action_data: Action dict with user_id, action, reason, etc.
+			original_messages: Original message batch with Discord message objects
+			channel_id: Channel ID for context
+		"""
+		try:
+			user_id_str = action_data.get("user_id", "")
+			action_type_str = action_data.get("action", "null")
+			reason = action_data.get("reason", "Automated moderation action")
+			delete_count = action_data.get("delete_count", 0)
+			
+			if action_type_str == "null" or not user_id_str:
+				return
+				
+			# Convert action string to ActionType enum
+			try:
+				from ..actions import ActionType
+				action_type = ActionType(action_type_str.lower())
+			except ValueError:
+				logger.warning(f"Unknown action type '{action_type_str}', skipping")
+				return
+			
+			# Find the user's message(s) in the original batch
+			target_user_id = int(user_id_str)
+			user_messages = [msg for msg in original_messages if msg.get("user_id") == target_user_id]
+			
+			if not user_messages:
+				logger.warning(f"No messages found for user {user_id_str} in batch for channel {channel_id}")
+				return
+			
+			# Use the most recent message for the action (Discord message object)
+			target_message_obj = user_messages[-1].get("message_obj")
+			if not target_message_obj:
+				logger.warning(f"No Discord message object found for user {user_id_str}")
+				return
+			
+			logger.info(f"Applying {action_type_str} action to user {user_id_str} in channel {channel_id}: {reason}")
+			
+			# Apply the action using the enhanced batch-aware bot_helper
+			await bot_helper.take_batch_action(
+				action=action_type, 
+				reason=reason, 
+				message=target_message_obj, 
+				bot_user=self.bot.user,
+				delete_count=delete_count,
+				timeout_duration=action_data.get("timeout_duration"),
+				ban_duration=action_data.get("ban_duration")
+			)
+			
+		except Exception as e:
+			logger.error(f"Error applying batch action {action_data}: {e}")
+
 	@commands.Cog.listener(name='on_ready')
 	async def on_ready(self):
 		"""
@@ -87,6 +198,11 @@ class EventsCog(commands.Cog):
 			logger.info("[AI] Batch processing worker started.")
 		except Exception as e:
 			logger.error(f"Failed to start AI batch processing worker: {e}")
+			
+		# Set up batch processing callback for channel-based batching
+		logger.info("Setting up batch processing callback...")
+		bot_config.set_batch_processing_callback(self._process_message_batch)
+		
 		logger.info("-" * 60)
 
 	async def _refresh_rules_cache_task(self):
@@ -111,7 +227,7 @@ class EventsCog(commands.Cog):
 
 		# Skip empty messages or messages with only whitespace
 		actual_content = message.clean_content.strip()
-		if not actual_content:
+		if actual_content == "":
 			return
 
 		# Possibly refresh rules cache if this was posted in a rules channel
@@ -126,29 +242,29 @@ class EventsCog(commands.Cog):
 
 		bot_config.add_message_to_history(message.channel.id, message_data)
 
-		# Get server rules
-		server_rules = bot_config.get_server_rules(message.guild.id) if message.guild else ""
-
 		# Respect per-guild AI moderation toggle
 		if not self._is_ai_moderation_enabled(message.guild):
 			if message.guild:
 				logger.debug(f"AI moderation disabled for guild {message.guild.name}; skipping AI filtration.")
 			return
 
-		# Get a moderation action from the AI model
+		# Add message to the batching system instead of immediate processing
 		try:
-			action, reason = await ai.get_appropriate_action(
-				current_message=actual_content,
-				history=bot_config.get_chat_history(message.channel.id),
-				user_id=message.author.id,
-				server_rules=server_rules
-			)
-
-			if action != ActionType.NULL:
-				await bot_helper.take_action(action, reason, message, self.bot.user)
-				
+			batch_message_data = {
+				"user_id": message.author.id,
+				"username": str(message.author),
+				"content": actual_content,
+				"timestamp": message.created_at.replace(tzinfo=None).isoformat() + "Z",
+				"image_summary": None,  # TODO: Add image summary support in future
+				"guild_id": message.guild.id if message.guild else None,  # Store guild for rules lookup
+				"message_obj": message  # Store Discord message object for action application
+			}
+			
+			await bot_config.add_message_to_batch(message.channel.id, batch_message_data)
+			logger.debug(f"Added message from {message.author} to batch for channel {message.channel.id}")
+			
 		except Exception as e:
-			logger.error(f"Error in AI moderation for message from {message.author}: {e}")
+			logger.error(f"Error adding message to batch for {message.author}: {e}")
 
 	@commands.Cog.listener(name='on_message_edit')
 	async def on_message_edit(self, before: discord.Message, after: discord.Message):

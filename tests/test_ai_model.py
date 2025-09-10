@@ -1,4 +1,5 @@
 import unittest
+import json
 from unittest.mock import MagicMock, patch, AsyncMock
 from src.modcord.actions import ActionType
 
@@ -6,25 +7,25 @@ from src.modcord.actions import ActionType
 class TestAIModel(unittest.IsolatedAsyncioTestCase):
     def test_parse_action(self, mock_get_model):
         from src.modcord.ai_model import parse_action
-        # Test ban action
-        action, reason = parse_action("ban: User was spamming")
+        # Test ban action (JSON input)
+        action, reason = parse_action(json.dumps({"action": "ban", "reason": "User was spamming"}))
         self.assertEqual(action, ActionType.BAN)
         self.assertEqual(reason, "User was spamming")
 
-        # Test warn action
-        action, reason = parse_action("warn: User was being rude")
+        # Test warn action (JSON input)
+        action, reason = parse_action(json.dumps({"action": "warn", "reason": "User was being rude"}))
         self.assertEqual(action, ActionType.WARN)
         self.assertEqual(reason, "User was being rude")
 
-        # Test null action
-        action, reason = parse_action("null: No action needed")
+        # Test null action (JSON input)
+        action, reason = parse_action(json.dumps({"action": "null", "reason": "No action needed"}))
         self.assertEqual(action, ActionType.NULL)
-        self.assertEqual(reason, "no action needed")
+        self.assertEqual(reason, "No action needed")
 
-        # Test invalid action
-        action, reason = parse_action("invalid: This is not a valid action")
+        # Test invalid action (JSON input) -> expect unknown action type
+        action, reason = parse_action(json.dumps({"action": "invalid", "reason": "This is not a valid action"}))
         self.assertEqual(action, ActionType.NULL)
-        self.assertEqual(reason, "invalid AI response format")
+        self.assertEqual(reason, "unknown action type")
 
     @patch('src.modcord.ai_model.submit_inference', new_callable=AsyncMock)
     async def test_get_appropriate_action(self, mock_submit_inference, mock_get_model):
@@ -33,9 +34,8 @@ class TestAIModel(unittest.IsolatedAsyncioTestCase):
         """
         from src.modcord.ai_model import get_appropriate_action
 
-        # Mock the AI's response
-        mock_submit_inference.return_value = "kick: User was being disruptive."
-
+    # Mock the AI's response (JSON)
+    mock_submit_inference.return_value = json.dumps({"action": "kick", "reason": "User was being disruptive."})
         action, reason = await get_appropriate_action(
             current_message="some disruptive message",
             history=[],

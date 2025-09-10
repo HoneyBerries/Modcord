@@ -50,6 +50,91 @@ DELETE_MESSAGE_CHOICES = [
 # Utility Functions
 # ==========================================
 
+def format_duration(seconds: int) -> str:
+    """
+    Format a duration in seconds to a human-readable string.
+    
+    Args:
+        seconds (int): Duration in seconds
+        
+    Returns:
+        str: Formatted duration string (e.g., "5 mins", "1 hour", "2 days")
+    """
+    if seconds == 0:
+        return PERMANENT_DURATION
+    elif seconds < 60:
+        return f"{seconds} secs"
+    elif seconds < 3600:  # Less than 1 hour
+        mins = seconds // 60
+        return f"{mins} mins"
+    elif seconds < 86400:  # Less than 1 day
+        hours = seconds // 3600
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    else:  # 1 day or more
+        days = seconds // 86400
+        return f"{days} day{'s' if days != 1 else ''}"
+
+
+async def delete_recent_messages_by_count(guild: discord.Guild, member: discord.Member, count: int) -> int:
+    """
+    Delete the most recent messages from a user up to the specified count.
+    
+    Args:
+        guild (discord.Guild): The guild to search for messages
+        member (discord.Member): The member whose messages to delete
+        count (int): Maximum number of messages to delete
+        
+    Returns:
+        int: Number of messages actually deleted
+    """
+    if count <= 0:
+        return 0
+        
+    deleted_count = 0
+    
+    try:
+        # Search through all text channels in the guild
+        for channel in guild.text_channels:
+            if deleted_count >= count:
+                break
+                
+            try:
+                # Get recent messages from this channel
+                messages_to_delete = []
+                async for message in channel.history(limit=100):  # Check last 100 messages
+                    if message.author.id == member.id:
+                        messages_to_delete.append(message)
+                        if len(messages_to_delete) >= (count - deleted_count):
+                            break
+                
+                # Delete the messages
+                for message in messages_to_delete:
+                    try:
+                        await message.delete()
+                        deleted_count += 1
+                        if deleted_count >= count:
+                            break
+                    except discord.NotFound:
+                        # Message already deleted
+                        pass
+                    except discord.Forbidden:
+                        logger.warning(f"No permission to delete message in {channel.name}")
+                        break
+                    except Exception as e:
+                        logger.error(f"Error deleting message in {channel.name}: {e}")
+                        
+            except discord.Forbidden:
+                # No permission to read this channel
+                continue
+            except Exception as e:
+                logger.error(f"Error searching messages in {channel.name}: {e}")
+                continue
+                
+    except Exception as e:
+        logger.error(f"Error deleting recent messages for {member.display_name}: {e}")
+    
+    return deleted_count
+
 
 def has_permissions(application_context: discord.ApplicationContext, **required_permissions) -> bool:
     """
@@ -235,6 +320,43 @@ async def take_action(action: ActionType, reason: str, message: discord.Message,
     Returns:
         None
     """
+    await take_batch_action(
+        action=action,
+        reason=reason,
+        message=message,
+        bot_user=bot_user,
+        delete_count=1 if action == ActionType.DELETE else 0,
+        timeout_duration=None,
+        ban_duration=None
+    )
+
+
+async def take_batch_action(
+    action: ActionType, 
+    reason: str, 
+    message: discord.Message, 
+    bot_user: discord.ClientUser | None = None,
+    *,
+    delete_count: int = 0,
+    timeout_duration: int | None = None,
+    ban_duration: int | None = None
+):
+    """
+    Applies a disciplinary action with batch-specific parameters.
+    This is the enhanced version that supports the new batch processing parameters.
+
+    Args:
+        action (ActionType): The moderation action to take.
+        reason (str): Reason for the action.
+        message (discord.Message): The message triggering the action.
+        bot_user (discord.ClientUser | None): Bot user for embeds.
+        delete_count (int): Number of recent messages to delete (0 = don't delete)
+        timeout_duration (int | None): Timeout duration in seconds (None = use default)
+        ban_duration (int | None): Ban duration in seconds (None = permanent, 0 = permanent)
+
+    Returns:
+        None
+    """
     # Ignore if action is null, or message/guild/user is invalid.
     if action == ActionType.NULL or not message.guild or not isinstance(message.author, discord.Member):
         return
@@ -243,12 +365,19 @@ async def take_action(action: ActionType, reason: str, message: discord.Message,
     guild = message.guild
     channel = message.channel
 
-    logger.info(f"AI action triggered: '{action.value}' on user {user.display_name} for reason: '{reason}'")
+    logger.info(f"AI batch action triggered: '{action.value}' on user {user.display_name} for reason: '{reason}' (delete_count={delete_count}, timeout_duration={timeout_duration}, ban_duration={ban_duration})")
 
     try:
+        # Handle message deletion first if specified
+        if delete_count > 0:
+            try:
+                deleted_count = await delete_recent_messages_by_count(guild, user, delete_count)
+                logger.info(f"Deleted {deleted_count} recent messages from {user.display_name}")
+            except Exception as e:
+                logger.error(f"Failed to delete {delete_count} messages from {user.display_name}: {e}")
+
         if action == ActionType.DELETE:
-            # Only delete the message, no further action.
-            await message.delete()
+            # DELETE action only deletes messages, handled above
             return
 
         # Prepare DM and embed for other actions.
@@ -256,24 +385,31 @@ async def take_action(action: ActionType, reason: str, message: discord.Message,
         embed = None
 
         if action == ActionType.BAN:
-            dm_message = f"You have been banned from {guild.name}.\n**Reason**: {reason}"
+            # Use ban_duration if specified
+            is_permanent = ban_duration is None or ban_duration == 0
+            duration_str = PERMANENT_DURATION if is_permanent else format_duration(ban_duration)
+            
+            dm_message = f"You have been banned from {guild.name} for {duration_str}.\n**Reason**: {reason}"
             await send_dm_to_user(user, dm_message)
-            await message.delete()
             await guild.ban(user, reason=f"AI Mod: {reason}")
-            embed = await create_punishment_embed(ActionType.BAN, user, reason, PERMANENT_DURATION, bot_user, bot_user)
+            embed = await create_punishment_embed(ActionType.BAN, user, reason, duration_str, bot_user, bot_user)
+            
+            # Schedule unban if temporary
+            if not is_permanent:
+                asyncio.create_task(unban_later(guild, user.id, channel, ban_duration, None))
 
         elif action == ActionType.KICK:
             dm_message = f"You have been kicked from {guild.name}.\n**Reason**: {reason}"
             await send_dm_to_user(user, dm_message)
-            await message.delete()
             await guild.kick(user, reason=f"AI Mod: {reason}")
             embed = await create_punishment_embed(ActionType.KICK, user, reason, issuer=bot_user, bot_user=bot_user)
 
         elif action in (ActionType.TIMEOUT, ActionType.MUTE):
-            # Default timeout/mute duration is 10 minutes.
-            duration_seconds = 10 * 60
-            duration_str = "10 mins"
+            # Use timeout_duration if specified, otherwise default to 10 minutes
+            duration_seconds = timeout_duration if timeout_duration is not None else 10 * 60
+            duration_str = format_duration(duration_seconds)
             until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
+            
             dm_message = f"You have been timed out in {guild.name} for {duration_str}.\n**Reason**: {reason}"
             await user.timeout(until, reason=f"AI Mod: {reason}")
             await send_dm_to_user(user, dm_message)
