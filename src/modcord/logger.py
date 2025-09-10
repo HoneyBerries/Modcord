@@ -40,13 +40,13 @@ LOG_FILENAME = "modcord.log"
 LOG_FILEPATH = LOGS_DIR / LOG_FILENAME
 
 
-def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
+def setup_logger(logger_name: str, logging_level: int = logging.DEBUG) -> logging.Logger:
     """
     Set up a logger with file and console handlers.
 
     Args:
-        name (str): The name of the logger.
-        level (int): The logging level (default: logging.DEBUG).
+        logger_name (str): The name of the logger.
+        logging_level (int): The logging level (default: logging.DEBUG).
 
     Returns:
         logging.Logger: Configured logger instance.
@@ -55,13 +55,13 @@ def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
         - The logger is cached to prevent duplicate handlers.
         - Logs messages to both the console (warnings and above) and a rotating file (debug and above).
     """
-    logger = logging.getLogger(name)
+    logger = logging.getLogger(logger_name)
 
     # If the logger is already configured, just return it
     if logger.handlers:
         return logger
 
-    logger.setLevel(level)
+    logger.setLevel(logging_level)
     logger.propagate = False
 
 
@@ -84,12 +84,12 @@ def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     return logger
 
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(logger_name: str) -> logging.Logger:
     """
     Get a logger instance.
 
     Args:
-        name (str): The name of the logger.
+        logger_name (str): The name of the logger.
 
     Returns:
         logging.Logger: Logger instance.
@@ -97,27 +97,27 @@ def get_logger(name: str) -> logging.Logger:
     Notes:
         This is a convenience function that calls `setup_logger`.
     """
-    return setup_logger(name)
+    return setup_logger(logger_name)
 
 
 # --- Uncaught Exception Handler ---
-def handle_exception(exc_type, exc_value, exc_traceback):
+def handle_exception(exception_type, exception_instance, exception_traceback):
     """
     Log uncaught exceptions using the root logger.
 
     Args:
-        exc_type (type): The exception type.
-        exc_value (Exception): The exception instance.
-        exc_traceback (traceback): The traceback object.
+        exception_type (type): The exception type.
+        exception_instance (Exception): The exception instance.
+        exception_traceback (traceback): The traceback object.
 
     Notes:
         - KeyboardInterrupt exceptions are passed to the default exception handler.
         - Other exceptions are logged as errors using the root logger.
     """
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    if issubclass(exception_type, KeyboardInterrupt):
+        sys.__excepthook__(exception_type, exception_instance, exception_traceback)
         return
-    main_logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    main_logger.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
 
 
 # Main bot logger

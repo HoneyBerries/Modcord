@@ -26,7 +26,7 @@ for _alias in [
 
 # ==============================
 # Model, Tokenizer, and System Prompt Initialization
-def init_ai_model(model=None, tokenizer_param=None) -> tuple | None:
+def init_ai_model(model=None, tokenizer_parameter=None) -> tuple | None:
     """
     Initializes the LLaMA AI model, tokenizer, and loads base configuration.
 
@@ -42,27 +42,27 @@ def init_ai_model(model=None, tokenizer_param=None) -> tuple | None:
         BASE_SYSTEM_PROMPT (str): Base system prompt template (with {SERVER_RULES} placeholder).
     """
     # Load base configuration (without dynamic rules)
-    config = cfg.load_config()
-    BASE_SYSTEM_PROMPT = config.get("system_prompt", "")
-    ai_cfg = config.get("ai_settings", {}) if isinstance(config, dict) else {}
-    is_ai_enabled = bool(ai_cfg.get("enabled", False))
-    is_allow_gpu = ai_cfg.get("allow_gpu", False)
-    model_id = ai_cfg.get("model_id")
-    use_quant = ai_cfg.get("use_4bit")
+    base_configuration = cfg.load_config()
+    BASE_SYSTEM_PROMPT = base_configuration.get("system_prompt", "")
+    ai_configuration = base_configuration.get("ai_settings", {}) if isinstance(base_configuration, dict) else {}
+    is_artificial_intelligence_enabled = bool(ai_configuration.get("enabled", False))
+    is_gpu_usage_allowed = ai_configuration.get("allow_gpu", False)
+    model_identifier = ai_configuration.get("model_id")
+    use_4bit_quantization = ai_configuration.get("use_4bit")
 
     # Only proceed if all required parameters are provided
-    can_proceed = all([isinstance(model_id, str) and model_id.strip(), isinstance(use_quant, bool), is_ai_enabled])
+    can_proceed_with_initialization = all([isinstance(model_identifier, str) and model_identifier.strip(), isinstance(use_4bit_quantization, bool), is_artificial_intelligence_enabled])
     
-    if can_proceed:
-        if not is_ai_enabled:
+    if can_proceed_with_initialization:
+        if not is_artificial_intelligence_enabled:
             logger.info("[AI MODEL] AI disabled by configuration")
             return None
        
 
-        has_cuda = torch.cuda.is_available()
+        cuda_available = torch.cuda.is_available()
         
-        # Check if is_allow_gpu is set but no CUDA device is available
-        if is_allow_gpu and not has_cuda:
+        # Check if is_gpu_usage_allowed is set but no CUDA device is available
+        if is_gpu_usage_allowed and not cuda_available:
             logger.critical("AI model loading requested with ai_settings." \
             "\nallow_gpu=true but no CUDA device is available. Set ai_settings." \
             "\nallow_gpu=false in config.yml to allow CPU loading (not recommended)."
@@ -70,12 +70,12 @@ def init_ai_model(model=None, tokenizer_param=None) -> tuple | None:
 
 
         # Configure 4-bit quantization for efficient GPU memory usage if CUDA is available
-        bnb_config = None
-        if has_cuda and use_quant:
+        quantization_config = None
+        if cuda_available and use_4bit_quantization:
             try:
                 logger.info("[AI MODEL] Enabling 4-bit quantization for model loading")
                 from transformers.utils.quantization_config import BitsAndBytesConfig
-                bnb_config = BitsAndBytesConfig(
+                quantization_config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_quant_type="nf4",
                     bnb_4bit_compute_dtype=torch.bfloat16
@@ -84,29 +84,29 @@ def init_ai_model(model=None, tokenizer_param=None) -> tuple | None:
                 logger.warning(f"[AI MODEL] Could not enable 4-bit quantization: {e}. Falling back to non-quantized.")
 
         # Load the quantized model and tokenizer
-        load_kwargs = {
-            "device_map": "cuda" if has_cuda else "cpu",
+        model_loading_kwargs = {
+            "device_map": "cuda" if cuda_available else "cpu",
             "trust_remote_code": True,
         }
-        if bnb_config is not None:
-            load_kwargs["quantization_config"] = bnb_config
+        if quantization_config is not None:
+            model_loading_kwargs["quantization_config"] = quantization_config
 
         # Warn about missing HF token (many models require it)
         if not (os.getenv("HUGGING_FACE_HUB_TOKEN") or os.getenv("HF_TOKEN")):
             logger.warning("[AI MODEL] No Hugging Face token detected (HUGGING_FACE_HUB_TOKEN/HF_TOKEN). If the model is gated, loading will fail.")
 
         model = AutoModelForCausalLM.from_pretrained(
-            model_id, # type: ignore
-            **load_kwargs,
+            model_identifier, # type: ignore
+            **model_loading_kwargs,
         ).eval()  # Set to inference mode (disables dropout)      
 
-        tokenizer_local: AutoTokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        local_tokenizer: AutoTokenizer = AutoTokenizer.from_pretrained(model_identifier, trust_remote_code=True)
 
         logger.info(f"[AI MODEL] Model loaded on {model.device}")
-        return torch.compile(model), tokenizer_local, BASE_SYSTEM_PROMPT
+        return torch.compile(model), local_tokenizer, BASE_SYSTEM_PROMPT
 
     else:
-        return model, tokenizer_param, BASE_SYSTEM_PROMPT
+        return model, tokenizer_parameter, BASE_SYSTEM_PROMPT
 
 
 

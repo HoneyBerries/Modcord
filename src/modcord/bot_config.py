@@ -86,56 +86,56 @@ class BotConfig:
         """Read guild settings JSON from disk, returning an object schema {"guilds": {...}}."""
         try:
             if self._settings_path.exists():
-                with self._settings_path.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict):
-                        data.setdefault("guilds", {})
-                        return data
+                with self._settings_path.open("r", encoding="utf-8") as file_handle:
+                    settings_data = json.load(file_handle)
+                    if isinstance(settings_data, dict):
+                        settings_data.setdefault("guilds", {})
+                        return settings_data
         except Exception as e:
             logger.error(f"Failed to read settings from {self._settings_path}: {e}")
         return {"guilds": {}}
 
-    def _write_settings(self, data: dict) -> None:
+    def _write_settings(self, settings_data: dict) -> None:
         """Write guild settings JSON to disk directly (no temp file, for Windows compatibility)."""
         try:
             self._ensure_data_dir()
-            with self._settings_path.open("w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            with self._settings_path.open("w", encoding="utf-8") as file_handle:
+                json.dump(settings_data, file_handle, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"Failed to write settings to {self._settings_path}: {e}")
 
     def _load_from_disk(self) -> None:
         """Populate in-memory caches from JSON on disk."""
-        data = self._read_settings()
-        guilds = data.get("guilds", {})
-        loaded_ai = 0
-        loaded_rules = 0
-        for gid_str, entry in guilds.items():
+        settings_data = self._read_settings()
+        guilds_data = settings_data.get("guilds", {})
+        loaded_ai_settings_count = 0
+        loaded_rules_cache_count = 0
+        for guild_id_string, guild_entry in guilds_data.items():
             try:
-                gid = int(gid_str)
+                guild_id = int(guild_id_string)
             except ValueError:
                 continue
-            if isinstance(entry, dict):
-                if "ai_enabled" in entry:
-                    self.ai_moderation_enabled[gid] = bool(entry.get("ai_enabled", True))
-                    loaded_ai += 1
-                if "rules" in entry:
-                    self.server_rules_cache[gid] = entry.get("rules", "") or ""
-                    loaded_rules += 1
-        if loaded_ai or loaded_rules:
+            if isinstance(guild_entry, dict):
+                if "ai_enabled" in guild_entry:
+                    self.ai_moderation_enabled[guild_id] = bool(guild_entry.get("ai_enabled", True))
+                    loaded_ai_settings_count += 1
+                if "rules" in guild_entry:
+                    self.server_rules_cache[guild_id] = guild_entry.get("rules", "") or ""
+                    loaded_rules_cache_count += 1
+        if loaded_ai_settings_count or loaded_rules_cache_count:
             logger.info(f"Loaded settings from disk")
-            logger.debug(f"ai: {loaded_ai}, rules: {loaded_rules}")
+            logger.debug(f"ai: {loaded_ai_settings_count}, rules: {loaded_rules_cache_count}")
 
     def _persist_guild(self, guild_id: int) -> None:
         """Persist current in-memory settings for a single guild to disk."""
-        data = self._read_settings()
-        guilds = data.setdefault("guilds", {})
-        entry = guilds.setdefault(str(guild_id), {})
+        settings_data = self._read_settings()
+        guilds_data = settings_data.setdefault("guilds", {})
+        guild_entry = guilds_data.setdefault(str(guild_id), {})
 
         # Update from in-memory state
-        entry["ai_enabled"] = self.ai_moderation_enabled.get(guild_id, True)
-        entry["rules"] = self.server_rules_cache.get(guild_id, "")
-        self._write_settings(data)
+        guild_entry["ai_enabled"] = self.ai_moderation_enabled.get(guild_id, True)
+        guild_entry["rules"] = self.server_rules_cache.get(guild_id, "")
+        self._write_settings(settings_data)
 
 
 # Global bot configuration instance

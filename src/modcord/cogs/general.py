@@ -15,22 +15,22 @@ class GeneralCog(commands.Cog):
     Cog containing general utility and test commands.
     """
     
-    def __init__(self, bot):
-        self.bot = bot
+    def __init__(self, discord_bot_instance):
+        self.discord_bot_instance = discord_bot_instance
         logger.info("General cog loaded")
 
     @commands.slash_command(name="test", description="Checks if the bot is online and its latency.")
-    async def test(self, ctx: discord.ApplicationContext):
+    async def test(self, application_context: discord.ApplicationContext):
         """
         A simple health-check command to verify bot status and latency.
         """
-        latency_ms = self.bot.latency * 1000
-        await ctx.respond(
-            f":white_check_mark: I am online and working!\n**Latency**: {latency_ms:.2f} ms.", 
+        latency_milliseconds = self.discord_bot_instance.latency * 1000
+        await application_context.respond(
+            f":white_check_mark: I am online and working!\n**Latency**: {latency_milliseconds:.2f} ms.", 
             ephemeral=True
         )
 
 
-def setup(bot):
+def setup(discord_bot_instance):
     """Setup function for the cog."""
-    bot.add_cog(GeneralCog(bot))
+    discord_bot_instance.add_cog(GeneralCog(discord_bot_instance))

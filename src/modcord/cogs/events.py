@@ -21,8 +21,8 @@ class EventsCog(commands.Cog):
 	Cog containing all bot event handlers.
 	"""
 	
-	def __init__(self, bot):
-		self.bot = bot
+	def __init__(self, discord_bot_instance):
+		self.discord_bot_instance = discord_bot_instance
 		logger.info("Events cog loaded")
 
 	def _is_ignored_author(self, author: Union[discord.User, discord.Member]) -> bool:
@@ -165,21 +165,26 @@ class EventsCog(commands.Cog):
 		await self._refresh_rules_cache_if_rules_channel(after.channel)
 
 	@commands.Cog.listener(name='on_application_command_error')
-	async def on_application_command_error(self, ctx: discord.ApplicationContext, error: discord.DiscordException):
+	async def on_application_command_error(self, application_context: discord.ApplicationContext, discord_error: discord.DiscordException):
 		"""
 		Global error handler for all application commands.
 		Logs the error and sends a generic error message to the user.
 		"""
 		# Ignore commands that don't exist
-		if isinstance(error, commands.CommandNotFound):
+		if isinstance(discord_error, commands.CommandNotFound):
 			return
 
 		# Log the error with traceback
-		logger.debug(f"[Error] Error in command '{getattr(ctx.command, 'name', '<unknown>')}': {error}", exc_info=True)
+		logger.debug(f"[Error] Error in command '{getattr(application_context.command, 'name', '<unknown>')}': {discord_error}", exc_info=True)
 
 		# Respond to the user with a generic error message
 		# Use a try-except block in case the interaction has already been responded to
 		try:
-			await ctx.respond("A :bug: showed up while running this command.", ephemeral=True)
+			await application_context.respond("A :bug: showed up while running this command.", ephemeral=True)
 		except discord.InteractionResponded:
-			await ctx.followup.send("A :bug: showed up while running this command.", ephemeral=True)
+			await application_context.followup.send("A :bug: showed up while running this command.", ephemeral=True)
+
+
+def setup(discord_bot_instance):
+    """Setup function for the cog."""
+    discord_bot_instance.add_cog(EventsCog(discord_bot_instance))

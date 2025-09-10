@@ -21,7 +21,7 @@ from .logger import get_logger
 # ==========================================
 # Global Variables and Setup
 # ==========================================
-bot = None  # Global bot instance
+discord_bot_instance = None  # Global bot instance
 
 
 # Use pathlib for robust path management
@@ -31,7 +31,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 logger = get_logger("main")
 
 # Test logging system
-def test_logging():
+def test_all_logging_levels():
     """Test logging at all levels."""
     logger.debug("Debug logging initialized.")
     logger.info("Info logging initialized.")
@@ -48,21 +48,21 @@ DISCORD_BOT_TOKEN = os.getenv('Mod_Bot_Token')
 # Cog Loading
 # ==========================================
 
-def load_cogs(bot):
+def load_cogs(discord_bot_instance):
     """Load all bot cogs."""
-    cog_files = [
+    cog_module_names = [
         'modcord.cogs.general',
         'modcord.cogs.moderation',
         'modcord.cogs.debug',
         'modcord.cogs.events',
         'modcord.cogs.settings',
     ]
-    for cog in cog_files:
+    for cog_module_name in cog_module_names:
         try:
-            bot.load_extension(cog)
-            logger.info(f"Loaded cog: {cog}")
+            discord_bot_instance.load_extension(cog_module_name)
+            logger.info(f"Loaded cog: {cog_module_name}")
         except Exception as e:
-            logger.error(f"Failed to load cog {cog}: {e}")
+            logger.error(f"Failed to load cog {cog_module_name}: {e}")
 
 
 # ==========================================
@@ -74,7 +74,7 @@ def main():
     Main function to run the bot. Handles startup and fatal errors.
     """
 
-    test_logging()
+    test_all_logging_levels()
 
     logger.info("Starting Discord Moderation Bot...")
     
@@ -82,9 +82,9 @@ def main():
     # Bot Initialization
     # ==========================================
 
-    intents = discord.Intents.all()
-    global bot
-    bot = discord.Bot(intents=intents)
+    discord_intents = discord.Intents.all()
+    global discord_bot_instance
+    discord_bot_instance = discord.Bot(intents=discord_intents)
 
     if not DISCORD_BOT_TOKEN:
         logger.critical("'Mod_Bot_Token' environment variable not set. Bot cannot start.")
@@ -93,10 +93,10 @@ def main():
     try:
         logger.info("Loading cogs...")
         logger.info("Loading cogs...")
-        load_cogs(bot)
+        load_cogs(discord_bot_instance)
         
         logger.info("Attempting to connect to Discord...")
-        bot.run(DISCORD_BOT_TOKEN)
+        discord_bot_instance.run(DISCORD_BOT_TOKEN)
         logger.critical("Login failed. Please check if the bot token is correct.")
     except Exception as e:
         logger.critical(f"An unexpected error occurred while running the bot: {e}", exc_info=True)
