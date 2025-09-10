@@ -519,6 +519,194 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
 
 
 # ==============================
+# Batch Moderation Action Function (New Design)
+async def get_batch_moderation_actions(
+    channel_id: int,
+    messages: list[dict],
+    server_rules: str = ""
+) -> list[dict]:
+    """
+    Process a batch of messages from a single channel and return multiple moderation actions.
+    
+    This implements the new 15-second batching design where all messages from a channel
+    are processed together in a single AI inference call.
+    
+    Args:
+        channel_id (int): The Discord channel ID where the messages were posted
+        messages (list[dict]): List of message data dicts with keys:
+            - user_id (int): Discord user ID  
+            - username (str): Username for readability
+            - content (str): Message content
+            - timestamp (str): ISO 8601 timestamp
+            - image_summary (str|None): Text summary if image was posted
+        server_rules (str): Server rules for moderation context
+        
+    Returns:
+        list[dict]: List of action dicts with keys:
+            - user_id (str): Who the action applies to
+            - action (str): One of "null", "delete", "warn", "timeout", "kick", "ban"
+            - reason (str): Why the action was taken
+            - delete_count (int): Number of messages to delete
+            - timeout_duration (int|None): Seconds for timeout
+            - ban_duration (int|None): Seconds for ban (0 for permanent)
+    """
+    logger.info(f"Processing batch for channel {channel_id} with {len(messages)} messages")
+    
+    if not messages:
+        return []
+    
+    # Prepare system message with rules prompt
+    system_prompt = get_system_prompt(server_rules)
+    system_msg = {"role": "system", "content": system_prompt}
+    
+    # Build the JSON payload for the new batching format
+    try:
+        payload = {
+            "channel_id": str(channel_id),
+            "messages": []
+        }
+        
+        # Convert messages to the required format
+        for msg in messages:
+            payload["messages"].append({
+                "user_id": str(msg.get("user_id", "")),
+                "username": str(msg.get("username", "unknown")),
+                "timestamp": msg.get("timestamp") or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                "content": str(msg.get("content", "")),
+                "image_summary": msg.get("image_summary")
+            })
+        
+        user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
+        prompt_messages = [system_msg, user_msg]
+        
+        logger.debug(f"Batch payload: {payload}")
+        
+    except Exception as e:
+        logger.error(f"Failed to build batch payload for channel {channel_id}: {e}")
+        return []
+    
+    # Submit to batch processing queue
+    try:
+        assistant_response = await submit_inference(prompt_messages)
+        return parse_batch_actions(assistant_response, channel_id)
+    except Exception as e:
+        logger.error(f"Error in batch inference for channel {channel_id}: {e}")
+        return []
+
+
+def parse_batch_actions(assistant_response: str, channel_id: int) -> list[dict]:
+    """
+    Parse the AI response for batch processing and extract multiple moderation actions.
+    
+    Expected JSON format:
+    {
+      "channel_id": "...",
+      "actions": [
+        {
+          "user_id": "...",
+          "action": "warn|delete|timeout|kick|ban|null",
+          "reason": "...",
+          "delete_count": 0,
+          "timeout_duration": null,
+          "ban_duration": null
+        }
+      ]
+    }
+    
+    Args:
+        assistant_response (str): Raw AI response string
+        channel_id (int): Channel ID for logging context
+        
+    Returns:
+        list[dict]: List of validated action dictionaries
+    """
+    logger.debug(f"Parsing batch response for channel {channel_id}: {assistant_response}")
+    
+    try:
+        # Clean up response if wrapped in code fences
+        response = assistant_response.strip()
+        if response.startswith('```'):
+            lines = [ln for ln in response.splitlines() if not ln.strip().startswith('```')]
+            response = "\n".join(lines).strip()
+        
+        # Extract JSON content
+        first_brace = min([i for i in [response.find('{'), response.find('[')] if i != -1], default=-1)
+        last_brace = max(response.rfind('}'), response.rfind(']'))
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            response = response[first_brace:last_brace+1]
+        
+        parsed = json.loads(response)
+        
+        if not isinstance(parsed, dict):
+            logger.warning(f"Expected dict in batch response for channel {channel_id}, got {type(parsed)}")
+            return []
+            
+        actions = parsed.get("actions", [])
+        if not isinstance(actions, list):
+            logger.warning(f"Expected list in actions for channel {channel_id}, got {type(actions)}")
+            return []
+        
+        # Validate and normalize each action
+        validated_actions = []
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+                
+            # Extract and validate required fields
+            user_id = str(action.get("user_id", "")).strip()
+            action_type = str(action.get("action", "null")).strip().lower()
+            reason = str(action.get("reason", "Automated moderation action")).strip()
+            
+            # Validate action type
+            valid_actions = ["null", "delete", "warn", "timeout", "kick", "ban"]
+            if action_type not in valid_actions:
+                logger.warning(f"Invalid action type '{action_type}' for user {user_id}, defaulting to null")
+                action_type = "null"
+            
+            # Extract optional fields with defaults
+            delete_count = int(action.get("delete_count", 0))
+            timeout_duration = action.get("timeout_duration")
+            ban_duration = action.get("ban_duration")
+            
+            # Convert timeout/ban durations to int or None
+            if timeout_duration is not None:
+                try:
+                    timeout_duration = int(timeout_duration)
+                except (ValueError, TypeError):
+                    timeout_duration = None
+                    
+            if ban_duration is not None:
+                try:
+                    ban_duration = int(ban_duration)
+                except (ValueError, TypeError):
+                    ban_duration = None
+            
+            validated_action = {
+                "user_id": user_id,
+                "action": action_type,
+                "reason": reason,
+                "delete_count": max(0, delete_count),  # Ensure non-negative
+                "timeout_duration": timeout_duration,
+                "ban_duration": ban_duration
+            }
+            
+            # Only include non-null actions
+            if action_type != "null" and user_id:
+                validated_actions.append(validated_action)
+                logger.debug(f"Validated action: {validated_action}")
+        
+        logger.info(f"Parsed {len(validated_actions)} valid actions for channel {channel_id}")
+        return validated_actions
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON in batch response for channel {channel_id}: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Error parsing batch actions for channel {channel_id}: {e}")
+        return []
+
+
+# ==============================
 # Main Moderation Action Function
 async def get_appropriate_action(
     history: list[dict[str, str]],
@@ -531,23 +719,34 @@ async def get_appropriate_action(
 ) -> tuple[ActionType, str]:
     """
     Determines the appropriate moderation action for a user's message based on chat history.
+    
+    The current message is expected to be the last item in the history list.
 
     Formats the input, runs AI inference using the batch system, and parses the response to output a moderation action.
 
     Args:
-        current_message (str): The latest message from the user.
-        history (list[dict[str, str]]): List of previous chat messages (each as a dict). Maps to {"role": str, "user_id": int, "content": str}.
+        history (list[dict[str, str]]): List of chat messages including current message (each as a dict). 
+                                      Maps to {"role": str, "user_id": int, "content": str}.
         user_id (int): The Discord user ID of the sender.
         server_rules (str, optional): The server rules to use for moderation context. Defaults to "".
+        channel_id: Optional channel ID for context
+        username: Optional username for context  
+        message_timestamp: Optional timestamp for current message
 
     Returns:
         tuple[ActionType, str]: Moderation action type and reason, or an error/null action.
     """
-    logger.debug(f"Received message: '{current_message}' from user: '{user_id}'")
+    logger.debug(f"Received history with {len(history)} messages from user: '{user_id}'")
     logger.debug(f"Chat history: {history}")
 
+    if not history:
+        logger.info("[AI MODEL] Empty history. Returning null.")
+        return ActionType.NULL, "empty history"
+        
+    # Extract current message from history (should be the last item)
+    current_message = history[-1].get("content", "") if history else ""
     if not current_message or not current_message.strip():
-        logger.info("[AI MODEL] Empty input message. Returning null.")
+        logger.info("[AI MODEL] Empty current message. Returning null.")
         return ActionType.NULL, "empty message"
 
     # Prepare system message with rules prompt (using dynamic rules)
