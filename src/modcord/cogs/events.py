@@ -21,8 +21,8 @@ class EventsCog(commands.Cog):
 	Cog containing all bot event handlers.
 	"""
 	
-	def __init__(self, bot):
-		self.bot = bot
+	def __init__(self, discord_bot_instance):
+		self.discord_bot_instance = discord_bot_instance
 		logger.info("Events cog loaded")
 
 	def _is_ignored_author(self, author: Union[discord.User, discord.Member]) -> bool:
@@ -183,3 +183,8 @@ class EventsCog(commands.Cog):
 			await ctx.respond("A :bug: showed up while running this command.", ephemeral=True)
 		except discord.InteractionResponded:
 			await ctx.followup.send("A :bug: showed up while running this command.", ephemeral=True)
+
+
+def setup(discord_bot_instance):
+    """Setup function for the cog."""
+    discord_bot_instance.add_cog(EventsCog(discord_bot_instance))

@@ -14,8 +14,8 @@ logger = get_logger("settings_cog")
 class SettingsCog(commands.Cog):
     """Guild-level settings and toggles."""
 
-    def __init__(self, bot):
-        self.bot = bot
+    def __init__(self, discord_bot_instance):
+        self.discord_bot_instance = discord_bot_instance
         logger.info("Settings cog loaded")
 
     @commands.slash_command(name="ai_status", description="Show whether AI moderation is enabled in this server.")
@@ -65,5 +65,5 @@ class SettingsCog(commands.Cog):
         await ctx.respond(f"```json\n{json_str}\n```", ephemeral=True)
 
 
-def setup(bot):
-    bot.add_cog(SettingsCog(bot))
+def setup(discord_bot_instance):
+    discord_bot_instance.add_cog(SettingsCog(discord_bot_instance))

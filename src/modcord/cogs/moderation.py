@@ -22,30 +22,30 @@ class ModerationCog(commands.Cog):
     Cog containing all moderation-related commands.
     """
     
-    def __init__(self, bot):
-        self.bot = bot
+    def __init__(self, discord_bot_instance):
+        self.discord_bot_instance = discord_bot_instance
         logger.info("Moderation cog loaded")
     
     async def _check_moderation_permissions(
         self, 
-        ctx: discord.ApplicationContext, 
-        user: discord.Member,
-        required_permission: str
+        application_context: discord.ApplicationContext, 
+        target_user: discord.Member,
+        required_permission_name: str
     ) -> bool:
         """
         Common permission and validation checks for moderation commands.
         
         Args:
-            ctx: The command context
-            user: The target user
-            required_permission: The required permission (e.g., 'manage_messages')
+            application_context: The command context
+            target_user: The target user
+            required_permission_name: The required permission (e.g., 'manage_messages')
             
         Returns:
             True if checks pass, False otherwise
         """
         # Check bot permissions
-        if not bot_helper.has_permissions(ctx, **{required_permission: True}):
-            await ctx.respond(f"You don't have permission to use this command.", ephemeral=True)
+        if not bot_helper.has_permissions(application_context, **{required_permission_name: True}):
+            await application_context.respond(f"You don't have permission to use this command.", ephemeral=True)
             return False
         
         # Check if target is a member
@@ -209,6 +209,6 @@ class ModerationCog(commands.Cog):
         )
 
 
-def setup(bot):
+def setup(discord_bot_instance):
     """Setup function for the cog."""
-    bot.add_cog(ModerationCog(bot))
+    discord_bot_instance.add_cog(ModerationCog(discord_bot_instance))

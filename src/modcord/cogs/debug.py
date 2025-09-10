@@ -19,8 +19,8 @@ class DebugCog(commands.Cog):
     Cog containing debugging and administrative commands.
     """
     
-    def __init__(self, bot):
-        self.bot = bot
+    def __init__(self, discord_bot_instance):
+        self.discord_bot_instance = discord_bot_instance
         logger.info("Debug cog loaded")
 
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
@@ -81,6 +81,6 @@ class DebugCog(commands.Cog):
             await ctx.respond(embed=embed, ephemeral=True)
 
 
-def setup(bot):
+def setup(discord_bot_instance):
     """Setup function for the cog."""
-    bot.add_cog(DebugCog(bot))
+    discord_bot_instance.add_cog(DebugCog(discord_bot_instance))
