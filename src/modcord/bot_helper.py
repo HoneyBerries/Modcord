@@ -366,14 +366,16 @@ async def fetch_server_rules_from_channel(guild: discord.Guild) -> str:
                         for field in embed.fields:
                             if field.value:
                                 messages.append(f"{field.name}: {field.value}".strip())
+
             except discord.Forbidden:
                 logger.warning(f"No permission to read rules channel: {channel.name} in {guild.name}")
             except Exception as e:
                 logger.warning(f"Error fetching rules from channel {channel.name} in {guild.name}: {e}")
-    if messages:
+    if messages and len(messages) > 0:
         rules_text = "\n\n".join(messages)
         logger.debug(f"Successfully fetched {len(messages)} rule messages from all rule channels")
         return rules_text
+    
     logger.warning(f"No rules channel found in {guild.name}")
     return ""
 

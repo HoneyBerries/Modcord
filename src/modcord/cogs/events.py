@@ -22,7 +22,10 @@ class EventsCog(commands.Cog):
 	"""
 	
 	def __init__(self, discord_bot_instance):
+		# Keep both names for compatibility: some code/tests reference `self.bot`,
+		# while the constructor parameter name used here is `discord_bot_instance`.
 		self.discord_bot_instance = discord_bot_instance
+		self.bot = discord_bot_instance
 		logger.info("Events cog loaded")
 
 	def _is_ignored_author(self, author: Union[discord.User, discord.Member]) -> bool:
