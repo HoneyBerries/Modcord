@@ -154,11 +154,16 @@ class EventsCog(commands.Cog):
 			
 			logger.info(f"Applying {action_type_str} action to user {user_id_str} in channel {channel_id}: {reason}")
 			
-			# Apply the action using the existing bot_helper
-			await bot_helper.take_action(action_type, reason, target_message_obj, self.bot.user)
-			
-			# TODO: Handle delete_count, timeout_duration, ban_duration parameters
-			# This would require extending bot_helper.take_action() or creating new functions
+			# Apply the action using the enhanced batch-aware bot_helper
+			await bot_helper.take_batch_action(
+				action=action_type, 
+				reason=reason, 
+				message=target_message_obj, 
+				bot_user=self.bot.user,
+				delete_count=delete_count,
+				timeout_duration=action_data.get("timeout_duration"),
+				ban_duration=action_data.get("ban_duration")
+			)
 			
 		except Exception as e:
 			logger.error(f"Error applying batch action {action_data}: {e}")
