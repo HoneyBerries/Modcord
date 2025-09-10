@@ -254,6 +254,8 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
             logger.warning(f"[BATCH] Skipping batch; {reason}")
             return ["null: ai unavailable"] * len(batch_messages)
         
+        tokenizer.padding_side = 'left'  # Ensure padding side is left for decoder-only models
+        
         # Ensure pad token is set for generation
         if tokenizer.pad_token_id is None:
 

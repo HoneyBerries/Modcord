@@ -110,7 +110,7 @@ class EventsCog(commands.Cog):
 			return
 
 		# Skip empty messages or messages with only whitespace
-		actual_content = message.content.strip()
+		actual_content = message.clean_content.strip()
 		if not actual_content:
 			return
 
