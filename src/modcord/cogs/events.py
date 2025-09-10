@@ -111,7 +111,7 @@ class EventsCog(commands.Cog):
 
 		# Skip empty messages or messages with only whitespace
 		actual_content = message.clean_content.strip()
-		if not actual_content:
+		if actual_content == "":
 			return
 
 		# Possibly refresh rules cache if this was posted in a rules channel
@@ -138,10 +138,12 @@ class EventsCog(commands.Cog):
 		# Get a moderation action from the AI model
 		try:
 			action, reason = await ai.get_appropriate_action(
-				current_message=actual_content,
 				history=bot_config.get_chat_history(message.channel.id),
 				user_id=message.author.id,
-				server_rules=server_rules
+				server_rules=server_rules,
+				channel_id=message.channel.id,
+				username=str(message.author),
+				message_timestamp=message.created_at.replace(tzinfo=None).isoformat() + "Z",
 			)
 
 			if action != ActionType.NULL:

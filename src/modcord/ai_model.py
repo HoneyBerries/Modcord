@@ -1,4 +1,4 @@
-import re
+import json
 import sys
 import asyncio
 import os
@@ -210,7 +210,9 @@ async def inference_worker():
             logger.info(f"[BATCH] Processing batch of {len(batch)} requests")
             
             try:
-                results = run_inference_batch(batch_messages)
+                # Offload the blocking inference work to a thread so the asyncio
+                # event loop remains responsive (slash commands, other tasks).
+                results = await asyncio.to_thread(run_inference_batch, batch_messages)
                 for result, future in zip(results, batch_futures):
                     if not future.cancelled():
                         future.set_result(result)
@@ -410,9 +412,13 @@ async def _warmup_model():
 # Action Parsing and Moderation Logic
 def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     """
-    Parses the AI model's response to extract the moderation action and reason.
-    Supports actions: delete, warn, timeout, kick, ban, null.
-    Supports both formats: "action: reason" and "action: <action_type> reason: <reason>"
+        Parse the AI response and extract a single moderation action and reason.
+
+        JSON-ONLY per config.yml system (no regex fallback):
+        - {"action": "ban", "reason": "..."}
+        - {"moderation": {"action": "warn", "reason": "..."}}
+        - {"actions": [{"user_id": "...", "action": "delete", "reason": "..."}, ...]}
+            In a list, select the last non-null actionable item; if none, return null.
     """
     # Helper: find a canonical ActionType class from loaded modules (tests may import via different paths)
     def _get_canonical_action_cls():
@@ -431,80 +437,97 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
 
     cls = _get_canonical_action_cls()
 
-    # Pattern 1: Check for "action: <action_type> reason: <reason>" format
-    action_pattern = r'action:\s*(delete|warn|timeout|kick|ban|null)(?:.*?reason:\s*(.+?))?'
-    match = re.search(action_pattern, assistant_response.lower(), re.DOTALL)
-    
-    if match:
-        action_str = match.group(1).strip().lower()
-        reason = match.group(2).strip() if match.group(2) else "Automated moderation action"
-
-        # Convert string to ActionType enum using the canonical class
+    # Try JSON first
+    def _coerce_action(val: str) -> tuple:
         try:
-            action = cls(action_str)
-        except Exception:
-            logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
-            return cls('null'), "unknown action type"
-
-        # Remove redundant '<action>:' prefix from reason if present
-        try:
-            action_prefixes = [at.value for at in cls]
-        except Exception:
-            action_prefixes = [at.value for at in ActionType]
-        for prefix in action_prefixes:
-            if reason.lower().startswith(f"{prefix}:"):
-                reason = reason[len(prefix) + 1 :].strip()
-                logger.info(f"Stripped redundant action prefix '{prefix}:' from reason in AI response.")
-                break
-
-        if getattr(action, 'value', str(action)) == 'null':
-            return cls('null'), "no action required or needed..."
-        return action, reason
-
-    # Pattern 2: Check for simple "<action>: <reason>" format (e.g., "ban: User was spamming")
-    simple_action_pattern = r'^(delete|warn|timeout|kick|ban|null):\s*(.+)'
-    simple_match = re.match(simple_action_pattern, assistant_response.strip(), re.IGNORECASE)
-    if simple_match:
-        action_str = simple_match.group(1).strip().lower()
-        reason = simple_match.group(2).strip()
-        
-        try:
-            action = cls(action_str)
-            if getattr(action, 'value', str(action)) == 'null':
+            action_obj = cls(str(val).strip().lower())
+            if getattr(action_obj, 'value', str(action_obj)) == 'null':
                 return cls('null'), "no action needed"
-            return action, reason
+            return action_obj, "Automated moderation action"
         except Exception:
-            logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
+            logger.warning(f"[AI MODEL] Unknown action type: '{val}'")
             return cls('null'), "unknown action type"
 
-    # Pattern 3: Check for just the action name with no colon
-    simple_pattern = r"^(delete|warn|timeout|kick|ban|null)$"
-    simple_match = re.match(simple_pattern, assistant_response.strip(), re.IGNORECASE)
-    if simple_match:
-        action_str = simple_match.group(1).lower()
-        try:
-            action = cls(action_str)
-            if getattr(action, 'value', str(action)) == 'null':
+    def _extract_from_dict(d: dict) -> tuple[ActionType, str] | None:
+        # common top-level keys
+        if isinstance(d.get('action'), (str,)):
+            a = str(d['action']).strip()
+            reason = str(d.get('reason', 'Automated moderation action')).strip()
+            try:
+                action_obj = cls(a.lower())
+            except Exception:
+                logger.warning(f"[AI MODEL] Unknown action type: '{a}'")
+                return cls('null'), "unknown action type"
+            if getattr(action_obj, 'value', str(action_obj)) == 'null':
+                return cls('null'), reason or "no action needed"
+            return action_obj, reason
+
+        # nested under 'moderation'
+        mod = d.get('moderation')
+        if isinstance(mod, dict) and isinstance(mod.get('action'), (str,)):
+            return _extract_from_dict(mod)
+
+        # list under 'actions'
+        items = d.get('actions')
+        if isinstance(items, list):
+            for item in reversed(items):
+                if isinstance(item, dict) and isinstance(item.get('action'), (str,)):
+                    action_obj, reason = _extract_from_dict(item)
+                    if getattr(action_obj, 'value', str(action_obj)) != 'null':
+                        return action_obj, reason
+            # if we got here, either no items or all null
+            return cls('null'), "no action needed"
+
+        return None
+
+    try:
+        if isinstance(assistant_response, str):
+            # Strip code fences if model wrapped JSON
+            s = assistant_response.strip()
+            if s.startswith('```'):
+                # remove the first fence line and trailing fence
+                lines = [ln for ln in s.splitlines() if not ln.strip().startswith('```')]
+                s = "\n".join(lines).strip()
+
+            # Trim to the first JSON-like block if there's extra chatter
+            first_brace = min([i for i in [s.find('{'), s.find('[')] if i != -1], default=-1)
+            last_brace = max(s.rfind('}'), s.rfind(']'))
+            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+                s = s[first_brace:last_brace+1]
+
+            parsed = json.loads(s)
+
+            if isinstance(parsed, dict):
+                extracted = _extract_from_dict(parsed)
+                if extracted:
+                    return extracted
+            elif isinstance(parsed, list):
+                # Find the last actionable item in the list
+                for item in reversed(parsed):
+                    if isinstance(item, dict):
+                        extracted = _extract_from_dict(item)
+                        if extracted and getattr(extracted[0], 'value', str(extracted[0])) != 'null':
+                            return extracted
                 return cls('null'), "no action needed"
-            logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
-            return action, "AI response incomplete"
-        except Exception:
-            logger.warning(f"[AI MODEL] Unknown action type: '{action_str}'")
-            return cls('null'), "unknown action type"
+    except Exception as e:
+        logger.warning(f"[AI MODEL] Failed to parse JSON response: {e}")
+        return cls('null'), "invalid JSON response"
 
-
-    # If no patterns matched, return null action with error reason
-    logger.warning(f"[AI MODEL] Invalid response format: '{assistant_response}'")
-    return cls('null'), "invalid AI response format"
+    # If JSON is parsed but no actionable item is found
+    logger.warning(f"[AI MODEL] No actionable item found in JSON response: '{assistant_response}'")
+    return cls('null'), "no action found"
 
 
 # ==============================
 # Main Moderation Action Function
 async def get_appropriate_action(
-    current_message: str,
     history: list[dict[str, str]],
     user_id: int,
-    server_rules: str = ""
+    server_rules: str = "",
+    *,
+    channel_id: int | str | None = None,
+    username: str | None = None,
+    message_timestamp: str | None = None,
 ) -> tuple[ActionType, str]:
     """
     Determines the appropriate moderation action for a user's message based on chat history.
@@ -531,28 +554,47 @@ async def get_appropriate_action(
     system_prompt = get_system_prompt(server_rules)
     system_msg = {"role": "system", "content": system_prompt}
 
-    # Format user message with user ID context
-    user_text = f"User {user_id} says: {current_message}" if user_id else current_message
-    user_msg = {"role": "user", "content": user_text}
+    # Build JSON payload for the model per new schema
+    # channel_id is optional; default to "unknown" if not provided
+    try:
+        now_iso = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        payload = {
+            "channel_id": str(channel_id) if channel_id is not None else "unknown",
+            "messages": []
+        }
 
-    # Format the history messages
-    formatted_history = []
-    if history:
-        for msg in reversed(history):
-            content = msg.get("content", "")
-            if not isinstance(content, str) or content.strip() == "":
-                continue
+        # Include history as prior messages if provided
+        if history:
+            for msg in history:
+                content = msg.get("content", "")
+                if not isinstance(content, str) or content.strip() == "":
+                    continue
+                uid = msg.get("user_id")
+                uname = msg.get("username") or (f"user_{uid}" if uid is not None else "unknown")
+                ts = msg.get("timestamp") or None
+                payload["messages"].append({
+                    "user_id": str(uid) if uid is not None else "",
+                    "username": str(uname),
+                    "timestamp": ts,
+                    "content": content,
+                    "image_summary": msg.get("image_summary", None),
+                })
 
-            if msg.get("user_id"):
-                content = f"User {msg['user_id']} says: {content}"
-            formatted_history.insert(0, {
-                "role": msg.get("role", "user"),
-                "content": content
-            })
+        # Append the current message as the last entry
+        payload["messages"].append({
+            "user_id": str(user_id),
+            "username": username or f"user_{user_id}",
+            "timestamp": message_timestamp or now_iso,
+            "content": current_message,
+            "image_summary": None,
+        })
 
-    # Compose messages for prompt: system, history, user
-    messages = [system_msg] + formatted_history + [user_msg]
-    logger.debug(f"Final messages for prompt: {messages}")
+        user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
+        messages = [system_msg, user_msg]
+        logger.debug(f"Final JSON payload for prompt: {payload}")
+    except Exception as e:
+        logger.error(f"[AI MODEL] Failed to build JSON payload: {e}")
+        return ActionType.NULL, "payload build error"
 
     # Submit to batch processing queue instead of direct inference
     assistant_response = await submit_inference(messages)
