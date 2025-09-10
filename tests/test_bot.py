@@ -86,7 +86,7 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
         ctx.respond = AsyncMock()
 
         # Test the command directly
-        await cog.test.callback(cog, ctx)
+        await cog.test.callback(cog, ctx) # type: ignore
 
         # Verify response
         ctx.respond.assert_called_once()
@@ -138,7 +138,7 @@ class TestBotConfig(unittest.TestCase):
         self.assertEqual(rules, "Test rules")
 
         # Test chat history
-        message_data = {"role": "user", "content": "Hello", "username": "testuser"}
+        message_data = {"role": "user", "content": "Hello", "user_id": 12345}
         config.add_message_to_history(456, message_data)
         history = config.get_chat_history(456)
         self.assertEqual(len(history), 1)

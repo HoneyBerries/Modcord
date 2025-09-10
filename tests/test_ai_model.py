@@ -39,7 +39,7 @@ class TestAIModel(unittest.IsolatedAsyncioTestCase):
         action, reason = await get_appropriate_action(
             current_message="some disruptive message",
             history=[],
-            username="testuser",
+            user_id=12345,
             server_rules="Be nice."
         )
 

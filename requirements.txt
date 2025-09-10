@@ -1,3 +1,5 @@
+--index-url https://download.pytorch.org/whl/cu129
+--extra-index-url https://pypi.org/simple
 torch
 transformers
 bitsandbytes

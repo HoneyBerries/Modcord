@@ -336,7 +336,10 @@ async def unban_later(guild: discord.Guild, user_id: int, channel: discord.abc.M
 # Server Rules Management
 # ==========================================
 
+
+# Expose the rule channel regex pattern for use in other modules
 import re
+rule_channel_pattern = re.compile(r"(guidelines|regulations|policy|policies|server[-_]?rules|rules)", re.IGNORECASE)
 
 async def fetch_server_rules_from_channel(guild: discord.Guild) -> str:
     """
@@ -348,7 +351,7 @@ async def fetch_server_rules_from_channel(guild: discord.Guild) -> str:
     Returns:
         str: Combined rules text from all found channels.
     """
-    rule_channel_pattern = re.compile(r"(guidelines|regulations|policy|policies|server[-_]?rules|rules)", re.IGNORECASE)
+    # Use the shared rule_channel_pattern
 
     messages = []
     for channel in guild.text_channels:

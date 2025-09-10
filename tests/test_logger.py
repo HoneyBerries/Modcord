@@ -23,12 +23,13 @@ class TestLogger(unittest.TestCase):
             except Exception:
                 pass
 
+
         # Verify that a log file was created and contains the message
         log_files = list(Path(LOGS_DIR).glob("*.log"))
         self.assertTrue(log_files, "No log files found in logs directory.")
 
         # Get the most recent log file
-        latest_log_file = max(log_files, key=lambda p: p.stat().st_ctime)
+        latest_log_file = max(log_files, key=lambda p: p.stat().st_birthtime)
         self.assertTrue(latest_log_file.exists(), "Log file should exist")
 
         content = latest_log_file.read_text(encoding="utf-8")

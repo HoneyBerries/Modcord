@@ -34,8 +34,9 @@ class ColorFormatter(logging.Formatter):
 plain_formatter = logging.Formatter(log_format, datefmt=date_format)
 color_formatter = ColorFormatter(log_format, datefmt=date_format)
 
-# Generate a timestamped log filename (e.g. 2025-09-07_23-01-45.log)
-LOG_FILENAME = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.log")
+# Use a stable log filename so the project writes to a single file regardless
+# of import path (helps tests that look for the most-recent log file).
+LOG_FILENAME = "modcord.log"
 LOG_FILEPATH = LOGS_DIR / LOG_FILENAME
 
 
@@ -71,8 +72,10 @@ def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     logger.addHandler(console_handler)
 
     # Rotating file handler (DEBUG and above, plain)
+    # Rotating file handler to avoid unbounded file growth. Keep it readable
+    # by tests by writing to a consistent filepath.
     file_handler = logging.handlers.RotatingFileHandler(
-        LOG_FILEPATH, encoding="utf-8"
+        LOG_FILEPATH, encoding="utf-8", maxBytes=5 * 1024 * 1024, backupCount=5
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(plain_formatter)

@@ -2,9 +2,13 @@ import re
 import sys
 import asyncio
 import os
+import torch
+import time
 from . import config_loader as cfg
 from .actions import ActionType
 from .logger import get_logger
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # ==============================
 # Logging configuration
@@ -43,17 +47,17 @@ def init_ai_model(model=None, tokenizer_param=None) -> tuple | None:
     ai_cfg = config.get("ai_settings", {}) if isinstance(config, dict) else {}
     is_ai_enabled = bool(ai_cfg.get("enabled", False))
     is_allow_gpu = ai_cfg.get("allow_gpu", False)
-    model_id = ai_cfg.get("model_id", "meta-llama/Llama-3.2-3B-Instruct")
-    use_quant = ai_cfg.get("use_4bit", True)
+    model_id = ai_cfg.get("model_id")
+    use_quant = ai_cfg.get("use_4bit")
 
-    if model is None and tokenizer_param is None:
+    # Only proceed if all required parameters are provided
+    can_proceed = all([isinstance(model_id, str) and model_id.strip(), isinstance(use_quant, bool), is_ai_enabled])
+    
+    if can_proceed:
         if not is_ai_enabled:
             logger.info("[AI MODEL] AI disabled by configuration")
             return None
-
-        # Lazy import heavy dependencies
-        import torch
-        from transformers import AutoTokenizer, AutoModelForCausalLM
+       
 
         has_cuda = torch.cuda.is_available()
         
@@ -92,26 +96,31 @@ def init_ai_model(model=None, tokenizer_param=None) -> tuple | None:
             logger.warning("[AI MODEL] No Hugging Face token detected (HUGGING_FACE_HUB_TOKEN/HF_TOKEN). If the model is gated, loading will fail.")
 
         model = AutoModelForCausalLM.from_pretrained(
-            model_id,
+            model_id, # type: ignore
             **load_kwargs,
-        ).eval()  # Set to inference mode (disables dropout)
+        ).eval()  # Set to inference mode (disables dropout)      
 
         tokenizer_local: AutoTokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
 
         logger.info(f"[AI MODEL] Model loaded on {model.device}")
-        return model, tokenizer_local, BASE_SYSTEM_PROMPT
+        return torch.compile(model), tokenizer_local, BASE_SYSTEM_PROMPT
 
     else:
         return model, tokenizer_param, BASE_SYSTEM_PROMPT
 
+
+
+
 # ==============================
 # Global model initialization (singleton)
 # ==============================
+
 model, tokenizer, BASE_SYSTEM_PROMPT = (None, None, None)
+
 # Availability and diagnostics flags
-MODEL_INIT_STARTED = False
-MODEL_AVAILABLE = False
+MODEL_INIT_STARTED = MODEL_AVAILABLE = False
 MODEL_INIT_ERROR: str | None = None
+
 
 def get_model() -> tuple:
     """
@@ -119,25 +128,32 @@ def get_model() -> tuple:
     Uses a singleton pattern to ensure the model is loaded only once.
     """
     global model, tokenizer, BASE_SYSTEM_PROMPT, MODEL_INIT_STARTED, MODEL_AVAILABLE, MODEL_INIT_ERROR
+
     if model is None and not MODEL_INIT_STARTED:
         MODEL_INIT_STARTED = True
+
         try:
             init_result = init_ai_model()
             if init_result is None:
+                # Model initialization failed or AI disabled
                 model = tokenizer = BASE_SYSTEM_PROMPT = None
             else:
                 model, tokenizer, BASE_SYSTEM_PROMPT = init_result
-            MODEL_AVAILABLE = model is not None and tokenizer is not None
+            MODEL_AVAILABLE = (model is not None) and (tokenizer is not None)
+
+            # Log the result
             if MODEL_AVAILABLE:
                 logger.info("[AI MODEL] Model initialized successfully.")
             else:
                 MODEL_INIT_ERROR = "Model initializer returned None"
                 logger.error("[AI MODEL] Model initialization returned None; AI unavailable.")
+
         except Exception as e:
             MODEL_AVAILABLE = False
             MODEL_INIT_ERROR = f"Initialization failed: {e}"
             logger.error(f"[AI MODEL] Failed to initialize model: {e}", exc_info=True)
     return model, tokenizer, BASE_SYSTEM_PROMPT
+
 
 def is_model_available() -> bool:
     return MODEL_AVAILABLE
@@ -167,7 +183,7 @@ _worker_task = None
 
 async def inference_worker():
     """
-    Worker that processes inference requests in batches every ~5 seconds.
+    Worker that processes inference requests in batches every 5 seconds.
     Collects requests for up to 5 seconds, then processes them all at once.
     """
     while True:
@@ -218,12 +234,14 @@ async def inference_worker():
                 for _ in batch:
                     inference_queue.task_done()
 
+
+# The core of this whole project :)
 def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
     """
     Process multiple inference requests in a single batch.
     
     Args:
-        batch_messages: List of message lists (one per request)
+        batch_messages: List of message lists (one per request). For each element in the list, there is a list of dicts for each message in the conversation.
         
     Returns:
         List of response strings (one per request)
@@ -235,58 +253,97 @@ def run_inference_batch(batch_messages: list[list[dict]]) -> list[str]:
             reason = get_model_init_error() or "AI model unavailable"
             logger.warning(f"[BATCH] Skipping batch; {reason}")
             return ["null: ai unavailable"] * len(batch_messages)
-
-        # Lazy import torch only when we actually have a model
-        import torch
-        # Prepare input_ids for each conversation in the batch
-        input_ids_list = []
-        prompt_lengths = []
         
-        for messages in batch_messages:     
-            ids = tokenizer.apply_chat_template(
+        # Ensure pad token is set for generation
+        if tokenizer.pad_token_id is None:
+
+            # Fallback to eos token if pad is unset
+            if tokenizer.eos_token_id is not None:
+                tokenizer.pad_token = tokenizer.eos_token
+                tokenizer.pad_token_id = tokenizer.eos_token_id
+                logger.debug("[BATCH] Pad token was unset; using eos token as pad token.")
+
+            else:
+                tokenizer.pad_token_id = 0
+
+        # Build chat prompts as strings (not tokenized) for proper batch tokenization
+        prompts: list[str] = []
+        for messages in batch_messages:
+            prompt_str = tokenizer.apply_chat_template(
                 messages,
-                tokenize=True,
+                tokenize=False,              # get string prompts
                 add_generation_prompt=True,
-                return_tensors="pt"
             )
-            input_ids_list.append(ids)
-            prompt_lengths.append(ids.shape[1])
+            prompts.append(prompt_str)
 
-        # Concatenate for batch processing
-        input_ids = torch.cat(input_ids_list, dim=0).to(model.device)
-        attention_mask = torch.ones_like(input_ids).to(model.device)
-        
-        logger.info(f"[BATCH] Processing batch with input shape: {input_ids.shape}")
-        
+        # Tokenize the batch of prompts with padding
+        batch = tokenizer(
+            prompts,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+
+        # Extract tensors
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+
+        # Compute per-sample prompt lengths (non-padded token count)
+        prompt_lengths = attention_mask.sum(dim=1).tolist()
+
+        logger.info(f"[BATCH] Processing batch with input shape: {tuple(input_ids.shape)}")
+
+        # Log batch stats (debug)
+        batch_size = input_ids.size(0)
+        logger.debug(
+            f"[BATCH] Stats - size: {batch_size}, "
+            f"min_len: {int(min(prompt_lengths)) if prompt_lengths else 0}, "
+            f"max_len: {int(max(prompt_lengths)) if prompt_lengths else 0}, "
+            f"avg_len: {float(sum(prompt_lengths)/batch_size) if batch_size else 0:.2f}"
+        )
+
+        # Move tensors to model device
+        device = model.device
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
+
+        # Time the inference
+        start_time = time.time()
+
         # Generate responses for all prompts
         with torch.no_grad():
             outputs = model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 max_new_tokens=128,
-                temperature=0.01,
+                temperature=0.1,
                 top_p=0.9,
                 repetition_penalty=1.1,
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
             )
-        
-        # Decode each response
-        responses = []
-        for i, output in enumerate(outputs):
-            # Extract only the new tokens (skip the original prompt)
-            new_tokens = output[prompt_lengths[i]:]
-            response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+        inference_time = time.time() - start_time
+        logger.debug(f"[BATCH] Inference time: {inference_time:.3f} seconds")
+
+        # Decode each response (slice off the original prompt part)
+        responses: list[str] = []
+        for i in range(outputs.size(0)):
+            new_tokens = outputs[i, int(prompt_lengths[i]):]
+            # Ensure tokens on CPU for decoding
+            response = tokenizer.decode(new_tokens.detach().cpu().tolist(), skip_special_tokens=True).strip()
             responses.append(response)
-        
+
         logger.info(f"[BATCH] Generated {len(responses)} responses")
         return responses
-        
+
     except Exception as e:
         # Prefer clear, generic failure to avoid noisy logs spamming
         logger.error(f"[BATCH] Error in batch processing: {e}", exc_info=True)
         return ["null: batch processing error"] * len(batch_messages)
+
+
 
 async def submit_inference(messages: list[dict]) -> str:
     """
@@ -337,7 +394,9 @@ async def _warmup_model():
     """Attempt to initialize the model early to surface failures at startup."""
     try:
         logger.info("[AI] Warming up model...")
-        _ = get_model()
+        
+        # Load AI model now
+        get_model()
         if is_model_available():
             logger.info("[AI] Model warmup complete.")
         else:
@@ -439,7 +498,12 @@ def parse_action(assistant_response: str) -> tuple[ActionType, str]:
 
 # ==============================
 # Main Moderation Action Function
-async def get_appropriate_action(current_message: str, history: list[dict[str, str]], username: str, server_rules: str = "") -> tuple[ActionType, str]:
+async def get_appropriate_action(
+    current_message: str,
+    history: list[dict[str, str]],
+    user_id: int,
+    server_rules: str = ""
+) -> tuple[ActionType, str]:
     """
     Determines the appropriate moderation action for a user's message based on chat history.
 
@@ -447,14 +511,14 @@ async def get_appropriate_action(current_message: str, history: list[dict[str, s
 
     Args:
         current_message (str): The latest message from the user.
-        history (list[dict[str, str]]): List of previous chat messages (each as a dict).
-        username (str): The username of the sender.
-        server_rules (str): The server rules to use for moderation context.
+        history (list[dict[str, str]]): List of previous chat messages (each as a dict). Maps to {"role": str, "user_id": int, "content": str}.
+        user_id (int): The Discord user ID of the sender.
+        server_rules (str, optional): The server rules to use for moderation context. Defaults to "".
 
     Returns:
         tuple[ActionType, str]: Moderation action type and reason, or an error/null action.
     """
-    logger.debug(f"Received message: '{current_message}' from user: '{username}'")
+    logger.debug(f"Received message: '{current_message}' from user: '{user_id}'")
     logger.debug(f"Chat history: {history}")
 
     if not current_message or not current_message.strip():
@@ -465,19 +529,20 @@ async def get_appropriate_action(current_message: str, history: list[dict[str, s
     system_prompt = get_system_prompt(server_rules)
     system_msg = {"role": "system", "content": system_prompt}
 
-    # Format user message with username context
-    user_text = f"User {username} says: {current_message}" if username else current_message
+    # Format user message with user ID context
+    user_text = f"User {user_id} says: {current_message}" if user_id else current_message
     user_msg = {"role": "user", "content": user_text}
 
-    # Format up to 48 most recent valid history messages
+    # Format the history messages
     formatted_history = []
     if history:
-        for msg in reversed(history[-48:]):
+        for msg in reversed(history):
             content = msg.get("content", "")
-            if not isinstance(content, str) or not content.strip():
+            if not isinstance(content, str) or content.strip() == "":
                 continue
-            if msg.get("username"):
-                content = f"User {msg['username']} says: {content}"
+
+            if msg.get("user_id"):
+                content = f"User {msg['user_id']} says: {content}"
             formatted_history.insert(0, {
                 "role": msg.get("role", "user"),
                 "content": content

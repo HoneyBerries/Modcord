@@ -31,17 +31,18 @@ class BotConfig:
 
         # Per-channel chat history for AI context
         self.chat_history: DefaultDict[int, deque] = collections.defaultdict(
-            lambda: collections.deque(maxlen=50)
-        )
+            lambda: collections.deque(maxlen=128)
+        ) # Channel ID -> deque of message dicts
 
         # Per-guild AI moderation toggle (default: enabled)
-        self.ai_moderation_enabled: Dict[int, bool] = {}
+        self.ai_moderation_enabled: Dict[int, bool] = collections.defaultdict(lambda: True)
 
         # Load persisted settings (if present)
         self._load_from_disk()
 
         logger.info("Bot configuration initialized")
     
+
     def get_server_rules(self, guild_id: int) -> str:
         """Get server rules for a guild."""
         return self.server_rules_cache.get(guild_id, "")
@@ -122,13 +123,15 @@ class BotConfig:
                     self.server_rules_cache[gid] = entry.get("rules", "") or ""
                     loaded_rules += 1
         if loaded_ai or loaded_rules:
-            logger.info(f"Loaded settings from disk: ai={loaded_ai}, rules={loaded_rules}")
+            logger.info(f"Loaded settings from disk")
+            logger.debug(f"ai: {loaded_ai}, rules: {loaded_rules}")
 
     def _persist_guild(self, guild_id: int) -> None:
         """Persist current in-memory settings for a single guild to disk."""
         data = self._read_settings()
         guilds = data.setdefault("guilds", {})
         entry = guilds.setdefault(str(guild_id), {})
+
         # Update from in-memory state
         entry["ai_enabled"] = self.ai_moderation_enabled.get(guild_id, True)
         entry["rules"] = self.server_rules_cache.get(guild_id, "")
