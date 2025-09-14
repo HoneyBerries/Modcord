@@ -29,10 +29,8 @@ class EventsCog(commands.Cog):
 		logger.info("Events cog loaded")
 
 	def _is_ignored_author(self, author: Union[discord.User, discord.Member]) -> bool:
-		"""Return True if the author should be ignored (bot or server admin)."""
-		return author.bot or (
-			isinstance(author, discord.Member) and author.guild_permissions.administrator
-		)
+		"""Return True if the author should be ignored (not discord member)."""
+		return author.bot or not isinstance(author, discord.Member)
 
 	def _is_ai_moderation_enabled(self, guild: Optional[discord.Guild]) -> bool:
 		"""Return True if AI moderation should run for the given guild.

@@ -49,18 +49,18 @@ class ModerationCog(commands.Cog):
             return False
         
         # Check if target is a member
-        if not isinstance(user, discord.Member):
-            await ctx.followup.send("This user is not a member of the server.", ephemeral=True)
+        if not isinstance(target_user, discord.Member):
+            await application_context.followup.send("This user is not a member of the server.", ephemeral=True)
             return False
         
         # Check if user is trying to moderate themselves
-        if user.id == ctx.user.id:
-            await ctx.followup.send("Don't do self harm.", ephemeral=True)
+        if target_user.id == application_context.user.id:
+            await application_context.followup.send("Don't do self harm.", ephemeral=True)
             return False
         
         # Check if target is an administrator
-        if user.guild_permissions.administrator:
-            await ctx.followup.send("You cannot bully admins.", ephemeral=True)
+        if target_user.guild_permissions.administrator:
+            await application_context.followup.send("You cannot bully admins.", ephemeral=True)
             return False
         
         return True
@@ -85,17 +85,16 @@ class ModerationCog(commands.Cog):
             duration: Duration for timed actions (optional)
             delete_message_seconds: Seconds of messages to delete
         """
-        try:
-            # Send DM and embed first
-            await bot_helper.send_dm_and_embed(ctx, user, action_type, reason, duration)
-            
+        try:            
             # Perform the specific action
             if action_type == ActionType.TIMEOUT and duration:
                 duration_seconds = bot_helper.parse_duration_to_seconds(duration)
                 until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
                 await user.timeout(until, reason=reason)
+                
             elif action_type == ActionType.KICK:
                 await user.kick(reason=reason)
+
             elif action_type == ActionType.BAN:
                 await ctx.guild.ban(user, reason=reason)
                 if duration and duration != bot_helper.PERMANENT_DURATION:
@@ -104,6 +103,9 @@ class ModerationCog(commands.Cog):
                     asyncio.create_task(
                         bot_helper.unban_later(ctx.guild, user.id, ctx.channel, duration_seconds, self.bot)
                     )
+            
+            # Send DM and embed
+            await bot_helper.send_dm_and_embed(ctx, user, action_type, reason, duration)
             
             # Delete messages in background if requested
             if delete_message_seconds > 0:

@@ -1,9 +1,72 @@
---index-url https://download.pytorch.org/whl/cu129
+# Primary index for PyTorch wheels with CUDA 12.5 support
+--index-url https://download.pytorch.org/whl/cu125
+
+# Fallback index for other packages from PyPI
 --extra-index-url https://pypi.org/simple
+
+# Core deep learning library
 torch
+torchvision
+
+# Hugging Face library for transformers and LLMs
 transformers
+
+# Optimized 8-bit/quantized operations for large models
 bitsandbytes
+
+# Acceleration and distributed training utilities
 accelerate
+
+# Discord bot library
 py-cord
+
+# Load environment variables from .env files
 python-dotenv
+
+# YAML file parser
 pyyaml
+
+
+# Annoying vllm dependencies
+torchaudio==2.8.0
+blake3
+cachetools
+cbor2
+cloudpickle
+compressed-tensors==0.11.0
+depyf==0.19.0
+diskcache==5.6.3
+einops
+fastapi[standard]>=0.115.0
+gguf>=0.13.0
+lark==1.2.2
+llguidance>=0.7.11,<0.8.0
+lm-format-enforcer==0.11.3
+mistral_common[audio,image]>=1.8.2
+msgspec
+ninja
+numba==0.61.2
+openai>=1.99.1
+openai-harmony>=0.0.3
+opencv-python-headless>=4.11.0
+outlines_core==0.2.11
+partial-json-parser
+pillow
+prometheus_client>=0.18.0
+prometheus-fastapi-instrumentator>=7.0.0
+protobuf
+py-cpuinfo
+pybase64
+pydantic>=2.11.7
+python-json-logger
+pyzmq>=25.0.0
+ray[cgraph]>=2.48.0
+scipy
+sentencepiece
+setproctitle
+six>=1.16.0
+tiktoken>=0.6.0
+watchfiles
+xformers==0.0.32.post1
+xgrammar==0.1.23
+setuptools<80,>=77.0.3
