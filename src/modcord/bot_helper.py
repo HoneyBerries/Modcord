@@ -6,10 +6,12 @@ This module provides helper functions for the Discord Moderation Bot.
 """
 import asyncio
 import datetime
-import discord
-from .actions import ActionType
 import importlib
-from .logger import get_logger
+
+import discord
+
+from modcord.actions import ActionType
+from modcord.logger import get_logger
 
 # Get logger for this module
 logger = get_logger("bot_helper")
@@ -537,7 +539,7 @@ async def refresh_rules_cache(bot, server_rules_cache: dict):
                     server_rules_cache[guild.id] = rules_text
                     # Persist to disk via bot_config
                     try:
-                        from .bot_config import bot_config
+                        from modcord.bot_config import bot_config
                         bot_config.set_server_rules(guild.id, rules_text)
                     except Exception:
                         # If import or persist fails, continue; cache already updated

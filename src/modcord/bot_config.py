@@ -13,7 +13,7 @@ from collections import deque
 from pathlib import Path
 import json
 
-from .logger import get_logger
+from modcord.logger import get_logger
 
 logger = get_logger("bot_config")
 

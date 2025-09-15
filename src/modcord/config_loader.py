@@ -12,8 +12,10 @@ Functions:
 """
 
 from pathlib import Path
+
 import yaml
-from .logger import get_logger
+
+from modcord.logger import get_logger
 
 # Default path to the YAML configuration file (root-level data/config.yml)
 CONFIG_PATH = str(Path(__file__).resolve().parent.parent.parent / "data/config.yml")

@@ -16,9 +16,9 @@ from typing import List, Dict, Any, Optional, Tuple
 
 import torch
 
-from . import config_loader as cfg
-from .actions import ActionType
-from .logger import get_logger
+from modcord import config_loader as cfg
+from modcord.actions import ActionType
+from modcord.logger import get_logger
 
 # vLLM imports
 from vllm import LLM, SamplingParams

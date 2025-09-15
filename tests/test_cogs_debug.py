@@ -6,7 +6,7 @@ class TestDebugCog(unittest.IsolatedAsyncioTestCase):
         # This is a placeholder test for the debug cog.
         # In a real scenario, you would mock the bot and context,
         # and test the cog's commands.
-        from src.modcord.cogs.debug import DebugCog
+        from modcord.cogs.debug import DebugCog
 
         mock_bot = MagicMock()
         cog = DebugCog(mock_bot)

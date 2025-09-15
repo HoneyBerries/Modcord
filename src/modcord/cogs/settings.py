@@ -5,8 +5,8 @@ Settings commands cog for toggling AI moderation per guild.
 import discord
 from discord.ext import commands
 
-from ..logger import get_logger
-from ..bot_config import bot_config
+from modcord.bot_config import bot_config
+from modcord.logger import get_logger
 
 logger = get_logger("settings_cog")
 

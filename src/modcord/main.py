@@ -12,12 +12,11 @@ Refactored version using cogs for better organization and maintainability.
 import os
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
 
 import discord
+from dotenv import load_dotenv
 
-from .logger import get_logger, handle_exception
-from .bot_config import bot_config
+from modcord.logger import get_logger, handle_exception
 
 # Set the base directory to the project root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -38,6 +37,7 @@ def test_all_logging_levels():
     logger.warning("Warning logging initialized.")
     logger.error("Error logging initialized.")
     logger.critical("Critical logging initialized.")
+
 
 # Load environment variables from the .env file in the project root
 load_dotenv(dotenv_path=BASE_DIR / ".env")
@@ -73,26 +73,35 @@ def main():
     """
     test_all_logging_levels()
     logger.info("Starting Discord Moderation Bot...")
-    
+
     # Bot Initialization
     discord_intents = discord.Intents.all()
     global discord_bot_instance
     discord_bot_instance = discord.Bot(intents=discord_intents)
 
     if not DISCORD_BOT_TOKEN:
-        logger.critical("'DISCORD_BOT_TOKEN' environment variable not set. Bot cannot start.")
+        logger.critical(
+            "'DISCORD_BOT_TOKEN' environment variable not set. "
+            "Bot cannot start."
+        )
         sys.exit(1)
 
     try:
         logger.info("Loading cogs...")
         load_cogs(discord_bot_instance)
-        
+
         logger.info("Attempting to connect to Discord...")
         discord_bot_instance.run(DISCORD_BOT_TOKEN)
         # This line is only reached on a failed login or disconnect
-        logger.critical("Login failed or bot disconnected. Please check the token or connection.")
+        logger.critical(
+            "Login failed or bot disconnected. "
+            "Please check the token or connection."
+        )
     except Exception as e:
-        logger.critical(f"An unexpected error occurred while running the bot: {e}", exc_info=True)
+        logger.critical(
+            f"An unexpected error occurred while running the bot: {e}",
+            exc_info=True
+        )
 
 
 if __name__ == "__main__":
