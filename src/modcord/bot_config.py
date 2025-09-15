@@ -8,7 +8,7 @@ to a JSON file at data/guild_settings.json.
 import collections
 import asyncio
 import time
-from typing import Dict, DefaultDict, Callable, Awaitable
+from typing import Dict, DefaultDict, Callable, Awaitable, Optional
 from collections import deque
 from pathlib import Path
 import json
@@ -42,7 +42,7 @@ class BotConfig:
         # Channel-based message batching system (15-second intervals)
         self.channel_message_batches: DefaultDict[int, list] = collections.defaultdict(list)  # channel_id -> list of messages
         self.channel_batch_timers: Dict[int, asyncio.Task] = {}  # channel_id -> timer task
-        self.batch_processing_callback: Callable[[int, list], Awaitable[None]] = None  # Callback for processing batches
+        self.batch_processing_callback: Optional[Callable[[int, list], Awaitable[None]]] = None  # Callback for processing batches
         
         # Load persisted settings (if present)
         self._load_from_disk()

@@ -15,15 +15,16 @@ date_format = '%Y-%m-%d %H:%M:%S'
 
 # ANSI color codes for log levels
 LOG_COLORS = {
-    'DEBUG': '\033[36m',    # Cyan
+    'DEBUG': '\033[36m',     # Cyan
     'INFO': '\033[32m',     # Green
     'WARNING': '\033[33m',  # Yellow
-    'ERROR': '\033[31m',    # Red
+    'ERROR': '\033[31m',     # Red
     'CRITICAL': '\033[38;5;88m', # Dark Red (ANSI 256-color)
 }
 RESET_COLOR = '\033[0m'
 
 class ColorFormatter(logging.Formatter):
+    """A custom formatter to add color to log messages."""
     def format(self, record):
         color = LOG_COLORS.get(record.levelname, '')
         message = super().format(record)
@@ -93,9 +94,6 @@ def get_logger(logger_name: str) -> logging.Logger:
 
     Returns:
         logging.Logger: Logger instance.
-
-    Notes:
-        This is a convenience function that calls `setup_logger`.
     """
     return setup_logger(logger_name)
 
@@ -118,7 +116,6 @@ def handle_exception(exception_type, exception_instance, exception_traceback):
         sys.__excepthook__(exception_type, exception_instance, exception_traceback)
         return
     main_logger.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
-
 
 # Main bot logger
 main_logger = get_logger("main")

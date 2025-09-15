@@ -1,7 +1,7 @@
 ai_settings:
   enabled: true
   allow_gpu: true # Highly recommended if your hardware supports it
-  model_id: "meta-llama/Llama-3.1-8B-Instruct"
+  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-hybrid-bnb"
   use_4bit: true
 
 server_rules: >

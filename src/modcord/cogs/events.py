@@ -7,7 +7,6 @@ import discord
 from typing import Union, Optional
 from discord.ext import commands
 from ..logger import get_logger
-from ..actions import ActionType
 from .. import bot_helper
 from ..bot_helper import rule_channel_pattern
 from ..bot_config import bot_config

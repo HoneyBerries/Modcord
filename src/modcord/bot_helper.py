@@ -297,7 +297,7 @@ async def send_dm_and_embed(
         reason (str): The reason for the action.
         duration_str (str | None): The duration of the action, if applicable.
     """
-    dm_message = f"You have been {action_type.value} in {ctx.guild.name}.\n**Reason**: {reason}"
+    dm_message = f"You have been {action_type.value}ed in {ctx.guild.name}.\n**Reason**: {reason}"
     await send_dm_to_user(user, dm_message)
 
     # Create and send embed
@@ -387,7 +387,7 @@ async def take_batch_action(
         if action == ActionType.BAN:
             # Use ban_duration if specified
             is_permanent = ban_duration is None or ban_duration == 0
-            duration_str = PERMANENT_DURATION if is_permanent else format_duration(ban_duration)
+            duration_str = PERMANENT_DURATION if is_permanent else format_duration(ban_duration if ban_duration is not None else 0)
             
             dm_message = f"You have been banned from {guild.name} for {duration_str}.\n**Reason**: {reason}"
             await send_dm_to_user(user, dm_message)
@@ -396,7 +396,7 @@ async def take_batch_action(
             
             # Schedule unban if temporary
             if not is_permanent:
-                asyncio.create_task(unban_later(guild, user.id, channel, ban_duration, None))
+                asyncio.create_task(unban_later(guild, user.id, channel, ban_duration if ban_duration is not None else 0, None))
 
         elif action == ActionType.KICK:
             dm_message = f"You have been kicked from {guild.name}.\n**Reason**: {reason}"
