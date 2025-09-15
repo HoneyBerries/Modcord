@@ -1,12 +1,12 @@
 import unittest
 import json
 from unittest.mock import MagicMock, patch, AsyncMock
-from src.modcord.actions import ActionType
+from modcord.actions import ActionType
 
 @patch('src.modcord.ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
 class TestAIModel(unittest.IsolatedAsyncioTestCase):
     def test_parse_action(self, mock_get_model):
-        from src.modcord.ai_model import parse_action
+        from modcord.ai_model import parse_action
         # Test ban action (JSON input)
         action, reason = parse_action(json.dumps({"action": "ban", "reason": "User was spamming"}))
         self.assertEqual(action, ActionType.BAN)
@@ -32,7 +32,7 @@ class TestAIModel(unittest.IsolatedAsyncioTestCase):
         """
         Unit test for get_appropriate_action. Mocks the inference call.
         """
-        from src.modcord.ai_model import get_appropriate_action
+        from modcord.ai_model import get_appropriate_action
 
     # Mock the AI's response (JSON)
     mock_submit_inference.return_value = json.dumps({"action": "kick", "reason": "User was being disruptive."})

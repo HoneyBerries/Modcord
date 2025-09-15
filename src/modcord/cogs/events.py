@@ -5,12 +5,14 @@ Event handlers cog for the Discord Moderation Bot.
 import asyncio
 import discord
 from typing import Union, Optional
+
 from discord.ext import commands
-from ..logger import get_logger
-from .. import bot_helper
-from ..bot_helper import rule_channel_pattern
-from ..bot_config import bot_config
-from .. import ai_model as ai
+
+from modcord import ai_model as ai
+from modcord import bot_helper
+from modcord.bot_config import bot_config
+from modcord.bot_helper import rule_channel_pattern
+from modcord.logger import get_logger
 
 logger = get_logger("events_cog")
 
@@ -129,7 +131,7 @@ class EventsCog(commands.Cog):
 				
 			# Convert action string to ActionType enum
 			try:
-				from ..actions import ActionType
+				from modcord.actions import ActionType
 				action_type = ActionType(action_type_str.lower())
 			except ValueError:
 				logger.warning(f"Unknown action type '{action_type_str}', skipping")

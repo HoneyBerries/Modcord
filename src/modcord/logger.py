@@ -1,8 +1,7 @@
 import logging
-import logging.handlers
 import sys
-from datetime import datetime
 from pathlib import Path
+from datetime import datetime
 
 # Create a logs directory at the project root
 LOGS_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
@@ -33,11 +32,12 @@ class ColorFormatter(logging.Formatter):
         return message
 
 plain_formatter = logging.Formatter(log_format, datefmt=date_format)
+
 color_formatter = ColorFormatter(log_format, datefmt=date_format)
 
-# Use a stable log filename so the project writes to a single file regardless
-# of import path (helps tests that look for the most-recent log file).
-LOG_FILENAME = "modcord.log"
+
+# Log filename with timestamp
+LOG_FILENAME = datetime.now().strftime("%Y%m%dT%H%M%S.log")
 LOG_FILEPATH = LOGS_DIR / LOG_FILENAME
 
 
@@ -66,7 +66,7 @@ def setup_logger(logger_name: str, logging_level: int = logging.DEBUG) -> loggin
     logger.propagate = False
 
 
-    # Console handler (DEBUG and above, colored)
+    # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(color_formatter)
@@ -75,9 +75,8 @@ def setup_logger(logger_name: str, logging_level: int = logging.DEBUG) -> loggin
     # Rotating file handler (DEBUG and above, plain)
     # Rotating file handler to avoid unbounded file growth. Keep it readable
     # by tests by writing to a consistent filepath.
-    file_handler = logging.handlers.RotatingFileHandler(
-        LOG_FILEPATH, encoding="utf-8", maxBytes=5 * 1024 * 1024, backupCount=5
-    )
+    file_handler = logging.FileHandler(LOG_FILEPATH, encoding='utf-8')
+
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(plain_formatter)
     logger.addHandler(file_handler)
