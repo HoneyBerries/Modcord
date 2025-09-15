@@ -1,7 +1,9 @@
 import logging
+import os
 import sys
 from pathlib import Path
 from datetime import datetime
+import warnings
 
 # Create a logs directory at the project root
 LOGS_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
@@ -115,6 +117,27 @@ def handle_exception(exception_type, exception_instance, exception_traceback):
         sys.__excepthook__(exception_type, exception_instance, exception_traceback)
         return
     main_logger.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
+
+# Reduce vllm and related noisy loggers to WARNING to avoid INFO/DEBUG spam.
+logging.getLogger("vllm").setLevel(logging.WARNING)
+logging.getLogger("vllm.engine").setLevel(logging.WARNING)
+logging.getLogger("vllm.client").setLevel(logging.WARNING)
+# Optionally reduce other noisy libs commonly used with vllm:
+logging.getLogger("transformers").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+# Lower Python-level loggers for noisy libs
+os.environ.setdefault("TORCH_CPP_LOG_LEVEL", "ERROR")
+os.environ.setdefault("GLOG_minloglevel", "2")   # 0=INFO,1=WARNING,2=ERROR
+os.environ.setdefault("NCCL_DEBUG", "ERROR")
+
+logging.getLogger("torch").setLevel(logging.ERROR)
+logging.getLogger("torch.distributed").setLevel(logging.ERROR)
+logging.getLogger("c10d").setLevel(logging.ERROR)
+logging.getLogger("gloo").setLevel(logging.ERROR)
+
+# Optionally suppress repetitive UserWarnings from vllm modules
+warnings.filterwarnings("ignore", category=UserWarning, module=r"vllm.*")
 
 # Main bot logger
 main_logger = get_logger("main")

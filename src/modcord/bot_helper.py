@@ -9,8 +9,8 @@ import datetime
 
 import discord
 
-from actions import ActionType
-from logger import get_logger
+from modcord.actions import ActionType
+from modcord.logger import get_logger
 
 # Get logger for this module
 logger = get_logger("bot_helper")

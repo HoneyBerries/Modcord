@@ -10,4 +10,4 @@ fi
 
 source "$VENV_DIR/bin/activate"
 
-python run_bot.py
+python src/modcord/main.py

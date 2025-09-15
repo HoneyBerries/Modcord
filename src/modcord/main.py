@@ -15,11 +15,16 @@ from pathlib import Path
 
 import discord
 from dotenv import load_dotenv
+import asyncio
 
-from logger import get_logger, handle_exception
+# Import AI model initializer to ensure model is available before bot starts
+from modcord.ai_model import init_ai_model, MODEL_STATE
+
+from modcord.logger import get_logger, handle_exception
 
 # Set the base directory to the project root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 # Get logger for this module
 logger = get_logger("main")
 
@@ -53,7 +58,7 @@ def load_cogs(discord_bot_instance):
 
     try:
         # Explicit imports so linters/static analyzers can see them easily:
-        from cogs import debug, moderation, events, general, settings
+        from modcord.cogs import debug, moderation, events, general, settings
         modules = [debug, moderation, events, general, settings]
     except Exception as e:
         logger.error(f"Failed to import cog modules: {e}", exc_info=True)
@@ -88,6 +93,25 @@ def main():
     """
     test_all_logging_levels()
     logger.info("Starting Discord Moderation Bot...")
+
+    # Initialize AI model before bot startup
+    try:
+        logger.info("Initializing AI model before bot startup...")
+
+        # Use asyncio to run the async initialization
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Try to initialize the AI model; this will set MODEL_STATE
+        loop.run_until_complete(init_ai_model())
+
+
+        if MODEL_STATE.init_error and not MODEL_STATE.available:
+            logger.critical(f"AI model failed to initialize: {MODEL_STATE.init_error}")
+            
+    except Exception as e:
+        logger.critical(f"Unexpected error during AI initialization: {e}", exc_info=True)
+        
 
     # Bot Initialization
     discord_intents = discord.Intents.all()

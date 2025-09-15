@@ -7,7 +7,7 @@ import datetime
 import discord
 from discord.ext import commands
 
-import bot_helper
+import modcord.bot_helper as bot_helper
 from modcord.bot_config import bot_config
 from modcord.logger import get_logger
 

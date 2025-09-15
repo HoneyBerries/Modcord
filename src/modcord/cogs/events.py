@@ -8,8 +8,8 @@ from typing import Union, Optional
 
 from discord.ext import commands
 
-from modcord import ai_model as ai
-from modcord import bot_helper
+import modcord.ai_model as ai
+import modcord.bot_helper as bot_helper
 from modcord.bot_config import bot_config
 from modcord.bot_helper import rule_channel_pattern
 from modcord.logger import get_logger
@@ -153,7 +153,7 @@ class EventsCog(commands.Cog):
 			
 			logger.info(f"Applying {action_type_str} action to user {user_id_str} in channel {channel_id}: {reason}")
 			
-			# Apply the action using the enhanced batch-aware bot_helper
+			# Await the batch actions
 			await bot_helper.take_batch_action(
 				action=action_type, 
 				reason=reason, 
@@ -193,7 +193,7 @@ class EventsCog(commands.Cog):
 		logger.info("Starting AI batch processing worker...")
 		try:
 			# ai is already imported at module level
-			ai.start_batch_worker()
+			await ai.start_batch_worker()
 			logger.info("[AI] Batch processing worker started.")
 		except Exception as e:
 			logger.error(f"Failed to start AI batch processing worker: {e}")
@@ -221,7 +221,7 @@ class EventsCog(commands.Cog):
 		# Ignore messages from bots and administrators
 		logger.debug(f"Received message from {message.author}: {message.content}")
 		if self._is_ignored_author(message.author):
-			logger.debug("Ignoring message from bot or administrator.")
+			logger.debug("Ignoring message from non-user.")
 			return
 
 		# Skip empty messages or messages with only whitespace

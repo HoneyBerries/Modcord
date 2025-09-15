@@ -10,7 +10,7 @@ import discord
 from discord import Option
 from discord.ext import commands
 
-import bot_helper
+import modcord.bot_helper as bot_helper
 from modcord.actions import ActionType
 from modcord.logger import get_logger
 
@@ -101,7 +101,7 @@ class ModerationCog(commands.Cog):
                     duration_seconds = bot_helper.parse_duration_to_seconds(duration)
                     logger.info(f"Scheduling unban for {user.display_name} in {duration_seconds} seconds.")
                     asyncio.create_task(
-                        bot_helper.unban_later(ctx.guild, user.id, ctx.channel, duration_seconds, self.bot)
+                        bot_helper.unban_later(ctx.guild, user.id, ctx.channel, duration_seconds, self.discord_bot_instance)
                     )
             
             # Send DM and embed
@@ -116,7 +116,7 @@ class ModerationCog(commands.Cog):
         except Exception as e:
             await bot_helper.handle_error(ctx, e)
 
-    @commands.slash_command(name="warn", description="Warn a user for a specified reason.")
+    @commands.slash_command(name="warn", description="Warns a user for a specified reason.")
     async def warn(
         self,
         ctx: discord.ApplicationContext,
