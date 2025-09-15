@@ -16,9 +16,9 @@ from typing import List, Dict, Any, Optional, Tuple
 
 import torch
 
-from modcord import config_loader as cfg
-from modcord.actions import ActionType
-from modcord.logger import get_logger
+import config_loader as cfg
+from actions import ActionType
+from logger import get_logger
 
 # vLLM imports
 from vllm import LLM, SamplingParams
@@ -31,11 +31,34 @@ llm: Optional[LLM] = None
 sampling_params: Optional[SamplingParams] = None
 BASE_SYSTEM_PROMPT: str | None = None
 
-MODEL_INIT_STARTED = False
-MODEL_AVAILABLE = False
-MODEL_INIT_ERROR: Optional[str] = None
+class ModelState:
+    """
+    Encapsulates model initialization flags/state.
+    Prefer using the MODEL_STATE instance in new code; helper getters/setters are
+    provided for minimal backward compatibility.
+    """
+    def __init__(self) -> None:
+        self.init_started: bool = False
+        self.available: bool = False
+        self.init_error: Optional[str] = None
 
-# ========== Moderation JSON Schema (strict) ==========
+MODEL_STATE = ModelState()
+
+# Backwards-compatible helpers (use these if you cannot yet migrate call sites)
+def get_model_state() -> ModelState:
+    return MODEL_STATE
+
+def set_model_state(*, started: Optional[bool] = None, available: Optional[bool] = None, init_error: Optional[str] = None) -> None:
+    if started is not None:
+        MODEL_STATE.init_started = started
+    if available is not None:
+        MODEL_STATE.available = available
+    if init_error is not None:
+        MODEL_STATE.init_error = init_error
+
+
+
+# ========== Moderation JSON Schema ==========
 moderation_schema = {
     "type": "object",
     "properties": {
@@ -66,6 +89,7 @@ moderation_schema = {
     "required": ["channel_id", "actions"],
     "additionalProperties": False,
 }
+
 
 # ========== Model Initialization ==========
 def init_ai_model(model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
@@ -120,7 +144,7 @@ def init_ai_model(model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[
             model=model_identifier,
             dtype=dtype,
             gpu_memory_utilization=0.8,
-            max_model_len=8192,
+            max_model_len=12288,
             tensor_parallel_size=tp,
         )
 

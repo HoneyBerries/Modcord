@@ -10,8 +10,6 @@ import json
 import time
 from unittest.mock import MagicMock
 
-# Add src to path for imports
-sys.path.insert(0, 'src')
 
 from modcord.bot_config import BotConfig
 

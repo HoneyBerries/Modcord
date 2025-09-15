@@ -16,7 +16,7 @@ from pathlib import Path
 import discord
 from dotenv import load_dotenv
 
-from modcord.logger import get_logger, handle_exception
+from logger import get_logger, handle_exception
 
 # Set the base directory to the project root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -48,20 +48,35 @@ DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 # Cog Loading
 # ==========================================
 def load_cogs(discord_bot_instance):
-    """Load all bot cogs."""
-    cog_module_names = [
-        'modcord.cogs.general',
-        'modcord.cogs.moderation',
-        'modcord.cogs.debug',
-        'modcord.cogs.events',
-        'modcord.cogs.settings',
-    ]
-    for cog_module_name in cog_module_names:
+    """Load cogs by importing modules explicitly from the cogs package."""
+    import inspect
+
+    try:
+        # Explicit imports so linters/static analyzers can see them easily:
+        from cogs import debug, moderation, events, general, settings
+        modules = [debug, moderation, events, general, settings]
+    except Exception as e:
+        logger.error(f"Failed to import cog modules: {e}", exc_info=True)
+        return
+
+    for module in modules:
+        mod_name = module.__name__
         try:
-            discord_bot_instance.load_extension(cog_module_name)
-            logger.info(f"Loaded cog: {cog_module_name}")
+            # Prefer a Cog subclass if present
+            cog_class = None
+            for obj in vars(module).values():
+                if inspect.isclass(obj) and issubclass(obj, discord.Cog) and obj is not discord.Cog:
+                    cog_class = obj
+                    break
+
+            if cog_class:
+                discord_bot_instance.add_cog(cog_class(discord_bot_instance))
+                logger.info(f"Loaded cog: {cog_class.__name__} from {mod_name}")
+                continue
+
+            logger.error(f"No Cog subclass found in {mod_name}; skipping.")
         except Exception as e:
-            logger.error(f"Failed to load cog {cog_module_name}: {e}", exc_info=True)
+            logger.error(f"Failed to load cog {mod_name}: {e}", exc_info=True)
 
 
 # ==========================================

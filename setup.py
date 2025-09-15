@@ -4,11 +4,11 @@ from setuptools import setup, find_packages
 
 setup(
     name="modcord",
-    version="0.1.0",
+    version="0.0.1",
     description="A Discord bot for moderation using AI",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
-    python_requires=">=3.8",
+    python_requires=">=3.12",
     install_requires=[
         "py-cord",
         "python-dotenv",

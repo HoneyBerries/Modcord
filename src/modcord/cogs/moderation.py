@@ -10,7 +10,7 @@ import discord
 from discord import Option
 from discord.ext import commands
 
-from modcord import bot_helper
+import bot_helper
 from modcord.actions import ActionType
 from modcord.logger import get_logger
 

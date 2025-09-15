@@ -7,7 +7,6 @@ to a JSON file at data/guild_settings.json.
 
 import collections
 import asyncio
-import time
 from typing import Dict, DefaultDict, Callable, Awaitable, Optional
 from collections import deque
 from pathlib import Path

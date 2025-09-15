@@ -48,7 +48,7 @@ This bot is currently in a very early alpha stage. It is buggy and may not work 
     ```
     Then, open the `.env` file and replace the placeholder with your actual bot token:
     ```
-    Mod_Bot_Token=YOUR_DISCORD_BOT_TOKEN_HERE
+    DISCORD_BOT_TOKEN=YOUR_DISCORD_BOT_TOKEN_HERE
     ```
 
 ## Running the Bot
@@ -56,7 +56,7 @@ This bot is currently in a very early alpha stage. It is buggy and may not work 
 To run the bot, use the following command from the project root:
 
 ```bash
-python -m modcord.main
+python -m main.py
 ```
 Alternatively, since the project is installed with an entry point, you can use:
 ```bash
