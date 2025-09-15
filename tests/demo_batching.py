@@ -5,12 +5,8 @@ Shows how messages are batched per channel every 15 seconds.
 """
 
 import asyncio
-import sys
 import json
-import time
 from unittest.mock import MagicMock
-
-
 from modcord.bot_config import BotConfig
 
 
