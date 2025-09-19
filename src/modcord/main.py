@@ -114,7 +114,18 @@ def main():
         
 
     # Bot Initialization
-    discord_intents = discord.Intents.all()
+
+    # ==========================================
+    # Intents Setup
+    # ==========================================
+    discord_intents = discord.Intents.default()  # start with default intents
+    discord_intents.message_content = True
+    discord_intents.guilds = True                # needed for guild events
+    discord_intents.messages = True              # receive message events
+    discord_intents.reactions = True             # optional if you handle reactions
+    # Required for guild member objects, guild_permissions checks, and moderation actions
+    discord_intents.members = True
+
     global discord_bot_instance
     discord_bot_instance = discord.Bot(intents=discord_intents)
 

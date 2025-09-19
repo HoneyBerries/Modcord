@@ -1,8 +1,21 @@
 ai_settings:
   enabled: true
   allow_gpu: true # Highly recommended if your hardware supports it
-  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-hybrid-bnb"
-  use_4bit: true
+  vram_percentage: 0.85 # Percentage of GPU VRAM to utilize if using GPU; adjust based on your system
+
+  # Path to your local model directory or model identifier from Hugging Face
+  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-instruct-nf4"
+  
+  knobs:
+    dtype: "bfloat16" # Options: "int8", "float16", "bfloat16", float32
+    max_new_tokens: 1024
+    max_model_length: 8192
+    temperature: 0.1
+    top_p: 1.0
+    top_k: 0
+    repetition_penalty: 1.0
+    presence_penalty: 0.0
+    frequency_penalty: 0.0
 
 server_rules: >
   1. Be respectful to all members and moderators.
@@ -66,7 +79,7 @@ system_prompt: >
   - timeout_duration is in seconds (null if not applicable)
   - ban_duration is in seconds; 0 for permanent ban; null if not applicable
 
-  --- MODERATION LOGIC (Spam is Lax) ---
+  MODERATION LOGIC
   1. Minor first-time spam (single messages with caps, punctuation, minor emoji) → "null", delete_count = 0
   2. Minor repeated spam (2–3 messages in short window) → "null", delete_count = 0
   3. Repeated spam in short window (4+ messages) → escalate:

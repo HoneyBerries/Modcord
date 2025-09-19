@@ -10,6 +10,8 @@ torchvision
 
 # Hugging Face library for transformers and LLMs
 transformers
+onnx
+onnxruntime
 
 # Optimized 8-bit/quantized operations for large models
 bitsandbytes

@@ -80,7 +80,24 @@ async def init_ai_model(model: Optional[str] = None) -> Tuple[Optional[LLM], Opt
     ai_configuration = base_configuration.get("ai_settings", {})
     is_ai_enabled = bool(ai_configuration.get("enabled", False))
     is_gpu_allowed = ai_configuration.get("allow_gpu", False)
+    vram_percentage = ai_configuration.get("vram_percentage", 0.5)
     model_identifier = model or ai_configuration.get("model_id")
+    
+    # Load AI model knobs from config
+    knobs = ai_configuration.get("knobs", {})
+    dtype = knobs.get("dtype", "auto")
+    max_new_tokens = knobs.get("max_new_tokens", 256)
+    max_model_length = knobs.get("max_model_length", 2048)
+    temperature = knobs.get("temperature", 1.0)
+    top_p = knobs.get("top_p", 1.0)
+    top_k = knobs.get("top_k", -1)
+    repetition_penalty = knobs.get("repetition_penalty", 1.0)
+    presence_penalty = knobs.get("presence_penalty", 0.0)
+    frequency_penalty = knobs.get("frequency_penalty", 0.0)
+
+    
+    logger.info(f"[AI MODEL] Using configuration knobs")
+    logger.debug(f"temperature={temperature}, max_new_tokens={max_new_tokens}, dtype={dtype}, top_p={top_p}, top_k={top_k}, repetition_penalty={repetition_penalty}, presence_penalty={presence_penalty}, frequency_penalty={frequency_penalty}")
 
     if not is_ai_enabled:
         logger.info("[AI MODEL] AI disabled in configuration.")
@@ -95,27 +112,32 @@ async def init_ai_model(model: Optional[str] = None) -> Tuple[Optional[LLM], Opt
         return None, None, BASE_SYSTEM_PROMPT
 
     cuda_available = torch.cuda.is_available()
-    dtype = "float16"
-    tp = torch.cuda.device_count() if cuda_available else 1
+    tp: int = torch.cuda.device_count() if cuda_available else 0
 
     if is_gpu_allowed and not cuda_available:
         logger.warning("[AI MODEL] GPU allowed but CUDA not available. Using CPU.")
 
     try:
-        logger.info(f"[AI MODEL] Loading vLLM model '{model_identifier}' (dtype={dtype}, tp={tp})")
+        gpu_mem_util = vram_percentage if is_gpu_allowed and cuda_available else 0.0
+        logger.info(f"[AI MODEL] Loading vLLM model '{model_identifier}' (dtype={dtype}, tp={tp}, gpu_mem={gpu_mem_util})")
+        logger.info(f"[AI MODEL] Config: max_model_len={max_model_length}, temperature={temperature}, top_p={top_p}")
+        
         llm = LLM(
             model=model_identifier,
             dtype=dtype,
-            gpu_memory_utilization=0.85,
-            max_model_len=8192,
+            gpu_memory_utilization=gpu_mem_util,
+            max_model_len=max_model_length,
             tensor_parallel_size=tp
         )
 
         sampling_params = SamplingParams(
-            temperature=0.0,
-            max_tokens=2048,
-            top_p=0.95,
-            repetition_penalty=1.05,
+            temperature=temperature,
+            max_tokens=max_new_tokens,
+            top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            presence_penalty=presence_penalty,
+            frequency_penalty=frequency_penalty,
             guided_decoding=GuidedDecodingParams(json=moderation_schema)
         )
 
@@ -129,6 +151,7 @@ async def init_ai_model(model: Optional[str] = None) -> Tuple[Optional[LLM], Opt
         MODEL_STATE.init_error = f"Initialization failed: {e}"
         logger.error(f"[AI MODEL] Failed to initialize vLLM model: {e}", exc_info=True)
         return None, None, BASE_SYSTEM_PROMPT
+
 
 async def get_model() -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
     global llm, sampling_params
@@ -150,6 +173,7 @@ async def get_system_prompt(server_rules: str = "") -> str:
     except Exception:
         return f"{base}\n\nServer rules:\n{server_rules}"
 
+
 # ========== Inference Helpers ==========
 async def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
     parts = []
@@ -164,6 +188,7 @@ async def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
             parts.append(f"[USER]\n{content.strip()}")
     return "\n\n".join(parts).strip()
 
+
 def _sync_generate(prompts: List[str]) -> List[str]:
     global llm, sampling_params
     if llm is None or sampling_params is None:
@@ -174,6 +199,7 @@ def _sync_generate(prompts: List[str]) -> List[str]:
     for out in outputs:
         results.append(out.outputs[0].text.strip() if out.outputs else "")
     return results
+
 
 async def submit_inference(messages: List[Dict[str, Any]]) -> str:
     if MODEL_STATE.init_started and not MODEL_STATE.available:
@@ -191,6 +217,7 @@ async def submit_inference(messages: List[Dict[str, Any]]) -> str:
         logger.error(f"Inference error: {e}", exc_info=True)
         return f"null: inference error"
 
+
 async def start_batch_worker():
     if not MODEL_STATE.init_started:
         await init_ai_model()
@@ -198,6 +225,7 @@ async def start_batch_worker():
         asyncio.create_task(_warmup_model())
     except RuntimeError:
         logger.debug("start_batch_worker called outside event loop; skipping warmup task.")
+
 
 async def _warmup_model():
     logger.info("Warming up model...")
@@ -208,6 +236,8 @@ async def _warmup_model():
         logger.info(f"Warmup complete (len={len(out[0])})")
     except Exception as e:
         logger.error(f"Warmup failed: {e}", exc_info=True)
+
+
 
 # ========== Parsing Utilities ==========
 async def parse_action(assistant_response: str) -> tuple[ActionType, str]:
@@ -229,6 +259,7 @@ async def parse_action(assistant_response: str) -> tuple[ActionType, str]:
         logger.warning(f"Failed to parse JSON response: {e}")
         return cls('null'), "invalid JSON response"
     return cls('null'), "no action found"
+
 
 async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[Dict[str, Any]]:
     try:
@@ -258,6 +289,8 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
         logger.error(f"Error parsing batch actions: {e}")
         return []
 
+
+
 # ========== Public Moderation Entrypoints ==========
 async def get_batch_moderation_actions(channel_id: int, messages: List[Dict[str, Any]], server_rules: str = "") -> List[Dict[str, Any]]:
     system_prompt = await get_system_prompt(server_rules)
@@ -266,6 +299,7 @@ async def get_batch_moderation_actions(channel_id: int, messages: List[Dict[str,
     user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
     resp = await submit_inference([system_msg, user_msg])
     return await parse_batch_actions(resp, channel_id)
+
 
 async def get_appropriate_action(history: List[Dict[str, Any]], user_id: int, server_rules: str = "", *, channel_id: Optional[int | str] = None, username: Optional[str] = None, message_timestamp: Optional[str] = None) -> tuple[ActionType, str]:
     if not history:

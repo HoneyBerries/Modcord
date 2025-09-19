@@ -119,12 +119,12 @@ def handle_exception(exception_type, exception_instance, exception_traceback):
     main_logger.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
 
 # Reduce vllm and related noisy loggers to WARNING to avoid INFO/DEBUG spam.
-logging.getLogger("vllm").setLevel(logging.WARNING)
-logging.getLogger("vllm.engine").setLevel(logging.WARNING)
-logging.getLogger("vllm.client").setLevel(logging.WARNING)
+logging.getLogger("vllm").setLevel(logging.ERROR)
+logging.getLogger("vllm.engine").setLevel(logging.ERROR)
+logging.getLogger("vllm.client").setLevel(logging.ERROR)
 # Optionally reduce other noisy libs commonly used with vllm:
-logging.getLogger("transformers").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
 
 # Lower Python-level loggers for noisy libs
 os.environ.setdefault("TORCH_CPP_LOG_LEVEL", "ERROR")
