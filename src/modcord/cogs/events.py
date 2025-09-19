@@ -88,6 +88,7 @@ class EventsCog(commands.Cog):
 					"user_id": msg["user_id"],
 					"username": msg["username"], 
 					"content": msg["content"],
+					"message_id": msg["message_id"],
 					"timestamp": msg["timestamp"],
 					"image_summary": msg["image_summary"]
 				})
@@ -123,8 +124,8 @@ class EventsCog(commands.Cog):
 		try:
 			user_id_str = action_data.get("user_id", "")
 			action_type_str = action_data.get("action", "null")
-			reason = action_data.get("reason", "Automated moderation action")
-			delete_count = action_data.get("delete_count", 0)
+			reason = action_data.get("reason", "No reason provided.")
+			message_ids = action_data.get("message_ids", [])
 			
 			if action_type_str == "null" or not user_id_str:
 				return
@@ -159,7 +160,7 @@ class EventsCog(commands.Cog):
 				reason=reason, 
 				message=target_message_obj, 
 				bot_user=self.bot.user,
-				delete_count=delete_count,
+				message_ids=message_ids,
 				timeout_duration=action_data.get("timeout_duration"),
 				ban_duration=action_data.get("ban_duration")
 			)
@@ -253,6 +254,7 @@ class EventsCog(commands.Cog):
 				"user_id": message.author.id,
 				"username": str(message.author),
 				"content": actual_content,
+				"message_id": str(message.id),
 				"timestamp": message.created_at.replace(tzinfo=None).isoformat() + "Z",
 				"image_summary": None,  # TODO: Add image summary support in future
 				"guild_id": message.guild.id if message.guild else None,  # Store guild for rules lookup

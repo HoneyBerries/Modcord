@@ -45,11 +45,11 @@ moderation_schema = {
                     "user_id": {"type": "string"},
                     "action": {"type": "string", "enum": ["delete", "warn", "timeout", "kick", "ban", "null"]},
                     "reason": {"type": "string"},
-                    "delete_count": {"type": "integer"},
+                    "message_ids": {"type": "array", "items": {"type": "string"}},
                     "timeout_duration": {"type": ["integer", "null"]},
                     "ban_duration": {"type": ["integer", "null"]}
                 },
-                "required": ["user_id", "action", "reason", "delete_count", "timeout_duration", "ban_duration"],
+                "required": ["user_id", "action", "reason", "message_ids", "timeout_duration", "ban_duration"],
                 "additionalProperties": False
             }
         }

@@ -94,45 +94,107 @@ async def delete_recent_messages_by_count(guild: discord.Guild, member: discord.
     deleted_count = 0
     
     try:
-        # Search through all text channels in the guild
+        # Search through all text channels for recent messages from this user
         for channel in guild.text_channels:
             if deleted_count >= count:
                 break
                 
             try:
-                # Get recent messages from this channel
+                # Check if bot has permissions to read and delete messages
+                permissions = channel.permissions_for(guild.me)
+                if not (permissions.read_messages and permissions.manage_messages):
+                    continue
+                
+                # Get recent messages from the user
                 messages_to_delete = []
-                async for message in channel.history(limit=100):  # Check last 100 messages
-                    if message.author.id == member.id:
-                        messages_to_delete.append(message)
+                async for msg in channel.history(limit=50):  # Limit search to recent messages
+                    if msg.author == member:
+                        messages_to_delete.append(msg)
                         if len(messages_to_delete) >= (count - deleted_count):
                             break
                 
                 # Delete the messages
-                for message in messages_to_delete:
+                for msg in messages_to_delete:
                     try:
-                        await message.delete()
+                        await msg.delete()
                         deleted_count += 1
                         if deleted_count >= count:
                             break
                     except discord.NotFound:
-                        # Message already deleted
-                        pass
+                        continue  # Message already deleted
                     except discord.Forbidden:
                         logger.warning(f"No permission to delete message in {channel.name}")
                         break
                     except Exception as e:
-                        logger.error(f"Error deleting message in {channel.name}: {e}")
-                        
+                        logger.error(f"Error deleting message {msg.id}: {e}")
+                
             except discord.Forbidden:
-                # No permission to read this channel
-                continue
+                continue  # No access to this channel
             except Exception as e:
-                logger.error(f"Error searching messages in {channel.name}: {e}")
-                continue
+                logger.error(f"Error processing channel {channel.name}: {e}")
                 
     except Exception as e:
-        logger.error(f"Error deleting recent messages for {member.display_name}: {e}")
+        logger.error(f"Error deleting messages for user {member.display_name}: {e}")
+    
+    return deleted_count
+
+
+async def delete_messages_by_ids(guild: discord.Guild, message_ids: list[str]) -> int:
+    """
+    Delete specific messages by their IDs across all channels in the guild.
+    
+    Args:
+        guild (discord.Guild): The guild to search for messages
+        message_ids (list[str]): List of message IDs to delete
+        
+    Returns:
+        int: Number of messages actually deleted
+    """
+    if not message_ids:
+        return 0
+        
+    deleted_count = 0
+    message_ids_to_find = set(int(msg_id) for msg_id in message_ids)
+    
+    try:
+        # Search through all text channels for the specific message IDs
+        for channel in guild.text_channels:
+            if not message_ids_to_find:  # All messages found and deleted
+                break
+                
+            try:
+                # Check if bot has permissions to read and delete messages
+                permissions = channel.permissions_for(guild.me)
+                if not (permissions.read_messages and permissions.manage_messages):
+                    continue
+                
+                # Look for the specific message IDs in this channel
+                for message_id in list(message_ids_to_find):
+                    try:
+                        message = await channel.fetch_message(message_id)
+                        await message.delete()
+                        deleted_count += 1
+                        message_ids_to_find.remove(message_id)
+                        logger.debug(f"Deleted message {message_id} from channel {channel.name}")
+                    except discord.NotFound:
+                        # Message not in this channel or already deleted
+                        message_ids_to_find.discard(message_id)
+                        continue
+                    except discord.Forbidden:
+                        logger.warning(f"No permission to delete message {message_id} in {channel.name}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error deleting message {message_id}: {e}")
+                        message_ids_to_find.discard(message_id)
+                        continue
+                
+            except discord.Forbidden:
+                continue  # No access to this channel
+            except Exception as e:
+                logger.error(f"Error processing channel {channel.name}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error deleting messages by IDs: {e}")
     
     return deleted_count
 
@@ -326,7 +388,7 @@ async def take_action(action: ActionType, reason: str, message: discord.Message,
         reason=reason,
         message=message,
         bot_user=bot_user,
-        delete_count=1 if action == ActionType.DELETE else 0,
+        message_ids=[str(message.id)] if action == ActionType.DELETE else None,
         timeout_duration=None,
         ban_duration=None
     )
@@ -338,7 +400,7 @@ async def take_batch_action(
     message: discord.Message, 
     bot_user: discord.ClientUser | None = None,
     *,
-    delete_count: int = 0,
+    message_ids: list[str] | None = None,
     timeout_duration: int | None = None,
     ban_duration: int | None = None
 ):
@@ -351,7 +413,7 @@ async def take_batch_action(
         reason (str): Reason for the action.
         message (discord.Message): The message triggering the action.
         bot_user (discord.ClientUser | None): Bot user for embeds.
-        delete_count (int): Number of recent messages to delete (0 = don't delete)
+        message_ids (list[str] | None): List of specific message IDs to delete (None = don't delete)
         timeout_duration (int | None): Timeout duration in seconds (None = use default)
         ban_duration (int | None): Ban duration in seconds (None = permanent, 0 = permanent)
 
@@ -366,16 +428,16 @@ async def take_batch_action(
     guild = message.guild
     channel = message.channel
 
-    logger.info(f"AI batch action triggered: '{action.value}' on user {user.display_name} for reason: '{reason}' (delete_count={delete_count}, timeout_duration={timeout_duration}, ban_duration={ban_duration})")
+    logger.info(f"AI batch action triggered: '{action.value}' on user {user.display_name} for reason: '{reason}' (message_ids={message_ids}, timeout_duration={timeout_duration}, ban_duration={ban_duration})")
 
     try:
         # Handle message deletion first if specified
-        if delete_count > 0:
+        if message_ids:
             try:
-                deleted_count = await delete_recent_messages_by_count(guild, user, delete_count)
-                logger.info(f"Deleted {deleted_count} recent messages from {user.display_name}")
+                deleted_count = await delete_messages_by_ids(guild, message_ids)
+                logger.info(f"Deleted {deleted_count} specific messages from {user.display_name}")
             except Exception as e:
-                logger.error(f"Failed to delete {delete_count} messages from {user.display_name}: {e}")
+                logger.error(f"Failed to delete messages {message_ids} from {user.display_name}: {e}")
 
         if action == ActionType.DELETE:
             # DELETE action only deletes messages, handled above
