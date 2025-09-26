@@ -1,63 +1,38 @@
-# Byte-compiled / optimized / DLL files
+# Python ignores
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Virtual environment
 venv/
 env/
 ENV/
+docs/
+logs/
+gradle/
 .venv/
 .env/
-
-# Ignore per-guild settings file
 data/guild_settings.json
-
-# Jupyter Notebook checkpoints
 .ipynb_checkpoints/
-
-# VS Code settings
 .vscode/
-
-# PyCharm settings
 .idea/
-
-# macOS files
 .DS_Store
-
-# Windows files
 Thumbs.db
-
-# Python egg and build files
 *.egg
 *.egg-info/
 dist/
 build/
 *.manifest
 *.spec
-
-# Log files
 *.log
-
-# Environment variable/config files
 .env
 *.env
-
-# Model and data files
 *.pt
 *.pth
 *.h5
 *.ckpt
-
-# Cache and temp files
 *.tmp
 *.bak
 .cache/
-__pycache__/
-
 __pypackages__/
-
-# Test output
 htmlcov/
 .coverage
 .tox/
@@ -65,16 +40,65 @@ nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
-
-# pip
 pip-log.txt
 pip-delete-this-directory.txt
-
-# MyPy
 .mypy_cache/
 .dmypy.json
-
-# Others
 *.sqlite3
 *.db
 *.sqlite
+
+# Java ignores
+*.class
+*.jar
+*.war
+*.ear
+*.iml
+*.ipr
+*.iws
+target/
+out/
+bin/
+.gradle/
+build/
+.settings/
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.DS_Store
+*.project
+*.classpath
+# Eclipse
+.metadata/
+*.launch
+*.userprefs
+# NetBeans
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+# IntelliJ
+*.idea/
+*.idea/*
+*.iml
+*.iws
+out/
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+# Gradle
+.gradle/
+build/
+# Logs
+*.log
