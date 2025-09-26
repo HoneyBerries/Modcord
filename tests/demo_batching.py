@@ -16,7 +16,7 @@ async def demo_batch_processing():
     print("=" * 50)
     
     # Initialize the bot config
-    bot_config = BotConfig()
+    bot_settings = BotConfig()
     
     # Track processed batches
     processed_batches = []
@@ -54,7 +54,7 @@ async def demo_batch_processing():
         })
     
     # Set up the AI processor
-    bot_config.set_batch_processing_callback(mock_ai_processor)
+    bot_settings.set_batch_processing_callback(mock_ai_processor)
     
     # Simulate messages in different channels
     channel_1 = 111111
@@ -63,7 +63,7 @@ async def demo_batch_processing():
     print(f"\n📨 Simulating messages in channel {channel_1}")
     
     # Add some normal messages
-    await bot_config.add_message_to_batch(channel_1, {
+    await bot_settings.add_message_to_batch(channel_1, {
         "user_id": 1001,
         "username": "Alice",
         "content": "Hey everyone, how's it going?",
@@ -74,7 +74,7 @@ async def demo_batch_processing():
     })
     print("   • Alice: Hey everyone, how's it going?")
     
-    await bot_config.add_message_to_batch(channel_1, {
+    await bot_settings.add_message_to_batch(channel_1, {
         "user_id": 1002,
         "username": "Bob",
         "content": "I'm doing great! Working on a new project.",
@@ -86,7 +86,7 @@ async def demo_batch_processing():
     print("   • Bob: I'm doing great! Working on a new project.")
     
     # Add a spam message
-    await bot_config.add_message_to_batch(channel_1, {
+    await bot_settings.add_message_to_batch(channel_1, {
         "user_id": 1003,
         "username": "Spammer",
         "content": "BUY NOW!!!! AMAZING DEALS!!!! CLICK HERE NOW!!!!",
@@ -100,7 +100,7 @@ async def demo_batch_processing():
     # Add messages to a different channel
     print(f"\n📨 Simulating messages in channel {channel_2}")
     
-    await bot_config.add_message_to_batch(channel_2, {
+    await bot_settings.add_message_to_batch(channel_2, {
         "user_id": 2001,
         "username": "Charlie",
         "content": "This is spam spam spam everywhere!",
@@ -182,7 +182,7 @@ async def demo_batch_processing():
     print(f"⚡ Processing time: ~15 seconds per channel vs immediate individual processing")
     
     # Clean up
-    bot_config.cancel_all_batch_timers()
+    bot_settings.cancel_all_batch_timers()
 
 
 if __name__ == "__main__":

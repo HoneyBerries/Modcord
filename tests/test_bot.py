@@ -134,7 +134,7 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
             self.fail(f"Failed to import cogs: {e}")
 
 class TestBotConfig(unittest.TestCase):
-    def test_bot_config(self):
+    def test_bot_settings(self):
         """Test the bot configuration module."""
         from modcord.bot.bot_settings import BotConfig
 

@@ -54,7 +54,7 @@ from discord.ext import commands
 
 # Local imports last, using absolute imports
 from modcord.logger import get_logger
-from modcord.bot_config import bot_config
+from modcord.bot_settings import bot_settings
 from modcord.cogs import general
 ```
 
@@ -63,7 +63,7 @@ from modcord.cogs import general
 ```python
 # Don't use relative imports
 from .logger import get_logger
-from ..bot_config import bot_config
+from ..bot_settings import bot_settings
 
 # Don't use src in imports
 from src.modcord.logger import get_logger
@@ -102,7 +102,7 @@ Modcord/
 │       ├── __main__.py          # Enables `python -m modcord`
 │       ├── main.py              # Main bot entry point
 │       ├── logger.py            # Logging configuration
-│       ├── bot_config.py        # Bot configuration
+│       ├── bot_settings.py        # Bot configuration
 │       ├── cogs/
 │       │   ├── __init__.py
 │       │   ├── general.py       # General commands

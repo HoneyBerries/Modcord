@@ -13,7 +13,7 @@ This document describes the new channel-based message batching system implemente
 
 ## Architecture
 
-### 1. Message Collection (bot_config.py)
+### 1. Message Collection (bot_settings.py)
 
 The `BotConfig` class now includes:
 - `channel_message_batches`: Per-channel message buffers

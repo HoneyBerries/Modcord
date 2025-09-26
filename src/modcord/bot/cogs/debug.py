@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 
 import modcord.bot.bot_helper as bot_helper
-from modcord.bot.bot_settings import bot_config
+from modcord.bot.bot_settings import bot_settings
 from modcord.util.logger import get_logger
 
 logger = get_logger("debug_cog")
@@ -45,7 +45,7 @@ class DebugCog(commands.Cog):
         """Manually refresh the server rules cache for this guild."""       
         try:
             rules_text = await bot_helper.fetch_server_rules_from_channel(application_context.guild)
-            bot_config.set_server_rules(application_context.guild.id, rules_text)
+            bot_settings.set_server_rules(application_context.guild.id, rules_text)
             
             if rules_text:
                 embed = discord.Embed(
@@ -76,7 +76,7 @@ class DebugCog(commands.Cog):
     @commands.slash_command(name="show_rules", description="Display the current cached server rules.")
     async def show_rules(self, application_context: discord.ApplicationContext):
         """Display the current cached server rules."""
-        rules_text = bot_config.get_server_rules(application_context.guild.id)
+        rules_text = bot_settings.get_server_rules(application_context.guild.id)
         
         if rules_text:
             embed = discord.Embed(

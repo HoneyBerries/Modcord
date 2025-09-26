@@ -10,7 +10,7 @@ _alias_names = [
     "actions",
     "ai_model",
     "bot_helper",
-    "bot_config",
+    "bot_settings",
     "config_loader",
     "logger",
     "main",

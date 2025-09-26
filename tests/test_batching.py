@@ -19,7 +19,7 @@ class TestMessageBatching(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.bot_config = BotConfig()
+        self.bot_settings = BotConfig()
         self.channel_id = 12345
         self.sample_messages = [
             {
@@ -52,14 +52,14 @@ class TestMessageBatching(unittest.IsolatedAsyncioTestCase):
             received_messages.extend(messages)
             callback_called.set()
         
-        self.bot_config.set_batch_processing_callback(mock_callback)
+        self.bot_settings.set_batch_processing_callback(mock_callback)
         
         # Add messages to batch
-        await self.bot_config.add_message_to_batch(self.channel_id, self.sample_messages[0])
-        await self.bot_config.add_message_to_batch(self.channel_id, self.sample_messages[1])
+        await self.bot_settings.add_message_to_batch(self.channel_id, self.sample_messages[0])
+        await self.bot_settings.add_message_to_batch(self.channel_id, self.sample_messages[1])
         
         # Check that batch contains both messages
-        self.assertEqual(len(self.bot_config.channel_message_batches[self.channel_id]), 2)
+        self.assertEqual(len(self.bot_settings.channel_message_batches[self.channel_id]), 2)
         
         # Wait for callback to be triggered (with timeout)
         try:
@@ -76,26 +76,26 @@ class TestMessageBatching(unittest.IsolatedAsyncioTestCase):
         channel2 = 22222
         
         # Add messages to different channels
-        await self.bot_config.add_message_to_batch(channel1, self.sample_messages[0])
-        await self.bot_config.add_message_to_batch(channel2, self.sample_messages[1])
+        await self.bot_settings.add_message_to_batch(channel1, self.sample_messages[0])
+        await self.bot_settings.add_message_to_batch(channel2, self.sample_messages[1])
         
         # Check that channels have separate batches
-        self.assertEqual(len(self.bot_config.channel_message_batches[channel1]), 1)
-        self.assertEqual(len(self.bot_config.channel_message_batches[channel2]), 1)
-        self.assertEqual(self.bot_config.channel_message_batches[channel1][0]["user_id"], 1001)
-        self.assertEqual(self.bot_config.channel_message_batches[channel2][0]["user_id"], 1002)
+        self.assertEqual(len(self.bot_settings.channel_message_batches[channel1]), 1)
+        self.assertEqual(len(self.bot_settings.channel_message_batches[channel2]), 1)
+        self.assertEqual(self.bot_settings.channel_message_batches[channel1][0]["user_id"], 1001)
+        self.assertEqual(self.bot_settings.channel_message_batches[channel2][0]["user_id"], 1002)
 
     def test_batch_timer_management(self):
         """Test that batch timers are created and managed correctly."""
         # Initially no timers
-        self.assertEqual(len(self.bot_config.channel_batch_timers), 0)
+        self.assertEqual(len(self.bot_settings.channel_batch_timers), 0)
         
         # Add a message - should create timer
-        asyncio.run(self.bot_config.add_message_to_batch(self.channel_id, self.sample_messages[0]))
+        asyncio.run(self.bot_settings.add_message_to_batch(self.channel_id, self.sample_messages[0]))
         
         # Should have one timer
-        self.assertEqual(len(self.bot_config.channel_batch_timers), 1)
-        self.assertIn(self.channel_id, self.bot_config.channel_batch_timers)
+        self.assertEqual(len(self.bot_settings.channel_batch_timers), 1)
+        self.assertIn(self.channel_id, self.bot_settings.channel_batch_timers)
 
 
 class TestBatchJSONParsing(unittest.TestCase):

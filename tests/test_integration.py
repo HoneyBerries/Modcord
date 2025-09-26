@@ -20,7 +20,7 @@ class TestBatchingIntegration(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.bot_config = BotConfig()
+        self.bot_settings = BotConfig()
         
         # Mock Discord objects
         self.mock_guild = MagicMock()
@@ -71,7 +71,7 @@ class TestBatchingIntegration(unittest.IsolatedAsyncioTestCase):
                 actions_applied.append(action)
         
         # Set up the callback
-        self.bot_config.set_batch_processing_callback(mock_batch_processing)
+        self.bot_settings.set_batch_processing_callback(mock_batch_processing)
         
         # Create test messages
         test_messages = [
@@ -97,10 +97,10 @@ class TestBatchingIntegration(unittest.IsolatedAsyncioTestCase):
         
         # Add messages to batch
         for msg in test_messages:
-            await self.bot_config.add_message_to_batch(self.mock_channel.id, msg)
+            await self.bot_settings.add_message_to_batch(self.mock_channel.id, msg)
         
         # Verify batch contains messages
-        self.assertEqual(len(self.bot_config.channel_message_batches[self.mock_channel.id]), 2)
+        self.assertEqual(len(self.bot_settings.channel_message_batches[self.mock_channel.id]), 2)
         
         # Wait for batch processing (this test uses a much shorter timeout)
         callback_called = asyncio.Event()
@@ -109,7 +109,7 @@ class TestBatchingIntegration(unittest.IsolatedAsyncioTestCase):
             await mock_batch_processing(channel_id, messages)
             callback_called.set()
         
-        self.bot_config.set_batch_processing_callback(callback_wrapper)
+        self.bot_settings.set_batch_processing_callback(callback_wrapper)
         
         # Trigger immediate processing by waiting just slightly less than batch time
         try:
