@@ -40,6 +40,7 @@ depyf==0.19.0
 diskcache==5.6.3
 einops
 fastapi[standard]>=0.115.0
+flask
 gguf>=0.13.0
 lark==1.2.2
 llguidance>=0.7.11,<0.8.0
