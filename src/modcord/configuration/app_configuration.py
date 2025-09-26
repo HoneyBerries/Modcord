@@ -12,7 +12,7 @@ Primary exports
 - app_config: a module-global AppConfig instance that callers should reuse.
 
 Usage example:
-    from modcord.config.app_configuration import app_config
+    from modcord.configuration.app_configuration import app_config
 
     # Read a value with a default
     value = app_config.get('some_key', 'default')
@@ -39,7 +39,7 @@ from modcord.util.logger import get_logger
 logger = get_logger("config_loader")
 
 # Default path to the YAML configuration file (root-level config/config.yml)
-CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "config.yml"
+CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "config.yml"
 
 
 class AppConfig:
@@ -65,9 +65,9 @@ class AppConfig:
         self._data: Dict[str, Any] = {}
         self.reload()
 
-    # ------------------------------------------------------------------
+    # --------------------------
     # Private helpers
-    # ------------------------------------------------------------------
+    # --------------------------
     def _load_from_disk(self) -> Dict[str, Any]:
         try:
             with self._config_path.open("r", encoding="utf-8") as file_handle:
@@ -84,9 +84,9 @@ class AppConfig:
             return {}
         return loaded_data
 
-    # ------------------------------------------------------------------
+    # --------------------------
     # Public API
-    # ------------------------------------------------------------------
+    # --------------------------
     def reload(self) -> Dict[str, Any]:
         """Reload configuration from disk and return the loaded mapping.
 
@@ -117,9 +117,9 @@ class AppConfig:
         with self._lock:
             return self._data.get(key, default)
 
-    # ------------------------------------------------------------------
+    # --------------------------
     # High-level shortcuts
-    # ------------------------------------------------------------------
+    # --------------------------
     @property
     def server_rules(self) -> str:
         """Return the configured server rules as a string (or empty string).
@@ -253,4 +253,3 @@ class AISettings(Mapping):
 app_config = AppConfig()
 
 __all__ = ["AppConfig", "AISettings", "CONFIG_PATH", "app_config"]
-

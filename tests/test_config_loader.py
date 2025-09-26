@@ -6,7 +6,7 @@ from pathlib import Path
 
 class TestAppConfig(unittest.TestCase):
     def test_default_loader_reads_repo_config(self):
-        from modcord.config.app_configuration import app_config
+        from modcord.configuration.app_configuration import app_config
 
         data = app_config.data
         self.assertIsInstance(data, dict)
@@ -14,7 +14,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertTrue(app_config.system_prompt_template)
 
     def test_missing_config_path_returns_empty_data(self):
-        from modcord.config.app_configuration import AppConfig
+        from modcord.configuration.app_configuration import AppConfig
 
         cfg = AppConfig(config_path=Path("does_not_exist_12345.yml"))
         self.assertEqual(cfg.data, {})
@@ -22,7 +22,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(cfg.server_rules, "")
 
     def test_format_system_prompt_and_shortcuts(self):
-        from modcord.config.app_configuration import AppConfig
+        from modcord.configuration.app_configuration import AppConfig
 
         yaml_content = textwrap.dedent(
             """

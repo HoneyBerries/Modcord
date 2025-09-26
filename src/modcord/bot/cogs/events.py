@@ -42,7 +42,7 @@ class EventsCog(commands.Cog):
 			return True
 		return bot_settings.is_ai_enabled(guild.id)
 
-	async def _refresh_rules_cache_if_rules_channel(self, channel: discord.abc.Messageable) -> None:
+	async def refresh_rules_cache_if_rules_channel(self, channel: discord.abc.Messageable) -> None:
 		"""If the given channel looks like a rules channel, refresh the rules cache.
 
 		This centralizes the rules-channel detection and cache-refresh call so
@@ -184,27 +184,19 @@ class EventsCog(commands.Cog):
 			)
 			logger.info(f"Bot connected as {self.bot.user} (ID: {self.bot.user.id})")
 		else:
-			logger.warning("Bot connected, but user information not yet available.")
+			logger.warning("Bot partially connected, but user information not yet available.")
 		
 		# Start the rules cache refresh task
 		logger.info("Starting server rules cache refresh task...")
-		asyncio.create_task(self._refresh_rules_cache_task())
-		
-		# Start AI batch processing worker
-		logger.info("Starting AI batch processing worker...")
-		try:
-			await moderation_processor.start_batch_worker()
-			logger.info("[AI] Batch processing worker started.")
-		except Exception as e:
-			logger.error(f"Failed to start AI batch processing worker: {e}")
-			
+		asyncio.create_task(self.refresh_rules_cache_task())
+						
 		# Set up batch processing callback for channel-based batching
 		logger.info("Setting up batch processing callback...")
 		bot_settings.set_batch_processing_callback(self._process_message_batch)
 		
 		logger.info("-" * 60)
 
-	async def _refresh_rules_cache_task(self):
+	async def refresh_rules_cache_task(self):
 		"""
 		Background task to refresh server rules cache.
 		"""
@@ -230,7 +222,7 @@ class EventsCog(commands.Cog):
 			return
 
 		# Possibly refresh rules cache if this was posted in a rules channel
-		await self._refresh_rules_cache_if_rules_channel(message.channel)
+		await self.refresh_rules_cache_if_rules_channel(message.channel)
 
 		# Store message in the channel's history for contextual analysis
 		message_data = {
@@ -281,7 +273,7 @@ class EventsCog(commands.Cog):
 			return
 
 		# Possibly refresh rules cache if this edit occurred in a rules channel
-		await self._refresh_rules_cache_if_rules_channel(after.channel)
+		await self.refresh_rules_cache_if_rules_channel(after.channel)
 
 	@commands.Cog.listener(name='on_application_command_error')
 	async def on_application_command_error(self, application_context: discord.ApplicationContext, discord_error: discord.DiscordException):

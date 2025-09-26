@@ -13,9 +13,9 @@ import torch
 from vllm import LLM, SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
 
-import modcord.configuration as cfg
+import modcord.configuration.app_configuration as cfg
 from modcord.util.actions import ActionType
-from modcord.logger import get_logger
+from modcord.util.logger import get_logger
 
 logger = get_logger("ai_model")
 
@@ -66,6 +66,7 @@ class ModerationProcessor:
         self._base_system_prompt: Optional[str] = None
         self.state = ModelState()
         self._init_lock = asyncio.Lock()
+        self._warmup_completed: bool = False
 
     # ======== Model Initialization ========
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
@@ -243,25 +244,25 @@ class ModerationProcessor:
             return f"null: inference error"
 
     async def start_batch_worker(self) -> None:
+
+        async def warmup(self) -> None:
+            if self._warmup_completed:
+                return
+
+            logger.info("Warming up model...")
+            model, params, _ = await self.get_model()
+            if model is None or params is None:
+                logger.info("Skipping warmup; model unavailable (%s)", self.state.init_error or "no error")
+                return
+        
         if not self.state.init_started:
             await self.init_model()
         try:
-            asyncio.create_task(self._warmup_model())
+            asyncio.create_task(warmup(self))
         except RuntimeError:
             logger.debug("start_batch_worker called outside event loop; skipping warmup task.")
 
-    async def _warmup_model(self) -> None:
-        logger.info("Warming up model...")
-        model, params, _ = await self.get_model()
-        if model is None or params is None:
-            logger.info("Skipping warmup; model unavailable (%s)", self.state.init_error or "no error")
-            return
-        try:
-            small_prompt = "[SYSTEM]\nWarmup check. Return a short JSON: {\"channel_id\":\"warmup\",\"actions\":[]}"
-            out = await asyncio.to_thread(self._sync_generate, [small_prompt])
-            logger.info(f"Warmup complete (len={len(out[0])})")
-        except Exception as e:
-            logger.error(f"Warmup failed: {e}", exc_info=True)
+            
 
     # ======== Parsing Utilities ========
     async def parse_action(self, assistant_response: str) -> tuple[ActionType, str]:

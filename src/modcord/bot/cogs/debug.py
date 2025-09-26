@@ -40,7 +40,7 @@ class DebugCog(commands.Cog):
 
 
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
-    @commands.has_permissions(manage_serrver=True)
+    @commands.has_permissions(manage_guild=True)
     async def refresh_rules(self, application_context: discord.ApplicationContext):
         """Manually refresh the server rules cache for this guild."""       
         try:
