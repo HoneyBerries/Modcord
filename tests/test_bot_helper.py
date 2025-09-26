@@ -1,11 +1,15 @@
+import asyncio
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
 import discord
-from modcord.actions import ActionType
-from modcord import bot_helper
+from modcord.util.actions import ActionType
+from modcord.bot import bot_helper
 
 
 class TestBotHelper(unittest.IsolatedAsyncioTestCase):
+    async def asyncTearDown(self):
+        await bot_helper.reset_unban_scheduler_for_tests()
+
     def test_parse_duration_to_seconds(self):
         self.assertEqual(bot_helper.parse_duration_to_seconds("60 secs"), 60)
         self.assertEqual(bot_helper.parse_duration_to_seconds("5 mins"), 300)
@@ -118,6 +122,65 @@ class TestBotHelper(unittest.IsolatedAsyncioTestCase):
         await bot_helper.take_action(ActionType.DELETE, "Test delete reason", mock_message, mock_bot_user)
 
         mock_message.delete.assert_called_once()
+
+    @patch('src.modcord.bot_helper.create_punishment_embed', new_callable=AsyncMock)
+    async def test_schedule_unban_immediate(self, mock_create_embed):
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123
+        guild.unban = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        bot = MagicMock()
+        bot.fetch_user = AsyncMock(return_value=MagicMock(spec=discord.User))
+        bot.user = MagicMock(spec=discord.ClientUser)
+        mock_create_embed.return_value = MagicMock()
+
+        await bot_helper.schedule_unban(guild, 555, channel, 0, bot)
+
+        self.assertEqual(guild.unban.await_count, 1)
+        args, _ = guild.unban.await_args
+        self.assertEqual(args[0].id, 555)
+        bot.fetch_user.assert_awaited_once_with(555)
+        channel.send.assert_awaited_once_with(embed=mock_create_embed.return_value)
+
+    @patch('src.modcord.bot_helper.create_punishment_embed', new_callable=AsyncMock)
+    async def test_schedule_unban_delayed(self, mock_create_embed):
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 321
+        guild.unban = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        bot = MagicMock()
+        bot.fetch_user = AsyncMock(return_value=MagicMock(spec=discord.User))
+        bot.user = MagicMock(spec=discord.ClientUser)
+        mock_create_embed.return_value = MagicMock()
+
+        await bot_helper.schedule_unban(guild, 777, channel, 0.05, bot)
+        await asyncio.sleep(0.1)
+
+        self.assertEqual(guild.unban.await_count, 1)
+        self.assertGreaterEqual(bot.fetch_user.await_count, 1)
+        self.assertGreaterEqual(channel.send.await_count, 1)
+
+    @patch('src.modcord.bot_helper.create_punishment_embed', new_callable=AsyncMock)
+    async def test_schedule_unban_replaces_existing(self, mock_create_embed):
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 999
+        guild.unban = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        bot = MagicMock()
+        bot.fetch_user = AsyncMock(return_value=MagicMock(spec=discord.User))
+        bot.user = MagicMock(spec=discord.ClientUser)
+        mock_create_embed.return_value = MagicMock()
+
+        await bot_helper.schedule_unban(guild, 888, channel, 0.2, bot)
+        await bot_helper.schedule_unban(guild, 888, channel, 0.05, bot)
+        await asyncio.sleep(0.12)
+
+        self.assertEqual(guild.unban.await_count, 1)
+        self.assertEqual(bot.fetch_user.await_count, 1)
+        self.assertEqual(channel.send.await_count, 1)
 
 if __name__ == "__main__":
     unittest.main()

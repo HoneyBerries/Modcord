@@ -1,13 +1,17 @@
-import enum
+"""
+Module defining an enumeration for various moderation actions.
+"""
 
-class ActionType(enum.Enum):
+from enum import Enum
+
+class ActionType(Enum):
     """
-    Enum representing different types of actions that can be performed by the bot.
+    Enum representing different types of moderation actions.
     """
+
     BAN = "ban"
     UNBAN = "unban"
     KICK = "kick"
-    MUTE = "mute"
     WARN = "warn"
     DELETE = "delete"
     TIMEOUT = "timeout"

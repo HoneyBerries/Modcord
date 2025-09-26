@@ -4,7 +4,7 @@ import time
 
 class TestLogger(unittest.TestCase):
     def test_get_logger_and_file_write(self):
-        from modcord.logger import get_logger, LOGS_DIR
+        from modcord.util.logger import get_logger, LOGS_DIR
         # Ensure logs directory exists
         self.assertTrue(Path(LOGS_DIR).exists())
 

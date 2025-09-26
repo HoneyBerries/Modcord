@@ -7,9 +7,9 @@ import datetime
 import discord
 from discord.ext import commands
 
-import modcord.bot_helper as bot_helper
-from modcord.bot_config import bot_config
-from modcord.logger import get_logger
+import modcord.bot.bot_helper as bot_helper
+from modcord.bot.bot_settings import bot_config
+from modcord.util.logger import get_logger
 
 logger = get_logger("debug_cog")
 
@@ -23,8 +23,24 @@ class DebugCog(commands.Cog):
         self.discord_bot_instance = discord_bot_instance
         logger.info("Debug cog loaded")
 
+    @commands.slash_command(
+        name="test",
+        description="Checks if the bot is online and its round trip time."
+    )
+    async def test(self, application_context: discord.ApplicationContext):
+        """
+        A simple health-check command to verify bot status and round trip time.
+        """
+        latency_milliseconds = self.discord_bot_instance.latency * 1000
+        await application_context.respond(
+            f":white_check_mark: I am online and working!\n"
+            f"**Round Trip Time**: {latency_milliseconds:.2f} ms.",
+            ephemeral=True
+        )
+
+
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
-    @commands.has_permissions(administrator=True)
+    @commands.has_permissions(manage_serrver=True)
     async def refresh_rules(self, application_context: discord.ApplicationContext):
         """Manually refresh the server rules cache for this guild."""       
         try:

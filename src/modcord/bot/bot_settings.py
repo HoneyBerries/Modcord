@@ -12,12 +12,12 @@ from collections import deque
 from pathlib import Path
 import json
 
-from modcord.logger import get_logger
+from modcord.util.logger import get_logger
 
-logger = get_logger("bot_config")
+logger = get_logger("bot_settings")
 
 
-class BotConfig:
+class BotSettings:
     """
     Centralized configuration and state management for the bot.
     """
@@ -206,5 +206,5 @@ class BotConfig:
         self._write_settings(settings_data)
 
 
-# Global bot configuration instance
-bot_config = BotConfig()
+# Global bot settings instance
+bot_settings = BotSettings()

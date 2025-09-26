@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 # Add src to path for imports
 sys.path.insert(0, 'src')
 
-from modcord.bot_config import BotConfig
+from modcord.bot.bot_settings import BotConfig
 
 
 class TestMessageBatching(unittest.IsolatedAsyncioTestCase):

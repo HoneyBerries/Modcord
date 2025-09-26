@@ -7,7 +7,7 @@ import warnings
 
 # Create a logs directory at the project root
 LOGS_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
-LOGS_DIR.mkdir(exist_ok=True)
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Define the log format and date format for log messages
@@ -35,7 +35,13 @@ class ColorFormatter(logging.Formatter):
 
 plain_formatter = logging.Formatter(log_format, datefmt=date_format)
 
-color_formatter = ColorFormatter(log_format, datefmt=date_format)
+def _should_use_color() -> bool:
+    try:
+        return sys.stderr.isatty()
+    except Exception:
+        return False
+
+color_formatter = ColorFormatter(log_format, datefmt=date_format) if _should_use_color() else plain_formatter
 
 
 # Log filename with timestamp
@@ -43,7 +49,14 @@ LOG_FILENAME = datetime.now().strftime("%Y%m%dT%H%M%S.log")
 LOG_FILEPATH = LOGS_DIR / LOG_FILENAME
 
 
-def setup_logger(logger_name: str, logging_level: int = logging.DEBUG) -> logging.Logger:
+def _resolve_log_level(default_level: int = logging.INFO) -> int:
+    level_name = os.environ.get("MODCORD_LOG_LEVEL", "").upper().strip()
+    if level_name:
+        return getattr(logging, level_name, default_level)
+    return default_level
+
+
+def setup_logger(logger_name: str, logging_level: int | None = None) -> logging.Logger:
     """
     Set up a logger with file and console handlers.
 
@@ -64,20 +77,26 @@ def setup_logger(logger_name: str, logging_level: int = logging.DEBUG) -> loggin
     if logger.handlers:
         return logger
 
-    logger.setLevel(logging_level)
+    base_level = logging_level if logging_level is not None else _resolve_log_level()
+    logger.setLevel(base_level)
     logger.propagate = False
 
 
     # Console handler
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(base_level)
     console_handler.setFormatter(color_formatter)
     logger.addHandler(console_handler)
 
     # Rotating file handler (DEBUG and above, plain)
-    # Rotating file handler to avoid unbounded file growth. Keep it readable
-    # by tests by writing to a consistent filepath.
-    file_handler = logging.FileHandler(LOG_FILEPATH, encoding='utf-8')
+    from logging.handlers import RotatingFileHandler
+
+    file_handler = RotatingFileHandler(
+        LOG_FILEPATH,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
 
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(plain_formatter)

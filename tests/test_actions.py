@@ -1,5 +1,5 @@
 import unittest
-from modcord.actions import ActionType
+from modcord.util.actions import ActionType
 
 class TestActions(unittest.TestCase):
     def test_string_to_action_type(self):

@@ -1,12 +1,16 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
-from modcord.actions import ActionType
+from modcord.util.actions import ActionType
 import discord
 
-@patch('modcord.ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
+@patch(
+    'modcord.ai_model.moderation_processor.get_model',
+    new_callable=AsyncMock,
+    return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}")
+)
 class TestBotEvents(unittest.IsolatedAsyncioTestCase):
 
-    @patch('modcord.ai_model.get_appropriate_action', new_callable=AsyncMock)
+    @patch('modcord.ai_model.moderation_processor.get_appropriate_action', new_callable=AsyncMock)
     @patch('modcord.bot_helper.take_action', new_callable=AsyncMock)
     async def test_on_message_moderation_action(self, mock_take_action, mock_get_appropriate_action, mock_get_model):
         """
@@ -37,7 +41,7 @@ class TestBotEvents(unittest.IsolatedAsyncioTestCase):
         mock_get_appropriate_action.assert_called_once()
         mock_take_action.assert_called_once_with(ActionType.BAN, "User was spamming", message, mock_bot.user)
 
-    @patch('modcord.ai_model.get_appropriate_action', new_callable=AsyncMock)
+    @patch('modcord.ai_model.moderation_processor.get_appropriate_action', new_callable=AsyncMock)
     @patch('modcord.bot_helper.take_action', new_callable=AsyncMock)
     async def test_on_message_no_action(self, mock_take_action, mock_get_appropriate_action, mock_get_model):
         """
@@ -68,7 +72,11 @@ class TestBotEvents(unittest.IsolatedAsyncioTestCase):
         mock_get_appropriate_action.assert_called_once()
         mock_take_action.assert_not_called()
 
-@patch('modcord.ai_model.get_model', return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}"))
+@patch(
+    'modcord.ai_model.moderation_processor.get_model',
+    new_callable=AsyncMock,
+    return_value=(MagicMock(), MagicMock(), "System Prompt Template: {SERVER_RULES}")
+)
 class TestCogs(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         """Set up test fixtures."""
@@ -128,7 +136,7 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
 class TestBotConfig(unittest.TestCase):
     def test_bot_config(self):
         """Test the bot configuration module."""
-        from modcord.bot_config import BotConfig
+        from modcord.bot.bot_settings import BotConfig
 
         config = BotConfig()
 

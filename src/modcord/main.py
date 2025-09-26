@@ -12,15 +12,15 @@ Refactored version using cogs for better organization and maintainability.
 import os
 import sys
 from pathlib import Path
+from typing import Iterable
 
+import asyncio
 import discord
 from dotenv import load_dotenv
-import asyncio
 
-# Import AI model initializer to ensure model is available before bot starts
-from modcord.ai_model import init_ai_model, MODEL_STATE
+from modcord.ai.ai_model import MODEL_STATE, moderation_processor
+from modcord.util.logger import get_logger, handle_exception
 
-from modcord.logger import get_logger, handle_exception
 
 # Set the base directory to the project root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -28,41 +28,48 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # Get logger for this module
 logger = get_logger("main")
 
-# ==========================================
-# Global Variables and Setup
-# ==========================================
-discord_bot_instance = None  # Global bot instance
+
+def _load_environment() -> str | None:
+    """Load environment variables and return the Discord bot token."""
+    load_dotenv(dotenv_path=BASE_DIR / ".env")
+    token = os.getenv("DISCORD_BOT_TOKEN")
+    if not token:
+        logger.critical("'DISCORD_BOT_TOKEN' environment variable not set. Bot cannot start.")
+    return token
 
 
-# Test logging system
-def test_all_logging_levels():
-    """Test logging at all levels."""
-    logger.debug("Debug logging initialized.")
-    logger.info("Info logging initialized.")
-    logger.warning("Warning logging initialized.")
-    logger.error("Error logging initialized.")
-    logger.critical("Critical logging initialized.")
+def _build_intents() -> discord.Intents:
+    intents = discord.Intents.default()
+    intents.message_content = True
+    intents.guilds = True
+    intents.messages = True
+    intents.reactions = True
+    intents.members = True
+    return intents
 
 
-# Load environment variables from the .env file in the project root
-load_dotenv(dotenv_path=BASE_DIR / ".env")
-DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+def _discover_cog_modules() -> Iterable[str]:
+    return (
+        "modcord.cogs.debug",
+        "modcord.cogs.moderation",
+        "modcord.cogs.events",
+        "modcord.cogs.general",
+        "modcord.cogs.settings",
+    )
 
 
-# ==========================================
-# Cog Loading
-# ==========================================
-def load_cogs(discord_bot_instance):
+def load_cogs(discord_bot_instance: discord.Bot) -> None:
     """Load cogs by importing modules explicitly from the cogs package."""
     import inspect
 
-    try:
-        # Explicit imports so linters/static analyzers can see them easily:
-        from modcord.cogs import debug, moderation, events, general, settings
-        modules = [debug, moderation, events, general, settings]
-    except Exception as e:
-        logger.error(f"Failed to import cog modules: {e}", exc_info=True)
-        return
+    modules = []
+
+    for module_path in _discover_cog_modules():
+        try:
+            module = __import__(module_path, fromlist=["*"])
+            modules.append(module)
+        except Exception as exc:  # noqa: BLE001 - ensure all failures logged
+            logger.error("Failed to import cog module %s: %s", module_path, exc, exc_info=True)
 
     for module in modules:
         mod_name = module.__name__
@@ -84,74 +91,61 @@ def load_cogs(discord_bot_instance):
             logger.error(f"Failed to load cog {mod_name}: {e}", exc_info=True)
 
 
-# ==========================================
-# Main Entrypoint
-# ==========================================
-def main():
-    """
-    Main function to run the bot. Handles startup and fatal errors.
-    """
-    test_all_logging_levels()
-    logger.info("Starting Discord Moderation Bot...")
-
-    # Initialize AI model before bot startup
+async def _initialize_ai_model() -> None:
     try:
-        logger.info("Initializing AI model before bot startup...")
-
-        # Use asyncio to run the async initialization
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        # Try to initialize the AI model; this will set MODEL_STATE
-        loop.run_until_complete(init_ai_model())
-
-
+        logger.info("Initializing AI model before bot startup…")
+        await moderation_processor.init_model()
         if MODEL_STATE.init_error and not MODEL_STATE.available:
-            logger.critical(f"AI model failed to initialize: {MODEL_STATE.init_error}")
-            
-    except Exception as e:
-        logger.critical(f"Unexpected error during AI initialization: {e}", exc_info=True)
-        
+            logger.critical("AI model failed to initialize: %s", MODEL_STATE.init_error)
+    except Exception as exc:  # noqa: BLE001 - surface initialization failures
+        logger.critical("Unexpected error during AI initialization: %s", exc, exc_info=True)
+        raise
 
-    # Bot Initialization
 
-    # ==========================================
-    # Intents Setup
-    # ==========================================
-    discord_intents = discord.Intents.default()  # start with default intents
-    discord_intents.message_content = True
-    discord_intents.guilds = True                # needed for guild events
-    discord_intents.messages = True              # receive message events
-    discord_intents.reactions = True             # optional if you handle reactions
-    # Required for guild member objects, guild_permissions checks, and moderation actions
-    discord_intents.members = True
+async def _start_bot(token: str) -> None:
+    bot = discord.Bot(intents=_build_intents())
+    load_cogs(bot)
 
-    global discord_bot_instance
-    discord_bot_instance = discord.Bot(intents=discord_intents)
+    logger.info("Attempting to connect to Discord…")
+    try:
+        await bot.start(token)
+    finally:
+        logger.info("Discord bot shutdown sequence complete.")
 
-    if not DISCORD_BOT_TOKEN:
-        logger.critical(
-            "'DISCORD_BOT_TOKEN' environment variable not set. "
-            "Bot cannot start."
-        )
-        sys.exit(1)
+
+async def _async_main() -> None:
+    token = _load_environment()
+    if not token:
+        raise SystemExit(1)
 
     try:
-        logger.info("Loading cogs...")
-        load_cogs(discord_bot_instance)
+        await _initialize_ai_model()
+    except Exception:
+        if MODEL_STATE.init_error:
+            logger.critical("AI initialization failed irrecoverably: %s", MODEL_STATE.init_error)
+        raise
 
-        logger.info("Attempting to connect to Discord...")
-        discord_bot_instance.run(DISCORD_BOT_TOKEN)
-        # This line is only reached on a failed login or disconnect
-        logger.critical(
-            "Login failed or bot disconnected. "
-            "Please check the token or connection."
+    if not MODEL_STATE.available:
+        logger.warning(
+            "AI model is unavailable (%s). Continuing without automated moderation.",
+            MODEL_STATE.init_error or "no details",
         )
-    except Exception as e:
-        logger.critical(
-            f"An unexpected error occurred while running the bot: {e}",
-            exc_info=True
-        )
+
+    await _start_bot(token)
+
+
+def main() -> None:
+    """Synchronous entrypoint that delegates to the async runner."""
+    logger.info("Starting Discord Moderation Bot…")
+    try:
+        asyncio.run(_async_main())
+    except KeyboardInterrupt:
+        logger.info("Shutdown requested by user.")
+    except SystemExit as exit_exc:
+        raise exit_exc
+    except Exception as exc:
+        logger.critical("An unexpected error occurred while running the bot: %s", exc, exc_info=True)
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":

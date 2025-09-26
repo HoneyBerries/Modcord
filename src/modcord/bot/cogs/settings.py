@@ -5,8 +5,8 @@ Settings commands cog for toggling AI moderation per guild.
 import discord
 from discord.ext import commands
 
-from modcord.bot_config import bot_config
-from modcord.logger import get_logger
+from modcord.bot.bot_settings import bot_settings
+from modcord.util.logger import get_logger
 
 logger = get_logger("settings_cog")
 
@@ -20,7 +20,7 @@ class SettingsCog(commands.Cog):
 
     @commands.slash_command(name="ai_status", description="Show whether AI moderation is enabled in this server.")
     async def ai_status(self, application_context: discord.ApplicationContext):
-        enabled = bot_config.is_ai_enabled(application_context.guild_id) if application_context.guild_id else True
+        enabled = bot_settings.is_ai_enabled(application_context.guild_id) if application_context.guild_id else True
         status = "enabled" if enabled else "disabled"
         await application_context.respond(f"AI moderation is currently {status}.", ephemeral=True)
 
@@ -32,7 +32,7 @@ class SettingsCog(commands.Cog):
         if application_context.guild_id is None:
             await application_context.respond("This command can only be used in a server.", ephemeral=True)
             return
-        bot_config.set_ai_enabled(application_context.guild_id, True)
+        bot_settings.set_ai_enabled(application_context.guild_id, True)
         await application_context.respond("Enabled AI moderation for this server.", ephemeral=True)
 
     @commands.slash_command(name="ai_disable", description="Disable AI moderation in this server.")
@@ -43,7 +43,7 @@ class SettingsCog(commands.Cog):
         if application_context.guild_id is None:
             await application_context.respond("This command can only be used in a server.", ephemeral=True)
             return
-        bot_config.set_ai_enabled(application_context.guild_id, False)
+        bot_settings.set_ai_enabled(application_context.guild_id, False)
         await application_context.respond("Disabled AI moderation for this server.", ephemeral=True)
 
     @commands.slash_command(name="settings_dump", description="Show current per-guild settings as JSON.")
@@ -53,8 +53,8 @@ class SettingsCog(commands.Cog):
             await application_context.respond("This command can only be used in a server.", ephemeral=True)
             return
         guild_id = application_context.guild_id
-        ai_moderation_enabled = bot_config.is_ai_enabled(guild_id)
-        server_rules = bot_config.get_server_rules(guild_id)
+        ai_moderation_enabled = bot_settings.is_ai_enabled(guild_id)
+        server_rules = bot_settings.get_server_rules(guild_id)
         import json
         guild_settings = {
             "guild_id": guild_id,
