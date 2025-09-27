@@ -7,19 +7,18 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 from vllm import LLM, SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
 
 import modcord.configuration.app_configuration as cfg
-from modcord.util.actions import ActionType
+from modcord.util.action import ActionData, ActionType, ModerationBatch, ModerationMessage
 from modcord.util.logger import get_logger
+import modcord.util.moderation_parsing as moderation_parsing
 
 logger = get_logger("ai_model")
-
-VALID_ACTION_VALUES: set[str] = {action.value for action in ActionType}
 
 # ========= State Containers =========
 
@@ -31,31 +30,6 @@ class ModelState:
         self.init_error: Optional[str] = None
 
 
-# ========== Moderation JSON Schema ==========
-moderation_schema = {
-    "type": "object",
-    "properties": {
-        "channel_id": {"type": "string"},
-        "actions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "user_id": {"type": "string"},
-                    "action": {"type": "string", "enum": ["delete", "warn", "timeout", "kick", "ban", "null"]},
-                    "reason": {"type": "string"},
-                    "message_ids": {"type": "array", "items": {"type": "string"}},
-                    "timeout_duration": {"type": ["integer", "null"]},
-                    "ban_duration": {"type": ["integer", "null"]}
-                },
-                "required": ["user_id", "action", "reason", "message_ids", "timeout_duration", "ban_duration"],
-                "additionalProperties": False
-            }
-        }
-    },
-    "required": ["channel_id", "actions"],
-    "additionalProperties": False
-}
 
 class ModerationProcessor:
     """Encapsulates the end-to-end AI moderation workflow."""
@@ -168,7 +142,7 @@ class ModerationProcessor:
                     repetition_penalty=repetition_penalty,
                     presence_penalty=presence_penalty,
                     frequency_penalty=frequency_penalty,
-                    guided_decoding=GuidedDecodingParams(json=moderation_schema),
+                    guided_decoding=GuidedDecodingParams(json=moderation_parsing.moderation_schema),
                 )
 
                 self.state.available = True
@@ -262,157 +236,80 @@ class ModerationProcessor:
         except RuntimeError:
             logger.debug("start_batch_worker called outside event loop; skipping warmup task.")
 
-            
-
-    # ======== Parsing Utilities ========
-    async def parse_action(self, assistant_response: str) -> tuple[ActionType, str]:
-        cls = ActionType
-        try:
-            s = assistant_response.strip()
-            if s.startswith('```'):
-                s = '\n'.join([ln for ln in s.splitlines() if not ln.strip().startswith('```')])
-            first_brace = min([i for i in [s.find('{'), s.find('[')] if i != -1], default=-1)
-            last_brace = max(s.rfind('}'), s.rfind(']'))
-            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-                s = s[first_brace:last_brace + 1]
-            parsed = json.loads(s)
-            if isinstance(parsed, dict):
-                action_value = str(parsed.get('action', 'null')).lower()
-                reason = str(parsed.get('reason', 'Automated moderation action'))
-                if action_value in VALID_ACTION_VALUES:
-                    return cls(action_value), reason
-                return cls('null'), "unknown action type"
-        except Exception as e:
-            logger.warning(f"Failed to parse JSON response: {e}")
-            return cls('null'), "invalid JSON response"
-        return cls('null'), "no action found"
-
-    async def parse_batch_actions(self, assistant_response: str, channel_id: int) -> List[Dict[str, Any]]:
-        try:
-            s = assistant_response.strip()
-            if s.startswith('```'):
-                s = '\n'.join([ln for ln in s.splitlines() if not ln.strip().startswith('```')])
-            first_brace = min([i for i in [s.find('{'), s.find('[')] if i != -1], default=-1)
-            last_brace = max(s.rfind('}'), s.rfind(']'))
-            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-                s = s[first_brace:last_brace + 1]
-            parsed = json.loads(s)
-            actions = parsed.get('actions', [])
-            validated = []
-            for a in actions:
-                if not isinstance(a, dict):
-                    continue
-                user_id = str(a.get('user_id', '')).strip()
-                action_value = str(a.get('action', 'null')).lower()
-                if not user_id or action_value not in VALID_ACTION_VALUES:
-                    continue
-
-                reason = str(a.get('reason', 'Automated moderation action'))
-
-                raw_message_ids = a.get('message_ids') or []
-                if isinstance(raw_message_ids, list):
-                    message_ids = [str(mid) for mid in raw_message_ids if str(mid).strip()]
-                else:
-                    message_ids = []
-
-                timeout_duration = a.get('timeout_duration')
-                if timeout_duration is not None:
-                    try:
-                        timeout_duration = int(timeout_duration)
-                    except (TypeError, ValueError):
-                        timeout_duration = None
-
-                ban_duration = a.get('ban_duration')
-                if ban_duration is not None:
-                    try:
-                        ban_duration = int(ban_duration)
-                    except (TypeError, ValueError):
-                        ban_duration = None
-
-                validated.append(
-                    {
-                        'user_id': user_id,
-                        'action': action_value,
-                        'reason': reason,
-                        'message_ids': message_ids,
-                        'timeout_duration': timeout_duration,
-                        'ban_duration': ban_duration,
-                    }
-                )
-            return validated
-        except Exception as e:
-            logger.error(f"Error parsing batch actions: {e}")
-            return []
 
     # ======== Public Moderation Entrypoints ========
     async def get_batch_moderation_actions(
         self,
-        channel_id: int,
-        messages: List[Dict[str, Any]],
+        batch: ModerationBatch,
         server_rules: str = "",
-    ) -> List[Dict[str, Any]]:
+    ) -> List[ActionData]:
         system_prompt = await self.get_system_prompt(server_rules)
         system_msg = {"role": "system", "content": system_prompt}
-        payload = {"channel_id": str(channel_id), "messages": messages}
+        payload = {"channel_id": str(batch.channel_id), "messages": batch.to_model_payload()}
         user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
         resp = await self.submit_inference([system_msg, user_msg])
 
         # Parse whatever the model returned (may be sparse) and then ensure we have
         # exactly one action for every input message. If the model omitted an
         # action for a message, insert the no-op action 'null'.
-        parsed_actions = await self.parse_batch_actions(resp, channel_id)
+        parsed_actions = await moderation_parsing.parse_batch_actions(resp, batch.channel_id)
 
         # Build quick lookup maps from message_id -> action and user_id -> action
-        msgid_map: Dict[str, Dict[str, Any]] = {}
-        userid_map: Dict[str, Dict[str, Any]] = {}
-        for a in parsed_actions:
-            # normalize fields
-            u = str(a.get("user_id", "")).strip()
-            mids = a.get("message_ids") or []
-            if isinstance(mids, list) and mids:
+        msgid_map: Dict[str, ActionData] = {}
+        userid_map: Dict[str, ActionData] = {}
+        for action in parsed_actions:
+            u = action.user_id.strip()
+            mids = action.message_ids or []
+            if mids:
                 for mid in mids:
-                    mid_s = str(mid)
+                    mid_s = str(mid).strip()
                     if mid_s:
-                        msgid_map[mid_s] = a
+                        msgid_map[mid_s] = action
             elif u:
-                # fallback map by user id (first seen wins)
-                userid_map.setdefault(u, a)
+                userid_map.setdefault(u, action)
 
-        final_actions: List[Dict[str, Any]] = []
-        for msg in messages:
-            mid = str(msg.get("message_id") or "")
-            uid = str(msg.get("user_id") or "")
+        final_actions: List[ActionData] = []
+        for msg in batch.messages:
+            mid = msg.message_id
+            uid = msg.user_id
 
-            chosen: Optional[Dict[str, Any]] = None
+            source: Optional[ActionData] = None
             if mid and mid in msgid_map:
-                chosen = msgid_map[mid]
+                source = msgid_map[mid]
             elif uid and uid in userid_map:
-                chosen = userid_map[uid]
+                source = userid_map[uid]
 
-            if chosen is None:
-                # Default no-op action for this message
-                chosen = {
-                    "user_id": uid or str(msg.get("user_id", "")),
-                    "action": "null",
-                    "reason": "no action",
-                    "message_ids": [mid] if mid else [],
-                    "timeout_duration": None,
-                    "ban_duration": None,
-                }
+            if source is None:
+                action = ActionData(
+                    user_id=uid,
+                    action=ActionType.NULL,
+                    reason="no action",
+                    message_ids=[mid] if mid else [],
+                    timeout_duration=None,
+                    ban_duration=None,
+                )
+            else:
+                action = ActionData(
+                    user_id=source.user_id or uid,
+                    action=source.action,
+                    reason=source.reason,
+                    message_ids=list(source.message_ids),
+                    timeout_duration=source.timeout_duration,
+                    ban_duration=source.ban_duration,
+                )
 
-            # Ensure message_ids includes the current message id if available
-            mids = chosen.get("message_ids") or []
-            if mid and mid not in mids:
-                mids = list(mids) + [mid]
-                chosen["message_ids"] = mids
+            if mid:
+                action.add_message_ids(mid)
+            if not action.user_id and uid:
+                action.user_id = uid
 
-            final_actions.append(chosen)
+            final_actions.append(action)
 
         return final_actions
 
     async def get_appropriate_action(
         self,
-        history: List[Dict[str, Any]],
+        history: Sequence[ModerationMessage],
         user_id: int,
         *,
         current_message: Optional[str] = None,
@@ -421,7 +318,7 @@ class ModerationProcessor:
         username: Optional[str] = None,
         message_timestamp: Optional[str] = None,
     ) -> tuple[ActionType, str]:
-        message_to_assess = current_message or (history[-1].get("content", "") if history else "")
+        message_to_assess = current_message or (history[-1].content if history else "")
 
         if not history and not message_to_assess.strip():
             return ActionType.NULL, "empty history"
@@ -433,9 +330,10 @@ class ModerationProcessor:
         system_msg = {"role": "system", "content": system_prompt}
 
         now_iso = message_timestamp or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-        payload_messages = list(history)
+        payload_messages = [msg.to_history_payload() for msg in history]
         payload_messages.append(
             {
+                "role": "user",
                 "user_id": str(user_id),
                 "username": username or f"user_{user_id}",
                 "timestamp": now_iso,
@@ -450,7 +348,7 @@ class ModerationProcessor:
         user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
 
         assistant_response = await self.submit_inference([system_msg, user_msg])
-        return await self.parse_action(assistant_response)
+        return await moderation_parsing.parse_action(assistant_response)
     
     def get_model_state(self) -> ModelState:
         return self.state

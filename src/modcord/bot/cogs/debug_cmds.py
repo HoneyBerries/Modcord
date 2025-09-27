@@ -7,8 +7,8 @@ import datetime
 import discord
 from discord.ext import commands
 
-import modcord.bot.bot_helper as bot_helper
-from modcord.bot.bot_settings import bot_settings
+from modcord.configuration.guild_settings import bot_settings
+from modcord.bot import rules_manager
 from modcord.util.logger import get_logger
 
 logger = get_logger("debug_cog")
@@ -44,8 +44,10 @@ class DebugCog(commands.Cog):
     async def refresh_rules(self, application_context: discord.ApplicationContext):
         """Manually refresh the server rules cache for this guild."""       
         try:
-            rules_text = await bot_helper.fetch_server_rules_from_channel(application_context.guild)
-            bot_settings.set_server_rules(application_context.guild.id, rules_text)
+            guild = application_context.guild
+            if guild is None:
+                raise RuntimeError("/refresh_rules can only be used inside a guild context")
+            rules_text = await rules_manager.refresh_guild_rules(guild, settings=bot_settings)
             
             if rules_text:
                 embed = discord.Embed(

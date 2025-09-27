@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
-from modcord.util.actions import ActionType
+from modcord.util.action import ActionType
 import discord
 
 @patch(
@@ -136,7 +136,7 @@ class TestCogs(unittest.IsolatedAsyncioTestCase):
 class TestBotConfig(unittest.TestCase):
     def test_bot_settings(self):
         """Test the bot configuration module."""
-        from modcord.bot.bot_settings import BotConfig
+        from modcord.configuration.guild_settings import BotConfig
 
         config = BotConfig()
 

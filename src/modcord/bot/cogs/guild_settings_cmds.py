@@ -20,7 +20,7 @@ Quick usage example
 import discord
 from discord.ext import commands
 import json
-from modcord.bot.bot_settings import bot_settings
+from modcord.configuration.guild_settings import bot_settings
 from modcord.util.logger import get_logger
 
 logger = get_logger("settings_cog")

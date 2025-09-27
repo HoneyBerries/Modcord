@@ -15,7 +15,7 @@ This document describes the new channel-based message batching system implemente
 
 ### 1. Message Collection (bot_settings.py)
 
-The `BotConfig` class now includes:
+The `BotSettings` class now includes:
 - `channel_message_batches`: Per-channel message buffers
 - `channel_batch_timers`: Asyncio tasks managing 15-second intervals
 - `add_message_to_batch()`: Collects messages and starts timers
@@ -26,7 +26,7 @@ The `BotConfig` class now includes:
 New batch processing functions:
 - `get_batch_moderation_actions()`: Processes entire channel batches
 - `parse_batch_actions()`: Handles multiple actions in JSON responses
-- Maintains backward compatibility with existing `get_appropriate_action()`
+- `get_appropriate_action()`: Focused on single-message moderation requests
 
 ### 3. Event Handling (cogs/events.py)
 
@@ -38,10 +38,9 @@ Modified message processing:
 ### 4. Enhanced Actions (bot_helper.py)
 
 Extended action system:
-- `take_batch_action()`: Supports new batch parameters (delete_count, timeout_duration, ban_duration)
+- `apply_action_decision()`: Consumes structured `ActionData` records produced by the AI
 - `delete_recent_messages_by_count()`: Deletes specific number of messages
 - `format_duration()`: Human-readable duration formatting
-- Maintains backward compatibility with existing `take_action()`
 
 ## Data Formats
 
@@ -77,7 +76,9 @@ Extended action system:
       "user_id": "1002",
       "action": "warn",
       "reason": "repeated spam in short window",
-      "delete_count": 5,
+      "message_ids": [
+        "9876543210"
+      ],
       "timeout_duration": null,
       "ban_duration": null
     }
@@ -95,7 +96,7 @@ Extended action system:
 - `ban`: Ban user from server
 
 Each action supports additional parameters:
-- `delete_count`: Number of recent messages to delete (0-100)
+- `message_ids`: Explicit message identifiers to delete before applying the action
 - `timeout_duration`: Timeout duration in seconds (null = default 10 minutes)
 - `ban_duration`: Ban duration in seconds (null/0 = permanent)
 
@@ -108,14 +109,6 @@ Key timing parameters:
 - **Message history**: Up to 128 messages per channel kept for context
 - **Max batch size**: No hard limit, but typically 1-20 messages per 15-second window
 
-## Backward Compatibility
-
-The implementation maintains full backward compatibility:
-- Existing `get_appropriate_action()` function still works
-- Existing `take_action()` function still works
-- All slash commands and manual moderation remain unchanged
-- Only the automatic message processing uses the new batching system
-
 ## Performance Impact
 
 Expected performance improvements:
@@ -123,20 +116,6 @@ Expected performance improvements:
 - **Latency**: Slight increase (max 15 seconds) but better overall throughput  
 - **Memory usage**: Minimal increase for message buffering
 - **Network usage**: Significantly reduced API calls
-
-## Testing
-
-Comprehensive test suite includes:
-- Unit tests for batch collection and timing
-- Integration tests for complete workflow
-- JSON format validation
-- Error handling and edge cases
-
-Run tests with:
-```bash
-python -m unittest tests.test_batching -v
-python -m unittest tests.test_integration -v
-```
 
 ## Demo
 

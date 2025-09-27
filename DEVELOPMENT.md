@@ -71,17 +71,9 @@ from src.modcord.logger import get_logger
 
 ## Running Tests
 
-Run tests from the project root:
-
-```bash
-python -m unittest discover tests
-```
-
-Or run individual test files:
-
-```bash
-python tests/test_logger.py
-```
+Automated unit tests are currently deprecated for this project. The existing
+files under `tests/` are historical artifacts and are not maintained. Focus on
+smoke-testing the bot directly within Discord when validating changes.
 
 ## Code Style
 

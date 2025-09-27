@@ -36,7 +36,7 @@ from discord import Option
 from discord.ext import commands
 
 import modcord.bot.bot_helper as bot_helper
-from modcord.util.actions import ActionType
+from modcord.util.action import ActionType
 from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_cog")

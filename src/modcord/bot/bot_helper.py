@@ -9,12 +9,10 @@ import datetime
 import heapq
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
-
 import discord
 
-from modcord.util.actions import ActionType
+from modcord.util.action import ActionData, ActionType, ModerationMessage
 from modcord.util.logger import get_logger
-from modcord.bot.bot_settings import bot_settings
 
 # Get logger for this module
 logger = get_logger("bot_helper")
@@ -419,137 +417,115 @@ async def send_dm_and_embed(
 
 
 
-async def take_action(action: ActionType, reason: str, message: discord.Message, bot_user: discord.ClientUser | None = None):
-    """
-    Applies a disciplinary action to the author of a message based on AI output.
-    This function is designed for automated actions.
-
-    Args:
-        action (ActionType): The moderation action to take.
-        reason (str): Reason for the action.
-        message (discord.Message): The message triggering the action.
-        bot_user (discord.ClientUser | None): Bot user for embeds.
-
-    Returns:
-        None
-    """
-    await take_batch_action(
-        action=action,
-        reason=reason,
-        message=message,
-        bot_user=bot_user,
-        message_ids=[str(message.id)] if action == ActionType.DELETE else None,
-        timeout_duration=None,
-        ban_duration=None
-    )
-
-
-async def take_batch_action(
-    action: ActionType, 
-    reason: str, 
-    message: discord.Message, 
-    bot_user: discord.ClientUser | None = None,
+async def apply_action_decision(
+    action: ActionData,
+    pivot: ModerationMessage,
     *,
-    message_ids: list[str] | None = None,
-    timeout_duration: int | None = None,
-    ban_duration: int | None = None
-):
-    """
-    Applies a disciplinary action with batch-specific parameters.
-    This is the enhanced version that supports the new batch processing parameters.
+    bot_user: discord.ClientUser | None = None,
+    bot_client: discord.Client | None = None,
+) -> None:
+    """Execute a moderation decision produced by the AI pipeline.
 
     Args:
-        action (ActionType): The moderation action to take.
-        reason (str): Reason for the action.
-        message (discord.Message): The message triggering the action.
-        bot_user (discord.ClientUser | None): Bot user for embeds.
-        message_ids (list[str] | None): Specific message IDs to delete before the action.
-        timeout_duration (int | None): Timeout duration in seconds.
-        ban_duration (int | None): Ban duration in seconds (0 or None = permanent).
-
-    Returns:
-        None
+        action: Structured moderation action to apply.
+        pivot: ModerationMessage containing the Discord message context to operate on.
+        bot_user: The bot's user for embeds/footers.
+        bot_client: Full bot client (used for scheduled unban notifications).
     """
-    # Ignore if action is null, or message/guild/user is invalid.
-    if action == ActionType.NULL or not message.guild or not isinstance(message.author, discord.Member):
+
+    if action.action is ActionType.NULL:
+        logger.debug("Ignoring null moderation action for user %s", action.user_id)
         return
 
-    user = message.author
-    guild = message.guild
-    channel = message.channel
+    discord_message = pivot.discord_message
+    if discord_message is None:
+        logger.warning("No Discord message object for moderation pivot %s; skipping action", pivot.message_id)
+        return
 
-    logger.info(f"AI batch action triggered: '{action.value}' on user {user.display_name} for reason: '{reason}' (message_ids={message_ids}, timeout_duration={timeout_duration}, ban_duration={ban_duration})")
+    guild = discord_message.guild
+    author = discord_message.author
+    if guild is None or not isinstance(author, discord.Member):
+        logger.debug("Skipping action %s; missing guild or non-member author", action.action.value)
+        return
 
+    channel = discord_message.channel
+
+    logger.info(
+        "Executing %s on user %s (%s) for reason '%s'", action.action.value, author.display_name, author.id, action.reason
+    )
+
+    # Always remove the pivot message; many models include it implicitly in message_ids.
     try:
-        # Always attempt to remove the triggering message.
-        await _safe_delete_message(message)
+        await _safe_delete_message(discord_message)
+    except Exception as exc:  # pragma: no cover - defensive log, shouldn't raise
+        logger.warning("Failed to delete pivot message %s: %s", discord_message.id, exc)
 
-        # Handle message deletion first if specified
-        if message_ids:
-            try:
-                deleted_count = await delete_messages_by_ids(guild, message_ids)
-                logger.info(f"Deleted {deleted_count} specific messages from {user.display_name}")
-            except Exception as e:
-                logger.error(f"Failed to delete messages {message_ids} from {user.display_name}: {e}")
+    # Delete any additional referenced messages.
+    message_ids = {mid for mid in (action.message_ids or []) if mid}
+    pivot_id = str(discord_message.id)
+    message_ids.discard(pivot_id)
 
-        if action == ActionType.DELETE:
-            # DELETE action only deletes messages, handled above
-            return
+    if message_ids:
+        try:
+            deleted_count = await delete_messages_by_ids(guild, list(message_ids))
+            logger.debug("Deleted %s referenced messages for user %s", deleted_count, author.display_name)
+        except Exception as exc:  # pragma: no cover - surface failure
+            logger.error("Failed to delete referenced messages %s: %s", sorted(message_ids), exc)
 
-        # Prepare DM and embed for other actions.
-        embed: discord.Embed | None = None
-        duration_str: str | None = None
+    if action.action is ActionType.DELETE:
+        return
 
-        if action == ActionType.BAN:
-            # Use ban_duration if specified
-            is_permanent = ban_duration is None or ban_duration == 0
-            duration_seconds = 0 if is_permanent else int(ban_duration or 0)
-            duration_str = PERMANENT_DURATION if is_permanent else format_duration(duration_seconds)
+    embed: discord.Embed | None = None
 
-            await send_dm_to_user(user, _build_dm_message(ActionType.BAN, guild.name, reason, duration_str))
-            await guild.ban(user, reason=f"AI Mod: {reason}")
-            embed = await create_punishment_embed(ActionType.BAN, user, reason, duration_str, bot_user, bot_user)
-            
-            # Schedule unban if temporary
-            if not is_permanent:
-                await schedule_unban(
-                    guild=guild,
-                    user_id=user.id,
-                    channel=channel,
-                    duration_seconds=ban_duration if ban_duration is not None else 0,
-                    bot=None,
-                )
+    if action.action is ActionType.BAN:
+        duration_seconds = int(action.ban_duration or 0)
+        is_permanent = duration_seconds <= 0
+        duration_label = PERMANENT_DURATION if is_permanent else format_duration(duration_seconds)
 
-        elif action == ActionType.KICK:
-            await send_dm_to_user(user, _build_dm_message(ActionType.KICK, guild.name, reason))
-            await guild.kick(user, reason=f"AI Mod: {reason}")
-            embed = await create_punishment_embed(ActionType.KICK, user, reason, issuer=bot_user, bot_user=bot_user)
+        await send_dm_to_user(author, _build_dm_message(ActionType.BAN, guild.name, action.reason, duration_label))
+        await guild.ban(author, reason=f"AI Mod: {action.reason}")
+        embed = await create_punishment_embed(ActionType.BAN, author, action.reason, duration_label, bot_user, bot_user)
 
-        elif action == ActionType.TIMEOUT:
-            # Use timeout_duration if specified, otherwise default to 10 minutes
-            duration_seconds = timeout_duration if timeout_duration is not None else 10 * 60
-            duration_str = format_duration(duration_seconds)
-            until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
-            
-            await user.timeout(until, reason=f"AI Mod: {reason}")
-            await send_dm_to_user(user, _build_dm_message(ActionType.TIMEOUT, guild.name, reason, duration_str))
-            embed = await create_punishment_embed(ActionType.TIMEOUT, user, reason, duration_str, bot_user, bot_user)
+        if not is_permanent:
+            await schedule_unban(
+                guild=guild,
+                user_id=author.id,
+                channel=channel if isinstance(channel, (discord.TextChannel, discord.Thread)) else None,
+                duration_seconds=duration_seconds,
+                bot=bot_client,
+                reason="Ban duration expired.",
+            )
 
-        elif action == ActionType.WARN:
-            await send_dm_to_user(user, _build_dm_message(ActionType.WARN, guild.name, reason))
-            embed = await create_punishment_embed(ActionType.WARN, user, reason, issuer=bot_user, bot_user=bot_user)
+    elif action.action is ActionType.KICK:
+        await send_dm_to_user(author, _build_dm_message(ActionType.KICK, guild.name, action.reason))
+        await guild.kick(author, reason=f"AI Mod: {action.reason}")
+        embed = await create_punishment_embed(ActionType.KICK, author, action.reason, issuer=bot_user, bot_user=bot_user)
 
-        elif action == ActionType.UNBAN:
-            embed = await create_punishment_embed(ActionType.UNBAN, user, reason, issuer=bot_user, bot_user=bot_user)
+    elif action.action is ActionType.TIMEOUT:
+        duration_seconds = action.timeout_duration if action.timeout_duration is not None else 10 * 60
+        if duration_seconds <= 0:
+            duration_seconds = 10 * 60
+        duration_label = format_duration(duration_seconds)
+        until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
 
-        # Send embed to channel if possible.
-        if embed and isinstance(channel, (discord.TextChannel, discord.Thread)):
+        await author.timeout(until, reason=f"AI Mod: {action.reason}")
+        await send_dm_to_user(author, _build_dm_message(ActionType.TIMEOUT, guild.name, action.reason, duration_label))
+        embed = await create_punishment_embed(ActionType.TIMEOUT, author, action.reason, duration_label, bot_user, bot_user)
+
+    elif action.action is ActionType.WARN:
+        await send_dm_to_user(author, _build_dm_message(ActionType.WARN, guild.name, action.reason))
+        embed = await create_punishment_embed(ActionType.WARN, author, action.reason, issuer=bot_user, bot_user=bot_user)
+
+    elif action.action is ActionType.UNBAN:
+        embed = await create_punishment_embed(ActionType.UNBAN, author, action.reason, issuer=bot_user, bot_user=bot_user)
+
+    if embed and isinstance(channel, (discord.TextChannel, discord.Thread)):
+        try:
             await channel.send(embed=embed)
-
-    except discord.Forbidden:
-        logger.warning(f"Failed to execute '{action.value}' on {user.display_name}: Missing permissions.")
-    except Exception as e:
-        logger.error(f"Error executing action '{action.value}' on {user.display_name}: {e}", exc_info=True)
+        except discord.Forbidden:
+            logger.warning("Missing permission to post embed in %s", getattr(channel, "name", channel))
+        except Exception as exc:
+            logger.error("Failed to send moderation embed: %s", exc)
 
 
 # ==========================================
@@ -736,18 +712,6 @@ async def schedule_unban(
     )
 
 
-async def unban_later(
-    guild: discord.Guild,
-    user_id: int,
-    channel: discord.abc.Messageable | None,
-    duration_seconds: float,
-    bot: Optional[discord.Client],
-) -> None:
-    """Backward-compatible alias for schedule_unban."""
-
-    await schedule_unban(guild, user_id, channel, duration_seconds, bot)
-
-
 async def cancel_scheduled_unban(guild_id: int, user_id: int) -> bool:
     """Cancel a pending unban if one exists."""
 
@@ -760,109 +724,6 @@ async def reset_unban_scheduler_for_tests() -> None:
     global _UNBAN_SCHEDULER
     await _UNBAN_SCHEDULER.shutdown()
     _UNBAN_SCHEDULER = UnbanScheduler()
-
-
-# ==========================================
-# Server Rules Management
-# ==========================================
-
-
-# Expose the rule channel regex pattern for use in other modules
-import re
-rule_channel_pattern = re.compile(r"(guidelines|regulations|policy|policies|server[-_]?rules|rules)", re.IGNORECASE)
-
-async def fetch_server_rules_from_channel(guild: discord.Guild) -> str:
-    """
-    Fetches server rules from channels that contain rule-related keywords.
-
-    Args:
-        guild (discord.Guild): The guild to scan for rule channels.
-
-    Returns:
-        str: Combined rules text from all found channels.
-    """
-    # Use the shared rule_channel_pattern
-
-    messages = []
-    for channel in guild.text_channels:
-        if rule_channel_pattern.search(channel.name):
-            try:
-                async for message in channel.history(oldest_first=True):
-                    if message.content.strip():
-                        messages.append(message.content.strip())
-                    for embed in message.embeds:
-                        if embed.description:
-                            messages.append(embed.description.strip())
-                        for field in embed.fields:
-                            if field.value:
-                                messages.append(f"{field.name}: {field.value}".strip())
-
-            except discord.Forbidden:
-                logger.warning(f"No permission to read rules channel: {channel.name} in {guild.name}")
-            except Exception as e:
-                logger.warning(f"Error fetching rules from channel {channel.name} in {guild.name}: {e}")
-    if messages and len(messages) > 0:
-        rules_text = "\n\n".join(messages)
-        logger.debug(f"Successfully fetched {len(messages)} rule messages from all rule channels")
-        return rules_text
-    
-    logger.warning(f"No rules channel found in {guild.name}")
-    return ""
-
-
-async def refresh_rules_cache(bot, server_rules_cache: dict):
-    """
-    Periodically refresh the server rules cache for all guilds.
-
-    Args:
-        bot: The Discord bot instance.
-        server_rules_cache (dict): Cache mapping guild IDs to rules text.
-
-    Returns:
-        None
-    """
-    while True:
-        try:
-            logger.debug("Refreshing server rules cache...")
-            for guild in bot.guilds:
-                try:
-                    rules_text = await fetch_server_rules_from_channel(guild)
-                    # Update shared cache
-                    server_rules_cache[guild.id] = rules_text
-                    # Persist to disk via bot_settings
-                    try:
-                        bot_settings.set_server_rules(guild.id, rules_text)
-                    except Exception:
-                        # If import or persist fails, continue; cache already updated
-                        pass
-                    if rules_text:
-                        logger.debug(f"Cached rules for {guild.name} ({len(rules_text)} characters)")
-                    else:
-                        logger.warning(f"No rules found for {guild.name}")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch rules for {guild.name}: {e}")
-                    # Keep existing cache if fetch fails
-                    if guild.id not in server_rules_cache:
-                        server_rules_cache[guild.id] = ""
-            logger.debug(f"Rules cache refreshed for {len(server_rules_cache)} guilds")
-        except Exception as e:
-            logger.error(f"Error during rules cache refresh: {e}")
-        # Wait 5 minutes before next refresh (avoid hitting rate limits)
-        await asyncio.sleep(300)
-
-
-def get_server_rules(guild_id: int, server_rules_cache: dict) -> str:
-    """
-    Get cached server rules for a guild.
-
-    Args:
-        guild_id (int): The guild ID.
-        server_rules_cache (dict): Cache mapping guild IDs to rules text.
-
-    Returns:
-        str: Cached rules text, or empty string if not found.
-    """
-    return server_rules_cache.get(guild_id, "")
 
 
 async def delete_recent_messages(guild, member, seconds) -> int:
