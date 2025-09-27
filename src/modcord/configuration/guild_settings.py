@@ -21,7 +21,6 @@ from pathlib import Path
 import json
 import os
 import tempfile
-from datetime import datetime
 import concurrent.futures
 
 from dataclasses import dataclass
@@ -67,14 +66,14 @@ class GuildSettingsManager:
 
     def __init__(self):
         # Persistence path (root/data/guild_settings.json)
-        self._data_dir = Path(__file__).resolve().parents[3] / "data"
-        self._settings_path = self._data_dir / "guild_settings.json"
+        self.data_dir = Path(__file__).resolve().parents[3] / "data"
+        self.settings_path = self.data_dir / "guild_settings.json"
 
         # Internal synchronization primitives
-        self._io_lock = asyncio.Lock()
+        self.io_lock = asyncio.Lock()
 
         # Persisted guild settings registry (guild_id -> GuildSettings)
-        self._guilds: Dict[int, GuildSettings] = {}
+        self.guilds: Dict[int, GuildSettings] = {}
 
         # Per-channel chat history for AI context
         self.chat_history: DefaultDict[int, deque] = collections.defaultdict(lambda: collections.deque(maxlen=128))
@@ -89,12 +88,12 @@ class GuildSettingsManager:
         # Background writer loop and thread so writes can always be scheduled
         # asynchronously from any thread without falling back to synchronous
         # file operations.
-        self._writer_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._writer_thread: Optional[threading.Thread] = None
-        self._writer_ready = threading.Event()
-        self._pending_writes: List[concurrent.futures.Future] = []
+        self.writer_loop: Optional[asyncio.AbstractEventLoop] = None
+        self.writer_thread: Optional[threading.Thread] = None
+        self.writer_ready = threading.Event()
+        self.pending_writes: List[concurrent.futures.Future] = []
         # Start the background writer loop
-        self._start_writer_loop()
+        self.start_writer_loop()
 
         # Load persisted settings (if present)
         # This is intentionally synchronous and fast; the persisted file is expected small.
@@ -103,15 +102,15 @@ class GuildSettingsManager:
         logger.info("Guild settings manager initialized")
 
 
-    def _ensure_guild(self, guild_id: int) -> GuildSettings:
+    def ensure_guild(self, guild_id: int) -> GuildSettings:
         """Return existing GuildSettings or create a default entry."""
-        settings = self._guilds.get(guild_id)
+        settings = self.guilds.get(guild_id)
         if settings is None:
             settings = GuildSettings(guild_id=guild_id)
-            self._guilds[guild_id] = settings
+            self.guilds[guild_id] = settings
         return settings
 
-    def _build_payload(self) -> Dict[str, Dict[str, Dict[str, object]]]:
+    def build_payload(self) -> Dict[str, Dict[str, Dict[str, object]]]:
         """Construct JSON-serialisable mapping for all guilds."""
         return {
             "guilds": {
@@ -119,24 +118,24 @@ class GuildSettingsManager:
                     "ai_enabled": settings.ai_enabled,
                     "rules": settings.rules,
                 }
-                for guild_id, settings in self._guilds.items()
+                for guild_id, settings in self.guilds.items()
             }
         }
 
 
     def get_guild_settings(self, guild_id: int) -> GuildSettings:
         """Return the :class:`GuildSettings` instance for a guild (creates default)."""
-        return self._ensure_guild(guild_id)
+        return self.ensure_guild(guild_id)
 
 
     def list_guild_ids(self) -> List[int]:
         """Return a snapshot list of guild IDs currently cached in memory."""
-        return list(self._guilds.keys())
+        return list(self.guilds.keys())
 
 
     def get_server_rules(self, guild_id: int) -> str:
         """Return cached rules for a guild or an empty string."""
-        settings = self._guilds.get(guild_id)
+        settings = self.guilds.get(guild_id)
         return settings.rules if settings else ""
 
 
@@ -150,7 +149,7 @@ class GuildSettingsManager:
         if rules is None:
             rules = ""
 
-        settings = self._ensure_guild(guild_id)
+        settings = self.ensure_guild(guild_id)
         settings.rules = rules
         logger.debug(f"Updated rules cache for guild {guild_id} (len={len(rules)})")
 
@@ -259,31 +258,31 @@ class GuildSettingsManager:
         self.channel_batch_timers.clear()
         self.channel_message_batches.clear()
         # Wait for any pending writes scheduled on the writer loop
-        if self._pending_writes:
-            for fut in list(self._pending_writes):
+        if self.pending_writes:
+            for fut in list(self.pending_writes):
                 try:
                     # Wait briefly for each pending write to complete
                     fut.result(timeout=2)
                 except Exception:
                     # If a future failed or timed out, log and continue
                     logger.exception("Pending write did not complete during shutdown")
-            self._pending_writes.clear()
+            self.pending_writes.clear()
 
         # Stop the writer loop and join the thread
-        self._stop_writer_loop()
+        self.stop_writer_loop()
         logger.info("Shutdown complete: batch timers cleared and writer stopped")
 
     # --- AI moderation enable/disable ---
     def is_ai_enabled(self, guild_id: int) -> bool:
         """Return True if AI moderation is enabled for the guild (default True)."""
-        settings = self._guilds.get(guild_id)
+        settings = self.guilds.get(guild_id)
         return settings.ai_enabled if settings else True
 
     def set_ai_enabled(self, guild_id: int, enabled: bool) -> bool:
         """Set and persist the AI moderation enabled state for a guild.
         Return whether scheduling the persist was successful or not.
         """
-        settings = self._ensure_guild(guild_id)
+        settings = self.ensure_guild(guild_id)
         settings.ai_enabled = bool(enabled)
         state = "enabled" if enabled else "disabled"
         logger.info("AI moderation %s for guild %s", state, guild_id)
@@ -299,10 +298,10 @@ class GuildSettingsManager:
         Return True if the directory exists or was created successfully and
         log errors on failure."""
         try:
-            self._data_dir.mkdir(parents=True, exist_ok=True)
+            self.data_dir.mkdir(parents=True, exist_ok=True)
             return True
         except Exception:
-            logger.exception("Failed to ensure data directory at %s", self._data_dir)
+            logger.exception("Failed to ensure data directory at %s", self.data_dir)
             return False
         
 
@@ -314,14 +313,14 @@ class GuildSettingsManager:
         on failure to ensure callers can continue operating.
         """
         try:
-            if self._settings_path.exists():
-                with self._settings_path.open("r", encoding="utf-8") as file_handle:
+            if self.settings_path.exists():
+                with self.settings_path.open("r", encoding="utf-8") as file_handle:
                     settings_data = json.load(file_handle)
                     if isinstance(settings_data, dict):
                         settings_data.setdefault("guilds", {})
                         return settings_data
         except Exception:
-            logger.exception("Failed to read settings from %s", self._settings_path)
+            logger.exception("Failed to read settings from %s", self.settings_path)
         return {"guilds": {}}
 
     def write_settings(self, settings_data: dict) -> bool:
@@ -339,19 +338,19 @@ class GuildSettingsManager:
         temp_path = None
         try:
             # Create a temp file in the same directory for atomic replace
-            fd, temp_path = tempfile.mkstemp(prefix="guild_settings_", dir=str(self._data_dir), text=True)
+            fd, temp_path = tempfile.mkstemp(prefix="guild_settings_", dir=str(self.data_dir), text=True)
 
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(settings_data, fh, ensure_ascii=False, indent=2)
                 fh.flush()
                 os.fsync(fh.fileno())
             # Atomic replace
-            os.replace(str(temp_path), str(self._settings_path))
-            logger.debug("Wrote settings to %s", self._settings_path)
+            os.replace(str(temp_path), str(self.settings_path))
+            logger.debug("Wrote settings to %s", self.settings_path)
             return True
         
         except Exception:
-            logger.exception("Failed to write settings to %s", self._settings_path)
+            logger.exception("Failed to write settings to %s", self.settings_path)
             # Clean up temp file if present
             try:
                 if temp_path and os.path.exists(temp_path):
@@ -371,17 +370,17 @@ class GuildSettingsManager:
         blocking file work to a thread via asyncio.to_thread.
         """
         # serialize writes with an async lock
-        async with self._io_lock:
+        async with self.io_lock:
             return await asyncio.to_thread(self.write_settings, settings_data)
 
     # --- Background writer loop helpers (ensure async-only persistence) ---
-    def _start_writer_loop(self) -> None:
+    def start_writer_loop(self) -> None:
         """Start a background thread running an asyncio event loop for persistence."""
-        def _run():
+        def run():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            self._writer_loop = loop
-            self._writer_ready.set()
+            self.writer_loop = loop
+            self.writer_ready.set()
             try:
                 loop.run_forever()
             finally:
@@ -391,33 +390,33 @@ class GuildSettingsManager:
                     pass
                 loop.close()
 
-        th = threading.Thread(target=_run, name="guild-settings-writer", daemon=True)
+        th = threading.Thread(target=run, name="guild-settings-writer", daemon=True)
         th.start()
-        self._writer_thread = th
+        self.writer_thread = th
         # Wait for loop readiness
-        self._writer_ready.wait()
+        self.writer_ready.wait()
 
-    def _stop_writer_loop(self) -> None:
+    def stop_writer_loop(self) -> None:
         """Stop the background writer loop and wait for thread exit."""
-        if self._writer_loop:
+        if self.writer_loop:
             try:
-                self._writer_loop.call_soon_threadsafe(self._writer_loop.stop)
+                self.writer_loop.call_soon_threadsafe(self.writer_loop.stop)
             except Exception:
                 pass
-        if self._writer_thread:
-            self._writer_thread.join()
+        if self.writer_thread:
+            self.writer_thread.join()
 
 
     def schedule_persist(self, guild_id: int) -> bool:
         """Schedule a persist for a guild on the writer loop without blocking."""
-        if not self._writer_loop:
+        if not self.writer_loop:
             logger.error("Writer loop not available; cannot schedule persist for %s", guild_id)
             return False
 
-        payload = self._build_payload()
+        payload = self.build_payload()
         try:
-            fut = asyncio.run_coroutine_threadsafe(self.write_settings_async(payload), self._writer_loop)
-            self._pending_writes.append(fut)
+            fut = asyncio.run_coroutine_threadsafe(self.write_settings_async(payload), self.writer_loop)
+            self.pending_writes.append(fut)
         except Exception:
             logger.exception("Failed to schedule persistent write for guild %s", guild_id)
             return False
@@ -428,14 +427,14 @@ class GuildSettingsManager:
         """Load persisted guild settings into memory."""
         data = self.read_settings()
         guild_payload = data.get("guilds", {}) if isinstance(data, dict) else {}
-        self._guilds.clear()
+        self.guilds.clear()
         loaded = 0
         for guild_id_str, payload in guild_payload.items():
             try:
                 guild_id = int(guild_id_str)
             except (TypeError, ValueError):
                 continue
-            self._guilds[guild_id] = GuildSettings.from_dict(guild_id, payload)
+            self.guilds[guild_id] = GuildSettings.from_dict(guild_id, payload)
             loaded += 1
         if loaded:
             logger.info("Loaded %d guild settings from disk", loaded)
@@ -451,7 +450,7 @@ class GuildSettingsManager:
         and await this coroutine from an active event loop. No synchronous
         file operations or thread-blocking fallbacks are performed here.
         """
-        payload = self._build_payload()
+        payload = self.build_payload()
 
         try:
             # Perform the write asynchronously and return its result.

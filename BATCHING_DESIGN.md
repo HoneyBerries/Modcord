@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the new channel-based message batching system implemented to improve the efficiency and scalability of the Discord moderation bot. Instead of processing each message individually, the bot now collects messages per channel over 15-second intervals and processes them in batches.
+This document describes the new channel-based message batching system implemented to improve the efficiency and scalability of the Discord moderation bot. Instead of processing each message individually, the bot now collects messages per channel over 15-second intervals and processes them in batches using VLLM's scheduler for maximum saturation and throughput.
 
 ## Key Benefits
 
@@ -19,7 +19,7 @@ The `BotSettings` class now includes:
 - `channel_message_batches`: Per-channel message buffers
 - `channel_batch_timers`: Asyncio tasks managing 15-second intervals
 - `add_message_to_batch()`: Collects messages and starts timers
-- `_batch_timer()`: Processes batches after 15 seconds
+- `batch_timer()`: Processes batches after 15 seconds
 
 ### 2. AI Processing (ai_model.py)
 
@@ -32,8 +32,8 @@ New batch processing functions:
 
 Modified message processing:
 - `on_message` now adds messages to batches instead of immediate processing
-- `_process_message_batch()`: Handles batch AI processing
-- `_apply_batch_action()`: Applies individual actions from batch responses
+- `process_message_batch()`: Handles batch AI processing
+- `apply_batch_action()`: Applies individual actions from batch responses
 
 ### 4. Enhanced Actions (bot_helper.py)
 

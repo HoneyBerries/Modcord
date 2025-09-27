@@ -35,8 +35,17 @@ import discord
 from discord import Option
 from discord.ext import commands
 
-import modcord.bot.bot_helper as bot_helper
-from modcord.util.action import ActionType
+from modcord.util.discord_utils import (
+    has_permissions,
+    parse_duration_to_seconds,
+    PERMANENT_DURATION,
+    send_dm_and_embed,
+    delete_messages_background,
+    DURATION_CHOICES,
+    DELETE_MESSAGE_CHOICES,
+)
+from modcord.bot.unban_scheduler import schedule_unban
+from modcord.util.moderation_models import ActionType
 from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_cog")
@@ -46,7 +55,7 @@ class ModerationActionCog(commands.Cog):
     """Cog containing moderation-related slash commands.
 
     Each command defers its response and performs a common permission and
-    validation sequence before delegating to _handle_moderation_command which
+    validation sequence before delegating to handle_moderation_command which
     implements the action-specific behavior (timeout, kick, ban, warn).
 
     The cog expects a bot helper module for common utilities; the instance
@@ -82,7 +91,7 @@ class ModerationActionCog(commands.Cog):
             sent to the invoker indicating why the action cannot proceed.
         """
         # Check invoking user's permission
-        if not bot_helper.has_permissions(application_context, **{required_permission_name: True}):
+        if not has_permissions(application_context, **{required_permission_name: True}):
             await application_context.respond("You do not have permission to use this command.", ephemeral=True)
             return False
 
@@ -135,7 +144,7 @@ class ModerationActionCog(commands.Cog):
         try:            
             # Perform the specific action
             if action_type == ActionType.TIMEOUT and duration:
-                duration_seconds = bot_helper.parse_duration_to_seconds(duration)
+                duration_seconds = parse_duration_to_seconds(duration)
                 until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
                 await user.timeout(until, reason=reason)
                 
@@ -145,10 +154,10 @@ class ModerationActionCog(commands.Cog):
             elif action_type == ActionType.BAN:
                 await ctx.guild.ban(user, reason=reason)
 
-                if duration and duration != bot_helper.PERMANENT_DURATION:
-                    duration_seconds = bot_helper.parse_duration_to_seconds(duration)
+                if duration and duration != PERMANENT_DURATION:
+                    duration_seconds = parse_duration_to_seconds(duration)
                     logger.info(f"Scheduling unban for {user.display_name} in {duration_seconds} seconds.")
-                    await bot_helper.schedule_unban(
+                    await schedule_unban(
                         guild=ctx.guild,
                         user_id=user.id,
                         channel=ctx.channel,
@@ -157,16 +166,21 @@ class ModerationActionCog(commands.Cog):
                     )
             
             # Send DM and embed
-            await bot_helper.send_dm_and_embed(ctx, user, action_type, reason, duration)
+            await send_dm_and_embed(ctx, user, action_type, reason, duration)
             
             # Delete messages in background if requested
             if delete_message_seconds > 0:
-                asyncio.create_task(
-                    bot_helper.delete_messages_background(ctx, user, delete_message_seconds)
-                )
+                asyncio.create_task(delete_messages_background(ctx, user, delete_message_seconds))
                 
         except Exception as e:
-            await bot_helper.handle_error(ctx, e)
+            logger.exception("Error handling moderation command: %s", e)
+            try:
+                await ctx.respond("An error occurred while processing the command.", ephemeral=True)
+            except Exception:
+                try:
+                    await ctx.followup.send("An error occurred while processing the command.", ephemeral=True)
+                except Exception:
+                    logger.error("Failed to send error response to user.")
 
     @commands.slash_command(name="warn", description="Warns a user for a specified reason.")
     async def warn(
@@ -177,7 +191,7 @@ class ModerationActionCog(commands.Cog):
         delete_message_seconds: Option(
             int,
             "Delete messages from (choose time range)",
-            choices=bot_helper.DELETE_MESSAGE_CHOICES,
+            choices=DELETE_MESSAGE_CHOICES,
             default=0
         )  # type: ignore
     ) -> None:
@@ -201,12 +215,12 @@ class ModerationActionCog(commands.Cog):
         self,
         ctx: discord.ApplicationContext,
         user: Option(discord.Member, "The user to timeout.", required=True),  # type: ignore
-        duration: Option(str, "Duration of the timeout.", choices=bot_helper.DURATION_CHOICES, default="10 mins"),  # type: ignore
+    duration: Option(str, "Duration of the timeout.", choices=DURATION_CHOICES, default="10 mins"),  # type: ignore
         reason: Option(str, "Reason for the timeout.", default="No reason provided."),  # type: ignore
         delete_message_seconds: Option(
             int,
             "Delete messages from (choose time range)",
-            choices=bot_helper.DELETE_MESSAGE_CHOICES,
+            choices=DELETE_MESSAGE_CHOICES,
             default=0
         )  # type: ignore
     ) -> None:
@@ -234,7 +248,7 @@ class ModerationActionCog(commands.Cog):
         delete_message_seconds: Option(
             int,
             "Delete messages from (choose time range)",
-            choices=bot_helper.DELETE_MESSAGE_CHOICES,
+            choices=DELETE_MESSAGE_CHOICES,
             default=0
         )  # type: ignore
     ) -> None:
@@ -258,12 +272,12 @@ class ModerationActionCog(commands.Cog):
         self,
         ctx: discord.ApplicationContext,
         user: Option(discord.Member, "The user to ban.", required=True),  # type: ignore
-        duration: Option(str, "Duration of the ban.", choices=bot_helper.DURATION_CHOICES, default=bot_helper.PERMANENT_DURATION),  # type: ignore
+    duration: Option(str, "Duration of the ban.", choices=DURATION_CHOICES, default=PERMANENT_DURATION),  # type: ignore
         reason: Option(str, "Reason for the ban.", default="No reason provided."),  # type: ignore
         delete_message_seconds: Option(
             int,
             "Delete messages from (choose time range)",
-            choices=bot_helper.DELETE_MESSAGE_CHOICES,
+            choices=DELETE_MESSAGE_CHOICES,
             default=0
         )  # type: ignore
     ) -> None:

@@ -60,27 +60,27 @@ class AppConfig:
     """
 
     def __init__(self, config_path: Optional[Path | str] = None) -> None:
-        self._config_path = Path(config_path) if config_path else CONFIG_PATH
-        self._lock = RLock()
-        self._data: Dict[str, Any] = {}
+        self.config_path = Path(config_path) if config_path else CONFIG_PATH
+        self.lock = RLock()
+        self.data: Dict[str, Any] = {}
         self.reload()
 
     # --------------------------
     # Private helpers
     # --------------------------
-    def _load_from_disk(self) -> Dict[str, Any]:
+    def load_from_disk(self) -> Dict[str, Any]:
         try:
-            with self._config_path.open("r", encoding="utf-8") as file_handle:
+            with self.config_path.open("r", encoding="utf-8") as file_handle:
                 loaded_data = yaml.safe_load(file_handle) or {}
         except FileNotFoundError:
-            logger.error("Config file %s not found.", self._config_path)
+            logger.error("Config file %s not found.", self.config_path)
             return {}
         except Exception as exc:  # noqa: BLE001 - log and fall back to empty config
-            logger.error("Failed to load config %s: %s", self._config_path, exc, exc_info=True)
+            logger.error("Failed to load config %s: %s", self.config_path, exc, exc_info=True)
             return {}
 
         if not isinstance(loaded_data, dict):
-            logger.warning("Config file %s must contain a mapping at the top level; ignoring.", self._config_path)
+            logger.warning("Config file %s must contain a mapping at the top level; ignoring.", self.config_path)
             return {}
         return loaded_data
 
@@ -94,9 +94,9 @@ class AppConfig:
         replaces the in-memory cache. It returns the raw mapping that was
         loaded (which will be an empty dict on error).
         """
-        with self._lock:
-            self._data = self._load_from_disk()
-            return self._data
+        with self.lock:
+            self.data = self.load_from_disk()
+            return self.data
 
     @property
     def data(self) -> Dict[str, Any]:
@@ -106,16 +106,16 @@ class AppConfig:
         should not mutate it; use get(...) or the provided convenience
         properties instead.
         """
-        with self._lock:
-            return self._data
+        with self.lock:
+            return self.data
 
     def get(self, key: str, default: Any = None) -> Any:
         """Safe lookup for top-level configuration keys.
 
         Returns the value for `key` if present, otherwise `default`.
         """
-        with self._lock:
-            return self._data.get(key, default)
+        with self.lock:
+            return self.data.get(key, default)
 
     # --------------------------
     # High-level shortcuts
@@ -127,8 +127,8 @@ class AppConfig:
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        with self._lock:
-            value = self._data.get("server_rules", "")
+        with self.lock:
+            value = self.data.get("server_rules", "")
         return str(value or "")
 
     @property
@@ -138,8 +138,8 @@ class AppConfig:
         Templates are expected to use Python format placeholders. Use
         format_system_prompt(...) to render with server rules inserted.
         """
-        with self._lock:
-            value = self._data.get("system_prompt", "")
+        with self.lock:
+            value = self.data.get("system_prompt", "")
         return str(value or "")
 
     @property
@@ -149,8 +149,8 @@ class AppConfig:
         The wrapper provides both attribute-style access for common fields and
         mapping semantics for backward compatibility.
         """
-        with self._lock:
-            settings = self._data.get("ai_settings", {})
+        with self.lock:
+            settings = self.data.get("ai_settings", {})
             if not isinstance(settings, dict):
                 settings = {}
             # Wrap raw dict in AISettings for typed access while remaining
@@ -194,54 +194,54 @@ class AISettings(Mapping):
     """
 
     def __init__(self, data: Optional[Dict[str, Any]] = None) -> None:
-        self._data: Dict[str, Any] = data or {}
+        self.data: Dict[str, Any] = data or {}
 
     # Minimal mapping API
     def get(self, key: str, default: Any = None) -> Any:
-        return self._data.get(key, default)
+        return self.data.get(key, default)
 
     # Mapping protocol methods
     def __getitem__(self, key: str) -> Any:
-        return self._data[key]
+        return self.data[key]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._data)
+        return iter(self.data)
 
     def __len__(self) -> int:
-        return len(self._data)
+        return len(self.data)
 
     def as_dict(self) -> Dict[str, Any]:
-        return self._data
+        return self.data
 
     # Commonly used fields exposed as properties for convenience
     @property
     def enabled(self) -> bool:
-        return bool(self._data.get("enabled", False))
+        return bool(self.data.get("enabled", False))
 
     @property
     def allow_gpu(self) -> bool:
-        return bool(self._data.get("allow_gpu", False))
+        return bool(self.data.get("allow_gpu", False))
 
     @property
     def vram_percentage(self) -> float:
-        return float(self._data.get("vram_percentage", 0.5))
+        return float(self.data.get("vram_percentage", 0.5))
 
     @property
     def model_id(self) -> Optional[str]:
-        val = self._data.get("model_id")
+        val = self.data.get("model_id")
         return str(val) if val else None
 
     @property
     def knobs(self) -> Dict[str, Any]:
-        k = self._data.get("knobs", {})
+        k = self.data.get("knobs", {})
         return k if isinstance(k, dict) else {}
 
     # Allow attribute-like fallback access for any key
     def __getattr__(self, item: str) -> Any:  # pragma: no cover - thin shim
         if item in self.__dict__:
             return self.__dict__[item]
-        if item in self._data:
-            return self._data[item]
+        if item in self.data:
+            return self.data[item]
         raise AttributeError(item)
 
     # (Intentionally no format_system_prompt here — AppConfig provides prompt

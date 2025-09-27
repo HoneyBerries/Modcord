@@ -35,13 +35,13 @@ class ColorFormatter(logging.Formatter):
 
 plain_formatter = logging.Formatter(log_format, datefmt=date_format)
 
-def _should_use_color() -> bool:
+def should_use_color() -> bool:
     try:
         return sys.stderr.isatty()
     except Exception:
         return False
 
-color_formatter = ColorFormatter(log_format, datefmt=date_format) if _should_use_color() else plain_formatter
+color_formatter = ColorFormatter(log_format, datefmt=date_format) if should_use_color() else plain_formatter
 
 
 # Log filename with timestamp
@@ -49,7 +49,7 @@ LOG_FILENAME = datetime.now().strftime(date_format) + ".log"
 LOG_FILEPATH = LOGS_DIR / LOG_FILENAME
 
 
-def _resolve_log_level(default_level: int = logging.INFO) -> int:
+def resolve_log_level(default_level: int = logging.INFO) -> int:
     level_name = os.environ.get("MODCORD_LOG_LEVEL", "").upper().strip()
     if level_name:
         return getattr(logging, level_name, default_level)
@@ -77,7 +77,7 @@ def setup_logger(logger_name: str, logging_level: int | None = None) -> logging.
     if logger.handlers:
         return logger
 
-    base_level = logging_level if logging_level is not None else _resolve_log_level()
+    base_level = logging_level if logging_level is not None else resolve_log_level()
     logger.setLevel(base_level)
     logger.propagate = False
 

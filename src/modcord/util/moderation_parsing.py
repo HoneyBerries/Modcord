@@ -28,7 +28,7 @@ import json
 import logging
 from typing import List
 
-from modcord.util.action import ActionData, ActionType
+from modcord.util.moderation_models import ActionData, ActionType
 
 logger = logging.getLogger("moderation_parsing")
 

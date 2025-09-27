@@ -14,11 +14,11 @@ from vllm import LLM, SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
 
 import modcord.configuration.app_configuration as cfg
-from modcord.util.action import ActionData, ActionType, ModerationBatch, ModerationMessage
+from modcord.util.moderation_models import ActionData, ActionType, ModerationBatch, ModerationMessage
 from modcord.util.logger import get_logger
 import modcord.util.moderation_parsing as moderation_parsing
 
-logger = get_logger("ai_model")
+logger = get_logger("ai_core")
 
 # ========= State Containers =========
 
@@ -34,21 +34,21 @@ class ModerationProcessor:
     """Encapsulates the end-to-end AI moderation workflow."""
 
     def __init__(self) -> None:
-        self._llm: Optional[LLM] = None
-        self._sampling_params: Optional[SamplingParams] = None
-        self._base_system_prompt: Optional[str] = None
+        self.llm: Optional[LLM] = None
+        self.sampling_params: Optional[SamplingParams] = None
+        self.base_system_prompt: Optional[str] = None
         self.state = ModelState()
-        self._init_lock = asyncio.Lock()
-        self._warmup_completed: bool = False
+        self.init_lock = asyncio.Lock()
+        self.warmup_completed: bool = False
 
     # ======== Model Initialization ========
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
-        async with self._init_lock:
-            if self.state.available and self._llm is not None and self._sampling_params is not None:
-                return self._llm, self._sampling_params, self._base_system_prompt
+        async with self.init_lock:
+            if self.state.available and self.llm is not None and self.sampling_params is not None:
+                return self.llm, self.sampling_params, self.base_system_prompt
 
             if self.state.init_started and not self.state.available and self.state.init_error:
-                return self._llm, self._sampling_params, self._base_system_prompt
+                return self.llm, self.sampling_params, self.base_system_prompt
 
             self.state.init_started = True
 
@@ -59,7 +59,7 @@ class ModerationProcessor:
                 self.state.available = False
                 return None, None, None
 
-            self._base_system_prompt = cfg.app_config.system_prompt_template
+            self.base_system_prompt = cfg.app_config.system_prompt_template
             ai_configuration = cfg.app_config.ai_settings
             is_ai_enabled = bool(ai_configuration.get("enabled", False))
             is_gpu_allowed = bool(ai_configuration.get("allow_gpu", False))
@@ -95,13 +95,13 @@ class ModerationProcessor:
                 logger.info("[AI MODEL] AI disabled in configuration.")
                 self.state.available = False
                 self.state.init_error = "AI disabled in config"
-                return None, None, self._base_system_prompt
+                return None, None, self.base_system_prompt
 
             if not model_identifier:
                 logger.error("[AI MODEL] No model identifier provided.")
                 self.state.available = False
                 self.state.init_error = "missing model id"
-                return None, None, self._base_system_prompt
+                return None, None, self.base_system_prompt
 
             cuda_available = torch.cuda.is_available()
             tp: int = torch.cuda.device_count() if cuda_available else 0
@@ -125,7 +125,7 @@ class ModerationProcessor:
                     top_p,
                 )
 
-                self._llm = LLM(
+                self.llm = LLM(
                     model=model_identifier,
                     dtype=dtype,
                     gpu_memory_utilization=gpu_mem_util,
@@ -133,7 +133,7 @@ class ModerationProcessor:
                     tensor_parallel_size=tp,
                 )
 
-                self._sampling_params = SamplingParams(
+                self.sampling_params = SamplingParams(
                     temperature=temperature,
                     max_tokens=max_new_tokens,
                     top_p=top_p,
@@ -147,18 +147,18 @@ class ModerationProcessor:
                 self.state.available = True
                 self.state.init_error = None
                 logger.info("[AI MODEL] vLLM initialized successfully.")
-                return self._llm, self._sampling_params, self._base_system_prompt
+                return self.llm, self.sampling_params, self.base_system_prompt
 
             except Exception as e:
                 self.state.available = False
                 self.state.init_error = f"Initialization failed: {e}"
                 logger.error(f"[AI MODEL] Failed to initialize vLLM model: {e}", exc_info=True)
-                return None, None, self._base_system_prompt
+                return None, None, self.base_system_prompt
 
     async def get_model(self) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
-        if self._llm is None and not self.state.init_started:
+        if self.llm is None and not self.state.init_started:
             await self.init_model()
-        return self._llm, self._sampling_params, self._base_system_prompt
+        return self.llm, self.sampling_params, self.base_system_prompt
 
     async def is_model_available(self) -> bool:
         return self.state.available
@@ -168,11 +168,11 @@ class ModerationProcessor:
 
     async def get_system_prompt(self, server_rules: str = "") -> str:
         await self.get_model()
-        template = self._base_system_prompt or cfg.app_config.system_prompt_template
+        template = self.base_system_prompt or cfg.app_config.system_prompt_template
         return cfg.app_config.format_system_prompt(server_rules, template_override=template)
 
     # ======== Inference Helpers ========
-    async def _messages_to_prompt(self, messages: List[Dict[str, Any]]) -> str:
+    async def messages_to_prompt(self, messages: List[Dict[str, Any]]) -> str:
         parts = []
         for m in messages:
             role = (m.get("role") or "user").lower()
@@ -185,11 +185,11 @@ class ModerationProcessor:
                 parts.append(f"[USER]\n{content.strip()}")
         return "\n\n".join(parts).strip()
 
-    def _sync_generate(self, prompts: List[str]) -> List[str]:
-        if self._llm is None or self._sampling_params is None:
+    def sync_generate(self, prompts: List[str]) -> List[str]:
+        if self.llm is None or self.sampling_params is None:
             raise RuntimeError("Model not initialized")
 
-        outputs = self._llm.generate(prompts, self._sampling_params)
+        outputs = self.llm.generate(prompts, self.sampling_params)
         results = []
         for out in outputs:
             results.append(out.outputs[0].text.strip() if out.outputs else "")
@@ -207,10 +207,10 @@ class ModerationProcessor:
             logger.debug(f"Inference skipped; model not ready ({reason})")
             return f"null: {reason}"
 
-        prompt = await self._messages_to_prompt(messages)
+        prompt = await self.messages_to_prompt(messages)
 
         try:
-            results = await asyncio.to_thread(self._sync_generate, [prompt])
+            results = await asyncio.to_thread(self.sync_generate, [prompt])
             return results[0] if results else "null: no response"
         except Exception as e:
             logger.error(f"Inference error: {e}", exc_info=True)
@@ -219,7 +219,7 @@ class ModerationProcessor:
     async def start_batch_worker(self) -> None:
 
         async def warmup(self) -> None:
-            if self._warmup_completed:
+            if self.warmup_completed:
                 return
 
             logger.info("Warming up model...")

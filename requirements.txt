@@ -28,6 +28,17 @@ python-dotenv
 # YAML file parser
 pyyaml
 
+# vllm
+vllm
+
+# ONNX stuff
+onnx
+onnxruntime
+onnx-simplifier
+onnx-graphsurgeon
+
+# Tensor RT
+tensorrt
 
 # Annoying vllm dependencies
 torchaudio==2.8.0

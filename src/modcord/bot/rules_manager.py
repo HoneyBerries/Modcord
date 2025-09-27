@@ -27,7 +27,7 @@ RULE_CHANNEL_PATTERN = re.compile(
 """Heuristic regex used to discover channels that likely contain server rules."""
 
 
-def _resolve_settings(settings: Optional[GuildSettingsManager]) -> GuildSettingsManager:
+def resolve_settings(settings: Optional[GuildSettingsManager]) -> GuildSettingsManager:
 	"""Return the provided manager or fall back to the shared singleton."""
 
 	return settings if settings is not None else guild_settings_manager
@@ -101,7 +101,7 @@ async def refresh_guild_rules(
 	exception is propagated to the caller for handling.
 	"""
 
-	resolved_settings = _resolve_settings(settings)
+	resolved_settings = resolve_settings(settings)
 
 	try:
 		rules_text = await collect_rules_text(guild)
@@ -128,7 +128,7 @@ async def refresh_rules_cache(
 ) -> None:
 	"""Refresh cached rules for all guilds the bot is currently in."""
 
-	resolved_settings = _resolve_settings(settings)
+	resolved_settings = resolve_settings(settings)
 
 	logger.debug("Refreshing server rules cache for %s guilds", len(bot.guilds))
 
@@ -159,7 +159,7 @@ async def run_periodic_refresh(
 	forever until cancelled, logging and continuing on individual guild errors.
 	"""
 
-	resolved_settings = _resolve_settings(settings)
+	resolved_settings = resolve_settings(settings)
 
 	logger.info(
 		"Starting periodic rules refresh (interval=%ss) for %s guilds",

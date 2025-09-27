@@ -17,7 +17,8 @@ import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.ai.ai_model import model_state, moderation_processor
+from modcord.ai.ai_core import model_state, moderation_processor
+from modcord.bot.cogs import events_listener
 from modcord.util.logger import get_logger, handle_exception
 
 
@@ -58,10 +59,10 @@ def discover_cog_modules() -> Iterable[str]:
 
 def load_cogs(discord_bot_instance: discord.Bot) -> None:
     """Load cogs by importing modules explicitly from the cogs package."""
-    from modcord.bot.cogs import debug_cmds, events, guild_settings_cmds, moderation_cmds
+    from modcord.bot.cogs import debug_cmds, guild_settings_cmds, moderation_cmds
 
     debug_cmds.setup(discord_bot_instance)
-    events.setup(discord_bot_instance)
+    events_listener.setup(discord_bot_instance)
     guild_settings_cmds.setup(discord_bot_instance)
     moderation_cmds.setup(discord_bot_instance)
     logger.info("All cogs loaded successfully.")
