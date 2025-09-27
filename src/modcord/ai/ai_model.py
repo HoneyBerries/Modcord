@@ -30,7 +30,6 @@ class ModelState:
         self.init_error: Optional[str] = None
 
 
-
 class ModerationProcessor:
     """Encapsulates the end-to-end AI moderation workflow."""
 
@@ -355,4 +354,4 @@ class ModerationProcessor:
 
 
 moderation_processor = ModerationProcessor()
-MODEL_STATE = moderation_processor.state
+model_state = moderation_processor.state

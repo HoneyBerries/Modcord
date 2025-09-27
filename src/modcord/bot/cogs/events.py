@@ -10,7 +10,7 @@ from discord.ext import commands
 
 from modcord.ai.ai_model import moderation_processor
 import modcord.bot.bot_helper as bot_helper
-from modcord.configuration.guild_settings import bot_settings
+from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.bot import rules_manager
 from modcord.util.action import ActionData, ActionType, ModerationBatch, ModerationMessage
 from modcord.util.logger import get_logger
@@ -41,7 +41,7 @@ class EventsCog(commands.Cog):
 		"""
 		if guild is None:
 			return True
-		return bot_settings.is_ai_enabled(guild.id)
+		return guild_settings_manager.is_ai_enabled(guild.id)
 
 	async def refresh_rules_cache_if_rules_channel(self, channel: discord.abc.Messageable) -> None:
 		"""If the given channel looks like a rules channel, refresh the rules cache.
@@ -54,7 +54,7 @@ class EventsCog(commands.Cog):
 			if guild is None:
 				return
 			try:
-				await rules_manager.refresh_guild_rules(guild, settings=bot_settings)
+				await rules_manager.refresh_guild_rules(guild, settings=guild_settings_manager)
 				logger.info(f"Rules cache refreshed immediately due to activity in rules channel: {channel.name}")
 			except Exception as e:
 				logger.error(f"Failed to refresh rules cache for channel {channel}: {e}")
@@ -79,10 +79,10 @@ class EventsCog(commands.Cog):
 
 			# Get guild info from the first message for server rules
 			guild_id = messages[0].guild_id
-			server_rules = bot_settings.get_server_rules(guild_id) if guild_id else ""
+			server_rules = guild_settings_manager.get_server_rules(guild_id) if guild_id else ""
 			
 			# Check if AI moderation is enabled for this guild
-			if guild_id and not bot_settings.is_ai_enabled(guild_id):
+			if guild_id and not guild_settings_manager.is_ai_enabled(guild_id):
 				logger.debug(f"AI moderation disabled for guild {guild_id}, skipping batch")
 				return
 
@@ -169,7 +169,7 @@ class EventsCog(commands.Cog):
 						
 		# Set up batch processing callback for channel-based batching
 		logger.info("Setting up batch processing callback...")
-		bot_settings.set_batch_processing_callback(self._process_message_batch)
+		guild_settings_manager.set_batch_processing_callback(self._process_message_batch)
 		
 		logger.info("-" * 60)
 
@@ -178,7 +178,7 @@ class EventsCog(commands.Cog):
 		Background task to refresh server rules cache.
 		"""
 		try:
-			await rules_manager.run_periodic_refresh(self.bot, settings=bot_settings)
+			await rules_manager.run_periodic_refresh(self.bot, settings=guild_settings_manager)
 		except asyncio.CancelledError:
 			logger.info("Rules cache refresh task cancelled")
 			raise
@@ -215,7 +215,7 @@ class EventsCog(commands.Cog):
 			guild_id=message.guild.id if message.guild else None,
 			channel_id=message.channel.id if hasattr(message.channel, "id") else None,
 		)
-		bot_settings.add_message_to_history(message.channel.id, history_entry)
+		guild_settings_manager.add_message_to_history(message.channel.id, history_entry)
 
 		# Respect per-guild AI moderation toggle
 		if not self._is_ai_moderation_enabled(message.guild):
@@ -236,7 +236,7 @@ class EventsCog(commands.Cog):
 				image_summary=None,
 				discord_message=message,
 			)
-			await bot_settings.add_message_to_batch(message.channel.id, batch_message)
+			await guild_settings_manager.add_message_to_batch(message.channel.id, batch_message)
 			logger.debug(f"Added message from {message.author} to batch for channel {message.channel.id}")
 			
 		except Exception as e:

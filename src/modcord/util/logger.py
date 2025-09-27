@@ -6,13 +6,13 @@ from datetime import datetime
 import warnings
 
 # Create a logs directory at the project root
-LOGS_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+LOGS_DIR = Path(__file__).resolve().parents[3] / "logs"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Define the log format and date format for log messages
 log_format = '[%(asctime)s] [%(levelname)s] [%(name)s:%(funcName)s:%(lineno)d] %(message)s'
-date_format = '%Y-%m-%d %H:%M:%S'
+date_format = '%Y-%m-%d %H-%M-%S'
 
 # ANSI color codes for log levels
 LOG_COLORS = {
@@ -45,7 +45,7 @@ color_formatter = ColorFormatter(log_format, datefmt=date_format) if _should_use
 
 
 # Log filename with timestamp
-LOG_FILENAME = datetime.now().strftime("%Y%m%dT%H%M%S.log")
+LOG_FILENAME = datetime.now().strftime(date_format) + ".log"
 LOG_FILEPATH = LOGS_DIR / LOG_FILENAME
 
 

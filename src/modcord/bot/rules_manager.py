@@ -14,7 +14,7 @@ from typing import Iterable, Optional
 
 import discord
 
-from modcord.configuration.guild_settings import GuildSettings, guild_settings
+from modcord.configuration.guild_settings import GuildSettingsManager, guild_settings_manager
 from modcord.util.logger import get_logger
 
 logger = get_logger("rules_manager")
@@ -27,10 +27,10 @@ RULE_CHANNEL_PATTERN = re.compile(
 """Heuristic regex used to discover channels that likely contain server rules."""
 
 
-def _resolve_settings(settings: Optional[GuildSettings]) -> GuildSettings:
-	"""Return the provided ``GuildSettings`` or fall back to the shared singleton."""
+def _resolve_settings(settings: Optional[GuildSettingsManager]) -> GuildSettingsManager:
+	"""Return the provided manager or fall back to the shared singleton."""
 
-	return settings if settings is not None else guild_settings
+	return settings if settings is not None else guild_settings_manager
 
 
 async def collect_rules_text(guild: discord.Guild) -> str:
@@ -92,7 +92,7 @@ async def collect_rules_text(guild: discord.Guild) -> str:
 async def refresh_guild_rules(
 	guild: discord.Guild,
 	*,
-	settings: Optional[GuildSettings] = None,
+	settings: Optional[GuildSettingsManager] = None,
 ) -> str:
 	"""Fetch and persist the latest rules text for ``guild``.
 
@@ -106,8 +106,7 @@ async def refresh_guild_rules(
 	try:
 		rules_text = await collect_rules_text(guild)
 	except Exception:
-		if guild.id not in resolved_settings.server_rules_cache:
-			resolved_settings.server_rules_cache[guild.id] = ""
+		resolved_settings.get_guild_settings(guild.id)
 		logger.exception("Failed to collect rules for guild %s", guild.name)
 		raise
 
@@ -125,7 +124,7 @@ async def refresh_guild_rules(
 
 async def refresh_rules_cache(
 	bot: discord.Client,
-	*, settings: Optional[GuildSettings] = None,
+	*, settings: Optional[GuildSettingsManager] = None,
 ) -> None:
 	"""Refresh cached rules for all guilds the bot is currently in."""
 
@@ -140,19 +139,18 @@ async def refresh_rules_cache(
 			raise
 		except Exception as exc:
 			logger.warning("Failed to refresh rules for guild %s: %s", guild.name, exc)
-			if guild.id not in resolved_settings.server_rules_cache:
-				resolved_settings.server_rules_cache[guild.id] = ""
+			resolved_settings.get_guild_settings(guild.id)
 
 	logger.debug(
 		"Rules cache now has entries for %s guilds",
-		len(resolved_settings.server_rules_cache),
+		len(resolved_settings.list_guild_ids()),
 	)
 
 
 async def run_periodic_refresh(
 	bot: discord.Client,
 	*,
-	settings: Optional[GuildSettings] = None,
+	settings: Optional[GuildSettingsManager] = None,
 	interval_seconds: float = 300.0,
 ) -> None:
 	"""Continuously refresh the rules cache on a fixed interval.

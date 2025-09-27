@@ -20,7 +20,7 @@ Quick usage example
 import discord
 from discord.ext import commands
 import json
-from modcord.configuration.guild_settings import bot_settings
+from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
 
 logger = get_logger("settings_cog")
@@ -31,7 +31,7 @@ class SettingsCog(commands.Cog):
 
     The cog is intentionally small: it provides a status check, enables and
     disables AI moderation per guild, and offers a settings dump for
-    operators. All changes are persisted via the bot_settings helper.
+    operators. All changes are persisted via the guild settings manager helper.
     """
 
     def __init__(self, discord_bot_instance):
@@ -45,7 +45,7 @@ class SettingsCog(commands.Cog):
         The response is ephemeral. If run outside a guild the command reports
         a sensible default (enabled) to avoid surprising behaviour in DMs.
         """
-        enabled = bot_settings.is_ai_enabled(application_context.guild_id) if application_context.guild_id else True
+        enabled = guild_settings_manager.is_ai_enabled(application_context.guild_id) if application_context.guild_id else True
         status = "enabled" if enabled else "disabled"
         await application_context.respond(f"AI moderation is currently {status}.", ephemeral=True)
 
@@ -65,7 +65,7 @@ class SettingsCog(commands.Cog):
             await application_context.respond("You do not have permission to change server settings (Manage Server required).", ephemeral=True)
             return
 
-        bot_settings.set_ai_enabled(application_context.guild_id, True)
+        guild_settings_manager.set_ai_enabled(application_context.guild_id, True)
         await application_context.respond("Enabled AI moderation for this server.", ephemeral=True)
 
     @commands.slash_command(name="ai_disable", description="Disable AI moderation in this server.")
@@ -83,7 +83,7 @@ class SettingsCog(commands.Cog):
             await application_context.respond("You do not have permission to change server settings (Manage Server required).", ephemeral=True)
             return
 
-        bot_settings.set_ai_enabled(application_context.guild_id, False)
+        guild_settings_manager.set_ai_enabled(application_context.guild_id, False)
         await application_context.respond("Disabled AI moderation for this server.", ephemeral=True)
 
 
@@ -100,8 +100,8 @@ class SettingsCog(commands.Cog):
             return
 
         guild_id = application_context.guild_id
-        ai_moderation_enabled = bot_settings.is_ai_enabled(guild_id)
-        server_rules = bot_settings.get_server_rules(guild_id)
+        ai_moderation_enabled = guild_settings_manager.is_ai_enabled(guild_id)
+        server_rules = guild_settings_manager.get_server_rules(guild_id)
         guild_settings = {
             "guild_id": guild_id,
             "ai_enabled": ai_moderation_enabled,

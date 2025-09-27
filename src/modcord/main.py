@@ -13,12 +13,11 @@ import os
 import sys
 from pathlib import Path
 from typing import Iterable
-
 import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.ai.ai_model import MODEL_STATE, moderation_processor
+from modcord.ai.ai_model import model_state, moderation_processor
 from modcord.util.logger import get_logger, handle_exception
 
 
@@ -50,53 +49,30 @@ def build_intents() -> discord.Intents:
 
 def discover_cog_modules() -> Iterable[str]:
     return (
-        "modcord.bot.cogs.debug",
-        "modcord.bot.cogs.moderation",
+        "modcord.bot.cogs.debug_cmds",
         "modcord.bot.cogs.events",
-        "modcord.bot.cogs.settings",
+        "modcord.bot.cogs.guild_settings_cmds",
+        "modcord.bot.cogs.moderation_cmds",
     )
 
 
 def load_cogs(discord_bot_instance: discord.Bot) -> None:
     """Load cogs by importing modules explicitly from the cogs package."""
-    import inspect
+    from modcord.bot.cogs import debug_cmds, events, guild_settings_cmds, moderation_cmds
 
-    modules = []
-
-    for module_path in discover_cog_modules():
-        try:
-            module = __import__(module_path, fromlist=["*"])
-            modules.append(module)
-        except Exception as exc:  # noqa: BLE001 - ensure all failures logged
-            logger.error("Failed to import cog module %s: %s", module_path, exc, exc_info=True)
-
-    for module in modules:
-        mod_name = module.__name__
-        try:
-            # Prefer a Cog subclass if present
-            cog_class = None
-            for obj in vars(module).values():
-                if inspect.isclass(obj) and issubclass(obj, discord.Cog) and obj is not discord.Cog:
-                    cog_class = obj
-                    break
-
-            if cog_class:
-                discord_bot_instance.add_cog(cog_class(discord_bot_instance))
-                logger.info(f"Loaded cog: {cog_class.__name__} from {mod_name}")
-                continue
-
-            logger.error(f"No Cog subclass found in {mod_name}; skipping.")
-        except Exception as e:
-            logger.error(f"Failed to load cog {mod_name}: {e}", exc_info=True)
-
+    debug_cmds.setup(discord_bot_instance)
+    events.setup(discord_bot_instance)
+    guild_settings_cmds.setup(discord_bot_instance)
+    moderation_cmds.setup(discord_bot_instance)
+    logger.info("All cogs loaded successfully.")
 
 async def initialize_ai_model() -> None:
     try:
         logger.info("Initializing AI model before bot startup…")
         await moderation_processor.init_model()
         await moderation_processor.start_batch_worker()
-        if MODEL_STATE.init_error and not MODEL_STATE.available:
-            logger.critical("AI model failed to initialize: %s", MODEL_STATE.init_error)
+        if model_state.init_error and not model_state.available:
+            logger.critical("AI model failed to initialize: %s", model_state.init_error)
     except Exception as exc:  # noqa: BLE001 - surface initialization failures
         logger.critical("Unexpected error during AI initialization: %s", exc, exc_info=True)
         raise
@@ -121,14 +97,14 @@ async def async_main() -> None:
     try:
         await initialize_ai_model()
     except Exception:
-        if MODEL_STATE.init_error:
-            logger.critical("AI initialization failed irrecoverably: %s", MODEL_STATE.init_error)
+        if model_state.init_error:
+            logger.critical("AI initialization failed irrecoverably: %s", model_state.init_error)
         raise
 
-    if not MODEL_STATE.available:
+    if not model_state.available:
         logger.warning(
             "AI model is unavailable (%s). Continuing without automated moderation.",
-            MODEL_STATE.init_error or "no details",
+            model_state.init_error or "no details",
         )
 
     await start_bot(token)

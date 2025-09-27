@@ -7,7 +7,7 @@ import datetime
 import discord
 from discord.ext import commands
 
-from modcord.configuration.guild_settings import bot_settings
+from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.bot import rules_manager
 from modcord.util.logger import get_logger
 
@@ -47,7 +47,7 @@ class DebugCog(commands.Cog):
             guild = application_context.guild
             if guild is None:
                 raise RuntimeError("/refresh_rules can only be used inside a guild context")
-            rules_text = await rules_manager.refresh_guild_rules(guild, settings=bot_settings)
+            rules_text = await rules_manager.refresh_guild_rules(guild, settings=guild_settings_manager)
             
             if rules_text:
                 embed = discord.Embed(
@@ -78,7 +78,7 @@ class DebugCog(commands.Cog):
     @commands.slash_command(name="show_rules", description="Display the current cached server rules.")
     async def show_rules(self, application_context: discord.ApplicationContext):
         """Display the current cached server rules."""
-        rules_text = bot_settings.get_server_rules(application_context.guild.id)
+        rules_text = guild_settings_manager.get_server_rules(application_context.guild.id)
         
         if rules_text:
             embed = discord.Embed(
