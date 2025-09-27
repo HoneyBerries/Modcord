@@ -5,16 +5,13 @@ Includes model initialization, inference, warmup, and JSON parsing.
 from __future__ import annotations
 
 import asyncio
-import json
-import time
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 from vllm import LLM, SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
 
 import modcord.configuration.app_configuration as cfg
-from modcord.util.moderation_models import ActionData, ActionType, ModerationBatch, ModerationMessage
 from modcord.util.logger import get_logger
 import modcord.util.moderation_parsing as moderation_parsing
 
@@ -30,8 +27,14 @@ class ModelState:
         self.init_error: Optional[str] = None
 
 
-class ModerationProcessor:
-    """Encapsulates the end-to-end AI moderation workflow."""
+class InferenceProcessor:
+    """Manage lifecycle and inference for the vLLM-backed moderation model.
+
+    This class handles initialization, configuration, and synchronous-to-
+    asynchronous bridging for the vLLM model. Consumers should call
+    ``init_model`` before running inference and use ``generate_text`` to
+    perform generation from async code.
+    """
 
     def __init__(self) -> None:
         self.llm: Optional[LLM] = None
@@ -43,6 +46,15 @@ class ModerationProcessor:
 
     # ======== Model Initialization ========
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
+        """Initialize or reload the underlying LLM.
+
+        Args:
+            model: Optional model identifier to override configuration.
+
+        Returns:
+            A tuple of (llm, sampling_params, base_system_prompt) on success
+            or (None, None, template) on failure.
+        """
         async with self.init_lock:
             if self.state.available and self.llm is not None and self.sampling_params is not None:
                 return self.llm, self.sampling_params, self.base_system_prompt
@@ -141,7 +153,8 @@ class ModerationProcessor:
                     repetition_penalty=repetition_penalty,
                     presence_penalty=presence_penalty,
                     frequency_penalty=frequency_penalty,
-                    guided_decoding=GuidedDecodingParams(json=moderation_parsing.moderation_schema),
+                    guided_decoding=GuidedDecodingParams
+                    (json=moderation_parsing.moderation_schema),
                 )
 
                 self.state.available = True
@@ -156,36 +169,39 @@ class ModerationProcessor:
                 return None, None, self.base_system_prompt
 
     async def get_model(self) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
+        """Return the current model and sampling parameters.
+
+        Automatically triggers initialization if it has not started.
+        """
         if self.llm is None and not self.state.init_started:
             await self.init_model()
         return self.llm, self.sampling_params, self.base_system_prompt
 
     async def is_model_available(self) -> bool:
+        """Return True when the model is initialized and ready for inference."""
         return self.state.available
 
     async def get_model_init_error(self) -> Optional[str]:
+        """Return the textual initialization error if initialization failed."""
         return self.state.init_error
 
     async def get_system_prompt(self, server_rules: str = "") -> str:
+        """Format and return the system prompt for the model.
+
+        The prompt is built from the configured system template and the
+        optionally-supplied server-specific rules.
+        """
         await self.get_model()
         template = self.base_system_prompt or cfg.app_config.system_prompt_template
         return cfg.app_config.format_system_prompt(server_rules, template_override=template)
 
     # ======== Inference Helpers ========
-    async def messages_to_prompt(self, messages: List[Dict[str, Any]]) -> str:
-        parts = []
-        for m in messages:
-            role = (m.get("role") or "user").lower()
-            content = str(m.get("content") or "")
-            if role == "system":
-                parts.append(f"[SYSTEM]\n{content.strip()}")
-            elif role == "assistant":
-                parts.append(f"[ASSISTANT]\n{content.strip()}")
-            else:
-                parts.append(f"[USER]\n{content.strip()}")
-        return "\n\n".join(parts).strip()
-
     def sync_generate(self, prompts: List[str]) -> List[str]:
+        """Synchronous wrapper around the model's generate API.
+
+        This runs in the calling thread and is intended to be invoked from
+        a threadpool via ``asyncio.to_thread`` by async callers.
+        """
         if self.llm is None or self.sampling_params is None:
             raise RuntimeError("Model not initialized")
 
@@ -195,163 +211,28 @@ class ModerationProcessor:
             results.append(out.outputs[0].text.strip() if out.outputs else "")
         return results
 
-    async def submit_inference(self, messages: List[Dict[str, Any]]) -> str:
-        if self.state.init_started and not self.state.available:
-            reason = self.state.init_error or "AI model unavailable"
-            logger.debug(f"Short-circuiting inference; {reason}")
-            return f"null: {reason}"
+    async def generate_text(self, prompts: List[str]) -> List[str]:
+        """Asynchronously generate text for the supplied prompts.
 
+        Ensures the model is initialized and delegates heavy work to a
+        threadpool so callers need not block the event loop.
+        """
         model, params, _ = await self.get_model()
         if model is None or params is None:
             reason = self.state.init_error or "AI model unavailable"
-            logger.debug(f"Inference skipped; model not ready ({reason})")
-            return f"null: {reason}"
+            raise RuntimeError(reason)
 
-        prompt = await self.messages_to_prompt(messages)
-
-        try:
-            results = await asyncio.to_thread(self.sync_generate, [prompt])
-            return results[0] if results else "null: no response"
-        except Exception as e:
-            logger.error(f"Inference error: {e}", exc_info=True)
-            return f"null: inference error"
-
-    async def start_batch_worker(self) -> None:
-
-        async def warmup(self) -> None:
-            if self.warmup_completed:
-                return
-
-            logger.info("Warming up model...")
-            model, params, _ = await self.get_model()
-            if model is None or params is None:
-                logger.info("Skipping warmup; model unavailable (%s)", self.state.init_error or "no error")
-                return
-        
-        if not self.state.init_started:
-            await self.init_model()
-        try:
-            asyncio.create_task(warmup(self))
-        except RuntimeError:
-            logger.debug("start_batch_worker called outside event loop; skipping warmup task.")
+        return await asyncio.to_thread(self.sync_generate, prompts)
 
 
-    # ======== Public Moderation Entrypoints ========
-    async def get_batch_moderation_actions(
-        self,
-        batch: ModerationBatch,
-        server_rules: str = "",
-    ) -> List[ActionData]:
-        system_prompt = await self.get_system_prompt(server_rules)
-        system_msg = {"role": "system", "content": system_prompt}
-        payload = {"channel_id": str(batch.channel_id), "messages": batch.to_model_payload()}
-        user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
-        resp = await self.submit_inference([system_msg, user_msg])
-
-        # Parse whatever the model returned (may be sparse) and then ensure we have
-        # exactly one action for every input message. If the model omitted an
-        # action for a message, insert the no-op action 'null'.
-        parsed_actions = await moderation_parsing.parse_batch_actions(resp, batch.channel_id)
-
-        # Build quick lookup maps from message_id -> action and user_id -> action
-        msgid_map: Dict[str, ActionData] = {}
-        userid_map: Dict[str, ActionData] = {}
-        for action in parsed_actions:
-            u = action.user_id.strip()
-            mids = action.message_ids or []
-            if mids:
-                for mid in mids:
-                    mid_s = str(mid).strip()
-                    if mid_s:
-                        msgid_map[mid_s] = action
-            elif u:
-                userid_map.setdefault(u, action)
-
-        final_actions: List[ActionData] = []
-        for msg in batch.messages:
-            mid = msg.message_id
-            uid = msg.user_id
-
-            source: Optional[ActionData] = None
-            if mid and mid in msgid_map:
-                source = msgid_map[mid]
-            elif uid and uid in userid_map:
-                source = userid_map[uid]
-
-            if source is None:
-                action = ActionData(
-                    user_id=uid,
-                    action=ActionType.NULL,
-                    reason="no action",
-                    message_ids=[mid] if mid else [],
-                    timeout_duration=None,
-                    ban_duration=None,
-                )
-            else:
-                action = ActionData(
-                    user_id=source.user_id or uid,
-                    action=source.action,
-                    reason=source.reason,
-                    message_ids=list(source.message_ids),
-                    timeout_duration=source.timeout_duration,
-                    ban_duration=source.ban_duration,
-                )
-
-            if mid:
-                action.add_message_ids(mid)
-            if not action.user_id and uid:
-                action.user_id = uid
-
-            final_actions.append(action)
-
-        return final_actions
-
-    async def get_appropriate_action(
-        self,
-        history: Sequence[ModerationMessage],
-        user_id: int,
-        *,
-        current_message: Optional[str] = None,
-        server_rules: str = "",
-        channel_id: Optional[int | str] = None,
-        username: Optional[str] = None,
-        message_timestamp: Optional[str] = None,
-    ) -> tuple[ActionType, str]:
-        message_to_assess = current_message or (history[-1].content if history else "")
-
-        if not history and not message_to_assess.strip():
-            return ActionType.NULL, "empty history"
-
-        if not message_to_assess.strip():
-            return ActionType.NULL, "empty message"
-
-        system_prompt = await self.get_system_prompt(server_rules)
-        system_msg = {"role": "system", "content": system_prompt}
-
-        now_iso = message_timestamp or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-        payload_messages = [msg.to_history_payload() for msg in history]
-        payload_messages.append(
-            {
-                "role": "user",
-                "user_id": str(user_id),
-                "username": username or f"user_{user_id}",
-                "timestamp": now_iso,
-                "content": message_to_assess,
-            }
-        )
-
-        payload = {
-            "channel_id": str(channel_id) if channel_id else "unknown",
-            "messages": payload_messages,
-        }
-        user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
-
-        assistant_response = await self.submit_inference([system_msg, user_msg])
-        return await moderation_parsing.parse_action(assistant_response)
-    
+    # ======== State Accessors ========
     def get_model_state(self) -> ModelState:
+        """Return the internal ModelState object for inspection.
+
+        Useful for health checks and startup diagnostics.
+        """
         return self.state
 
 
-moderation_processor = ModerationProcessor()
-model_state = moderation_processor.state
+inference_processor = InferenceProcessor()
+model_state = inference_processor.state

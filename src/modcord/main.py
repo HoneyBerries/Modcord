@@ -17,7 +17,7 @@ import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.ai.ai_core import model_state, moderation_processor
+from modcord.ai.ai_moderation_processor import model_state, moderation_processor
 from modcord.bot.cogs import events_listener
 from modcord.util.logger import get_logger, handle_exception
 

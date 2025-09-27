@@ -142,12 +142,12 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
 
             validated.append(
                 ActionData(
-                    user_id=user_id,
-                    action=action_enum,
-                    reason=reason,
-                    message_ids=message_ids,
-                    timeout_duration=timeout_duration,
-                    ban_duration=ban_duration,
+                    user_id,
+                    action_enum,
+                    reason,
+                    message_ids,
+                    timeout_duration,
+                    ban_duration,
                 )
             )
         return validated

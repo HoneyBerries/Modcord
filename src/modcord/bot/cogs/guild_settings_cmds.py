@@ -20,6 +20,7 @@ Quick usage example
 import discord
 from discord.ext import commands
 import json
+import io
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
 
@@ -108,8 +109,25 @@ class SettingsCog(commands.Cog):
             "rules": server_rules,
         }
         settings_json_string = json.dumps(guild_settings, ensure_ascii=False, indent=2)
-        # Keep the response ephemeral so configuration isn't exposed publicly
-        await application_context.respond(f"```json\n{settings_json_string}\n```", ephemeral=True)
+        # Always send the dump as a JSON file attachment to avoid message
+        # length limits and ensure the response is easy to download and
+        # inspect. Keep responses ephemeral so configuration isn't exposed.
+        try:
+            file_bytes = settings_json_string.encode("utf-8")
+            file_obj = io.BytesIO(file_bytes)
+            file_obj.seek(0)
+            discord_file = discord.File(fp=file_obj, filename=f"guild_{guild_id}_settings.json")
+            try:
+                await application_context.respond(file=discord_file, ephemeral=True)
+            except discord.InteractionResponded:
+                # If the interaction was already responded to, use followup
+                await application_context.followup.send(file=discord_file, ephemeral=True)
+        except Exception as e:
+            logger.exception("Failed to send settings dump for guild %s: %s", guild_id, e)
+            try:
+                await application_context.respond("A :bug: showed up while generating the settings dump.", ephemeral=True)
+            except discord.InteractionResponded:
+                await application_context.followup.send("A :bug: showed up while generating the settings dump.", ephemeral=True)
 
 
 def setup(discord_bot_instance):

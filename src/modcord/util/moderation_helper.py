@@ -12,7 +12,7 @@ import asyncio
 
 import discord
 
-from modcord.ai.ai_core import moderation_processor
+from modcord.ai.ai_moderation_processor import moderation_processor
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.bot import rules_manager
 from modcord.util.moderation_models import ActionData, ActionType, ModerationBatch, ModerationMessage
