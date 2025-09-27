@@ -29,12 +29,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 logger = get_logger("main")
 
 
-def load_environment() -> str | None:
+def load_environment() -> str:
     """Load environment variables and return the Discord bot token."""
     load_dotenv(dotenv_path=BASE_DIR / ".env")
     token = os.getenv("DISCORD_BOT_TOKEN")
     if not token:
         logger.critical("'DISCORD_BOT_TOKEN' environment variable not set. Bot cannot start.")
+        sys.exit(1)
     return token
 
 
@@ -90,17 +91,17 @@ async def start_bot(token: str) -> None:
         logger.info("Discord bot shutdown sequence complete.")
 
 
-async def async_main() -> None:
+async def async_main() -> int:
     token = load_environment()
     if not token:
-        raise SystemExit(1)
+        return 1
 
     try:
         await initialize_ai_model()
     except Exception:
         if model_state.init_error:
             logger.critical("AI initialization failed irrecoverably: %s", model_state.init_error)
-        raise
+        return 1
 
     if not model_state.available:
         logger.warning(
@@ -109,23 +110,35 @@ async def async_main() -> None:
         )
 
     await start_bot(token)
+    return 0
 
 
-def main() -> None:
+def main() -> int:
     """Synchronous entrypoint that delegates to the async runner."""
     logger.info("Starting Discord Moderation Bot…")
     try:
-        asyncio.run(async_main())
+        return asyncio.run(async_main())
     except KeyboardInterrupt:
         logger.info("Shutdown requested by user.")
+        return 0
     except SystemExit as exit_exc:
-        raise exit_exc
+        # SystemExit.code may be an int, str, or None — normalize to int for the function return type.
+        code = exit_exc.code
+        if isinstance(code, int):
+            return code
+        if code is None:
+            return 0
+        try:
+            return int(code)
+        except (ValueError, TypeError):
+            logger.warning("SystemExit.code is not an int (%r); defaulting to 1", code)
+            return 1
     except Exception as exc:
         logger.critical("An unexpected error occurred while running the bot: %s", exc, exc_info=True)
-        raise SystemExit(1) from exc
+        return 1
 
 
 if __name__ == "__main__":
     # Set the global exception hook to use the custom handler
     sys.excepthook = handle_exception
-    main()
+    print("Exited with code:", main())

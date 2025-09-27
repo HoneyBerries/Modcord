@@ -26,9 +26,9 @@ import concurrent.futures
 from dataclasses import dataclass
 
 from modcord.util.logger import get_logger
-from modcord.util.action import ModerationBatch, ModerationMessage
+from modcord.util.moderation_models import ModerationBatch, ModerationMessage
 
-logger = get_logger("guild_settings")
+logger = get_logger("guild_settings_manager")
 
 
 @dataclass

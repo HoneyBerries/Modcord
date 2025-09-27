@@ -1,79 +1,73 @@
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import sys
 from pathlib import Path
 from datetime import datetime
 import warnings
 
-# Create a logs directory at the project root
-LOGS_DIR = Path(__file__).resolve().parents[3] / "logs"
+# -------------------- Configuration --------------------
+LOGS_DIR: Path = Path(__file__).resolve().parents[3] / "logs"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
+LOG_FORMAT: str = "[%(asctime)s] [%(levelname)s] [%(name)s:%(funcName)s:%(lineno)d] %(message)s"
+DATE_FORMAT: str = "%Y-%m-%d %H-%M-%S"
 
-# Define the log format and date format for log messages
-log_format = '[%(asctime)s] [%(levelname)s] [%(name)s:%(funcName)s:%(lineno)d] %(message)s'
-date_format = '%Y-%m-%d %H-%M-%S'
-
-# ANSI color codes for log levels
 LOG_COLORS = {
-    'DEBUG': '\033[36m',     # Cyan
-    'INFO': '\033[32m',     # Green
-    'WARNING': '\033[33m',  # Yellow
-    'ERROR': '\033[31m',     # Red
-    'CRITICAL': '\033[38;5;88m', # Dark Red (ANSI 256-color)
+    "DEBUG": "\033[36m",      # Cyan
+    "INFO": "\033[32m",       # Green
+    "WARNING": "\033[33m",    # Yellow
+    "ERROR": "\033[31m",      # Red
+    "CRITICAL": "\033[38;5;88m",  # Dark Red (ANSI 256-color)
 }
-RESET_COLOR = '\033[0m'
+RESET_COLOR = "\033[0m"
 
+LOG_FILENAME: str = datetime.now().strftime(DATE_FORMAT) + ".log"
+LOG_FILEPATH: Path = LOGS_DIR / LOG_FILENAME
+
+# -------------------- Formatters --------------------
 class ColorFormatter(logging.Formatter):
-    """A custom formatter to add color to log messages."""
-    def format(self, record):
-        color = LOG_COLORS.get(record.levelname, '')
-        message = super().format(record)
-        if color:
-            message = f"{color}{message}{RESET_COLOR}"
-        return message
+    """A custom formatter to add ANSI colors to console log messages."""
 
-plain_formatter = logging.Formatter(log_format, datefmt=date_format)
+    def format(self, record: logging.LogRecord) -> str:
+        color = LOG_COLORS.get(record.levelname, "")
+        message = super().format(record)
+        return f"{color}{message}{RESET_COLOR}" if color else message
+
+
+plain_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+
 
 def should_use_color() -> bool:
+    """Check if the console supports ANSI color codes."""
     try:
         return sys.stderr.isatty()
     except Exception:
         return False
 
-color_formatter = ColorFormatter(log_format, datefmt=date_format) if should_use_color() else plain_formatter
 
+color_formatter = ColorFormatter(LOG_FORMAT, datefmt=DATE_FORMAT) if should_use_color() else plain_formatter
 
-# Log filename with timestamp
-LOG_FILENAME = datetime.now().strftime(date_format) + ".log"
-LOG_FILEPATH = LOGS_DIR / LOG_FILENAME
-
-
+# -------------------- Logger Setup --------------------
 def resolve_log_level(default_level: int = logging.INFO) -> int:
+    """Resolve the logging level from the environment or default."""
     level_name = os.environ.get("MODCORD_LOG_LEVEL", "").upper().strip()
-    if level_name:
-        return getattr(logging, level_name, default_level)
-    return default_level
+    return getattr(logging, level_name, default_level) if level_name else default_level
 
 
 def setup_logger(logger_name: str, logging_level: int | None = None) -> logging.Logger:
     """
-    Set up a logger with file and console handlers.
+    Configure and return a logger with a console and file handler.
 
     Args:
-        logger_name (str): The name of the logger.
-        logging_level (int): The logging level (default: logging.DEBUG).
+        logger_name (str): Name of the logger.
+        logging_level (int | None): Optional logging level (defaults to MODCORD_LOG_LEVEL env or INFO).
 
     Returns:
-        logging.Logger: Configured logger instance.
-
-    Notes:
-        - The logger is cached to prevent duplicate handlers.
-        - Logs messages to both the console (warnings and above) and a rotating file (debug and above).
+        logging.Logger: Configured logger.
     """
     logger = logging.getLogger(logger_name)
 
-    # If the logger is already configured, just return it
     if logger.handlers:
         return logger
 
@@ -81,23 +75,18 @@ def setup_logger(logger_name: str, logging_level: int | None = None) -> logging.
     logger.setLevel(base_level)
     logger.propagate = False
 
-
     # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(base_level)
     console_handler.setFormatter(color_formatter)
     logger.addHandler(console_handler)
 
-    # Rotating file handler (DEBUG and above, plain)
-    from logging.handlers import RotatingFileHandler
 
+    # File handler (DEBUG level)
     file_handler = RotatingFileHandler(
         LOG_FILEPATH,
-        maxBytes=5 * 1024 * 1024,
-        backupCount=5,
-        encoding="utf-8",
+        encoding="utf-8"
     )
-
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(plain_formatter)
     logger.addHandler(file_handler)
@@ -106,60 +95,39 @@ def setup_logger(logger_name: str, logging_level: int | None = None) -> logging.
 
 
 def get_logger(logger_name: str) -> logging.Logger:
-    """
-    Get a logger instance.
-
-    Args:
-        logger_name (str): The name of the logger.
-
-    Returns:
-        logging.Logger: Logger instance.
-    """
+    """Return a configured logger instance."""
     return setup_logger(logger_name)
 
 
-# --- Uncaught Exception Handler ---
-def handle_exception(exception_type, exception_instance, exception_traceback):
+# -------------------- Exception Handling --------------------
+def handle_exception(exception_type, exception_instance, exception_traceback) -> None:
     """
-    Log uncaught exceptions using the root logger.
+    Log uncaught exceptions using the main logger.
 
-    Args:
-        exception_type (type): The exception type.
-        exception_instance (Exception): The exception instance.
-        exception_traceback (traceback): The traceback object.
-
-    Notes:
-        - KeyboardInterrupt exceptions are passed to the default exception handler.
-        - Other exceptions are logged as errors using the root logger.
+    KeyboardInterrupt exceptions are passed to the default hook.
     """
     if issubclass(exception_type, KeyboardInterrupt):
         sys.__excepthook__(exception_type, exception_instance, exception_traceback)
-        return
-    main_logger.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
+    else:
+        main_logger.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
 
-# Reduce vllm and related noisy loggers to WARNING to avoid INFO/DEBUG spam.
-logging.getLogger("vllm").setLevel(logging.ERROR)
-logging.getLogger("vllm.engine").setLevel(logging.ERROR)
-logging.getLogger("vllm.client").setLevel(logging.ERROR)
-# Optionally reduce other noisy libs commonly used with vllm:
-logging.getLogger("transformers").setLevel(logging.ERROR)
-logging.getLogger("urllib3").setLevel(logging.ERROR)
 
-# Lower Python-level loggers for noisy libs
+# -------------------- Suppress Noisy Libraries --------------------
+for noisy_logger in [
+    "vllm", "vllm.engine", "vllm.client", "transformers", "urllib3",
+    "torch", "torch.distributed", "c10d", "gloo"
+]:
+    logging.getLogger(noisy_logger).setLevel(logging.ERROR)
+
 os.environ.setdefault("TORCH_CPP_LOG_LEVEL", "ERROR")
 os.environ.setdefault("GLOG_minloglevel", "2")   # 0=INFO,1=WARNING,2=ERROR
 os.environ.setdefault("NCCL_DEBUG", "ERROR")
 
-logging.getLogger("torch").setLevel(logging.ERROR)
-logging.getLogger("torch.distributed").setLevel(logging.ERROR)
-logging.getLogger("c10d").setLevel(logging.ERROR)
-logging.getLogger("gloo").setLevel(logging.ERROR)
-
-# Optionally suppress repetitive UserWarnings from vllm modules
+# Suppress repetitive user warnings from vllm
 warnings.filterwarnings("ignore", category=UserWarning, module=r"vllm.*")
 
-# Main bot logger
+# -------------------- Main Logger --------------------
 main_logger = get_logger("main")
 
-# Set the global exception hook to use the custom handler
+# Set global exception hook
 sys.excepthook = handle_exception

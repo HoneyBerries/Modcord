@@ -9,11 +9,6 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.12",
-    install_requires=[
-        "py-cord",
-        "python-dotenv",
-        "pyyaml",
-    ],
     entry_points={
         "console_scripts": [
             "modcord=modcord.main:main",

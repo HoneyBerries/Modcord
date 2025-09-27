@@ -62,7 +62,7 @@ class AppConfig:
     def __init__(self, config_path: Optional[Path | str] = None) -> None:
         self.config_path = Path(config_path) if config_path else CONFIG_PATH
         self.lock = RLock()
-        self.data: Dict[str, Any] = {}
+        self._data: Dict[str, Any] = {}
         self.reload()
 
     # --------------------------
@@ -95,8 +95,8 @@ class AppConfig:
         loaded (which will be an empty dict on error).
         """
         with self.lock:
-            self.data = self.load_from_disk()
-            return self.data
+            self._data = self.load_from_disk()
+            return self._data
 
     @property
     def data(self) -> Dict[str, Any]:
@@ -107,7 +107,7 @@ class AppConfig:
         properties instead.
         """
         with self.lock:
-            return self.data
+            return self._data
 
     def get(self, key: str, default: Any = None) -> Any:
         """Safe lookup for top-level configuration keys.
@@ -115,7 +115,7 @@ class AppConfig:
         Returns the value for `key` if present, otherwise `default`.
         """
         with self.lock:
-            return self.data.get(key, default)
+            return self._data.get(key, default)
 
     # --------------------------
     # High-level shortcuts
@@ -128,7 +128,7 @@ class AppConfig:
         prompts without additional checks.
         """
         with self.lock:
-            value = self.data.get("server_rules", "")
+            value = self._data.get("server_rules", "")
         return str(value or "")
 
     @property
@@ -139,7 +139,7 @@ class AppConfig:
         format_system_prompt(...) to render with server rules inserted.
         """
         with self.lock:
-            value = self.data.get("system_prompt", "")
+            value = self._data.get("system_prompt", "")
         return str(value or "")
 
     @property
@@ -150,7 +150,7 @@ class AppConfig:
         mapping semantics for backward compatibility.
         """
         with self.lock:
-            settings = self.data.get("ai_settings", {})
+            settings = self._data.get("ai_settings", {})
             if not isinstance(settings, dict):
                 settings = {}
             # Wrap raw dict in AISettings for typed access while remaining

@@ -58,7 +58,7 @@ async def process_message_batch(self, batch: ModerationBatch) -> None:
         # Apply each action
         for action_data in actions:
             try:
-                await self.apply_batch_action(action_data, batch)
+                await apply_batch_action(self, action_data, batch)
             except Exception as e:
                 logger.error(f"Error applying action {action_data} in channel {channel_id}: {e}")
 
