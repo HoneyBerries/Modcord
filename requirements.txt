@@ -34,8 +34,6 @@ vllm
 # ONNX stuff
 onnx
 onnxruntime
-onnx-simplifier
-onnx-graphsurgeon
 
 # Tensor RT
 tensorrt
