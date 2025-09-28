@@ -26,7 +26,7 @@ import concurrent.futures
 from dataclasses import dataclass
 
 from modcord.util.logger import get_logger
-from modcord.util.moderation_models import ModerationBatch, ModerationMessage
+from modcord.util.moderation_models import ActionType, ModerationBatch, ModerationMessage
 from modcord.configuration.app_configuration import app_config
 
 logger = get_logger("guild_settings_manager")
@@ -39,6 +39,11 @@ class GuildSettings:
     guild_id: int
     ai_enabled: bool = True
     rules: str = ""
+    auto_warn_enabled: bool = True
+    auto_delete_enabled: bool = True
+    auto_timeout_enabled: bool = False
+    auto_kick_enabled: bool = False
+    auto_ban_enabled: bool = False
 
     @classmethod
     def from_dict(cls, guild_id: int, payload: Dict[str, object]) -> "GuildSettings":
@@ -47,13 +52,41 @@ class GuildSettings:
         ai_enabled = bool(payload.get("ai_enabled", True))
         rules_raw = payload.get("rules", "")
         rules = str(rules_raw) if rules_raw is not None else ""
-        return cls(guild_id=guild_id, ai_enabled=ai_enabled, rules=rules)
+        auto_warn_enabled = bool(payload.get("auto_warn_enabled", True))
+        auto_delete_enabled = bool(payload.get("auto_delete_enabled", True))
+        auto_timeout_enabled = bool(payload.get("auto_timeout_enabled", False))
+        auto_kick_enabled = bool(payload.get("auto_kick_enabled", False))
+        auto_ban_enabled = bool(payload.get("auto_ban_enabled", False))
+        return cls(
+            guild_id=guild_id,
+            ai_enabled=ai_enabled,
+            rules=rules,
+            auto_warn_enabled=auto_warn_enabled,
+            auto_delete_enabled=auto_delete_enabled,
+            auto_timeout_enabled=auto_timeout_enabled,
+            auto_kick_enabled=auto_kick_enabled,
+            auto_ban_enabled=auto_ban_enabled,
+        )
 
     def to_dict(self) -> Dict[str, object]:
         return {
             "ai_enabled": self.ai_enabled,
             "rules": self.rules,
+            "auto_warn_enabled": self.auto_warn_enabled,
+            "auto_delete_enabled": self.auto_delete_enabled,
+            "auto_timeout_enabled": self.auto_timeout_enabled,
+            "auto_kick_enabled": self.auto_kick_enabled,
+            "auto_ban_enabled": self.auto_ban_enabled,
         }
+
+
+ACTION_FLAG_FIELDS: dict[ActionType, str] = {
+    ActionType.WARN: "auto_warn_enabled",
+    ActionType.DELETE: "auto_delete_enabled",
+    ActionType.TIMEOUT: "auto_timeout_enabled",
+    ActionType.KICK: "auto_kick_enabled",
+    ActionType.BAN: "auto_ban_enabled",
+}
 
 
 class GuildSettingsManager:
@@ -118,6 +151,11 @@ class GuildSettingsManager:
                 str(guild_id): {
                     "ai_enabled": settings.ai_enabled,
                     "rules": settings.rules,
+                    "auto_warn_enabled": settings.auto_warn_enabled,
+                    "auto_delete_enabled": settings.auto_delete_enabled,
+                    "auto_timeout_enabled": settings.auto_timeout_enabled,
+                    "auto_kick_enabled": settings.auto_kick_enabled,
+                    "auto_ban_enabled": settings.auto_ban_enabled,
                 }
                 for guild_id, settings in self.guilds.items()
             }
@@ -297,6 +335,34 @@ class GuildSettingsManager:
         # Persist change by scheduling on the dedicated writer loop
         self.schedule_persist(guild_id)
         logger.debug("Scheduled async persist for guild %s", guild_id)
+        return True
+
+    def is_action_allowed(self, guild_id: int, action: ActionType) -> bool:
+        """Return whether the specified AI action is allowed for the guild."""
+
+        settings = self.ensure_guild(guild_id)
+        field_name = ACTION_FLAG_FIELDS.get(action)
+        if field_name is None:
+            return True
+        return bool(getattr(settings, field_name, True))
+
+    def set_action_allowed(self, guild_id: int, action: ActionType, enabled: bool) -> bool:
+        """Enable or disable an AI action for the guild and persist the change."""
+
+        field_name = ACTION_FLAG_FIELDS.get(action)
+        if field_name is None:
+            logger.warning("Attempted to toggle unsupported action %s for guild %s", action, guild_id)
+            return False
+
+        settings = self.ensure_guild(guild_id)
+        setattr(settings, field_name, bool(enabled))
+        logger.info(
+            "Set %s to %s for guild %s",
+            field_name,
+            enabled,
+            guild_id,
+        )
+        self.schedule_persist(guild_id)
         return True
 
     # --- Persistence helpers ---

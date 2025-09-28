@@ -31,20 +31,12 @@ class ParseBatchActionsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(action.timeout_duration)
         self.assertIsNone(action.ban_duration)
 
-    async def test_fallback_to_legacy_message_ids(self) -> None:
+    async def test_invalid_schema_returns_empty(self) -> None:
         response = (
-            '{"channel_id":"123","users":[{"user_id":"u1","action":"delete",'
-            '"reason":"legacy","message_ids":["m2"],"timeout_duration":null,'
-            '"ban_duration":null}]}'
+            '{"channel_id":"123","users":[{"user_id":"u1","action":"warn"}]}'
         )
 
         actions = await moderation_parsing.parse_batch_actions(response, 123)
 
-        self.assertEqual(len(actions), 1)
-        action = actions[0]
-        self.assertEqual(action.user_id, "u1")
-        self.assertEqual(action.action, ActionType.DELETE)
-        self.assertEqual(action.message_ids, ["m2"])
-        self.assertIsNone(action.timeout_duration)
-        self.assertIsNone(action.ban_duration)
+        self.assertEqual(actions, [])
 

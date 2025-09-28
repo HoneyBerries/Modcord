@@ -35,6 +35,7 @@ class ModerationProcessor:
         self.inference_processor = engine or inference_processor
         self._inference_queue: asyncio.Queue[Tuple[str, asyncio.Future[str]]] = asyncio.Queue()
         self._inference_worker: Optional[asyncio.Task[None]] = None
+        self._shutdown: bool = False
 
         # Load batching knobs from configuration with safe defaults.
         batching_cfg = app_config.ai_settings.batching if app_config else {}
@@ -62,6 +63,7 @@ class ModerationProcessor:
         Returns:
             True if initialization succeeded (model available), False otherwise.
         """
+        self._shutdown = False
         try:
             # Forward to inference_processor; it may return different payloads but state is authoritative.
             await self.inference_processor.init_model(model)
@@ -117,11 +119,11 @@ class ModerationProcessor:
                             # Non-fatal: log and continue to warmup generation
                             logger.debug("Failed to assign compiled model back to vLLM wrapper: %s", assign_exc)
                     except Exception as compile_exc:
-                        logger.debug("torch.compile attempted but failed: %s", compile_exc)
+                        logger.error("torch.compile attempted but failed: %s", compile_exc)
                 else:
-                    logger.debug("torch.compile not available or underlying model not found; skipping JIT.")
+                    logger.warning("torch.compile not available or underlying model not found; skipping JIT.")
             except Exception:
-                logger.debug("torch not importable or compile unavailable; skipping JIT compile step.")
+                logger.warning("torch not importable or compile unavailable; skipping JIT compile step.")
 
             # Trigger a small dummy generation to force vLLM to capture CUDA graphs / do first-time work.
             try:
@@ -223,6 +225,10 @@ class ModerationProcessor:
         Returns the raw assistant response string on success or a string prefixed
         with 'null:' describing the failure reason on error.
         """
+        if self._shutdown:
+            logger.debug("submit_inference called during shutdown; returning null response")
+            return "null: shutting down"
+
         if self.inference_processor.state.init_started and not self.inference_processor.state.available:
             reason = self.inference_processor.state.init_error or "AI model unavailable"
             logger.debug("Short-circuiting inference; %s", reason)
@@ -391,6 +397,9 @@ class ModerationProcessor:
         return final_actions
 
     def _ensure_inference_batch_worker(self) -> None:
+        if self._shutdown:
+            logger.debug("Inference worker requested while shutting down; skipping creation")
+            return
         if self._inference_worker and not self._inference_worker.done():
             return
         loop = asyncio.get_running_loop()
@@ -406,53 +415,116 @@ class ModerationProcessor:
         return await future
 
     async def _batched_inference_worker(self) -> None:
-        while True:
-            prompt, future = await self._inference_queue.get()
-            prompts = [prompt]
-            futures = [future]
-
-            start = time.monotonic()
-            while len(prompts) < self._batch_max_prompts:
-                remaining = self._batch_max_delay - (time.monotonic() - start)
-                if remaining <= 0:
-                    break
+        try:
+            while True:
                 try:
-                    next_prompt, next_future = await asyncio.wait_for(self._inference_queue.get(), remaining)
-                    prompts.append(next_prompt)
-                    futures.append(next_future)
-                except asyncio.TimeoutError:
+                    prompt, future = await self._inference_queue.get()
+                except asyncio.CancelledError:
+                    logger.debug("Inference worker cancelled while awaiting queue item")
                     break
 
-            wait_duration = time.monotonic() - start
-            queue_remaining = self._inference_queue.qsize()
-            logger.info(
-                "Dispatching inference batch: size=%d, wait=%.3fs, remaining_queue=%d",
-                len(prompts),
-                wait_duration,
-                queue_remaining,
-            )
+                prompts = [prompt]
+                futures = [future]
 
-            try:
-                if hasattr(self.inference_processor, "generate_text"):
-                    results = await self.inference_processor.generate_text(prompts)  # type: ignore[arg-type]
+                start = time.monotonic()
+                while len(prompts) < self._batch_max_prompts:
+                    remaining = self._batch_max_delay - (time.monotonic() - start)
+                    if remaining <= 0:
+                        break
+                    try:
+                        next_prompt, next_future = await asyncio.wait_for(self._inference_queue.get(), remaining)
+                        prompts.append(next_prompt)
+                        futures.append(next_future)
+                    except asyncio.TimeoutError:
+                        break
+                    except asyncio.CancelledError:
+                        logger.debug("Inference worker cancelled during batch aggregation")
+                        break
+
+                wait_duration = time.monotonic() - start
+                queue_remaining = self._inference_queue.qsize()
+                logger.info(
+                    "Dispatching inference batch: size=%d, wait=%.3fs, remaining_queue=%d",
+                    len(prompts),
+                    wait_duration,
+                    queue_remaining,
+                )
+
+                try:
+                    if hasattr(self.inference_processor, "generate_text"):
+                        results = await self.inference_processor.generate_text(prompts)  # type: ignore[arg-type]
+                    else:
+                        results = await asyncio.to_thread(self.inference_processor.sync_generate, prompts)
+                except Exception as exc:  # noqa: BLE001
+                    for fut in futures:
+                        if not fut.done():
+                            fut.set_exception(exc)
+                    continue
+
+                if results is None or len(results) != len(futures):
+                    error = RuntimeError("Inference outputs did not match request count")
+                    for fut in futures:
+                        if not fut.done():
+                            fut.set_exception(error)
+                    continue
+
+                for fut, output in zip(futures, results):
+                    if not fut.done():
+                        fut.set_result(output)
+        except asyncio.CancelledError:
+            logger.debug("Inference worker task cancelled")
+        finally:
+            drained = 0
+            while not self._inference_queue.empty():
+                try:
+                    _, future = self._inference_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
                 else:
-                    results = await asyncio.to_thread(self.inference_processor.sync_generate, prompts)
-            except Exception as exc:  # noqa: BLE001
-                for fut in futures:
-                    if not fut.done():
-                        fut.set_exception(exc)
-                continue
+                    drained += 1
+                    if not future.done():
+                        future.set_result("null: shutting down")
+            if drained:
+                logger.debug("Inference worker drained %d queued prompts during shutdown", drained)
 
-            if results is None or len(results) != len(futures):
-                error = RuntimeError("Inference outputs did not match request count")
-                for fut in futures:
-                    if not fut.done():
-                        fut.set_exception(error)
-                continue
+    async def shutdown(self) -> None:
+        """Gracefully stop background inference processing."""
 
-            for fut, output in zip(futures, results):
-                if not fut.done():
-                    fut.set_result(output)
+        if self._shutdown:
+            logger.debug("ModerationProcessor.shutdown called multiple times")
+            return
+
+        self._shutdown = True
+
+        worker = self._inference_worker
+        if worker and not worker.done():
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("Inference worker raised during shutdown")
+
+        self._inference_worker = None
+
+        drained = 0
+        while not self._inference_queue.empty():
+            try:
+                _, future = self._inference_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            else:
+                drained += 1
+                if not future.done():
+                    future.set_result("null: shutting down")
+        if drained:
+            logger.debug("Rejected %d pending inference requests during shutdown", drained)
+
+        try:
+            await self.inference_processor.unload_model()
+        except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+            logger.warning("Failed to unload AI model cleanly: %s", exc, exc_info=True)
 
     async def get_appropriate_action(
         self,

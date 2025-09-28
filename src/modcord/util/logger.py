@@ -48,14 +48,10 @@ def should_use_color() -> bool:
 
 color_formatter = ColorFormatter(LOG_FORMAT, datefmt=DATE_FORMAT) if should_use_color() else plain_formatter
 
+
 # -------------------- Logger Setup --------------------
-def resolve_log_level(default_level: int = logging.INFO) -> int:
-    """Resolve the logging level from the environment or default."""
-    level_name = os.environ.get("MODCORD_LOG_LEVEL", "").upper().strip()
-    return getattr(logging, level_name, default_level) if level_name else default_level
 
-
-def setup_logger(logger_name: str, logging_level: int | None = None) -> logging.Logger:
+def setup_logger(logger_name: str) -> logging.Logger:
     """
     Configure and return a logger with a console and file handler.
 
@@ -71,7 +67,7 @@ def setup_logger(logger_name: str, logging_level: int | None = None) -> logging.
     if logger.handlers:
         return logger
 
-    base_level = logging_level if logging_level is not None else resolve_log_level()
+    base_level = logging.DEBUG
     logger.setLevel(base_level)
     logger.propagate = False
 
@@ -109,7 +105,7 @@ def handle_exception(exception_type, exception_instance, exception_traceback) ->
     if issubclass(exception_type, KeyboardInterrupt):
         sys.__excepthook__(exception_type, exception_instance, exception_traceback)
     else:
-        main_logger.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
+        logging.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
 
 
 # -------------------- Suppress Noisy Libraries --------------------
@@ -119,15 +115,13 @@ for noisy_logger in [
 ]:
     logging.getLogger(noisy_logger).setLevel(logging.ERROR)
 
-os.environ.setdefault("TORCH_CPP_LOG_LEVEL", "ERROR")
+# os.environ.setdefault("TORCH_CPP_LOG_LEVEL", "ERROR")
 os.environ.setdefault("GLOG_minloglevel", "2")   # 0=INFO,1=WARNING,2=ERROR
 os.environ.setdefault("NCCL_DEBUG", "ERROR")
 
 # Suppress repetitive user warnings from vllm
 warnings.filterwarnings("ignore", category=UserWarning, module=r"vllm.*")
 
-# -------------------- Main Logger --------------------
-main_logger = get_logger("main")
 
 # Set global exception hook
 sys.excepthook = handle_exception

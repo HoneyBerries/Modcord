@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 
 from modcord.ai.ai_moderation_processor import model_state, moderation_processor
 from modcord.bot.cogs import events_listener
+from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger, handle_exception
 
 
@@ -27,6 +28,129 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Get logger for this module
 logger = get_logger("main")
+
+
+class ConsoleControl:
+    """Coordinate console commands with the running bot instance."""
+
+    def __init__(self) -> None:
+        self.shutdown_event = asyncio.Event()
+        self.restart_lock = asyncio.Lock()
+        self._bot: discord.Bot | None = None
+
+    def set_bot(self, bot: discord.Bot | None) -> None:
+        self._bot = bot
+
+    @property
+    def bot(self) -> discord.Bot | None:
+        return self._bot
+
+    def request_shutdown(self) -> None:
+        self.shutdown_event.set()
+
+    def stop(self) -> None:
+        self.shutdown_event.set()
+
+    def is_shutdown_requested(self) -> bool:
+        return self.shutdown_event.is_set()
+
+
+async def restart_ai_pipeline(control: ConsoleControl) -> None:
+    """Restart the AI moderation pipeline without dropping the Discord connection."""
+
+    async with control.restart_lock:
+        print("[console] Restarting AI moderation pipeline…", flush=True)
+        try:
+            await moderation_processor.shutdown()
+        except Exception as exc:  # noqa: BLE001 - log but continue to re-init
+            logger.exception("Error while shutting down moderation processor: %s", exc)
+
+        model_state.available = False
+        model_state.init_error = None
+
+        success = await moderation_processor.init_model()
+        if success:
+            await moderation_processor.start_batch_worker()
+
+        bot = control.bot
+        if bot is not None:
+            events_cog = bot.get_cog("EventsListenerCog")
+            updater = getattr(events_cog, "update_presence_for_model_state", None)
+            if callable(updater):
+                try:
+                    maybe_coro = updater()
+                    if asyncio.iscoroutine(maybe_coro):
+                        await maybe_coro
+                except Exception as exc:  # noqa: BLE001 - best-effort update
+                    logger.exception("Failed to refresh presence after AI restart: %s", exc)
+
+        status = "available" if model_state.available else "unavailable"
+        detail = model_state.init_error or "ready"
+        print(f"[console] AI pipeline restart complete: {status} ({detail}).", flush=True)
+
+
+async def handle_console_command(command: str, control: ConsoleControl) -> None:
+    cmd = command.strip().lower()
+    if not cmd:
+        return
+
+    if cmd in {"quit", "exit", "shutdown"}:
+        print("[console] Shutdown requested.", flush=True)
+        control.request_shutdown()
+        bot = control.bot
+        if bot is not None and not bot.is_closed():
+            try:
+                await bot.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Error while closing bot from console: %s", exc)
+        return
+
+    if cmd == "restart":
+        await restart_ai_pipeline(control)
+        return
+
+    if cmd == "status":
+        availability = "available" if model_state.available else "unavailable"
+        detail = model_state.init_error or "ready"
+        guilds = len(control.bot.guilds) if control.bot else 0
+        print(
+            f"[Console] Status: AI {availability} ({detail}); connected guilds: {guilds}",
+            flush=True,
+        )
+        return
+
+    if cmd == "help":
+        print(
+            "[console] Commands: help, status, restart, shutdown",
+            flush=True,
+        )
+        return
+
+    print(f"[console] Unknown command '{command}'. Type 'help' for options.", flush=True)
+
+
+async def run_console(control: ConsoleControl) -> None:
+    """Run a simple stdin-based console for runtime control commands."""
+
+    print("[console] Interactive console ready. Type 'help' for commands.", flush=True)
+    try:
+        while not control.is_shutdown_requested():
+            try:
+                # Print prompt and flush to ensure it appears before input
+                print("> ", end="", flush=True)
+                line = await asyncio.to_thread(sys.stdin.readline)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Console input error: %s", exc)
+                break
+
+            if line == "":
+                await asyncio.sleep(0.25)
+                continue
+
+            await handle_console_command(line, control)
+    except asyncio.CancelledError:
+        logger.debug("Console loop cancelled")
+        raise
 
 
 def load_environment() -> str:
@@ -80,15 +204,36 @@ async def initialize_ai_model() -> None:
         raise
 
 
-async def start_bot(token: str) -> None:
-    bot = discord.Bot(intents=build_intents())
-    load_cogs(bot)
-
+async def start_bot(bot: discord.Bot, token: str) -> None:
     logger.info("Attempting to connect to Discord…")
     try:
         await bot.start(token)
+    except asyncio.CancelledError:
+        logger.info("Discord bot start cancelled; shutting down")
+        raise
     finally:
-        logger.info("Discord bot shutdown sequence complete.")
+        logger.info("Discord bot start routine finished.")
+
+
+async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
+    """Gracefully shut down background services and Discord client."""
+
+    if bot is not None and not bot.is_closed():
+        try:
+            await bot.close()
+            logger.info("Discord bot connection closed.")
+        except Exception as exc:  # noqa: BLE001 - best-effort shutdown
+            logger.exception("Error while closing Discord bot: %s", exc)
+
+    try:
+        await moderation_processor.shutdown()
+    except Exception as exc:  # noqa: BLE001 - log and continue shutdown
+        logger.exception("Error during moderation processor shutdown: %s", exc)
+
+    try:
+        await guild_settings_manager.shutdown()
+    except Exception as exc:  # noqa: BLE001 - log and continue shutdown
+        logger.exception("Error during guild settings shutdown: %s", exc)
 
 
 async def async_main() -> int:
@@ -96,11 +241,15 @@ async def async_main() -> int:
     if not token:
         return 1
 
+    bot = discord.Bot(intents=build_intents())
+    load_cogs(bot)
+
     try:
         await initialize_ai_model()
     except Exception:
         if model_state.init_error:
             logger.critical("AI initialization failed irrecoverably: %s", model_state.init_error)
+        await shutdown_runtime(bot)
         return 1
 
     if not model_state.available:
@@ -109,8 +258,37 @@ async def async_main() -> int:
             model_state.init_error or "no details",
         )
 
-    await start_bot(token)
-    return 0
+    control = ConsoleControl()
+    control.set_bot(bot)
+    console_task: asyncio.Task[None] | None = None
+
+    try:
+        console_task = asyncio.create_task(run_console(control))
+
+        exit_code = 0
+        try:
+            await start_bot(bot, token)
+        except asyncio.CancelledError:
+            logger.info("Bot start cancelled; proceeding to shutdown")
+            exit_code = 0
+        except Exception as exc:  # noqa: BLE001 - bubble unexpected runtime errors
+            logger.critical("Discord bot runtime error: %s", exc, exc_info=True)
+            exit_code = 1
+        finally:
+            control.stop()
+            control.set_bot(None)
+            if console_task:
+                console_task.cancel()
+                try:
+                    await console_task
+                except asyncio.CancelledError:
+                    pass
+            await shutdown_runtime(bot)
+
+        return exit_code
+    finally:
+        # Ensure console is stopped if initialization failed before entering the inner try/finally.
+        control.stop()
 
 
 def main() -> int:

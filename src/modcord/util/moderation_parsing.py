@@ -28,6 +28,8 @@ import json
 import logging
 from typing import List
 
+from jsonschema import Draft7Validator, ValidationError
+
 from modcord.util.moderation_models import ActionData, ActionType
 
 logger = logging.getLogger("moderation_parsing")
@@ -72,6 +74,9 @@ moderation_schema = {
 }
 
 
+_moderation_validator = Draft7Validator(moderation_schema)
+
+
 async def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     """Parse a single-action assistant response into (ActionType, reason).
 
@@ -114,9 +119,27 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
             s = s[first_brace:last_brace + 1]
         parsed = json.loads(s)
 
-        entries = []
-        if isinstance(parsed, dict):
-            entries = parsed.get("users") or parsed.get("actions") or []
+        if not isinstance(parsed, dict):
+            logger.warning("Batch response is not a JSON object; ignoring.")
+            return []
+
+        users_payload = parsed.get("users")
+
+        try:
+            _moderation_validator.validate(parsed)
+        except ValidationError as exc:
+            logger.warning("Batch response failed schema validation: %s", exc.message)
+            return []
+
+        response_channel = str(parsed.get("channel_id", "")).strip()
+        if response_channel and response_channel != str(channel_id):
+            logger.warning(
+                "Batch response channel mismatch: expected %s, got %s",
+                channel_id,
+                response_channel,
+            )
+            return []
+        entries = users_payload or []
 
         validated_map: dict[str, ActionData] = {}
 
@@ -130,11 +153,7 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
 
             reason = str(a.get('reason', 'Automated moderation action'))
 
-            raw_message_ids = (
-                a.get('message_ids_to_delete')
-                or a.get('message_ids')
-                or []
-            )
+            raw_message_ids = a.get('message_ids_to_delete') or []
             if isinstance(raw_message_ids, list):
                 message_ids = [str(mid) for mid in raw_message_ids if str(mid).strip()]
             else:

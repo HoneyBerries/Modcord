@@ -71,6 +71,7 @@ py-cpuinfo
 pybase64
 pydantic>=2.11.7
 python-json-logger
+jsonschema
 pyzmq>=25.0.0
 ray[cgraph]>=2.48.0
 scipy

@@ -5,6 +5,7 @@ Includes model initialization, inference, warmup, and JSON parsing.
 from __future__ import annotations
 
 import asyncio
+import gc
 from typing import List, Optional, Tuple
 
 import torch
@@ -90,7 +91,7 @@ class InferenceProcessor:
             frequency_penalty = knobs.get("frequency_penalty", 0.0)
 
             logger.info("[AI MODEL] Using configuration knobs")
-            logger.debug(
+            logger.info(
                 "temperature=%s, max_new_tokens=%s, dtype=%s, top_p=%s, top_k=%s, "
                 "repetition_penalty=%s, presence_penalty=%s, frequency_penalty=%s",
                 temperature,
@@ -206,10 +207,14 @@ class InferenceProcessor:
             raise RuntimeError("Model not initialized")
 
         outputs = self.llm.generate(prompts, self.sampling_params)
+
+        logger.debug("[AI MODEL] Generated outputs: %s", [o.outputs[0].text.strip() if o.outputs else "" for o in outputs])
+
         results = []
         for out in outputs:
             results.append(out.outputs[0].text.strip() if out.outputs else "")
         return results
+    
 
     async def generate_text(self, prompts: List[str]) -> List[str]:
         """Asynchronously generate text for the supplied prompts.
@@ -232,6 +237,35 @@ class InferenceProcessor:
         Useful for health checks and startup diagnostics.
         """
         return self.state
+
+    async def unload_model(self) -> None:
+        """Release the underlying vLLM engine and reset state flags."""
+
+        async with self.init_lock:
+            llm = self.llm
+            self.llm = None
+            self.sampling_params = None
+            self.state.available = False
+            self.state.init_started = False
+            self.state.init_error = None
+            self.warmup_completed = False
+
+        if llm is not None:
+            try:
+                engine = getattr(llm, "llm_engine", None)
+                if engine is not None and hasattr(engine, "shutdown"):
+                    await asyncio.to_thread(engine.shutdown)
+            except Exception as exc:  # noqa: BLE001 - best effort cleanup
+                logger.warning("[AI MODEL] Error while shutting down vLLM engine: %s", exc, exc_info=True)
+
+        try:
+            if torch.cuda.is_available():  # pragma: no branch - defensive cleanup
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+        except Exception as exc:  # noqa: BLE001 - ignore cleanup failures
+            logger.debug("[AI MODEL] Failed to clear CUDA cache during unload: %s", exc, exc_info=True)
+
+        gc.collect()
 
 
 inference_processor = InferenceProcessor()

@@ -92,6 +92,23 @@ def is_ignored_author(self, author: Union[discord.User, discord.Member]) -> bool
     return author.bot or not isinstance(author, discord.Member)
 
 
+def has_elevated_permissions(member: Union[discord.User, discord.Member]) -> bool:
+    """Return True if the user has moderator-level permissions in the guild."""
+
+    if not isinstance(member, discord.Member):
+        return False
+
+    perms = member.guild_permissions
+    return any(
+        getattr(perms, attr, False)
+        for attr in (
+            "administrator",
+            "manage_guild",
+            "moderate_members",
+        )
+    )
+
+
 def build_dm_message(
     action: ActionType,
     guild_name: str,

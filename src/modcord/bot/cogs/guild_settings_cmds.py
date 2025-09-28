@@ -23,6 +23,7 @@ import json
 import io
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
+from modcord.util.moderation_models import ActionType
 
 logger = get_logger("settings_cog")
 
@@ -88,6 +89,46 @@ class SettingsCog(commands.Cog):
         await application_context.respond("Disabled AI moderation for this server.", ephemeral=True)
 
 
+    @commands.slash_command(name="ai_set_action", description="Enable or disable specific AI moderation actions.")
+    @discord.option(
+        "action",
+        description="The moderation action to toggle",
+        choices=["warn", "delete", "timeout", "kick", "ban"],
+    )
+    @discord.option(
+        "enabled",
+        description="Whether the action should be allowed",
+        input_type=bool,
+    )
+    
+    async def ai_set_action(self, application_context: discord.ApplicationContext, action: str, enabled: bool):
+        """Toggle whether the AI may perform a specific action automatically."""
+
+        if not application_context.guild_id:
+            await application_context.respond("This command can only be used in a server.", ephemeral=True)
+            return
+
+        if not application_context.user.guild_permissions.manage_guild:
+            await application_context.respond(
+                "You do not have permission to change server settings (Manage Server required).",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            action_type = ActionType(action)
+        except ValueError:
+            await application_context.respond("Unsupported action.", ephemeral=True)
+            return
+
+        guild_settings_manager.set_action_allowed(application_context.guild_id, action_type, enabled)
+        state = "enabled" if enabled else "disabled"
+        await application_context.respond(
+            f"AI {action} actions are now {state} for this server.",
+            ephemeral=True,
+        )
+
+
     @commands.slash_command(name="settings_dump", description="Show current per-guild settings as JSON.")
     async def settings_dump(self, application_context: discord.ApplicationContext):
         """Return a JSON representation of the current guild settings.
@@ -101,12 +142,18 @@ class SettingsCog(commands.Cog):
             return
 
         guild_id = application_context.guild_id
-        ai_moderation_enabled = guild_settings_manager.is_ai_enabled(guild_id)
-        server_rules = guild_settings_manager.get_server_rules(guild_id)
+        settings = guild_settings_manager.get_guild_settings(guild_id)
         guild_settings = {
             "guild_id": guild_id,
-            "ai_enabled": ai_moderation_enabled,
-            "rules": server_rules,
+            "ai_enabled": settings.ai_enabled,
+            "rules": settings.rules,
+            "auto_actions": {
+                "warn": settings.auto_warn_enabled,
+                "delete": settings.auto_delete_enabled,
+                "timeout": settings.auto_timeout_enabled,
+                "kick": settings.auto_kick_enabled,
+                "ban": settings.auto_ban_enabled,
+            },
         }
         settings_json_string = json.dumps(guild_settings, ensure_ascii=False, indent=2)
         # Always send the dump as a JSON file attachment to avoid message

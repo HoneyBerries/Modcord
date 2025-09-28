@@ -11,6 +11,7 @@ import discord
 from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.ai.ai_moderation_processor import model_state
 from modcord.util.moderation_models import ModerationMessage
 from modcord.util.logger import get_logger
 
@@ -45,13 +46,7 @@ class EventsListenerCog(commands.Cog):
 		moderation helper module.
 		"""
 		if self.bot.user:
-			await self.bot.change_presence(
-				status=discord.Status.online,
-				activity=discord.Activity(
-					type=discord.ActivityType.watching,
-					name="over your server while you're asleep!"
-				)
-			)
+			await self.update_presence_for_model_state()
 			logger.info(f"Bot connected as {self.bot.user} (ID: {self.bot.user.id})")
 		else:
 			logger.warning("Bot partially connected, but user information not yet available.")
@@ -70,6 +65,26 @@ class EventsListenerCog(commands.Cog):
 		logger.info("-" * 60)
 
 	
+	async def update_presence_for_model_state(self) -> None:
+		if not self.bot.user:
+			return
+
+		if model_state.available:
+			status = discord.Status.online
+			activity_name = "over your server while you're asleep!"
+		else:
+			status = discord.Status.idle
+			reason = model_state.init_error or "AI offline"
+			activity_name = f"AI offline – {reason}"[:128]
+
+		await self.bot.change_presence(
+			status=status,
+			activity=discord.Activity(
+				type=discord.ActivityType.watching,
+				name=activity_name,
+			)
+		)
+
 
 	@commands.Cog.listener(name='on_message')
 	async def on_message(self, message: discord.Message):
