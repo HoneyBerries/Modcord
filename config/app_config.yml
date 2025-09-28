@@ -17,6 +17,24 @@ ai_settings:
     presence_penalty: 0.0
     frequency_penalty: 0.0
 
+  batching:
+    # max_prompts: maximum number of prompts to aggregate into a single
+    # multi-request call to the model. Larger values increase throughput but
+    # may add batching latency for individual requests.
+    max_prompts: 16
+    # max_delay: maximum time (in seconds) the worker will wait to accumulate
+    # additional prompts before sending the current batch. Lower values reduce
+    # latency but may reduce batching effectiveness.
+    max_delay: 5
+    # batch_window: time window (in seconds) to group messages for moderation.
+    # Default mirrors the previous behavior (15 seconds). Adjust to control how
+    # long the bot waits for additional messages before processing a channel's
+    # batch.
+    batch_window: 10.0
+
+
+
+
 server_rules: >
   1. Be respectful to all members and moderators.
   2. No spamming, flooding, or excessive use of caps/emoji. (Minor: occasional caps/emoji; Major: repeated spamming)

@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
 from modcord.util.moderation_models import ActionData, ActionType, ModerationBatch, ModerationMessage
 import modcord.util.moderation_parsing as moderation_parsing
+from modcord.configuration.app_configuration import app_config
 
 
 logger = get_logger("ai_moderation_processor")
@@ -24,14 +25,35 @@ class ModerationProcessor:
     into actionable moderation decisions.
     """
 
-    def __init__(self, engine: InferenceProcessor) -> None:
+    def __init__(self, engine: Optional[InferenceProcessor] = None) -> None:
         """Create a ModerationProcessor.
 
         Args:
             engine: InferenceProcessor to use; defaults to the module-level
                     inference_processor if not provided.
         """
-        self.inference_processor = inference_processor
+        self.inference_processor = engine or inference_processor
+        self._inference_queue: asyncio.Queue[Tuple[str, asyncio.Future[str]]] = asyncio.Queue()
+        self._inference_worker: Optional[asyncio.Task[None]] = None
+
+        # Load batching knobs from configuration with safe defaults.
+        batching_cfg = app_config.ai_settings.batching if app_config else {}
+
+        try:
+            self._batch_max_prompts = max(1, int(batching_cfg.get("max_prompts", 8)))
+        except Exception:
+            self._batch_max_prompts = 8
+
+        try:
+            self._batch_max_delay = max(0.0, float(batching_cfg.get("max_delay", 0.2)))
+        except Exception:
+            self._batch_max_delay = 0.2  # seconds
+
+        logger.info(
+            "Inference batching configured: max_prompts=%d, max_delay=%.3fs",
+            self._batch_max_prompts,
+            self._batch_max_delay,
+        )
 
     # ======== Engine Lifecycle ========
     async def init_model(self, model: Optional[str] = None) -> bool:
@@ -185,6 +207,7 @@ class ModerationProcessor:
         try:
             asyncio.create_task(warmup())
             logger.debug("start_batch_worker: warmup task scheduled")
+            self._ensure_inference_batch_worker()
             return True
         except RuntimeError as re:
             # Called outside an event loop, cannot schedule background task
@@ -221,15 +244,10 @@ class ModerationProcessor:
             return f"null: {reason}"
 
         prompt = self.messages_to_prompt(messages)
-
+        self._ensure_inference_batch_worker()
         try:
-            # Prefer engine.generate_text if present (async), otherwise fallback to engine.sync_generate via thread.
-            if hasattr(self.inference_processor, "generate_text"):
-                results = await self.inference_processor.generate_text([prompt])
-            else:
-                results = await asyncio.to_thread(self.inference_processor.sync_generate, [prompt])
-
-            return results[0] if results else "null: no response"
+            result = await self._enqueue_prompt_for_inference(prompt)
+            return result if result else "null: no response"
         except RuntimeError as err:
             logger.debug("Inference aborted: %s", err)
             return f"null: {err}"
@@ -372,6 +390,70 @@ class ModerationProcessor:
 
         return final_actions
 
+    def _ensure_inference_batch_worker(self) -> None:
+        if self._inference_worker and not self._inference_worker.done():
+            return
+        loop = asyncio.get_running_loop()
+        self._inference_worker = loop.create_task(
+            self._batched_inference_worker(),
+            name="moderation-batched-inference",
+        )
+
+    async def _enqueue_prompt_for_inference(self, prompt: str) -> str:
+        loop = asyncio.get_running_loop()
+        future: "asyncio.Future[str]" = loop.create_future()
+        await self._inference_queue.put((prompt, future))
+        return await future
+
+    async def _batched_inference_worker(self) -> None:
+        while True:
+            prompt, future = await self._inference_queue.get()
+            prompts = [prompt]
+            futures = [future]
+
+            start = time.monotonic()
+            while len(prompts) < self._batch_max_prompts:
+                remaining = self._batch_max_delay - (time.monotonic() - start)
+                if remaining <= 0:
+                    break
+                try:
+                    next_prompt, next_future = await asyncio.wait_for(self._inference_queue.get(), remaining)
+                    prompts.append(next_prompt)
+                    futures.append(next_future)
+                except asyncio.TimeoutError:
+                    break
+
+            wait_duration = time.monotonic() - start
+            queue_remaining = self._inference_queue.qsize()
+            logger.info(
+                "Dispatching inference batch: size=%d, wait=%.3fs, remaining_queue=%d",
+                len(prompts),
+                wait_duration,
+                queue_remaining,
+            )
+
+            try:
+                if hasattr(self.inference_processor, "generate_text"):
+                    results = await self.inference_processor.generate_text(prompts)  # type: ignore[arg-type]
+                else:
+                    results = await asyncio.to_thread(self.inference_processor.sync_generate, prompts)
+            except Exception as exc:  # noqa: BLE001
+                for fut in futures:
+                    if not fut.done():
+                        fut.set_exception(exc)
+                continue
+
+            if results is None or len(results) != len(futures):
+                error = RuntimeError("Inference outputs did not match request count")
+                for fut in futures:
+                    if not fut.done():
+                        fut.set_exception(error)
+                continue
+
+            for fut, output in zip(futures, results):
+                if not fut.done():
+                    fut.set_result(output)
+
     async def get_appropriate_action(
         self,
         history: Sequence[ModerationMessage],
@@ -421,5 +503,5 @@ class ModerationProcessor:
         return await moderation_parsing.parse_action(assistant_response)
 
 
-moderation_processor = ModerationProcessor(inference_processor)
+moderation_processor = ModerationProcessor()
 model_state = inference_processor.state

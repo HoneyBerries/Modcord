@@ -96,6 +96,23 @@ class AppConfig:
         """
         with self.lock:
             self._data = self.load_from_disk()
+
+            # Log a concise summary of important AI settings for observability.
+            try:
+                ai = self.ai_settings
+                knobs = ai.knobs if hasattr(ai, "knobs") else {}
+                batching = ai.batching if hasattr(ai, "batching") else {}
+                logger.info(
+                    "Loaded config: ai.enabled=%s, ai.model_id=%s, knobs=%s, batching=%s",
+                    bool(ai.enabled),
+                    ai.model_id or "<none>",
+                    {k: knobs.get(k) for k in ("dtype", "max_new_tokens", "temperature") if k in knobs},
+                    {k: batching.get(k) for k in ("max_prompts", "max_delay", "batch_window") if k in batching},
+                )
+            except Exception:
+                # Non-fatal: don't block reload on logging errors
+                logger.debug("Loaded config but failed to summarize ai settings for logging", exc_info=True)
+
             return self._data
 
     @property
@@ -235,6 +252,11 @@ class AISettings(Mapping):
     def knobs(self) -> Dict[str, Any]:
         k = self.data.get("knobs", {})
         return k if isinstance(k, dict) else {}
+
+    @property
+    def batching(self) -> Dict[str, Any]:
+        b = self.data.get("batching", {})
+        return b if isinstance(b, dict) else {}
 
     # Allow attribute-like fallback access for any key
     def __getattr__(self, item: str) -> Any:  # pragma: no cover - thin shim

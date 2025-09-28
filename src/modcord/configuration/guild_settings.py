@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from modcord.util.logger import get_logger
 from modcord.util.moderation_models import ModerationBatch, ModerationMessage
+from modcord.configuration.app_configuration import app_config
 
 logger = get_logger("guild_settings_manager")
 
@@ -195,7 +196,14 @@ class GuildSettingsManager:
     async def batch_timer(self, channel_id: int) -> None:
         """Await the batching window, then invoke the batch callback with messages."""
         try:
-            await asyncio.sleep(15.0)  # 15-second batching window
+            # Determine configured per-channel batch window (default 15s)
+            try:
+                batching_cfg = app_config.ai_settings.batching if app_config else {}
+                batch_window = float(batching_cfg.get("batch_window", 15.0))
+            except Exception:
+                batch_window = 15.0
+            logger.debug("Using batch_window=%s seconds for channel %s", batch_window, channel_id)
+            await asyncio.sleep(batch_window)
 
             # Get the current batch and clear it
             messages = list(self.channel_message_batches[channel_id])
