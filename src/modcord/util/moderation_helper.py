@@ -92,7 +92,7 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationBatch) -
             logger.warning(f"No Discord message object found for user {action.user_id}")
             return False
 
-        logger.info(
+        logger.debug(
             f"Applying {action.action.value} action to user {action.user_id} in channel {batch.channel_id}: {action.reason}"
         )
 
@@ -104,7 +104,7 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationBatch) -
         )
 
     except Exception as e:
-        logger.error(f"Error applying batch action {action.to_wire_dict()}: {e}")
+        logger.warning(f"Error applying batch action {action.to_wire_dict()}: {e}")
         return False
 
 

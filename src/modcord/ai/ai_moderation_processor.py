@@ -24,52 +24,175 @@ class ModerationProcessor:
     into actionable moderation decisions.
     """
 
-    def __init__(self, engine: InferenceProcessor | None = None) -> None:
+    def __init__(self, engine: InferenceProcessor) -> None:
         """Create a ModerationProcessor.
 
         Args:
-            engine: Optional InferenceProcessor to use; defaults to the module-level
+            engine: InferenceProcessor to use; defaults to the module-level
                     inference_processor if not provided.
         """
-        self.engine = engine or inference_processor
+        self.inference_processor = inference_processor
 
     # ======== Engine Lifecycle ========
-    async def init_model(self, model: Optional[str] = None):
+    async def init_model(self, model: Optional[str] = None) -> bool:
         """Initialize or reload the underlying AI model.
 
-        The call is forwarded to the configured InferenceProcessor.
+        Returns:
+            True if initialization succeeded (model available), False otherwise.
         """
-        return await self.engine.init_model(model)
+        try:
+            # Forward to inference_processor; it may return different payloads but state is authoritative.
+            await self.inference_processor.init_model(model)
+            available = bool(getattr(self.inference_processor.state, "available", False))
+            if available:
+                logger.info("init_model: model available")
+            else:
+                logger.warning("init_model: model not available (%s)", getattr(self.inference_processor.state, "init_error", None))
+            return available
+        except Exception as exc:
+            logger.error("Model initialization failed: %s", exc, exc_info=True)
+            return False
 
-    async def start_batch_worker(self) -> None:
+    async def start_batch_worker(self) -> bool:
         """Kick off a background warmup task for the model.
 
-        The warmup prepares the model so the first inference is faster. If the
-        model is not initialized yet, this will trigger initialization first.
+        Returns:
+            True if the warmup task was scheduled (or already completed),
+            False if skipped or if scheduling failed immediately.
         """
-        async def warmup() -> None:
-            if self.engine.warmup_completed:
-                return
+
+        async def warmup() -> bool:
+            """Perform a warmup generation if not already done.
+
+            Returns:
+                True if warmup completed or already done, False if skipped or failed.
+            """
+            if getattr(self.inference_processor, "warmup_completed", False):
+                logger.debug("warmup: already completed")
+                return True
 
             logger.info("Warming up model...")
-            model, params, _ = await self.engine.get_model()
+            model, params, _ = await self.inference_processor.get_model()
             if model is None or params is None:
-                logger.info(
-                    "Skipping warmup; model unavailable (%s)",
-                    self.engine.state.init_error or "no error",
-                )
-                return
+                logger.info("Skipping warmup; model unavailable (%s)", self.inference_processor.state.init_error or "no error")
+                return False
 
-            self.engine.warmup_completed = True
+            # Best-effort torch.compile on underlying model if possible.
+            try:
+                import torch  # type: ignore
 
-        if not self.engine.state.init_started:
-            await self.engine.init_model()
+                underlying = getattr(model, "model", None)
+                if underlying is not None and hasattr(torch, "compile"):
+                    try:
+                        logger.info("Attempting torch.compile on underlying model for JIT optimizations...")
+                        compiled = torch.compile(underlying, mode="max-autotune")  # best-effort
+                        # Assign back if successful — some vLLM internals may not expect mutation,
+                        # but this is a best-effort optimization and non-fatal if it fails later.
+                        try:
+                            setattr(model, "model", compiled)
+                            logger.info("torch.compile completed successfully.")
+                        except Exception as assign_exc:
+                            # Non-fatal: log and continue to warmup generation
+                            logger.debug("Failed to assign compiled model back to vLLM wrapper: %s", assign_exc)
+                    except Exception as compile_exc:
+                        logger.debug("torch.compile attempted but failed: %s", compile_exc)
+                else:
+                    logger.debug("torch.compile not available or underlying model not found; skipping JIT.")
+            except Exception:
+                logger.debug("torch not importable or compile unavailable; skipping JIT compile step.")
+
+            # Trigger a small dummy generation to force vLLM to capture CUDA graphs / do first-time work.
+            try:
+                dummy_prompt = "Warmup prompt: perform a short, harmless generation to prime runtime."
+                # Use engine.sync_generate via thread to avoid blocking event loop if it's a blocking function.
+                try:
+                    await asyncio.to_thread(self.inference_processor.sync_generate, [dummy_prompt])
+                except AttributeError:
+                    # If engine does not expose sync_generate, fall back to engine.generate_text or submit_inference
+                    if hasattr(self.inference_processor, "generate_text"):
+                        try:
+                            results = await self.inference_processor.generate_text([dummy_prompt])
+                            logger.debug("warmup: generate_text returned %s", bool(results))
+                        except Exception as gen_exc:
+                            logger.warning("warmup: generate_text failed: %s", gen_exc, exc_info=True)
+                            return False
+                    else:
+                        # Last resort: call submit_inference with simple system/user wrapper
+                        try:
+                            system_prompt = await self.inference_processor.get_system_prompt("")
+                            system_msg = {"role": "system", "content": system_prompt}
+                            now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                            dummy_payload = {
+                                "channel_id": "warmup",
+                                "message_count": 1,
+                                "unique_user_count": 1,
+                                "window_start": now_iso,
+                                "window_end": now_iso,
+                                "messages": [
+                                    {
+                                        "user_id": "warmup_user",
+                                        "username": "warmup",
+                                        "message_id": "warmup-0",
+                                        "timestamp": now_iso,
+                                        "content": dummy_prompt,
+                                        "image_summary": None,
+                                        "role": "user",
+                                    }
+                                ],
+                                "users": [
+                                    {
+                                        "user_id": "warmup_user",
+                                        "username": "warmup",
+                                        "message_count": 1,
+                                        "first_message_timestamp": now_iso,
+                                        "latest_message_timestamp": now_iso,
+                                        "messages": [
+                                            {
+                                                "message_id": "warmup-0",
+                                                "timestamp": now_iso,
+                                                "content": dummy_prompt,
+                                                "image_summary": None,
+                                                "role": "user",
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                            user_msg = {"role": "user", "content": json.dumps(dummy_payload, ensure_ascii=False)}
+                            resp = await self.submit_inference([system_msg, user_msg])
+                            logger.debug("warmup: submit_inference returned length %d", len(resp) if isinstance(resp, str) else 0)
+                        except Exception as si_exc:
+                            logger.warning("warmup: fallback submit_inference failed: %s", si_exc, exc_info=True)
+                            return False
+
+                # If we reached here, warmup was attempted successfully
+                self.inference_processor.warmup_completed = True
+                logger.info("Model warmup completed successfully.")
+                return True
+
+            except Exception as e:
+                logger.warning("Warmup generation failed: %s", e, exc_info=True)
+                return False
+
+        # Ensure model initialization started (best-effort)
+        if not getattr(self.inference_processor.state, "init_started", False):
+            init_success = await self.init_model()
+            if not init_success:
+                logger.info("start_batch_worker: init_model failed or reported unavailable; not scheduling warmup.")
+                return False
+
+        # Schedule warmup in background
         try:
             asyncio.create_task(warmup())
-        except RuntimeError:
-            logger.debug(
-                "start_batch_worker called outside event loop; skipping warmup task."
-            )
+            logger.debug("start_batch_worker: warmup task scheduled")
+            return True
+        except RuntimeError as re:
+            # Called outside an event loop, cannot schedule background task
+            logger.debug("start_batch_worker called outside event loop; skipping warmup task scheduling. Error: %s", re)
+            return False
+        except Exception as exc:
+            logger.error("Failed to schedule warmup task: %s", exc, exc_info=True)
+            return False
 
     async def submit_inference(self, messages: List[Dict[str, Any]]) -> str:
         """Submit a sequence of role/content messages to the model and return text.
@@ -77,30 +200,35 @@ class ModerationProcessor:
         Returns the raw assistant response string on success or a string prefixed
         with 'null:' describing the failure reason on error.
         """
-        if self.engine.state.init_started and not self.engine.state.available:
-            reason = self.engine.state.init_error or "AI model unavailable"
+        if self.inference_processor.state.init_started and not self.inference_processor.state.available:
+            reason = self.inference_processor.state.init_error or "AI model unavailable"
             logger.debug("Short-circuiting inference; %s", reason)
             return f"null: {reason}"
 
         try:
-            await self.engine.get_model()
+            await self.inference_processor.get_model()
         except Exception as exc:  # noqa: BLE001 - surface init issues
             logger.error("Unexpected error acquiring model: %s", exc, exc_info=True)
             return "null: inference error"
 
         if (
-            not self.engine.state.available
-            or self.engine.llm is None
-            or self.engine.sampling_params is None
+            not self.inference_processor.state.available
+            or self.inference_processor.llm is None
+            or self.inference_processor.sampling_params is None
         ):
-            reason = self.engine.state.init_error or "AI model unavailable"
+            reason = self.inference_processor.state.init_error or "AI model unavailable"
             logger.debug("Inference skipped; model not ready (%s)", reason)
             return f"null: {reason}"
 
         prompt = self.messages_to_prompt(messages)
 
         try:
-            results = await self.engine.generate_text([prompt])
+            # Prefer engine.generate_text if present (async), otherwise fallback to engine.sync_generate via thread.
+            if hasattr(self.inference_processor, "generate_text"):
+                results = await self.inference_processor.generate_text([prompt])
+            else:
+                results = await asyncio.to_thread(self.inference_processor.sync_generate, [prompt])
+
             return results[0] if results else "null: no response"
         except RuntimeError as err:
             logger.debug("Inference aborted: %s", err)
@@ -137,54 +265,124 @@ class ModerationProcessor:
         The function builds a system+user prompt describing the batch, submits it
         to the model, and parses the response into concrete moderation actions.
         """
-        system_prompt = await self.engine.get_system_prompt(server_rules)
+        system_prompt = await self.inference_processor.get_system_prompt(server_rules)
         system_msg = {"role": "system", "content": system_prompt}
-        payload = {"channel_id": str(batch.channel_id), "messages": batch.to_model_payload()}
+        flat_messages = batch.to_model_payload()
+        grouped_users = batch.to_user_payload()
+        timestamps = [
+            str(value)
+            for value in (msg.get("timestamp") for msg in flat_messages)
+            if value
+        ]
+        window_start = min(timestamps) if timestamps else None
+        window_end = max(timestamps) if timestamps else None
+
+        payload = {
+            "channel_id": str(batch.channel_id),
+            "message_count": len(flat_messages),
+            "unique_user_count": len(grouped_users),
+            "window_start": window_start,
+            "window_end": window_end,
+            "messages": flat_messages,
+            "users": grouped_users,
+        }
         user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
         resp = await self.submit_inference([system_msg, user_msg])
 
         parsed_actions = await moderation_parsing.parse_batch_actions(resp, batch.channel_id)
 
-        msgid_map: Dict[str, ActionData] = {}
-        userid_map: Dict[str, ActionData] = {}
+        parsed_by_user: Dict[str, ActionData] = {}
         for action in parsed_actions:
             user_key = action.user_id.strip()
-            message_ids = action.message_ids or []
-            if message_ids:
-                for mid in message_ids:
-                    mid_s = str(mid).strip()
-                    if mid_s:
-                        msgid_map[mid_s] = action
-            elif user_key:
-                userid_map.setdefault(user_key, action)
+            if not user_key:
+                continue
+
+            existing = parsed_by_user.get(user_key)
+            if existing is None:
+                parsed_by_user[user_key] = ActionData(
+                    user_key,
+                    action.action,
+                    action.reason,
+                    list(action.message_ids),
+                    action.timeout_duration,
+                    action.ban_duration,
+                )
+                continue
+
+            if existing.action == ActionType.NULL and action.action != ActionType.NULL:
+                existing.action = action.action
+                existing.reason = action.reason
+            elif action.action != ActionType.NULL and action.reason:
+                existing.reason = action.reason
+
+            existing.add_message_ids(*action.message_ids)
+
+            if action.timeout_duration is not None:
+                existing.timeout_duration = action.timeout_duration
+            if action.ban_duration is not None:
+                existing.ban_duration = action.ban_duration
+
+        user_message_ids: Dict[str, List[str]] = {}
+        user_order: List[str] = []
+        for message in batch.messages:
+            user_id = str(message.user_id).strip()
+            if not user_id:
+                continue
+            if user_id not in user_order:
+                user_order.append(user_id)
+            user_message_ids.setdefault(user_id, [])
+            message_id = str(message.message_id).strip()
+            if message_id and message_id not in user_message_ids[user_id]:
+                user_message_ids[user_id].append(message_id)
 
         final_actions: List[ActionData] = []
-        for message in batch.messages:
-            message_id = message.message_id
-            user_id = message.user_id
-
-            source: Optional[ActionData] = None
-            if message_id and message_id in msgid_map:
-                source = msgid_map[message_id]
-            elif user_id and user_id in userid_map:
-                source = userid_map[user_id]
-
+        for user_id in user_order:
+            source = parsed_by_user.get(user_id)
             if source is None:
-                action = ActionData(user_id, ActionType.NULL, "no action", [message_id] if message_id else [], None, None)
-                
-            else:
-                action = ActionData(source.user_id or user_id, source.action, source.reason, list(source.message_ids), source.timeout_duration, source.ban_duration)
+                reason = "no action"
+                source = ActionData(user_id, ActionType.NULL, reason)
 
-            if message_id:
-                action.add_message_ids(message_id)
-            if not action.user_id and user_id:
-                action.user_id = user_id
+            action = ActionData(
+                user_id,
+                source.action,
+                source.reason,
+                list(source.message_ids),
+                source.timeout_duration,
+                source.ban_duration,
+            )
+
+            action.add_message_ids(*user_message_ids.get(user_id, []))
 
             final_actions.append(action)
 
+        # Include any AI-provided actions for users not present in the batch payload as a defensive measure.
+        for user_id, action in parsed_by_user.items():
+            if user_id in user_order:
+                continue
+            final_actions.append(
+                ActionData(
+                    user_id,
+                    action.action,
+                    action.reason,
+                    list(action.message_ids),
+                    action.timeout_duration,
+                    action.ban_duration,
+                )
+            )
+
         return final_actions
 
-    async def get_appropriate_action(self, history: Sequence[ModerationMessage], user_id: int, *, current_message: Optional[str] = None, server_rules: str = "", channel_id: Optional[int | str] = None, username: Optional[str] = None, message_timestamp: Optional[str] = None) -> tuple[ActionType, str]:
+    async def get_appropriate_action(
+        self,
+        history: Sequence[ModerationMessage],
+        user_id: int,
+        *,
+        current_message: Optional[str] = None,
+        server_rules: str = "",
+        channel_id: Optional[int | str] = None,
+        username: Optional[str] = None,
+        message_timestamp: Optional[str] = None,
+    ) -> tuple[ActionType, str]:
         """Assess a single message in context and return (ActionType, reason).
 
         The method constructs a history payload, submits it to the model, and
@@ -198,7 +396,7 @@ class ModerationProcessor:
         if not message_to_assess.strip():
             return ActionType.NULL, "empty message"
 
-        system_prompt = await self.engine.get_system_prompt(server_rules)
+        system_prompt = await self.inference_processor.get_system_prompt(server_rules)
         system_msg = {"role": "system", "content": system_prompt}
 
         now_iso = message_timestamp or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -223,5 +421,5 @@ class ModerationProcessor:
         return await moderation_parsing.parse_action(assistant_response)
 
 
-moderation_processor = ModerationProcessor()
+moderation_processor = ModerationProcessor(inference_processor)
 model_state = inference_processor.state

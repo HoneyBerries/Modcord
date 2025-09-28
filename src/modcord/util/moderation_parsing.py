@@ -39,24 +39,35 @@ moderation_schema = {
     "type": "object",
     "properties": {
         "channel_id": {"type": "string"},
-        "actions": {
+        "users": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
                     "user_id": {"type": "string"},
-                    "action": {"type": "string", "enum": ["delete", "warn", "timeout", "kick", "ban", "null"]},
+                    "action": {
+                        "type": "string",
+                        "enum": ["null", "delete", "warn", "timeout", "kick", "ban"],
+                    },
                     "reason": {"type": "string"},
-                    "message_ids": {"type": "array", "items": {"type": "string"}},
+                    "message_ids_to_delete": {"type": "array", "items": {"type": "string"}},
                     "timeout_duration": {"type": ["integer", "null"]},
-                    "ban_duration": {"type": ["integer", "null"]}
+                    "ban_duration": {"type": ["integer", "null"]},
                 },
-                "required": ["user_id", "action", "reason", "message_ids", "timeout_duration", "ban_duration"],
+                "required": [
+                    "user_id",
+                    "action",
+                    "reason",
+                    "message_ids_to_delete",
+                    "timeout_duration",
+                    "ban_duration",
+                ],
                 "additionalProperties": False,
-            }
-        }
+            },
+            "minItems": 0,
+        },
     },
-    "required": ["channel_id", "actions"],
+    "required": ["channel_id", "users"],
     "additionalProperties": False,
 }
 
@@ -102,9 +113,14 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
         if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
             s = s[first_brace:last_brace + 1]
         parsed = json.loads(s)
-        actions = parsed.get('actions', [])
-        validated: List[ActionData] = []
-        for a in actions:
+
+        entries = []
+        if isinstance(parsed, dict):
+            entries = parsed.get("users") or parsed.get("actions") or []
+
+        validated_map: dict[str, ActionData] = {}
+
+        for a in entries:
             if not isinstance(a, dict):
                 continue
             user_id = str(a.get('user_id', '')).strip()
@@ -114,7 +130,11 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
 
             reason = str(a.get('reason', 'Automated moderation action'))
 
-            raw_message_ids = a.get('message_ids') or []
+            raw_message_ids = (
+                a.get('message_ids_to_delete')
+                or a.get('message_ids')
+                or []
+            )
             if isinstance(raw_message_ids, list):
                 message_ids = [str(mid) for mid in raw_message_ids if str(mid).strip()]
             else:
@@ -140,8 +160,9 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
                 # Should not occur due to VALID_ACTION_VALUES check, but guard anyway
                 continue
 
-            validated.append(
-                ActionData(
+            existing = validated_map.get(user_id)
+            if existing is None:
+                validated_map[user_id] = ActionData(
                     user_id,
                     action_enum,
                     reason,
@@ -149,8 +170,23 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
                     timeout_duration,
                     ban_duration,
                 )
-            )
-        return validated
+                continue
+
+            # Merge duplicate entries defensively: prefer non-null actions and accumulate IDs.
+            if existing.action == ActionType.NULL and action_enum != ActionType.NULL:
+                existing.action = action_enum
+                existing.reason = reason
+            elif action_enum != ActionType.NULL:
+                existing.reason = reason or existing.reason
+
+            existing.add_message_ids(*message_ids)
+
+            if timeout_duration is not None:
+                existing.timeout_duration = timeout_duration
+            if ban_duration is not None:
+                existing.ban_duration = ban_duration
+
+        return list(validated_map.values())
     except Exception as e:
         logger.error(f"Error parsing batch actions: {e}")
         return []

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, List, Optional, Sequence, TYPE_CHECKING
+from typing import Dict, Iterable, List, Optional, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
     import discord
@@ -99,6 +99,7 @@ class ModerationMessage:
             "content": self.content,
             "timestamp": self.timestamp,
             "image_summary": self.image_summary,
+            "role": self.role,
         }
 
     def to_history_payload(self) -> dict:
@@ -131,3 +132,69 @@ class ModerationBatch:
 
     def to_model_payload(self) -> List[dict]:
         return [msg.to_model_payload() for msg in self.messages]
+
+    def to_user_payload(self) -> List[dict]:
+        """Group batch messages by user and return a summary payload.
+
+        The structure is optimized for model consumption: each user entry
+        contains metadata plus the ordered list of their messages in this
+        batch, enabling the model to reason about per-user context without
+        re-parsing the flat message stream.
+        """
+
+        grouped: Dict[str, dict] = {}
+        for index, message in enumerate(self.messages):
+            user_id = str(message.user_id)
+            if user_id not in grouped:
+                grouped[user_id] = {
+                    "user_id": user_id,
+                    "username": message.username,
+                    "message_count": 0,
+                    "first_message_timestamp": message.timestamp,
+                    "latest_message_timestamp": message.timestamp,
+                    "messages": [],
+                    "__first_index": index,
+                }
+
+            entry = grouped[user_id]
+            entry_messages = entry["messages"]
+            entry_messages.append(
+                {
+                    "message_id": message.message_id,
+                    "timestamp": message.timestamp,
+                    "content": message.content,
+                    "image_summary": message.image_summary,
+                    "order_index": index,
+                    "role": message.role,
+                }
+            )
+            entry["message_count"] += 1
+            # Update timestamps for clarity in prompts
+            if message.timestamp < entry["first_message_timestamp"]:
+                entry["first_message_timestamp"] = message.timestamp
+            if message.timestamp > entry["latest_message_timestamp"]:
+                entry["latest_message_timestamp"] = message.timestamp
+
+        # Sort messages per user by original order to guarantee determinism
+        for entry in grouped.values():
+            entry["messages"].sort(key=lambda item: item["order_index"])
+            for item in entry["messages"]:
+                item.pop("order_index", None)
+
+        # Return users in deterministic order based on first appearance
+        ordered_users = []
+        for entry in grouped.values():
+            ordered_users.append(entry)
+
+        ordered_users.sort(
+            key=lambda entry: (
+                entry.get("first_message_timestamp") or "",
+                entry.get("__first_index", 0),
+                entry["user_id"],
+            )
+        )
+
+        for entry in ordered_users:
+            entry.pop("__first_index", None)
+
+        return ordered_users
