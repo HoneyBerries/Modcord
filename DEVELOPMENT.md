@@ -1,108 +1,68 @@
 # Modcord Development Workflow
+# Development Guide (Modernized)
 
-## Package Structure
+This short development guide focuses on getting set up quickly and following
+the project's conventions. The previous `DEVELOPMENT.md` was archived and
+replaced with this concise, actionable reference.
 
-This project uses a `src/` layout with the `modcord` package located at `src/modcord/`. All imports should use absolute imports in the format `from modcord.module import something`.
+## Prerequisites
+- Python 3.11+ recommended (3.10 is supported).
+- A virtual environment (venv, tox, or similar).
 
-## Recommended Development Workflow
+## Quickstart
+1. Create and activate a venv:
 
-### 1. Editable Installation (Recommended)
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
 
-For development, install the package in editable mode:
+2. Install project in editable mode:
 
 ```bash
 pip install -e .
 ```
 
-This allows you to:
-- Import modcord modules from anywhere: `from modcord.logger import get_logger`
-- Run the bot using: `python -m modcord`
-- Run tests that use absolute imports
-- Make changes to the code without reinstalling
-
-### 2. Direct Module Execution (Alternative)
-
-You can also run the bot directly:
+3. Run unit tests quickly:
 
 ```bash
-python src/modcord/main.py
+python -m pytest -q
 ```
 
-However, editable installation is preferred for development.
+## Project layout and imports
+- Source code lives under `src/modcord/` and uses absolute imports (e.g.
+	`from modcord.ai import ...`).
+- Keep standard-library imports first, third-party second, project-local last.
 
-### 3. Console Script (After Installation)
-
-Once installed, you can run:
+## Running the bot locally
+- Create a `.env` file in the project root with `DISCORD_BOT_TOKEN=...`.
+- Start the bot while developing with the entry point or module:
 
 ```bash
+python -m modcord
+# or, when installed editable
 modcord
 ```
 
-## Import Guidelines
+## Testing
+- Unit tests use `pytest`. Prefer running only changed tests where possible.
+- Add tests for new features and include both happy-path and a couple of edge
+	cases.
 
-### ✅ Correct Import Patterns
+## Code style and linting
+- Follow PEP8 and generally use black/ruff for formatting/linting.
+- Keep function/method sizes reasonable and prefer small modules.
 
-```python
-# Standard library imports first
-import os
-import sys
-from pathlib import Path
+## Releasing and packaging
+- The project uses setuptools; `setup.py` is present for building sdist/wheel.
 
-# Third-party imports second
-import discord
-from discord.ext import commands
+## Local development tips
+- Use `pip install -e .` for iterative development.
+- Keep logs under `logs/`; the logging module rotates files automatically.
 
-# Local imports last, using absolute imports
-from modcord.logger import get_logger
-from modcord.bot_settings import bot_settings
-from modcord.cogs import general
-```
+## Security notes
+- Never commit `.env` with secrets. Use CI secrets for automated workflows.
 
-### ❌ Avoid These Import Patterns
-
-```python
-# Don't use relative imports
-from .logger import get_logger
-from ..bot_settings import bot_settings
-
-# Don't use src in imports
-from src.modcord.logger import get_logger
-```
-
-## Running Tests
-
-Automated unit tests are currently deprecated for this project. The existing
-files under `tests/` are historical artifacts and are not maintained. Focus on
-smoke-testing the bot directly within Discord when validating changes.
-
-## Code Style
-
-The project follows PEP 8 guidelines:
-- Maximum line length: 88 characters
-- Use flake8 for linting: `flake8 src/ --max-line-length=88`
-- Import order: standard library, third-party, local
-- Two blank lines after class/function definitions at module level
-- One blank line between methods
-
-## Project Structure
-
-```
-Modcord/
-├── src/
-│   └── modcord/
-│       ├── __init__.py
-│       ├── __main__.py          # Enables `python -m modcord`
-│       ├── main.py              # Main bot entry point
-│       ├── logger.py            # Logging configuration
-│       ├── bot_settings.py        # Bot configuration
-│       ├── cogs/
-│       │   ├── __init__.py
-│       │   ├── general.py       # General commands
-│       │   ├── moderation.py    # Moderation commands
-│       │   └── ...
-│       └── ...
-├── tests/                       # Test files
-├── setup.py                     # Package configuration
-├── requirements.txt             # Dependencies
-└── README.md
-```
+## Contact
+- For questions about architecture or APIs, open an issue outlining your
+	proposal with enough context for reviewers to reproduce and test locally.
