@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from vllm import LLM, SamplingParams
@@ -44,6 +44,36 @@ class InferenceProcessor:
         self.state = ModelState()
         self.init_lock = asyncio.Lock()
         self.warmup_completed: bool = False
+        self.guided_backend: Optional[str] = None
+        self._guided_grammar: Optional[str] = None
+
+    def _build_guided_decoding(self) -> GuidedDecodingParams:
+        """Create guided decoding parameters using the xgrammar backend."""
+
+        schema = moderation_parsing.moderation_schema
+
+        if self._guided_grammar is None:
+            try:
+                from xgrammar import Grammar  # type: ignore
+            except Exception as exc:  # noqa: BLE001 - surface import issues
+                raise RuntimeError("xgrammar backend not available for guided decoding") from exc
+
+            try:
+                grammar_obj: Optional[Any] = Grammar.from_json_schema(schema, strict_mode=True)
+                grammar_str = str(grammar_obj)
+                self._guided_grammar = grammar_str
+            finally:
+                # Ensure any intermediate native handles can be cleaned up
+                grammar_obj = None
+
+        params = GuidedDecodingParams(
+            grammar=self._guided_grammar,
+            backend="xgrammar",
+            disable_fallback=True,
+        )
+        self.guided_backend = "xgrammar"
+        logger.info("[AI MODEL] Guided decoding backend=xgrammar (precompiled grammar)")
+        return params
 
     # ======== Model Initialization ========
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
@@ -138,13 +168,20 @@ class InferenceProcessor:
                     top_p,
                 )
 
-                self.llm = LLM(
-                    model=model_identifier,
-                    dtype=dtype,
-                    gpu_memory_utilization=gpu_mem_util,
-                    max_model_len=max_model_length,
-                    tensor_parallel_size=tp,
-                )
+                def build_llm() -> LLM:
+                    return LLM(
+                        model=model_identifier,
+                        dtype=dtype,
+                        gpu_memory_utilization=gpu_mem_util,
+                        max_model_len=max_model_length,
+                        tensor_parallel_size=tp,
+                        guided_decoding_backend="xgrammar",
+                        guided_decoding_disable_fallback=True,
+                    )
+
+                self.llm = await asyncio.to_thread(build_llm)
+
+                guided_decoding = self._build_guided_decoding()
 
                 self.sampling_params = SamplingParams(
                     temperature=temperature,
@@ -154,8 +191,7 @@ class InferenceProcessor:
                     repetition_penalty=repetition_penalty,
                     presence_penalty=presence_penalty,
                     frequency_penalty=frequency_penalty,
-                    guided_decoding=GuidedDecodingParams
-                    (json=moderation_parsing.moderation_schema),
+                    guided_decoding=guided_decoding,
                 )
 
                 self.state.available = True
@@ -169,6 +205,8 @@ class InferenceProcessor:
                 logger.error(f"[AI MODEL] Failed to initialize vLLM model: {e}", exc_info=True)
                 return None, None, self.base_system_prompt
 
+
+    # ======== Model Accessors ========
     async def get_model(self) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
         """Return the current model and sampling parameters.
 
@@ -182,9 +220,11 @@ class InferenceProcessor:
         """Return True when the model is initialized and ready for inference."""
         return self.state.available
 
+
     async def get_model_init_error(self) -> Optional[str]:
         """Return the textual initialization error if initialization failed."""
         return self.state.init_error
+
 
     async def get_system_prompt(self, server_rules: str = "") -> str:
         """Format and return the system prompt for the model.
@@ -249,21 +289,50 @@ class InferenceProcessor:
             self.state.init_started = False
             self.state.init_error = None
             self.warmup_completed = False
+            self.guided_backend = None
+            self._guided_grammar = None
 
         if llm is not None:
             try:
                 engine = getattr(llm, "llm_engine", None)
-                if engine is not None and hasattr(engine, "shutdown"):
-                    await asyncio.to_thread(engine.shutdown)
+                if engine is not None:
+                    structured_manager = getattr(engine, "structured_output_manager", None)
+                    if structured_manager is not None and hasattr(structured_manager, "clear_backend"):
+                        try:
+                            structured_manager.clear_backend()
+                        except Exception as exc:
+                            logger.debug(
+                                "[AI MODEL] Failed to clear structured output backend during unload: %s",
+                                exc,
+                                exc_info=True,
+                            )
+                    if hasattr(engine, "shutdown"):
+                        await asyncio.to_thread(engine.shutdown)
+                if engine is not None:
+                    try:
+                        setattr(llm, "llm_engine", None)
+                    except Exception:
+                        pass
             except Exception as exc:  # noqa: BLE001 - best effort cleanup
                 logger.warning("[AI MODEL] Error while shutting down vLLM engine: %s", exc, exc_info=True)
+            finally:
+                llm = None
 
         try:
             if torch.cuda.is_available():  # pragma: no branch - defensive cleanup
                 torch.cuda.synchronize()
                 torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
         except Exception as exc:  # noqa: BLE001 - ignore cleanup failures
             logger.debug("[AI MODEL] Failed to clear CUDA cache during unload: %s", exc, exc_info=True)
+
+        try:
+            import torch.distributed as dist
+
+            if dist.is_available() and dist.is_initialized():
+                dist.destroy_process_group(dist.group.WORLD)
+        except Exception as exc:  # noqa: BLE001 - optional cleanup
+            logger.warning("[AI MODEL] torch.distributed cleanup failed during unload: %s", exc, exc_info=True)
 
         gc.collect()
 

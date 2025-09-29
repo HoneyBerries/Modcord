@@ -17,7 +17,12 @@ import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.ai.ai_moderation_processor import model_state, moderation_processor
+from modcord.ai.ai_moderation_processor import model_state
+from modcord.ai.pipeline import (
+    initialize_pipeline,
+    restart_pipeline,
+    shutdown_pipeline,
+)
 from modcord.bot.cogs import events_listener
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger, handle_exception
@@ -61,16 +66,11 @@ async def restart_ai_pipeline(control: ConsoleControl) -> None:
     async with control.restart_lock:
         print("[console] Restarting AI moderation pipeline…", flush=True)
         try:
-            await moderation_processor.shutdown()
-        except Exception as exc:  # noqa: BLE001 - log but continue to re-init
-            logger.exception("Error while shutting down moderation processor: %s", exc)
-
-        model_state.available = False
-        model_state.init_error = None
-
-        success = await moderation_processor.init_model()
-        if success:
-            await moderation_processor.start_batch_worker()
+            available, detail = await restart_pipeline()
+        except Exception as exc:  # noqa: BLE001 - log but propagate status message
+            logger.exception("Error while restarting AI pipeline: %s", exc)
+            available = False
+            detail = str(exc)
 
         bot = control.bot
         if bot is not None:
@@ -84,9 +84,9 @@ async def restart_ai_pipeline(control: ConsoleControl) -> None:
                 except Exception as exc:  # noqa: BLE001 - best-effort update
                     logger.exception("Failed to refresh presence after AI restart: %s", exc)
 
-        status = "available" if model_state.available else "unavailable"
-        detail = model_state.init_error or "ready"
-        print(f"[console] AI pipeline restart complete: {status} ({detail}).", flush=True)
+        status = "available" if available else "unavailable"
+        detail_msg = detail or "ready"
+        print(f"[console] AI pipeline restart complete: {status} ({detail_msg}).", flush=True)
 
 
 async def handle_console_command(command: str, control: ConsoleControl) -> None:
@@ -195,10 +195,9 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
 async def initialize_ai_model() -> None:
     try:
         logger.info("Initializing AI model before bot startup…")
-        await moderation_processor.init_model()
-        await moderation_processor.start_batch_worker()
-        if model_state.init_error and not model_state.available:
-            logger.critical("AI model failed to initialize: %s", model_state.init_error)
+        available, detail = await initialize_pipeline()
+        if detail and not available:
+            logger.critical("AI model failed to initialize: %s", detail)
     except Exception as exc:  # noqa: BLE001 - surface initialization failures
         logger.critical("Unexpected error during AI initialization: %s", exc, exc_info=True)
         raise
@@ -226,7 +225,7 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
             logger.exception("Error while closing Discord bot: %s", exc)
 
     try:
-        await moderation_processor.shutdown()
+        await shutdown_pipeline()
     except Exception as exc:  # noqa: BLE001 - log and continue shutdown
         logger.exception("Error during moderation processor shutdown: %s", exc)
 
