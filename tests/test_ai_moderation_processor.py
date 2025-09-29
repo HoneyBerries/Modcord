@@ -12,48 +12,33 @@ SRC_ROOT = PROJECT_ROOT / "src"
 
 
 def _ensure_stubbed_dependencies() -> None:
+    """Stub minimal dependencies needed for importing AI modules during testing."""
+    # Simple stub class that accepts any initialization and method calls
+    class _StubClass:
+        def __init__(self, *_, **__):
+            pass
+        def __call__(self, *_, **__):
+            return self
+        def __getattr__(self, name):
+            return _StubClass()
+    
+    # Stub torch module
     if "torch" not in sys.modules:
         torch_stub = types.ModuleType("torch")
-
-        class _Cuda:
-            @staticmethod
-            def is_available() -> bool:
-                return False
-
-            @staticmethod
-            def device_count() -> int:
-                return 0
-
-        setattr(torch_stub, "cuda", _Cuda())
-
-        def _compile(model, *_, **__) -> object:
-            return model
-
-        setattr(torch_stub, "compile", _compile)
+        torch_stub.cuda = _StubClass()
+        torch_stub.compile = lambda model, *_, **__: model
         sys.modules["torch"] = torch_stub
 
+    # Stub vllm modules
     if "vllm" not in sys.modules:
         vllm_stub = types.ModuleType("vllm")
-
-        class _Dummy:  # pragma: no cover - simple placeholder
-            def __init__(self, *_, **__):
-                pass
-
-            def generate(self, *_, **__):
-                return []
-
-        setattr(vllm_stub, "LLM", _Dummy)
-        setattr(vllm_stub, "SamplingParams", _Dummy)
+        vllm_stub.LLM = _StubClass
+        vllm_stub.SamplingParams = _StubClass
         sys.modules["vllm"] = vllm_stub
 
     if "vllm.sampling_params" not in sys.modules:
         sampling_stub = types.ModuleType("vllm.sampling_params")
-
-        class _Guided:  # pragma: no cover - placeholder
-            def __init__(self, *_, **__):
-                pass
-
-        setattr(sampling_stub, "GuidedDecodingParams", _Guided)
+        sampling_stub.GuidedDecodingParams = _StubClass
         sys.modules["vllm.sampling_params"] = sampling_stub
 
 

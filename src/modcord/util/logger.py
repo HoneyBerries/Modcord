@@ -115,7 +115,6 @@ for noisy_logger in [
 ]:
     logging.getLogger(noisy_logger).setLevel(logging.ERROR)
 
-# os.environ.setdefault("TORCH_CPP_LOG_LEVEL", "ERROR")
 os.environ.setdefault("GLOG_minloglevel", "2")   # 0=INFO,1=WARNING,2=ERROR
 os.environ.setdefault("NCCL_DEBUG", "ERROR")
 
