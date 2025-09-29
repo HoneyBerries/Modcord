@@ -1,4 +1,3 @@
-# Modcord Development Workflow
 # Development Guide (Modernized)
 
 This short development guide focuses on getting set up quickly and following
