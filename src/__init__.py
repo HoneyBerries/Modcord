@@ -1,29 +1,28 @@
-# Explicit package for application modules.
+"""Top-level package for the Modcord project.
 
-# Create aliases so various import paths point to the same module objects
-# This prevents duplicate definitions (e.g., multiple ActionType enums) when
-# tests or code import modules via different names (src.actions, actions, modcord.actions).
-import importlib
-import sys
+This file provides minimal package metadata (a best-effort __version__) and
+a tiny helper to retrieve that version. Importlib.metadata is used when the
+package is installed; when running from a source tree the version falls back
+to a placeholder.
+"""
+from __future__ import annotations
 
-_alias_names = [
-    "actions",
-    "ai_model",
-    "bot_helper",
-    "bot_config",
-    "config_loader",
-    "logger",
-    "main",
-]
-for _n in _alias_names:
-    target = f"src.modcord.{_n}"
-    try:
-        mod = importlib.import_module(target)
-        # Map both 'src.<name>' and the top-level '<name>' to the same module object
-        sys.modules[f"src.{_n}"] = mod
-        sys.modules[_n] = mod
-        globals()[_n] = mod
-    except Exception:
-        # It's fine if some modules aren't present in all environments/tests
-        continue
+from importlib import metadata as importlib_metadata
 
+
+try:
+    __version__ = importlib_metadata.version("modcord")
+except Exception:  # pragma: no cover - fallback when not installed
+    __version__ = "0.0.0"
+
+
+def get_version() -> str:
+    """Return the package version string.
+
+    This helper prefers the installed distribution metadata but will return
+    the fallback version when running from source.
+    """
+    return __version__
+
+
+__all__ = ["get_version", "__version__"]

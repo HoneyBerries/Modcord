@@ -10,6 +10,8 @@ torchvision
 
 # Hugging Face library for transformers and LLMs
 transformers
+onnx
+onnxruntime
 
 # Optimized 8-bit/quantized operations for large models
 bitsandbytes
@@ -26,6 +28,19 @@ python-dotenv
 # YAML file parser
 pyyaml
 
+# vllm
+vllm
+
+# ONNX stuff
+onnx
+onnxruntime
+
+# Tensor RT
+tensorrt
+
+# Async console input
+prompt_toolkit 
+rich
 
 # Annoying vllm dependencies
 torchaudio==2.8.0
@@ -38,6 +53,7 @@ depyf==0.19.0
 diskcache==5.6.3
 einops
 fastapi[standard]>=0.115.0
+flask
 gguf>=0.13.0
 lark==1.2.2
 llguidance>=0.7.11,<0.8.0
@@ -59,6 +75,7 @@ py-cpuinfo
 pybase64
 pydantic>=2.11.7
 python-json-logger
+jsonschema
 pyzmq>=25.0.0
 ray[cgraph]>=2.48.0
 scipy

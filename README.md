@@ -17,86 +17,72 @@ This bot is currently in a very early alpha stage. It is buggy and may not work 
     -   Detailed console and rotating file logs.
     -   Logs are stored in a root `logs/` directory.
     -   Centralized logger with per-module sub-loggers.
-    -   Full traceback logging for all errors.
+    # Modcord — Discord Moderation Bot
 
-## Prerequisites
+    Modcord is a Discord moderation assistant that leverages a local or hosted
+    language model to detect and suggest moderation actions (warn, timeout,
+    delete, kick, ban). It's designed for server operators who want a
+    configurable, auditable, and extensible moderation pipeline.
 
--   Python 3.10 or higher.
--   A Discord Bot Token with the required intents. You can get one from the [Discord Developer Portal](https://discord.com/developers/applications).
+    This repository contains the bot, small infrastructure helpers, and a
+    pluggable AI engine layer.
 
-## Setup
+    Highlights
+    - AI-powered moderation with per-channel message batching.
+    - Slash commands for manual actions and administration.
+    - Per-guild settings and rules cache.
+    - Structured logging with rotating files for production usage.
 
-1.  **Clone the repository:**
+    Quick start
+    1. Create a virtualenv and activate it:
+
     ```bash
-    git clone <repository-url>
-    cd <repository-directory>
+    python -m venv .venv
+    source .venv/bin/activate
     ```
 
-2.  **Install dependencies:**
-    It is recommended to use a virtual environment.
+    2. Install the project in editable mode:
+
     ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
     pip install -e .
     ```
-    This will install the project in editable mode and all dependencies from `setup.py`.
 
-3.  **Create a `.env` file:**
-    Create a file named `.env` in the root of the project and add your bot token. You can copy the example file:
+    3. Add your Discord token to `.env`:
+
+    ```text
+    DISCORD_BOT_TOKEN=your_bot_token_here
+    ```
+
+    4. Run tests:
+
     ```bash
-    cp .env.example .env
-    ```
-    Then, open the `.env` file and replace the placeholder with your actual bot token:
-    ```
-    Mod_Bot_Token=YOUR_DISCORD_BOT_TOKEN_HERE
+    python -m pytest -q
     ```
 
-## Running the Bot
+    5. Launch the bot locally:
 
-To run the bot, use the following command from the project root:
+    ```bash
+    python -m modcord
+    # or, after editable install
+    modcord
+    ```
 
-```bash
-python -m modcord.main
-```
-Alternatively, since the project is installed with an entry point, you can use:
-```bash
-modcord
-```
+    Configuration & architecture notes
+    - The AI lifecycle helpers live in `modcord.ai.ai_lifecycle` (initialize/restart/shutdown).
+    - Batching and per-guild persistence are handled by `modcord.configuration.guild_settings`.
+    - Moderation orchestration is implemented in `modcord.ai.ai_moderation_processor` and the low-level model access is in `modcord.ai.ai_core`.
+    - Cogs live under `src/modcord/bot/cogs`.
 
-## Testing
+    Developer docs
+    - See `DEVELOPMENT.md` for a concise local development guide.
+    - See `message_batching.md` for the batching design and tuning ideas.
 
-This project includes a full suite of unit tests. To run the tests, use the standard Python `unittest` module from the project root:
+    Contributing
+    - Open issues for bugs or design discussions.
+    - Add tests for new behaviors and aim for small PRs with clear intentions.
 
-```bash
-python -m unittest discover tests
-```
+    Security note
+    - Never commit secrets. Use environment variables or CI secrets for tokens and keys.
 
-## Project Structure
-
-The project follows a standard `src` layout for packaging and distribution.
-
-```
-my_project_root/
-├── src/
-│   └── modcord/
-│       ├── __init__.py
-│       ├── main.py         # Main entry point
-│       ├── ai_model.py
-│       ├── bot_helper.py
-│       └── cogs/
-│           ├── __init__.py
-│           ├── general.py
-│           └── ...
-├── tests/
-│   ├── __init__.py
-│   ├── test_ai_model.py
-│   └── ...
-├── data/
-│   └── config.yml          # Bot configuration
-├── logs/
-│   └── ...                 # Log files are generated here
-├── setup.py                # Packaging script
-├── requirements.txt        # Project dependencies
-├── .env.example
-└── README.md
-```
+    License & acknowledgements
+    - This project is © the contributors. Include a license file if needed.
