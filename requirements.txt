@@ -38,6 +38,10 @@ onnxruntime
 # Tensor RT
 tensorrt
 
+# Async console input
+prompt_toolkit 
+rich
+
 # Annoying vllm dependencies
 torchaudio==2.8.0
 blake3

@@ -19,6 +19,14 @@ This bot is currently in a very early alpha stage. It is buggy and may not work 
     -   Centralized logger with per-module sub-loggers.
     -   Full traceback logging for all errors.
 
+## AI Engine Lifecycle
+
+The AI moderation engine is orchestrated by `modcord.ai.ai_lifecycle`. This module owns
+initialization, restart, and shutdown of the shared `ModerationProcessor` instance,
+replacing the older `modcord.ai.pipeline` helper. Import `initialize_engine`,
+`restart_engine`, or `shutdown_engine` from `modcord.ai.ai_lifecycle` when you need to
+manage the model lifecycle.
+
 ## Prerequisites
 
 -   Python 3.10 or higher.
