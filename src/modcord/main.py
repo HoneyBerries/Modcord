@@ -59,32 +59,54 @@ logger = get_logger("main")
 
 
 class ConsoleControl:
-    """Coordinate console commands with the running bot instance."""
+    """Manage console-driven lifecycle controls for the running Discord bot.
+
+    This helper centralizes access to the live bot instance, coordinates restart
+    locks, and exposes shutdown events to the interactive console layer.
+    """
 
     def __init__(self) -> None:
+        """Initialize synchronization primitives for console and bot coordination."""
         self.shutdown_event = asyncio.Event()
         self.restart_lock = asyncio.Lock()
         self._bot: discord.Bot | None = None
 
     def set_bot(self, bot: discord.Bot | None) -> None:
+        """Register or clear the active bot reference for console operations.
+
+        Parameters
+        ----------
+        bot:
+            Discord bot instance to associate with the console, or ``None`` to clear the reference.
+        """
         self._bot = bot
 
     @property
     def bot(self) -> discord.Bot | None:
+        """Return the currently tracked Discord bot instance, if any."""
         return self._bot
 
     def request_shutdown(self) -> None:
+        """Signal all console consumers to begin a coordinated shutdown."""
         self.shutdown_event.set()
 
     def stop(self) -> None:
+        """Compatibility alias that triggers a console-initiated shutdown."""
         self.shutdown_event.set()
 
     def is_shutdown_requested(self) -> bool:
+        """Return ``True`` when a shutdown signal has been issued via the console."""
         return self.shutdown_event.is_set()
 
 
 async def restart_ai_engine(control: ConsoleControl) -> None:
-    """Restart the AI moderation engine without dropping the Discord connection."""
+    """Restart the moderation engine and refresh the bot's presence indicators.
+
+    Parameters
+    ----------
+    control:
+        Console management helper providing access to the restart lock and bot reference.
+    """
     async with control.restart_lock:
         console.print("Restarting AI moderation engine…")
         try:
@@ -112,6 +134,15 @@ async def restart_ai_engine(control: ConsoleControl) -> None:
 
 
 async def handle_console_command(command: str, control: ConsoleControl) -> None:
+    """Interpret and execute a single console command line.
+
+    Parameters
+    ----------
+    command:
+        Raw command string entered by the operator.
+    control:
+        Console management helper exposing the active bot and shutdown state.
+    """
     cmd = command.strip().lower()
     if not cmd:
         return
@@ -146,9 +177,12 @@ async def handle_console_command(command: str, control: ConsoleControl) -> None:
 
 
 async def run_console(control: ConsoleControl) -> None:
-    """
-    Async console using prompt_toolkit + rich.
-    Handles user commands with a classic '>' prompt.
+    """Run the interactive developer console until shutdown is requested.
+
+    Parameters
+    ----------
+    control:
+        ConsoleControl coordinating shutdown events and bot access.
     """
     session = PromptSession("> ")  # <-- classic '>' prompt
     console.print("Interactive console ready. Type 'help' for commands.")
@@ -168,8 +202,19 @@ async def run_console(control: ConsoleControl) -> None:
                 console.print(f"Error: {exc}")
 
 
-
 def load_environment() -> str:
+    """Load environment variables and return the Discord bot token.
+
+    Returns
+    -------
+    str
+        Discord bot token extracted from the loaded environment.
+
+    Raises
+    ------
+    SystemExit
+        If the required ``DISCORD_BOT_TOKEN`` variable is missing.
+    """
     load_dotenv(dotenv_path=BASE_DIR / ".env")
     token = os.getenv("DISCORD_BOT_TOKEN")
     if not token:
@@ -179,6 +224,13 @@ def load_environment() -> str:
 
 
 def build_intents() -> discord.Intents:
+    """Construct the Discord intents required for Modcord runtime features.
+
+    Returns
+    -------
+    discord.Intents
+        Intents enabling guild, member, message, and reaction events.
+    """
     intents = discord.Intents.default()
     intents.message_content = True
     intents.guilds = True
@@ -189,6 +241,13 @@ def build_intents() -> discord.Intents:
 
 
 def load_cogs(discord_bot_instance: discord.Bot) -> None:
+    """Register all operational cogs with the provided Discord bot instance.
+
+    Parameters
+    ----------
+    discord_bot_instance:
+        Py-Cord bot object that should receive the Modcord cogs.
+    """
     from modcord.bot.cogs import debug_cmds, guild_settings_cmds, moderation_cmds
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
@@ -198,6 +257,13 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
 
 
 async def initialize_ai_model() -> None:
+    """Initialize the AI moderation engine prior to connecting the Discord client.
+
+    Raises
+    ------
+    Exception
+        Propagated when the underlying initializer encounters an unexpected failure.
+    """
     try:
         logger.info("Initializing AI moderation engine before bot startup…")
         available, detail = await initialize_engine()
@@ -209,6 +275,15 @@ async def initialize_ai_model() -> None:
 
 
 async def start_bot(bot: discord.Bot, token: str) -> None:
+    """Start the Discord bot and handle lifecycle logging around the connection.
+
+    Parameters
+    ----------
+    bot:
+        Discord client to start.
+    token:
+        Authentication token used to connect to Discord.
+    """
     logger.info("Attempting to connect to Discord…")
     try:
         await bot.start(token)
@@ -220,6 +295,13 @@ async def start_bot(bot: discord.Bot, token: str) -> None:
 
 
 async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
+    """Gracefully stop the Discord bot, AI engine, and guild settings manager.
+
+    Parameters
+    ----------
+    bot:
+        Optional bot instance to close before shutting down subsystems.
+    """
     if bot is not None and not bot.is_closed():
         try:
             await bot.close()
@@ -239,6 +321,13 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
 
 
 async def async_main() -> int:
+    """Bootstrap the bot, console, and AI engine, returning an exit code.
+
+    Returns
+    -------
+    int
+        Process exit code reflecting success or failure of initialization.
+    """
     token = load_environment()
     bot = discord.Bot(intents=build_intents())
     load_cogs(bot)
@@ -289,6 +378,13 @@ async def async_main() -> int:
 
 
 def main() -> int:
+    """Entrypoint that orchestrates the async runtime and returns the process code.
+
+    Returns
+    -------
+    int
+        Exit code propagated to the operating system.
+    """
     logger.info("Starting Discord Moderation Bot…")
     try:
         return asyncio.run(async_main())

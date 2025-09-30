@@ -26,11 +26,12 @@ class ModerationProcessor:
     """
 
     def __init__(self, engine: Optional[InferenceProcessor] = None) -> None:
-        """Create a ModerationProcessor.
+        """Initialize the processor with an inference backend and local caches.
 
-        Args:
-            engine: InferenceProcessor to use; defaults to the module-level
-                    inference_processor if not provided.
+        Parameters
+        ----------
+        engine:
+            Optional inference backend to delegate generation calls to.
         """
         self.inference_processor = engine or inference_processor
         self._inference_queue: asyncio.Queue[Tuple[str, asyncio.Future[str]]] = asyncio.Queue()
@@ -58,10 +59,17 @@ class ModerationProcessor:
 
     # ======== Engine Lifecycle ========
     async def init_model(self, model: Optional[str] = None) -> bool:
-        """Initialize or reload the underlying AI model.
+        """Initialize the inference engine and return its availability state.
 
-        Returns:
-            True if initialization succeeded (model available), False otherwise.
+        Parameters
+        ----------
+        model:
+            Optional model identifier to override the configured default.
+
+        Returns
+        -------
+        bool
+            ``True`` when the engine is ready to accept requests.
         """
         self._shutdown = False
         try:
@@ -78,13 +86,7 @@ class ModerationProcessor:
             return False
 
     async def start_batch_worker(self) -> bool:
-        """Kick off a background warmup task for the model.
-
-        Returns:
-            True if the warmup task was scheduled (or already completed),
-            False if skipped or if scheduling failed immediately.
-        """
-
+        """Start any background workers needed to service queued inferences."""
         async def warmup() -> bool:
             """Perform a warmup generation if not already done.
 
@@ -220,10 +222,17 @@ class ModerationProcessor:
             return False
 
     async def submit_inference(self, messages: List[Dict[str, Any]]) -> str:
-        """Submit a sequence of role/content messages to the model and return text.
+        """Submit a fully composed prompt to the inference engine.
 
-        Returns the raw assistant response string on success or a string prefixed
-        with 'null:' describing the failure reason on error.
+        Parameters
+        ----------
+        messages:
+            Sequence of chat messages formatted for the inference backend.
+
+        Returns
+        -------
+        str
+            Raw model response payload.
         """
         if self._shutdown:
             logger.debug("submit_inference called during shutdown; returning null response")
@@ -263,9 +272,17 @@ class ModerationProcessor:
 
     # ======== Prompt Construction ========
     def messages_to_prompt(self, messages: List[Dict[str, Any]]) -> str:
-        """Convert role/content message dicts into a single prompt string.
+        """Convert structured message dictionaries into a single prompt string.
 
-        Roles are mapped to bracketed sections ([SYSTEM], [ASSISTANT], [USER]).
+        Parameters
+        ----------
+        messages:
+            Conversation payload to flatten for the underlying engine.
+
+        Returns
+        -------
+        str
+            Prompt text passed to the inference backend.
         """
         parts: List[str] = []
         for message in messages:
@@ -284,10 +301,19 @@ class ModerationProcessor:
         batch: ModerationBatch,
         server_rules: str = "",
     ) -> List[ActionData]:
-        """Run moderation on a batch and return a list of ActionData results.
+        """Request moderation actions for the provided batch and server rules.
 
-        The function builds a system+user prompt describing the batch, submits it
-        to the model, and parses the response into concrete moderation actions.
+        Parameters
+        ----------
+        batch:
+            Aggregated moderation batch derived from channel activity.
+        server_rules:
+            Optional server rule context to include in the prompt.
+
+        Returns
+        -------
+        list[ActionData]
+            Parsed moderation actions recommended by the model.
         """
         system_prompt = await self.inference_processor.get_system_prompt(server_rules)
         system_msg = {"role": "system", "content": system_prompt}
@@ -397,6 +423,7 @@ class ModerationProcessor:
         return final_actions
 
     def _ensure_inference_batch_worker(self) -> None:
+        """Ensure any inference queue workers are running prior to submissions."""
         if self._shutdown:
             logger.debug("Inference worker requested while shutting down; skipping creation")
             return
@@ -409,6 +436,18 @@ class ModerationProcessor:
         )
 
     async def _enqueue_prompt_for_inference(self, prompt: str) -> str:
+        """Enqueue a prompt for inference and await the generated response.
+
+        Parameters
+        ----------
+        prompt:
+            Fully rendered prompt text destined for the inference queue.
+
+        Returns
+        -------
+        str
+            Raw model output returned by the inference worker.
+        """
         loop = asyncio.get_running_loop()
         future: "asyncio.Future[str]" = loop.create_future()
         await self._inference_queue.put((prompt, future))

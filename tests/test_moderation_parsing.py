@@ -13,7 +13,10 @@ from modcord.util import moderation_parsing
 
 
 class ParseBatchActionsTests(unittest.IsolatedAsyncioTestCase):
+    """Async tests covering conversion of batch moderation payloads into actions."""
+
     async def test_parses_message_ids_to_delete(self) -> None:
+        """Validate that message IDs are preserved when parsing warn actions."""
         response = (
             '{"channel_id":"123","users":[{"user_id":"u1","action":"warn",'
             '"reason":"test","message_ids_to_delete":["m1"],"timeout_duration":null,'
@@ -32,6 +35,7 @@ class ParseBatchActionsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(action.ban_duration)
 
     async def test_invalid_schema_returns_empty(self) -> None:
+        """Ensure invalid payloads result in an empty list of moderation actions."""
         response = (
             '{"channel_id":"123","users":[{"user_id":"u1","action":"warn"}]}'
         )

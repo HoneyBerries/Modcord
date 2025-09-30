@@ -18,8 +18,9 @@ class DebugCog(commands.Cog):
     """
     Cog containing debugging and administrative commands.
     """
-    
+
     def __init__(self, discord_bot_instance):
+        """Store the Discord bot reference and log cog initialization."""
         self.discord_bot_instance = discord_bot_instance
         logger.info("Debug cog loaded")
 
@@ -30,6 +31,11 @@ class DebugCog(commands.Cog):
     async def test(self, application_context: discord.ApplicationContext):
         """
         A simple health-check command to verify bot status and round trip time.
+
+        Parameters
+        ----------
+        application_context:
+            Slash command invocation context supplied by Py-Cord.
         """
         latency_milliseconds = self.discord_bot_instance.latency * 1000
         await application_context.respond(
@@ -40,9 +46,14 @@ class DebugCog(commands.Cog):
 
 
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
-    @commands.has_permissions(manage_guild=True)
     async def refresh_rules(self, application_context: discord.ApplicationContext):
-        """Manually refresh the server rules cache for this guild."""       
+        """Force a refresh of the cached server rules for the current guild.
+
+        Parameters
+        ----------
+        application_context:
+            Slash command invocation context used to infer the target guild.
+        """
         try:
             guild = application_context.guild
             if guild is None:
@@ -77,7 +88,13 @@ class DebugCog(commands.Cog):
 
     @commands.slash_command(name="show_rules", description="Display the current cached server rules.")
     async def show_rules(self, application_context: discord.ApplicationContext):
-        """Display the current cached server rules."""
+        """Display the cached server rules to the requester as an ephemeral message.
+
+        Parameters
+        ----------
+        application_context:
+            Slash command invocation context used to send the response.
+        """
         rules_text = guild_settings_manager.get_server_rules(application_context.guild.id)
         
         if rules_text:
@@ -100,5 +117,5 @@ class DebugCog(commands.Cog):
 
 
 def setup(discord_bot_instance):
-    """Setup function for the cog."""
+    """Register the debug cog on the provided Discord bot instance."""
     discord_bot_instance.add_cog(DebugCog(discord_bot_instance))

@@ -55,8 +55,19 @@ DELETE_MESSAGE_CHOICES = [
 # ==========================================
 
 def bot_can_manage_messages(channel: discord.TextChannel, guild: discord.Guild) -> bool:
-    """
-    Return whether the bot can read and delete messages in the given channel.
+    """Check whether the bot can read and delete messages in ``channel``.
+
+    Parameters
+    ----------
+    channel:
+        Text channel to inspect for message management permissions.
+    guild:
+        Guild used to resolve the bot's member object and permission set.
+
+    Returns
+    -------
+    bool
+        ``True`` when the bot may read and manage messages in ``channel``.
     """
     me = getattr(guild, "me", None)
     if me is None:
@@ -71,8 +82,17 @@ def bot_can_manage_messages(channel: discord.TextChannel, guild: discord.Guild) 
 
 
 def iter_moderatable_channels(guild: discord.Guild):
-    """
-    Yield text channels where the bot has the required permissions.
+    """Yield text channels where the bot can manage messages safely.
+
+    Parameters
+    ----------
+    guild:
+        Guild whose text channels should be inspected.
+
+    Yields
+    ------
+    discord.TextChannel
+        Channels that are safe for moderation operations.
     """
     for channel in getattr(guild, "text_channels", []):
         try:
@@ -88,12 +108,34 @@ TIMEOUT_ACTIONS: set[ActionType] = {ActionType.TIMEOUT}
 
 
 def is_ignored_author(self, author: Union[discord.User, discord.Member]) -> bool:
-    """Return True if the author should be ignored (not discord member)."""
+    """Return ``True`` when ``author`` should be ignored by moderation handlers.
+
+    Parameters
+    ----------
+    author:
+        User or member who produced the event.
+
+    Returns
+    -------
+    bool
+        ``True`` for bot accounts or non-member authors.
+    """
     return author.bot or not isinstance(author, discord.Member)
 
 
 def has_elevated_permissions(member: Union[discord.User, discord.Member]) -> bool:
-    """Return True if the user has moderator-level permissions in the guild."""
+    """Return ``True`` for members holding moderator-level privileges.
+
+    Parameters
+    ----------
+    member:
+        Candidate whose guild permissions are evaluated.
+
+    Returns
+    -------
+    bool
+        ``True`` when the member has administrator/manage guild/moderate members.
+    """
 
     if not isinstance(member, discord.Member):
         return False
@@ -115,7 +157,24 @@ def build_dm_message(
     reason: str,
     duration_str: str | None = None,
 ) -> str:
-    """Return the DM body for the given moderation action."""
+    """Construct a moderator DM body tailored to the ``action``.
+
+    Parameters
+    ----------
+    action:
+        Moderation action that triggered the notification.
+    guild_name:
+        Name of the guild where the action occurred.
+    reason:
+        Human-friendly reason associated with the action.
+    duration_str:
+        Optional duration label used for timeouts or temporary bans.
+
+    Returns
+    -------
+    str
+        DM payload ready for transmission to the affected user.
+    """
     if action == ActionType.BAN:
         if duration_str and duration_str != PERMANENT_DURATION:
             duration_fragment = f"for {duration_str}"
@@ -137,7 +196,7 @@ def build_dm_message(
 
 
 def format_duration(seconds: int) -> str:
-    """Format a duration in seconds to a human-readable string."""
+    """Return a human-readable string representation of ``seconds``."""
     if seconds == 0:
         return PERMANENT_DURATION
     elif seconds < 60:
@@ -154,7 +213,7 @@ def format_duration(seconds: int) -> str:
 
 
 def parse_duration_to_seconds(human_readable_duration: str) -> int:
-    """Convert a human-readable duration string to its equivalent in seconds."""
+    """Convert a human-readable duration into its total seconds payload."""
     return DURATIONS.get(human_readable_duration, 0)
 
 
@@ -166,7 +225,28 @@ async def create_punishment_embed(
     issuer: discord.User | discord.Member | discord.ClientUser | None = None,
     bot_user: discord.ClientUser | None = None
 ) -> discord.Embed:
-    """Build a standardized embed for logging moderation actions."""
+    """Build a standardized embed summarizing a moderation action.
+
+    Parameters
+    ----------
+    action_type:
+        Type of moderation action that occurred.
+    user:
+        Target user that the action applied to.
+    reason:
+        Explanation to surface in logs and embeds.
+    duration_str:
+        Optional duration label for temporary actions.
+    issuer:
+        Moderator responsible for the action, if known.
+    bot_user:
+        Bot user reference used for footer labeling.
+
+    Returns
+    -------
+    discord.Embed
+        Embed object ready for dispatch to a text channel.
+    """
     action_details = {
         ActionType.BAN:     {"color": discord.Color.red(),    "emoji": "🔨", "label": "Ban"},
         ActionType.KICK:    {"color": discord.Color.orange(), "emoji": "👢", "label": "Kick"},
@@ -209,7 +289,22 @@ async def create_punishment_embed(
 
 
 async def delete_recent_messages(guild, member, seconds) -> int:
-    """Delete recent messages from a member within a time window across channels."""
+    """Delete recent messages from ``member`` across moderatable channels.
+
+    Parameters
+    ----------
+    guild:
+        Guild providing the channels to inspect for messages.
+    member:
+        Target member whose messages should be removed.
+    seconds:
+        Lookback window expressed in seconds.
+
+    Returns
+    -------
+    int
+        Count of successfully deleted messages.
+    """
     if seconds <= 0:
         return 0
 
@@ -233,7 +328,17 @@ async def delete_recent_messages(guild, member, seconds) -> int:
 
 
 async def delete_messages_background(ctx: discord.ApplicationContext, user: discord.Member, delete_message_seconds: int):
-    """Background helper to delete messages and notify the command issuer."""
+    """Delete messages in the background and report the outcome to the invoker.
+
+    Parameters
+    ----------
+    ctx:
+        Command context used for follow-up messaging.
+    user:
+        Guild member whose messages should be deleted.
+    delete_message_seconds:
+        Time window in seconds to inspect for deletions.
+    """
     try:
         deleted = await delete_recent_messages(ctx.guild, user, delete_message_seconds)
         if deleted:
@@ -258,14 +363,17 @@ from modcord.bot.unban_scheduler import (
 # --- Public Discord utility functions ---
 
 async def safe_delete_message(message: discord.Message) -> bool:
-    """
-    Attempt to delete a Discord message, suppressing non-fatal errors.
+    """Delete ``message`` while suppressing recoverable Discord errors.
 
-    Args:
-        message (discord.Message): The message to delete.
+    Parameters
+    ----------
+    message:
+        Discord message slated for deletion.
 
-    Returns:
-        bool: True if the message was deleted, False otherwise.
+    Returns
+    -------
+    bool
+        ``True`` when deletion succeeds, otherwise ``False``.
     """
     try:
         await message.delete()
@@ -280,15 +388,19 @@ async def safe_delete_message(message: discord.Message) -> bool:
 
 
 async def delete_messages_by_ids(guild: discord.Guild, message_ids: list[str]) -> int:
-    """
-    Delete specific messages by their IDs across all text channels in the guild.
+    """Delete specific messages cross-channel using their identifiers.
 
-    Args:
-        guild (discord.Guild): The guild to search for messages.
-        message_ids (list[str]): List of message IDs to delete.
+    Parameters
+    ----------
+    guild:
+        Guild whose text channels should be searched.
+    message_ids:
+        Collection of Discord message identifiers to delete.
 
-    Returns:
-        int: Number of messages actually deleted.
+    Returns
+    -------
+    int
+        Number of messages successfully removed.
     """
     if not message_ids:
         return 0
@@ -329,16 +441,21 @@ async def delete_messages_by_ids(guild: discord.Guild, message_ids: list[str]) -
 
 
 async def delete_recent_messages_by_count(guild: discord.Guild, member: discord.Member, count: int) -> int:
-    """
-    Delete the most recent messages from a user up to the specified count across all text channels.
+    """Delete the most recent ``count`` messages from ``member``.
 
-    Args:
-        guild (discord.Guild): The guild to search for messages.
-        member (discord.Member): The member whose messages to delete.
-        count (int): Maximum number of messages to delete.
+    Parameters
+    ----------
+    guild:
+        Guild whose text channels will be scanned.
+    member:
+        Member whose recent messages should be purged.
+    count:
+        Maximum number of messages to remove.
 
-    Returns:
-        int: Number of messages actually deleted.
+    Returns
+    -------
+    int
+        Number of messages deleted successfully.
     """
     if count <= 0:
         return 0
@@ -363,15 +480,19 @@ async def delete_recent_messages_by_count(guild: discord.Guild, member: discord.
 
 
 async def send_dm_to_user(target_user: discord.Member, message_content: str) -> bool:
-    """
-    Attempt to send a direct message (DM) to a user.
+    """Attempt to send a direct message to ``target_user``.
 
-    Args:
-        target_user (discord.Member): The user to DM.
-        message_content (str): The message content.
+    Parameters
+    ----------
+    target_user:
+        Member who should receive the DM.
+    message_content:
+        Text body of the DM message.
 
-    Returns:
-        bool: True if DM sent successfully, False otherwise.
+    Returns
+    -------
+    bool
+        ``True`` when the DM is dispatched successfully.
     """
     try:
         await target_user.send(message_content)
@@ -390,15 +511,20 @@ async def send_dm_and_embed(
     reason: str,
     duration_str: str | None = None
 ):
-    """
-    Send a DM to the user and an embed to the channel.
+    """Notify moderators and the affected user about an action.
 
-    Args:
-        ctx (discord.ApplicationContext): The context of the command.
-        user (discord.Member): The user to send the DM to.
-        action_type (ActionType): The type of moderation action.
-        reason (str): The reason for the action.
-        duration_str (str | None): The duration of the action, if applicable.
+    Parameters
+    ----------
+    ctx:
+        Slash command context used for follow-up messaging.
+    user:
+        Member receiving the DM notification.
+    action_type:
+        Moderation action type applied to the member.
+    reason:
+        Rationale that should be surfaced in notifications.
+    duration_str:
+        Optional duration label for temporary actions.
     """
     dm_message = build_dm_message(action_type, ctx.guild.name, reason, duration_str)
     if not dm_message:
@@ -409,15 +535,19 @@ async def send_dm_and_embed(
 
 
 def has_permissions(application_context: discord.ApplicationContext, **required_permissions) -> bool:
-    """
-    Check if the command issuer has the required permissions.
+    """Return ``True`` when the command issuer holds the requested permissions.
 
-    Args:
-        application_context (discord.ApplicationContext): The context of the command.
-        **required_permissions: The permissions to check (e.g., manage_messages=True).
+    Parameters
+    ----------
+    application_context:
+        Slash command context for the invocation.
+    **required_permissions:
+        Keyword permission flags to verify on the invoking member.
 
-    Returns:
-        bool: True if the user has permissions, False otherwise.
+    Returns
+    -------
+    bool
+        ``True`` if each permission flag evaluates to ``True``.
     """
     if not isinstance(application_context.author, discord.Member):
         return False
@@ -432,17 +562,23 @@ async def apply_action_decision(
     bot_user: discord.ClientUser,
     bot_client: discord.Client,
 ) -> bool:
-    """
-    Execute a moderation decision produced by the AI pipeline.
+    """Execute a moderation decision produced by the AI pipeline.
 
-    Args:
-        action (ActionData): The action to apply.
-        pivot (ModerationMessage): The message that triggered the action.
-        bot_user (discord.ClientUser): The bot's user object (for embeds).
-        bot_client (discord.Client): The bot client instance (for scheduling unbans).
+    Parameters
+    ----------
+    action:
+        Moderation action recommended by the AI.
+    pivot:
+        Original moderation message that triggered the response.
+    bot_user:
+        Bot user reference used for embed authoring.
+    bot_client:
+        Discord client used for follow-up actions (e.g., scheduling unbans).
 
-    Returns:
-        bool: True if action was applied successfully, False otherwise.
+    Returns
+    -------
+    bool
+        ``True`` when the action was applied without critical errors.
     """
     if action.action is ActionType.NULL:
         logger.debug("Ignoring null moderation action for user %s", action.user_id)

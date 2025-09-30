@@ -21,14 +21,26 @@ logger = get_logger("rules_manager")
 
 
 RULE_CHANNEL_PATTERN = re.compile(
-	r"(guidelines|regulations|policy|policies|server[-_]?rules|rules)",
+	"(guidelines|regulations|policy|policies|server[-_]?rules|rules)",
 	re.IGNORECASE,
 )
 """Heuristic regex used to discover channels that likely contain server rules."""
 
 
 def resolve_settings(settings: Optional[GuildSettingsManager]) -> GuildSettingsManager:
-	"""Return the provided manager or fall back to the shared singleton."""
+	"""Return the provided manager or fall back to the shared singleton.
+
+	Parameters
+	----------
+	settings:
+		Optional custom :class:`GuildSettingsManager`. When ``None`` the process-wide
+		singleton is returned.
+
+	Returns
+	-------
+	GuildSettingsManager
+		Resolved manager instance ready for rule-cache operations.
+	"""
 
 	return settings if settings is not None else guild_settings_manager
 
@@ -41,6 +53,16 @@ async def collect_rules_text(guild: discord.Guild) -> str:
 	Any recoverable errors (missing permissions, transient API issues) are
 	logged and skipped so that a single problematic channel does not abort the
 	entire fetch.
+
+	Parameters
+	----------
+	guild:
+		Discord guild whose channels should be scanned for rule content.
+
+	Returns
+	-------
+	str
+		Concatenated rules text or an empty string when no content is discovered.
 	"""
 
 	messages: list[str] = []
@@ -126,7 +148,15 @@ async def refresh_rules_cache(
 	bot: discord.Client,
 	*, settings: Optional[GuildSettingsManager] = None,
 ) -> None:
-	"""Refresh cached rules for all guilds the bot is currently in."""
+	"""Refresh cached rules for all guilds the bot is currently in.
+
+	Parameters
+	----------
+	bot:
+		Discord client whose guilds should have their rules refreshed.
+	settings:
+		Optional guild settings manager used for persistence; defaults to the singleton.
+	"""
 
 	resolved_settings = resolve_settings(settings)
 
@@ -155,8 +185,19 @@ async def run_periodic_refresh(
 ) -> None:
 	"""Continuously refresh the rules cache on a fixed interval.
 
-	Intended to run inside an ``asyncio.create_task`` call. The coroutine loops
-	forever until cancelled, logging and continuing on individual guild errors.
+	Parameters
+	----------
+	bot:
+		Discord client instance whose guilds require periodic refresh.
+	settings:
+		Optional guild settings manager override; defaults to the singleton.
+	interval_seconds:
+		Delay between successive refresh runs, in seconds.
+
+	Raises
+	------
+	asyncio.CancelledError
+		Propagated when the enclosing task is cancelled.
 	"""
 
 	resolved_settings = resolve_settings(settings)

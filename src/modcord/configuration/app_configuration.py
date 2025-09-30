@@ -43,20 +43,10 @@ CONFIG_PATH = Path("config") / "app_config.yml"
 
 
 class AppConfig:
-    """Thread-safe configuration accessor with lazy reload support.
+    """Thread-safe accessor around the YAML-based application configuration.
 
-    AppConfig reads a YAML configuration file once (on construction or when
-    reload() is called) and caches the result. The instance is protected by a
-    reentrant lock so callers can safely read values from multiple threads.
-
-    Typical usage:
-        app_config = AppConfig()        # or use the shared instance
-        value = app_config.get('key')
-        prompt = app_config.format_system_prompt(server_rules)
-
-    The object intentionally returns safe defaults when values are missing or
-    when the file cannot be parsed, minimizing the need for callers to guard
-    against None everywhere.
+    The class caches contents of ``config/app_config.yml``, exposes dictionary-like
+    access helpers, and resolves AI-specific settings through :class:`AISettings`.
     """
 
     def __init__(self, config_path: Optional[Path | str] = None) -> None:
@@ -195,20 +185,7 @@ class AppConfig:
 
 
 class AISettings(Mapping):
-    """Typed wrapper around the raw AI settings dict.
-
-    This small helper preserves mapping compatibility while exposing commonly
-    used fields as properties for clearer call-sites. It intentionally keeps
-    a `.get(...)` method so existing code that treats ai_settings as a dict
-    continues to work.
-
-    Example:
-        s = app_config.ai_settings
-        if s.enabled:
-            model = s.model_id
-        # or use mapping access
-        value = s.get('some_custom_knob')
-    """
+    """Mapping-backed helper exposing typed accessors for AI tuning configuration."""
 
     def __init__(self, data: Optional[Dict[str, Any]] = None) -> None:
         self.data: Dict[str, Any] = data or {}

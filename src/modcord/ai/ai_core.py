@@ -23,6 +23,7 @@ logger = get_logger("ai_core")
 
 class ModelState:
     def __init__(self) -> None:
+        """Initialize bookkeeping flags describing the current model lifecycle state."""
         self.init_started: bool = False
         self.available: bool = False
         self.init_error: Optional[str] = None
@@ -38,6 +39,7 @@ class InferenceProcessor:
     """
 
     def __init__(self) -> None:
+        """Instantiate the inference processor with default sampling configuration."""
         self.llm: Optional[LLM] = None
         self.sampling_params: Optional[SamplingParams] = None
         self.base_system_prompt: Optional[str] = None
@@ -48,7 +50,7 @@ class InferenceProcessor:
         self._guided_grammar: Optional[str] = None
 
     def _build_guided_decoding(self) -> GuidedDecodingParams:
-        """Create guided decoding parameters using the xgrammar backend."""
+        """Construct the guided decoding configuration used for moderation responses."""
 
         schema = moderation_parsing.moderation_schema
 
@@ -77,14 +79,17 @@ class InferenceProcessor:
 
     # ======== Model Initialization ========
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
-        """Initialize or reload the underlying LLM.
+        """Load the vLLM model and return its handles along with any initialization error.
 
-        Args:
-            model: Optional model identifier to override configuration.
+        Parameters
+        ----------
+        model:
+            Optional model identifier overriding the configured default.
 
-        Returns:
-            A tuple of (llm, sampling_params, base_system_prompt) on success
-            or (None, None, template) on failure.
+        Returns
+        -------
+        tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]
+            Model instance, sampling parameters, and an initialization error if one occurred.
         """
         async with self.init_lock:
             if self.state.available and self.llm is not None and self.sampling_params is not None:
@@ -205,32 +210,39 @@ class InferenceProcessor:
                 logger.error(f"[AI MODEL] Failed to initialize vLLM model: {e}", exc_info=True)
                 return None, None, self.base_system_prompt
 
-
     # ======== Model Accessors ========
     async def get_model(self) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
-        """Return the current model and sampling parameters.
+        """Return the cached vLLM model and sampling parameters, if initialization succeeded.
 
-        Automatically triggers initialization if it has not started.
+        Returns
+        -------
+        tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]
+            Cached model, sampling configuration, and last recorded error.
         """
         if self.llm is None and not self.state.init_started:
             await self.init_model()
         return self.llm, self.sampling_params, self.base_system_prompt
 
     async def is_model_available(self) -> bool:
-        """Return True when the model is initialized and ready for inference."""
+        """Return ``True`` when the model has been initialized and is ready for inference."""
         return self.state.available
 
-
     async def get_model_init_error(self) -> Optional[str]:
-        """Return the textual initialization error if initialization failed."""
+        """Return the last initialization error recorded for the model, if any."""
         return self.state.init_error
 
-
     async def get_system_prompt(self, server_rules: str = "") -> str:
-        """Format and return the system prompt for the model.
+        """Return the system prompt template tailored to the provided server rules.
 
-        The prompt is built from the configured system template and the
-        optionally-supplied server-specific rules.
+        Parameters
+        ----------
+        server_rules:
+            Optional text describing guild-specific moderation rules.
+
+        Returns
+        -------
+        str
+            System prompt string to prepend to moderation requests.
         """
         await self.get_model()
         template = self.base_system_prompt or cfg.app_config.system_prompt_template
@@ -254,7 +266,6 @@ class InferenceProcessor:
         for out in outputs:
             results.append(out.outputs[0].text.strip() if out.outputs else "")
         return results
-    
 
     async def generate_text(self, prompts: List[str]) -> List[str]:
         """Asynchronously generate text for the supplied prompts.
@@ -268,7 +279,6 @@ class InferenceProcessor:
             raise RuntimeError(reason)
 
         return await asyncio.to_thread(self.sync_generate, prompts)
-
 
     # ======== State Accessors ========
     def get_model_state(self) -> ModelState:

@@ -37,28 +37,22 @@ class SettingsCog(commands.Cog):
     """
 
     def __init__(self, discord_bot_instance):
+        """Store the Discord bot reference and prepare guild settings access."""
         self.discord_bot_instance = discord_bot_instance
         logger.info("Settings cog loaded")
 
     @commands.slash_command(name="ai_status", description="Show whether AI moderation is enabled in this server.")
     async def ai_status(self, application_context: discord.ApplicationContext):
-        """Report whether AI moderation is enabled for this guild.
+        """Send an ephemeral summary of the AI moderation toggle for the invoking guild."""
 
-        The response is ephemeral. If run outside a guild the command reports
-        a sensible default (enabled) to avoid surprising behaviour in DMs.
-        """
         enabled = guild_settings_manager.is_ai_enabled(application_context.guild_id) if application_context.guild_id else True
         status = "enabled" if enabled else "disabled"
         await application_context.respond(f"AI moderation is currently {status}.", ephemeral=True)
 
     @commands.slash_command(name="ai_enable", description="Enable AI moderation in this server.")
     async def ai_enable(self, application_context: discord.ApplicationContext):
-        """Enable AI moderation for the current guild.
+        """Enable AI moderation for the current guild when the invoker has Manage Server rights."""
 
-        Requires the invoking user to have the Manage Server permission. The
-        command replies ephemerally to confirm the change. This operation is
-        a no-op when run outside a guild.
-        """
         if not application_context.guild_id:
             await application_context.respond("This command can only be used in a server.", ephemeral=True)
             return
@@ -72,11 +66,8 @@ class SettingsCog(commands.Cog):
 
     @commands.slash_command(name="ai_disable", description="Disable AI moderation in this server.")
     async def ai_disable(self, application_context: discord.ApplicationContext):
-        """Disable AI moderation for the current guild.
+        """Disable AI moderation for the current guild and confirm the new state."""
 
-        Requires Manage Server permission. The command replies ephemerally to
-        confirm the change. This operation is a no-op when run outside a guild.
-        """
         if not application_context.guild_id:
             await application_context.respond("This command can only be used in a server.", ephemeral=True)
             return
@@ -178,5 +169,5 @@ class SettingsCog(commands.Cog):
 
 
 def setup(discord_bot_instance):
-    """Register the SettingsCog with the provided bot instance."""
+    """Add the settings cog to the supplied Discord bot instance."""
     discord_bot_instance.add_cog(SettingsCog(discord_bot_instance))
