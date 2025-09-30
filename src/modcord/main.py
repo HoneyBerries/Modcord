@@ -12,7 +12,25 @@ Refactored version using cogs for better organization and maintainability.
 import os
 import sys
 from pathlib import Path
-from typing import Iterable
+
+def resolve_base_dir() -> Path:
+    """Determine the base directory of the project. Designed for compiled/bundled execution.
+    Resolution order:
+    1. MODCORD_HOME environment variable, if set.
+    2. If running in a frozen/compiled context (e.g., PyInstaller, Nuitka), use the executable's directory.
+    3. Otherwise, assume running from source and use the grandparent of this file's directory.
+    """
+    if env_home := os.getenv("MODCORD_HOME"):
+        return Path(env_home).resolve()
+
+    if getattr(sys, "frozen", False) or getattr(sys, "compiled", False):
+        return Path(sys.argv[0]).resolve().parent  # works for Nuitka/PyInstaller
+
+    return Path(__file__).resolve().parents[2]
+
+BASE_DIR = resolve_base_dir()
+os.chdir(BASE_DIR)
+
 import asyncio
 import discord
 from dotenv import load_dotenv
@@ -31,7 +49,7 @@ from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger, handle_exception
 
 # Set the base directory to the project root
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 
 # Global rich console
 console = Console()

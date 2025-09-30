@@ -39,7 +39,7 @@ from modcord.util.logger import get_logger
 logger = get_logger("app_configuration")
 
 # Default path to the YAML configuration file (root-level config/config.yml)
-CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "app_config.yml"
+CONFIG_PATH = Path("config") / "app_config.yml"
 
 
 class AppConfig:

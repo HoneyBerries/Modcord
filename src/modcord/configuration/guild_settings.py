@@ -100,7 +100,7 @@ class GuildSettingsManager:
 
     def __init__(self):
         # Persistence path (root/data/guild_settings.json)
-        self.data_dir = Path(__file__).resolve().parents[3] / "data"
+        self.data_dir = Path("data")
         self.settings_path = self.data_dir / "guild_settings.json"
 
         # Internal synchronization primitives
