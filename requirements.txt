@@ -3,6 +3,8 @@
 # Fallback index for other packages from PyPI
 --extra-index-url https://pypi.org/simple
 
+-e .
+
 # Core deep learning library
 torch
 torchvision
@@ -25,3 +27,6 @@ prompt_toolkit
 rich
 # Python compiler
 nuitka
+
+# Unit Tests
+pytest
