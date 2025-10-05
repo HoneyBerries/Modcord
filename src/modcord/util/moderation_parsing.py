@@ -35,8 +35,8 @@ from modcord.util.moderation_models import ActionData, ActionType
 logger = logging.getLogger("moderation_parsing")
 
 VALID_ACTION_VALUES: set[str] = {action.value for action in ActionType}
+"""Set of action strings that are considered valid moderation responses."""
 
-# Moderation JSON schema used for guided decoding in the model
 moderation_schema = {
     "type": "object",
     "properties": {
@@ -72,16 +72,27 @@ moderation_schema = {
     "required": ["channel_id", "users"],
     "additionalProperties": False,
 }
+"""JSON schema guiding the structure of model-generated moderation responses."""
 
 
 _moderation_validator = Draft7Validator(moderation_schema)
 
 
 async def parse_action(assistant_response: str) -> tuple[ActionType, str]:
-    """Parse a single-action assistant response into (ActionType, reason).
+    """Parse a single-action assistant response into ``(ActionType, reason)``.
 
-    This is resilient to fence ``` blocks and loose text around the JSON.
-    Returns (ActionType.NULL, reason) on parse failure.
+    Parameters
+    ----------
+    assistant_response:
+        Raw assistant text returned by the model. The parser tolerates fenced
+        code blocks, leading/trailing commentary, or minor formatting issues
+        around the JSON payload.
+
+    Returns
+    -------
+    tuple[ActionType, str]
+        Resolved action enumeration and associated reason. Falls back to
+        ``(ActionType.NULL, "invalid JSON response")`` on parse failure.
     """
     try:
         s = assistant_response.strip()
@@ -105,9 +116,21 @@ async def parse_action(assistant_response: str) -> tuple[ActionType, str]:
 
 
 async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[ActionData]:
-    """Parse a batched moderation response into a list of :class:`ActionData`.
+    """Translate a batched moderation payload into ``ActionData`` objects.
 
-    Returns an empty list on error.
+    Parameters
+    ----------
+    assistant_response:
+        Model response text that should contain a JSON object describing
+        channel ID and per-user actions.
+    channel_id:
+        Expected channel identifier; mismatches trigger an empty result.
+
+    Returns
+    -------
+    list[ActionData]
+        Ordered list of validated moderation actions. An empty list indicates
+        schema validation failure or other parsing issues.
     """
     try:
         s = assistant_response.strip()

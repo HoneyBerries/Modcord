@@ -46,7 +46,13 @@ class ActionData:
     ban_duration: Optional[int] = None
 
     def add_message_ids(self, *message_ids: str) -> None:
-        """Append sanitized message IDs, preserving order and ignoring duplicates."""
+        """Append one or more message identifiers to the action payload.
+
+        Parameters
+        ----------
+        *message_ids:
+            Discord message identifiers associated with the moderation action.
+        """
 
         for raw_mid in message_ids:
             mid = str(raw_mid).strip()
@@ -56,13 +62,19 @@ class ActionData:
                 self.message_ids.append(mid)
 
     def replace_message_ids(self, message_ids: Iterable[str]) -> None:
-        """Overwrite the message IDs list with sanitized values."""
+        """Replace the tracked message identifiers with the provided iterable.
+
+        Parameters
+        ----------
+        message_ids:
+            Iterable of message identifiers that should overwrite the current list.
+        """
 
         self.message_ids.clear()
         self.add_message_ids(*message_ids)
 
     def to_wire_dict(self) -> dict:
-        """Serialize to a plain dictionary for logging or JSON emission."""
+        """Return a JSON-serializable dictionary representing this action."""
 
         return {
             "user_id": self.user_id,
@@ -76,7 +88,7 @@ class ActionData:
 
 @dataclass(slots=True)
 class ModerationMessage:
-    """Normalized representation of a Discord message for moderation decisions."""
+    """Normalized message data used to provide context to the moderation engine."""
 
     message_id: str
     user_id: str
@@ -116,7 +128,7 @@ class ModerationMessage:
 
 @dataclass(slots=True)
 class ModerationBatch:
-    """Container describing a batch of messages awaiting moderation."""
+    """Container for the ordered set of messages batched for moderation inference."""
 
     channel_id: int
     messages: List[ModerationMessage] = field(default_factory=list)

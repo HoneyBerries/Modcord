@@ -27,7 +27,7 @@ LOG_FILEPATH: Path = LOGS_DIR / LOG_FILENAME
 
 # -------------------- Formatters --------------------
 class ColorFormatter(logging.Formatter):
-    """A custom formatter to add ANSI colors to console log messages."""
+    """Formatter that applies ANSI color codes to log records during console output."""
 
     def format(self, record: logging.LogRecord) -> str:
         color = LOG_COLORS.get(record.levelname, "")
@@ -39,7 +39,7 @@ plain_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
 
 def should_use_color() -> bool:
-    """Check if the console supports ANSI color codes."""
+    """Return ``True`` when the current environment supports colorized output."""
     try:
         return sys.stderr.isatty()
     except Exception:
@@ -52,15 +52,17 @@ color_formatter = ColorFormatter(LOG_FORMAT, datefmt=DATE_FORMAT) if should_use_
 # -------------------- Logger Setup --------------------
 
 def setup_logger(logger_name: str) -> logging.Logger:
-    """
-    Configure and return a logger with a console and file handler.
+    """Configure and return a logger with console and rotating file handlers.
 
-    Args:
-        logger_name (str): Name of the logger.
-        logging_level (int | None): Optional logging level (defaults to MODCORD_LOG_LEVEL env or INFO).
+    Parameters
+    ----------
+    logger_name:
+        Name of the logger to configure.
 
-    Returns:
-        logging.Logger: Configured logger.
+    Returns
+    -------
+    logging.Logger
+        Configured logger instance.
     """
     logger = logging.getLogger(logger_name)
 
@@ -91,16 +93,33 @@ def setup_logger(logger_name: str) -> logging.Logger:
 
 
 def get_logger(logger_name: str) -> logging.Logger:
-    """Return a configured logger instance."""
+    """Retrieve a logger configured for Modcord, creating it if necessary.
+
+    Parameters
+    ----------
+    logger_name:
+        Name of the logger requested by the caller.
+
+    Returns
+    -------
+    logging.Logger
+        Logger instance ready for use.
+    """
     return setup_logger(logger_name)
 
 
 # -------------------- Exception Handling --------------------
 def handle_exception(exception_type, exception_instance, exception_traceback) -> None:
-    """
-    Log uncaught exceptions using the main logger.
+    """Log uncaught exceptions using the centralized logging configuration.
 
-    KeyboardInterrupt exceptions are passed to the default hook.
+    Parameters
+    ----------
+    exception_type:
+        Exception class that was raised.
+    exception_instance:
+        Exception instance produced by the runtime.
+    exception_traceback:
+        Traceback object associated with the exception.
     """
     if issubclass(exception_type, KeyboardInterrupt):
         sys.__excepthook__(exception_type, exception_instance, exception_traceback)

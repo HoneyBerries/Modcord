@@ -34,7 +34,7 @@ logger = get_logger("guild_settings_manager")
 
 @dataclass
 class GuildSettings:
-    """Simple container for persisted per-guild settings."""
+    """Persistent per-guild configuration along with transient batching state."""
 
     guild_id: int
     ai_enabled: bool = True
@@ -99,8 +99,9 @@ class GuildSettingsManager:
     """
 
     def __init__(self):
+        """Instantiate caches, batching queues, and persistence helpers."""
         # Persistence path (root/data/guild_settings.json)
-        self.data_dir = Path(__file__).resolve().parents[3] / "data"
+        self.data_dir = Path("data")
         self.settings_path = self.data_dir / "guild_settings.json"
 
         # Internal synchronization primitives
@@ -137,7 +138,7 @@ class GuildSettingsManager:
 
 
     def ensure_guild(self, guild_id: int) -> GuildSettings:
-        """Return existing GuildSettings or create a default entry."""
+        """Create default settings for a guild if none exist and return the record."""
         settings = self.guilds.get(guild_id)
         if settings is None:
             settings = GuildSettings(guild_id=guild_id)
@@ -145,7 +146,7 @@ class GuildSettingsManager:
         return settings
 
     def build_payload(self) -> Dict[str, Dict[str, Dict[str, object]]]:
-        """Construct JSON-serialisable mapping for all guilds."""
+        """Serialize all persisted guild settings into a JSON-ready payload."""
         return {
             "guilds": {
                 str(guild_id): {
@@ -163,7 +164,7 @@ class GuildSettingsManager:
 
 
     def get_guild_settings(self, guild_id: int) -> GuildSettings:
-        """Return the :class:`GuildSettings` instance for a guild (creates default)."""
+        """Fetch the cached :class:`GuildSettings` instance for the given guild."""
         return self.ensure_guild(guild_id)
 
 

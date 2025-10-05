@@ -64,6 +64,14 @@ class ModerationActionCog(commands.Cog):
     """
 
     def __init__(self, discord_bot_instance):
+        """Store the bot instance for scheduling follow-up tasks and audit logging.
+
+        Parameters
+        ----------
+        discord_bot_instance:
+            Active :class:`discord.Bot` instance used for scheduling background tasks
+            and accessing guild context when scheduling unbans.
+        """
         self.discord_bot_instance = discord_bot_instance
         logger.info("Moderation cog loaded")
 
@@ -75,20 +83,21 @@ class ModerationActionCog(commands.Cog):
     ) -> bool:
         """Run shared pre-checks for moderation commands.
 
-        This helper centralizes the common checks performed before executing
-        a moderation action. It sends ephemeral responses for expected
-        failures so callers can simply return when False is returned.
+        Parameters
+        ----------
+        application_context:
+            Slash command context for the invoking moderator.
+        target_user:
+            Guild member the moderation action targets.
+        required_permission_name:
+            Permission attribute name that must be present on the invoking moderator
+            (for example ``"kick_members"`` or ``"ban_members"``).
 
-        Args:
-            application_context: The ApplicationContext for the invoking user.
-            target_user: The Member to act on.
-            required_permission_name: The permission name to verify on the
-                invoking user (e.g., 'moderate_members', 'kick_members').
-
-        Returns:
-            True when all checks pass and the caller may proceed with the
-            moderation action; False when an ephemeral response has been
-            sent to the invoker indicating why the action cannot proceed.
+        Returns
+        -------
+        bool
+            ``True`` when the invoking moderator is allowed to proceed; ``False`` when
+            an ephemeral error message has already been sent to the invoker.
         """
         # Check invoking user's permission
         if not has_permissions(application_context, **{required_permission_name: True}):
@@ -123,23 +132,25 @@ class ModerationActionCog(commands.Cog):
     ) -> None:
         """Execute a moderation action and perform follow-up tasks.
 
-        This function contains the core implementation shared by the
-        moderation commands. It applies the requested action, sends a DM and
-        embed to notify the user, and optionally schedules background
-        message deletion or an unban for temporary bans.
+        Parameters
+        ----------
+        ctx:
+            Slash command context used for guild, channel, and response utilities.
+        user:
+            Guild member that the moderation action applies to.
+        action_type:
+            Moderation action requested by the command (warn, timeout, kick, ban).
+        reason:
+            Audit-log reason supplied by the moderator.
+        duration:
+            Optional human-friendly duration for timeouts or temporary bans.
+        delete_message_seconds:
+            Optional message deletion window to prune recent user messages.
 
-        Args:
-            ctx: The command context (used for guild/channel references).
-            user: The Member the action targets.
-            action_type: The ActionType enum value indicating the action.
-            reason: A human-readable reason stored with the action.
-            duration: Optional duration string for timeouts or temporary bans.
-            delete_message_seconds: If > 0, how many seconds of the user's
-                recent messages to delete (handled asynchronously).
-
-        Notes:
-            - Any raised exceptions are forwarded to bot_helper.handle_error
-              so the bot has a single error reporting pathway.
+        Notes
+        -----
+        Exceptions raised by Discord API calls are caught, logged, and surfaced to the
+        moderator through an ephemeral response when possible.
         """
         try:            
             # Perform the specific action

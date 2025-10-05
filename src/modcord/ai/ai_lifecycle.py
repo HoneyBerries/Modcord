@@ -14,11 +14,12 @@ class AIEngineLifecycle:
     """Manage initialization, restart, and shutdown of the moderation engine."""
 
     def __init__(self, processor: ModerationProcessor, state: ModelState) -> None:
+        """Bind the lifecycle controller to the shared processor and model state."""
         self._processor = processor
         self._state = state
 
     async def initialize(self, model: Optional[str] = None) -> Tuple[bool, Optional[str]]:
-        """Initialize the moderation engine and return its availability state."""
+        """Initialize the moderation engine and report availability status."""
 
         logger.info("[AI LIFECYCLE] Initializing moderation engine…")
         await self._processor.init_model(model)
@@ -26,7 +27,7 @@ class AIEngineLifecycle:
         return self._state.available, self._state.init_error
 
     async def restart(self, model: Optional[str] = None) -> Tuple[bool, Optional[str]]:
-        """Restart the moderation engine and report its availability state."""
+        """Reinitialize the moderation engine without tearing down the bot."""
 
         logger.info("[AI LIFECYCLE] Restart requested; shutting down current engine…")
         try:
@@ -47,7 +48,7 @@ class AIEngineLifecycle:
         return self._state.available, self._state.init_error
 
     async def shutdown(self) -> None:
-        """Tear down the moderation engine and release resources."""
+        """Shutdown the moderation engine and release any held resources."""
 
         logger.info("[AI LIFECYCLE] Shutting down moderation engine…")
         await self._processor.shutdown()

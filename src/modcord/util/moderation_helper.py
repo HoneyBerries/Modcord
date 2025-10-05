@@ -1,6 +1,3 @@
-
-
-
 """Moderation helper functions used by the event listener.
 
 These helpers implement batching, rules-refresh, and action application
@@ -27,6 +24,11 @@ async def process_message_batch(self, batch: ModerationBatch) -> None:
 
     Runs the AI moderation pipeline for the provided batch and applies
     any resulting actions.
+
+    Parameters
+    ----------
+    batch:
+        Group of channel messages accumulated for moderation review.
     """
     channel_id = batch.channel_id
     try:
@@ -90,12 +92,23 @@ async def process_message_batch(self, batch: ModerationBatch) -> None:
         logger.error(f"Error processing message batch for channel {channel_id}: {e}")
 
 
-
 async def apply_batch_action(self, action: ActionData, batch: ModerationBatch) -> bool:
     """Execute a single moderation action produced by the AI.
 
     Finds a suitable pivot message, performs the action (ban/kick/timeout/etc.),
     and returns True on success or False on failure.
+
+    Parameters
+    ----------
+    action:
+        The moderation action to apply.
+    batch:
+        The batch that produced the action, used for context and logging.
+
+    Returns
+    -------
+    bool
+        ``True`` when the action was executed successfully.
     """
     try:
         if action.action is ActionType.NULL or not action.user_id:
@@ -199,6 +212,11 @@ async def refresh_rules_cache_if_rules_channel(self, channel: discord.abc.Messag
     """Refresh the rules cache when activity occurs in a rules channel.
 
     No-op when the channel does not match the rules-channel heuristics.
+
+    Parameters
+    ----------
+    channel:
+        Channel that triggered an event and may require a rules refresh.
     """
     if isinstance(channel, discord.TextChannel) and isinstance(channel.name, str) and rules_manager.RULE_CHANNEL_PATTERN.search(channel.name):
         guild = channel.guild
@@ -212,11 +230,7 @@ async def refresh_rules_cache_if_rules_channel(self, channel: discord.abc.Messag
 
 
 async def refresh_rules_cache_task(self):
-    """Background task that continuously refreshes the rules cache.
-
-    Intended to be started with ``asyncio.create_task(...)`` and will run
-    until cancelled.
-    """
+    """Background task that periodically refreshes the cached server rules."""
     try:
         await rules_manager.run_periodic_refresh(self.bot, settings=guild_settings_manager)
     except asyncio.CancelledError:
