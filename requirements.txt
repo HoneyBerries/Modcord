@@ -33,3 +33,4 @@ nuitka
 pytest
 pytest-cov
 pytest-asyncio
+jsonschema
