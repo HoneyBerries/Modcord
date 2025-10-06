@@ -9,17 +9,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12.11'
-    
-    # Cache the virtual environment for faster runs
+
     - name: Cache virtual environment
       uses: actions/cache@v4
       with:
@@ -27,38 +26,33 @@ jobs:
         key: ${{ runner.os }}-venv-${{ hashFiles('**/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-venv-
-    
+
     - name: Install dependencies
       run: |
         python -m venv venv
         source venv/bin/activate
         pip install --upgrade pip
         pip install -r requirements.txt
-    
+
     - name: Run tests with pytest
       run: |
         source venv/bin/activate
         pytest --cov=src --cov-report=term-missing --cov-report=xml
-    
-    # Optional: Upload coverage report
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
-      if: always()
-    
-    # Optional: Generate coverage badge
-    - name: Coverage Badge
+
+    - name: Generate coverage badge
       if: github.ref == 'refs/heads/main'
       run: |
         source venv/bin/activate
         pip install coverage-badge
         coverage-badge -o coverage.svg -f
-    
-    # Optional: Comment coverage on PR
-    - name: Comment coverage on PR
-      if: github.event_name == 'pull_request'
-      uses: py-cov-action/python-coverage-comment-action@v3
-      with:
-        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Commit and push coverage badge
+      if: github.ref == 'refs/heads/main'
+      run: |
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@github.com"
+        git add coverage.svg
+        git commit -m "Update coverage badge" || echo "No changes to commit"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
