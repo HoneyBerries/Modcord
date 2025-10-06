@@ -3,6 +3,7 @@
 # Fallback index for other packages from PyPI
 --extra-index-url https://pypi.org/simple
 
+# Install the current package in editable mode
 -e .
 
 # Core deep learning library
@@ -30,3 +31,5 @@ nuitka
 
 # Unit Tests
 pytest
+pytest-cov
+pytest-asyncio
