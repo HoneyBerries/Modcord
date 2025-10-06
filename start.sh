@@ -1,13 +1,15 @@
 #!/bin/bash
 
-# Activate the virtual environment and run the bot
-VENV_DIR="venv"
+# Find the first activate script in any subdirectory
+ACTIVATE_PATH=$(find . -type f -path "*/bin/activate" | head -n 1)
 
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Virtual environment not found. Exiting."
+if [ -z "$ACTIVATE_PATH" ]; then
+    echo "No virtual environment activate script found. Exiting."
     exit 1
 fi
 
-source "$VENV_DIR/bin/activate"
+VENV_DIR=$(dirname "$(dirname "$ACTIVATE_PATH")")
+echo "Activating virtual environment: $VENV_DIR"
+source "$ACTIVATE_PATH"
 
 python src/modcord/main.py

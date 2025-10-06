@@ -2,7 +2,7 @@
 
 [![Run Tests](https://github.com/HoneyBerries/Modcord/actions/workflows/tests.yaml/badge.svg)](https://github.com/HoneyBerries/Modcord/actions/workflows/tests.yaml)
 [![Coverage](https://codecov.io/gh/HoneyBerries/Modcord/branch/main/graph/badge.svg?token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/HoneyBerries/Modcord)
-[![License: Modcord Custom License](https://img.shields.io/badge/license-Modcord%20Custom%20License-blue.svg)](LICENSE)
+[![License: Modcord Custom License](https://img.shields.io/badge/license-Modcord%20Custom%20License-blue.svg)](LICENSE.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/honeyberries/modcord)](https://github.com/honeyberries/modcord/commits)
 [![Chat on Discord](https://img.shields.io/badge/chat-on%20Discord-5865F2.svg)](https://discord.gg/c354AX236r)
@@ -21,14 +21,14 @@ Follow these steps to get Modcord running on your local machine for development 
 
 ### Prerequisites
 
-- Python 3.12+
-- A virtual environment tool (e.g., `venv`)
+- Python 3.12.x
+- A virtual environment (e.g., `venv`)
 
 ### Installation
 
 1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/HoneyBerries/Modcord.git
+    git clone https://github.com/HoneyBerries/Modcord
     cd modcord
     ```
 
@@ -56,7 +56,7 @@ Follow these steps to get Modcord running on your local machine for development 
     python -m modcord
 
     # Or use the console script
-    modcord
+    ./start.sh
     ```
 
 ---
@@ -64,11 +64,10 @@ Follow these steps to get Modcord running on your local machine for development 
 ## Features
 
 - **AI-Powered Moderation**: Uses a local or hosted Large Language Model to analyze messages and suggest moderation actions.
-- **Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`).
+- **Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`) and other management commands.
 - **Contextual Analysis**: Maintains per-channel message history for accurate AI moderation suggestions.
 - **Temporary Actions**: Supports temporary bans and timeouts with automatic removal.
 - **Standardized Embeds**: Clear and consistent embeds for all moderation actions.
-- **Robust Logging**: Features console and rotating file logs stored in the `logs/` directory.
 - **Per-Guild Settings**: Customizable settings and rules for each server.
 - **Extensible Architecture**: A modular design with a pluggable AI engine layer.
 
@@ -101,7 +100,7 @@ We welcome contributions! Please see [`CONTRIBUTING.md`](CONTRIBUTING.md) for de
 
 ## License
 
-This project is © the contributors. See [LICENSE](LICENSE) for details.
+This project is copyright (c) HoneyBerries. See [LICENSE](LICENSE.md) for details.
 
 ---
 
