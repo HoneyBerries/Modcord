@@ -11,48 +11,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.11'
 
-    - name: Cache virtual environment
-      uses: actions/cache@v4
-      with:
-        path: venv
-        key: ${{ runner.os }}-venv-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-venv-
+      - name: Cache virtual environment
+        uses: actions/cache@v4
+        with:
+          path: venv
+          key: ${{ runner.os }}-venv-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-venv-
 
-    - name: Install dependencies
-      run: |
-        python -m venv venv
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov codecov
 
-    - name: Run tests with pytest
-      run: |
-        source venv/bin/activate
-        pytest --cov=src --cov-report=term-missing --cov-report=xml
+      - name: Run tests with coverage
+        run: |
+          source venv/bin/activate
+          pytest --cov=src --cov-branch --cov-report=xml --cov-report=term-missing
 
-    - name: Generate coverage badge
-      if: github.ref == 'refs/heads/main'
-      run: |
-        source venv/bin/activate
-        pip install coverage-badge
-        coverage-badge -o coverage.svg -f
-
-    - name: Commit and push coverage badge
-      if: github.ref == 'refs/heads/main'
-      run: |
-        git config --global user.name "github-actions"
-        git config --global user.email "github-actions@github.com"
-        git add coverage.svg
-        git commit -m "Update coverage badge" || echo "No changes to commit"
-        git push
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          fail_ci_if_error: true
