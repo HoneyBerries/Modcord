@@ -21,6 +21,10 @@ py-cord
 python-dotenv
 # YAML file parser
 pyyaml
+
+# Json schema validation
+jsonschema
+
 # vllm
 vllm
 # Async console input
@@ -33,4 +37,3 @@ nuitka
 pytest
 pytest-cov
 pytest-asyncio
-jsonschema
