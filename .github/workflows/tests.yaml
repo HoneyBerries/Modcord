@@ -1,0 +1,64 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [ main, dev, feature/* ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12.11'
+    
+    # Cache the virtual environment for faster runs
+    - name: Cache virtual environment
+      uses: actions/cache@v4
+      with:
+        path: venv
+        key: ${{ runner.os }}-venv-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-venv-
+    
+    - name: Install dependencies
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run tests with pytest
+      run: |
+        source venv/bin/activate
+        pytest --cov=src --cov-report=term-missing --cov-report=xml
+    
+    # Optional: Upload coverage report
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+      if: always()
+    
+    # Optional: Generate coverage badge
+    - name: Coverage Badge
+      if: github.ref == 'refs/heads/main'
+      run: |
+        source venv/bin/activate
+        pip install coverage-badge
+        coverage-badge -o coverage.svg -f
+    
+    # Optional: Comment coverage on PR
+    - name: Comment coverage on PR
+      if: github.event_name == 'pull_request'
+      uses: py-cov-action/python-coverage-comment-action@v3
+      with:
+        GITHUB_TOKEN: ${{ github.token }}
