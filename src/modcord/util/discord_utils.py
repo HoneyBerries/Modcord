@@ -107,7 +107,7 @@ TIMEOUT_ACTIONS: set[ActionType] = {ActionType.TIMEOUT}
 
 
 
-def is_ignored_author(self, author: Union[discord.User, discord.Member]) -> bool:
+def is_ignored_author(author: Union[discord.User, discord.Member]) -> bool:
     """Return ``True`` when ``author`` should be ignored by moderation handlers.
 
     Parameters
