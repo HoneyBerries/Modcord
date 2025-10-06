@@ -1,94 +1,110 @@
-# Discord Moderation Bot (Modcord)
+# Modcord — Discord Moderation Bot
 
 [![Run Tests](https://github.com/HoneyBerries/Modcord/actions/workflows/tests.yaml/badge.svg)](https://github.com/HoneyBerries/Modcord/actions/workflows/tests.yaml)
 [![Coverage](https://codecov.io/gh/HoneyBerries/Modcord/branch/main/graph/badge.svg?token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/HoneyBerries/Modcord)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: Modcord Custom License](https://img.shields.io/badge/license-Modcord%20Custom%20License-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/honeyberries/modcord)](https://github.com/honeyberries/modcord/commits)
 [![Chat on Discord](https://img.shields.io/badge/chat-on%20Discord-5865F2.svg)](https://discord.gg/c354AX236r)
 
+---
 
-## ❗ Alpha Stage ❗
+## Overview
 
-This bot is currently in a very early alpha stage. It is buggy and may not work as expected. Use at your own risk.
+**Modcord** is a production-ready Discord moderation bot designed to help server operators maintain a safe and well-managed community. It leverages AI-powered moderation alongside traditional moderation tools to provide automated, contextual, and auditable moderation actions.
 
-## Features
+---
 
--   **AI-Powered Moderation**: Uses a Large Language Model to analyze chat messages and suggest moderation actions.
--   **Slash Commands**: Provides a full suite of slash commands for manual moderation (warn, timeout, kick, ban).
--   **Contextual Analysis**: Maintains per-channel chat history to provide context to the AI model.
--   **Standardized Embeds**: Uses standardized and clear embeds for all moderation actions.
--   **Temporary Actions**: Supports temporary bans and timeouts with automatic removal.
--   **Robust Logging**:
-    -   Detailed console and rotating file logs.
-    -   Logs are stored in a root `logs/` directory.
-    -   Centralized logger with per-module sub-loggers.
-    # Modcord — Discord Moderation Bot
+## Getting Started
 
-    Modcord is a Discord moderation assistant that leverages a local or hosted
-    language model to detect and suggest moderation actions (warn, timeout,
-    delete, kick, ban). It's designed for server operators who want a
-    configurable, auditable, and extensible moderation pipeline.
+Follow these steps to get Modcord running on your local machine for development or testing.
 
-    This repository contains the bot, small infrastructure helpers, and a
-    pluggable AI engine layer.
+### Prerequisites
 
-    Highlights
-    - AI-powered moderation with per-channel message batching.
-    - Slash commands for manual actions and administration.
-    - Per-guild settings and rules cache.
-    - Structured logging with rotating files for production usage.
+- Python 3.12+
+- A virtual environment tool (e.g., `venv`)
 
-    Quick start
-    1. Create a virtualenv and activate it:
+### Installation
 
+1.  **Clone the Repository**:
     ```bash
-    python -m venv .venv
-    source .venv/bin/activate
+    git clone https://github.com/HoneyBerries/Modcord.git
+    cd modcord
     ```
 
-    2. Install the project in editable mode:
-
+2.  **Create and Activate a Virtual Environment**:
     ```bash
-    pip install -e .
+    python -m venv venv
+    source venv/bin/activate
     ```
 
-    3. Add your Discord token to `.env`:
-
-    ```text
-    DISCORD_BOT_TOKEN=your_bot_token_here
+3.  **Install Dependencies**:
+    This command installs all necessary packages, including the project itself in editable mode.
+    ```bash
+    pip install -r requirements.txt
     ```
 
-    4. Run tests:
-
-    ```bash
-    python -m pytest -q
+4.  **Configure Your Bot Token**:
+    Create a file named `.env` in the project's root directory and add your Discord bot token:
+    ```
+    DISCORD_BOT_TOKEN=your_discord_bot_token_here
     ```
 
-    5. Launch the bot locally:
-
+5.  **Run the Bot**:
     ```bash
+    # Run directly via the Python module
     python -m modcord
-    # or, after editable install
+
+    # Or use the console script
     modcord
     ```
 
-    Configuration & architecture notes
-    - The AI lifecycle helpers live in `modcord.ai.ai_lifecycle` (initialize/restart/shutdown).
-    - Batching and per-guild persistence are handled by `modcord.configuration.guild_settings`.
-    - Moderation orchestration is implemented in `modcord.ai.ai_moderation_processor` and the low-level model access is in `modcord.ai.ai_core`.
-    - Cogs live under `src/modcord/bot/cogs`.
+---
 
-    Developer docs
-    - See `DEVELOPMENT.md` for a concise local development guide.
-    - See `message_batching.md` for the batching design and tuning ideas.
+## Features
 
-    Contributing
-    - Open issues for bugs or design discussions.
-    - Add tests for new behaviors and aim for small PRs with clear intentions.
+- **AI-Powered Moderation**: Uses a local or hosted Large Language Model to analyze messages and suggest moderation actions.
+- **Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`).
+- **Contextual Analysis**: Maintains per-channel message history for accurate AI moderation suggestions.
+- **Temporary Actions**: Supports temporary bans and timeouts with automatic removal.
+- **Standardized Embeds**: Clear and consistent embeds for all moderation actions.
+- **Robust Logging**: Features console and rotating file logs stored in the `logs/` directory.
+- **Per-Guild Settings**: Customizable settings and rules for each server.
+- **Extensible Architecture**: A modular design with a pluggable AI engine layer.
 
-    Security note
-    - Never commit secrets. Use environment variables or CI secrets for tokens and keys.
+---
 
-    License & acknowledgements
-    - This project is © the contributors. Include a license file if needed.
+## Configuration & Architecture
+
+- **AI Lifecycle**: `modcord.ai.ai_lifecycle` (initialize/restart/shutdown).
+- **Configuration & Persistence**: `modcord.configuration.guild_settings`.
+- **Moderation Orchestration**: `modcord.ai.ai_moderation_processor` and `modcord.ai.ai_core`.
+- **Cogs**: Located under `src/modcord/bot/cogs`.
+
+---
+
+## Contributing
+
+We welcome contributions! Please see [`CONTRIBUTING.md`](CONTRIBUTING.md) for detailed instructions on how to get involved, including our development guide and contributor benefits.
+
+- Open an issue for bugs or design discussions.
+- Submit small, focused PRs with clear intentions.
+- Add tests for any new functionality.
+
+---
+
+## Security
+
+- **Never commit secrets**. Use environment variables or CI secrets for tokens and keys. The `.env` file is included in `.gitignore` to prevent accidental commits.
+
+---
+
+## License
+
+This project is © the contributors. See [LICENSE](LICENSE) for details.
+
+---
+
+## Join the Community
+
+- Chat with us on [Discord](https://discord.gg/c354AX236r) for support and discussions.
