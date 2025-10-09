@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from modcord.util import moderation_helper
-from modcord.util.moderation_models import ActionData, ActionType, ModerationBatch, ModerationMessage
+from modcord.util.moderation_datatypes import ActionData, ActionType, ModerationBatch, ModerationMessage
 
 
 class FakePermissions:

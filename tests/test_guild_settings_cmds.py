@@ -153,13 +153,17 @@ async def test_ai_status_reports_manager_value(monkeypatch):
     assert cb is not None
     await cb(cog, ctx)
 
-    assert ctx.respond.await_count == 1
+    # New behaviour: status is returned as an embed in the response
+    ctx.respond.assert_awaited_once()
     call = ctx.respond.await_args
     assert call is not None
-    message = call.args[0]
     kwargs = call.kwargs
-    assert "disabled" in message.lower()
-    assert kwargs.get("ephemeral") is True
+    embed = kwargs.get("embed")
+    assert embed is not None
+    # Embed should contain AI Moderation field set to disabled
+    fields = {f.name: f.value for f in embed.fields}
+    assert "AI Moderation" in fields
+    assert "disabled" in fields["AI Moderation"].lower()
 
 
 @pytest.mark.asyncio
@@ -193,9 +197,11 @@ async def test_ai_set_action_updates_manager(monkeypatch):
     assert ctx.respond.await_count == 1
     call = ctx.respond.await_args
     assert call is not None
-    message = call.args[0]
     kwargs = call.kwargs
-    assert "disabled" in message
+    # The panel response includes a short flash content describing the change
+    content = kwargs.get("content") if kwargs.get("content") is not None else (call.args[0] if call.args else None)
+    assert content is not None
+    assert "disabled" in content.lower()
     assert kwargs.get("ephemeral") is True
 
 

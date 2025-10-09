@@ -13,7 +13,7 @@ from modcord.util.discord_utils import (
     send_dm_to_user,
     safe_delete_message,
 )
-from modcord.util.moderation_models import ActionType
+from modcord.util.moderation_datatypes import ActionType
 
 
 class DiscordUtilsPermissionTests(unittest.TestCase):

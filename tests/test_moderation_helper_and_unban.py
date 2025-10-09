@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from modcord.util import moderation_helper
-from modcord.util.moderation_models import ModerationBatch, ModerationMessage, ActionData, ActionType
+from modcord.util.moderation_datatypes import ModerationBatch, ModerationMessage, ActionData, ActionType
 import modcord.bot.unban_scheduler as unban_scheduler
 
 

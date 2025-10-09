@@ -9,7 +9,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from modcord.util.moderation_models import ActionType
+from modcord.util.moderation_datatypes import ActionType
 from modcord.util import moderation_parsing
 
 

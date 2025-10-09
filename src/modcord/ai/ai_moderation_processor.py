@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
-from modcord.util.moderation_models import ActionData, ActionType, ModerationBatch, ModerationMessage
+from modcord.util.moderation_datatypes import ActionData, ActionType, ModerationBatch, ModerationMessage
 import modcord.util.moderation_parsing as moderation_parsing
 from modcord.configuration.app_configuration import app_config
 

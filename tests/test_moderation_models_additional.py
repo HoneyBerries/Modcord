@@ -1,4 +1,4 @@
-from modcord.util.moderation_models import (
+from modcord.util.moderation_datatypes import (
     ActionData,
     ActionType,
     ModerationBatch,

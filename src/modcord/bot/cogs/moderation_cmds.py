@@ -45,7 +45,7 @@ from modcord.util.discord_utils import (
     DELETE_MESSAGE_CHOICES,
 )
 from modcord.bot.unban_scheduler import schedule_unban
-from modcord.util.moderation_models import ActionType
+from modcord.util.moderation_datatypes import ActionType
 from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_cog")

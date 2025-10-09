@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from modcord.bot.cogs import events_listener, message_listener
-from modcord.util.moderation_models import ModerationMessage
+from modcord.util.moderation_datatypes import ModerationMessage
 
 
 class FakeStatus:

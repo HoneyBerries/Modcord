@@ -17,15 +17,29 @@ Quick usage example
     bot.add_cog(SettingsCog(bot))
 """
 
+import datetime
+import io
+import json
+from typing import Optional
+
 import discord
 from discord.ext import commands
-import json
-import io
+
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
-from modcord.util.moderation_models import ActionType
+from modcord.util.moderation_datatypes import ActionType
+from modcord.ui.guild_settings_ui import (
+    build_settings_embed,
+    GuildSettingsView,
+    ToggleAIButton,
+    ToggleActionButton,
+    ClosePanelButton,
+)
 
 logger = get_logger("settings_cog")
+
+
+# The interactive UI lives in modcord.ui.guild_settings_ui
 
 
 class SettingsCog(commands.Cog):
@@ -41,43 +55,84 @@ class SettingsCog(commands.Cog):
         self.discord_bot_instance = discord_bot_instance
         logger.info("Settings cog loaded")
 
-    @commands.slash_command(name="ai_status", description="Show whether AI moderation is enabled in this server.")
-    async def ai_status(self, application_context: discord.ApplicationContext):
-        """Send an ephemeral summary of the AI moderation toggle for the invoking guild."""
+    async def _ensure_guild_context(self, ctx: discord.ApplicationContext) -> bool:
+        if not ctx.guild_id:
+            await ctx.respond("This command can only be used in a server.", ephemeral=True)
+            return False
+        return True
 
-        enabled = guild_settings_manager.is_ai_enabled(application_context.guild_id) if application_context.guild_id else True
-        status = "enabled" if enabled else "disabled"
-        await application_context.respond(f"AI moderation is currently {status}.", ephemeral=True)
+    def _has_manage_permission(self, ctx: discord.ApplicationContext) -> bool:
+        member = ctx.user
+        permissions = getattr(member, "guild_permissions", None)
+        return bool(getattr(permissions, "manage_guild", False))
+
+    async def _send_settings_panel(
+        self,
+        ctx: discord.ApplicationContext,
+        *,
+        flash: Optional[str] = None,
+    ) -> None:
+        """Send or update the consolidated settings panel."""
+
+        if not await self._ensure_guild_context(ctx):
+            return
+
+        if not self._has_manage_permission(ctx):
+            await ctx.respond(
+                "You need the Manage Server permission to configure Modcord.",
+                ephemeral=True,
+            )
+            return
+
+        view = GuildSettingsView(ctx.guild_id, ctx.user.id)
+        embed = build_settings_embed(ctx.guild_id)
+
+        await ctx.respond(content=flash, embed=embed, view=view, ephemeral=True)
+        try:
+            response_message = await ctx.interaction.original_response()
+            view.message = response_message
+        except discord.NotFound:
+            # If the interaction response vanished (should not happen for ephemeral responses)
+            view.message = None
 
     @commands.slash_command(name="ai_enable", description="Enable AI moderation in this server.")
     async def ai_enable(self, application_context: discord.ApplicationContext):
         """Enable AI moderation for the current guild when the invoker has Manage Server rights."""
-
-        if not application_context.guild_id:
-            await application_context.respond("This command can only be used in a server.", ephemeral=True)
+        if not await self._ensure_guild_context(application_context):
             return
 
-        if not application_context.user.guild_permissions.manage_guild:
-            await application_context.respond("You do not have permission to change server settings (Manage Server required).", ephemeral=True)
+        if not self._has_manage_permission(application_context):
+            await application_context.respond(
+                "You do not have permission to change server settings (Manage Server required).",
+                ephemeral=True,
+            )
             return
 
         guild_settings_manager.set_ai_enabled(application_context.guild_id, True)
-        await application_context.respond("Enabled AI moderation for this server.", ephemeral=True)
+        await self._send_settings_panel(
+            application_context,
+            flash="Enabled AI moderation for this server.",
+        )
 
     @commands.slash_command(name="ai_disable", description="Disable AI moderation in this server.")
     async def ai_disable(self, application_context: discord.ApplicationContext):
         """Disable AI moderation for the current guild and confirm the new state."""
 
-        if not application_context.guild_id:
-            await application_context.respond("This command can only be used in a server.", ephemeral=True)
+        if not await self._ensure_guild_context(application_context):
             return
 
-        if not application_context.user.guild_permissions.manage_guild:
-            await application_context.respond("You do not have permission to change server settings (Manage Server required).", ephemeral=True)
+        if not self._has_manage_permission(application_context):
+            await application_context.respond(
+                "You do not have permission to change server settings (Manage Server required).",
+                ephemeral=True,
+            )
             return
 
         guild_settings_manager.set_ai_enabled(application_context.guild_id, False)
-        await application_context.respond("Disabled AI moderation for this server.", ephemeral=True)
+        await self._send_settings_panel(
+            application_context,
+            flash="Disabled AI moderation for this server.",
+        )
 
 
     @commands.slash_command(name="ai_set_action", description="Enable or disable specific AI moderation actions.")
@@ -95,11 +150,10 @@ class SettingsCog(commands.Cog):
     async def ai_set_action(self, application_context: discord.ApplicationContext, action: str, enabled: bool):
         """Toggle whether the AI may perform a specific action automatically."""
 
-        if not application_context.guild_id:
-            await application_context.respond("This command can only be used in a server.", ephemeral=True)
+        if not await self._ensure_guild_context(application_context):
             return
 
-        if not application_context.user.guild_permissions.manage_guild:
+        if not self._has_manage_permission(application_context):
             await application_context.respond(
                 "You do not have permission to change server settings (Manage Server required).",
                 ephemeral=True,
@@ -114,11 +168,29 @@ class SettingsCog(commands.Cog):
 
         guild_settings_manager.set_action_allowed(application_context.guild_id, action_type, enabled)
         state = "enabled" if enabled else "disabled"
-        await application_context.respond(
-            f"AI {action} actions are now {state} for this server.",
-            ephemeral=True,
+        await self._send_settings_panel(
+            application_context,
+            flash=f"AI {action} actions are now {state} for this server.",
         )
 
+
+    @commands.slash_command(name="settings", description="Open an interactive panel to configure Modcord for this server.")
+    async def settings_panel(self, application_context: discord.ApplicationContext):
+        """Present a consolidated settings panel backed by interactive buttons."""
+
+        await self._send_settings_panel(application_context)
+
+
+    @commands.slash_command(name="ai_status", description="Show whether AI moderation is enabled in this server.")
+    async def ai_status(self, application_context: discord.ApplicationContext):
+        """Send an ephemeral summary of the AI moderation toggle for the invoking guild."""
+
+        if not application_context.guild_id:
+            await application_context.respond("This command can only be used in a server.", ephemeral=True)
+            return
+
+        embed = build_settings_embed(application_context.guild_id)
+        await application_context.respond(embed=embed, ephemeral=True)
 
     @commands.slash_command(name="settings_dump", description="Show current per-guild settings as JSON.")
     async def settings_dump(self, application_context: discord.ApplicationContext):

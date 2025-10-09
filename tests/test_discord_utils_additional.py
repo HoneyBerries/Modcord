@@ -6,7 +6,7 @@ import pytest
 import discord
 
 from modcord.util import discord_utils
-from modcord.util.moderation_models import ActionType
+from modcord.util.moderation_datatypes import ActionType
 
 
 def test_format_duration_and_parse():

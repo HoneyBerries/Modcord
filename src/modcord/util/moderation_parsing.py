@@ -30,7 +30,7 @@ from typing import List
 
 from jsonschema import Draft7Validator, ValidationError
 
-from modcord.util.moderation_models import ActionData, ActionType
+from modcord.util.moderation_datatypes import ActionData, ActionType
 
 logger = logging.getLogger("moderation_parsing")
 

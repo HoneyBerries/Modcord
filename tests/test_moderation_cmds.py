@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 from modcord.bot.cogs import moderation_cmds
 from modcord.util import moderation_helper
-from modcord.util.moderation_models import ActionType
+from modcord.util.moderation_datatypes import ActionType
 from modcord.util.discord_utils import PERMANENT_DURATION
 
 

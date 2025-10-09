@@ -9,7 +9,7 @@ import discord
 from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.util.moderation_models import ModerationMessage
+from modcord.util.moderation_datatypes import ModerationMessage
 from modcord.util.logger import get_logger
 from modcord.util import moderation_helper
 from modcord.util import discord_utils

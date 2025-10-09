@@ -8,7 +8,7 @@ import pytest
 import discord
 
 from modcord.util import discord_utils
-from modcord.util.moderation_models import ActionData, ActionType, ModerationMessage
+from modcord.util.moderation_datatypes import ActionData, ActionType, ModerationMessage
 
 
 class DummyPermissions:

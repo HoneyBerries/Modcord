@@ -10,7 +10,7 @@ import modcord.bot.cogs.moderation_cmds as moderation_cmds
 from modcord.configuration import guild_settings
 from modcord.bot import rules_manager
 from modcord.util import discord_utils, moderation_helper
-from modcord.util.moderation_models import ActionType, ModerationMessage, ActionData, ModerationBatch
+from modcord.util.moderation_datatypes import ActionType, ModerationMessage, ActionData, ModerationBatch
 
 
 @pytest.mark.asyncio
