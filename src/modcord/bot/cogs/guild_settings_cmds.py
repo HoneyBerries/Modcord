@@ -219,9 +219,9 @@ class SettingsCog(commands.Cog):
             },
         }
         settings_json_string = json.dumps(guild_settings, ensure_ascii=False, indent=2)
-        # Always send the dump as a JSON file attachment to avoid message
+        # Send dump as a JSON file attachment to avoid message
         # length limits and ensure the response is easy to download and
-        # inspect. Keep responses ephemeral so configuration isn't exposed.
+
         try:
             file_bytes = settings_json_string.encode("utf-8")
             file_obj = io.BytesIO(file_bytes)

@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Sequence, TYPE_CHECKING
-
-if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
-    import discord
+from typing import Dict, Iterable, List, Optional, Sequence
+import discord
 
 
 class ActionType(Enum):
