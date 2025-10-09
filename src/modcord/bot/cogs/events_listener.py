@@ -103,7 +103,7 @@ class EventsListenerCog(commands.Cog):
 
         # Ignore messages from bots and administrators
         logger.debug(f"Received message from {message.author}: {message.content}")
-        if discord_utils.is_ignored_author(self, message.author):
+        if discord_utils.is_ignored_author(message.author):
             logger.debug("Ignoring message from non-user.")
             return
 
@@ -161,7 +161,7 @@ class EventsListenerCog(commands.Cog):
         heuristics; otherwise it's a no-op.
         """
         # Ignore edits where author is a bot or admin
-        if discord_utils.is_ignored_author(self, after.author):
+        if discord_utils.is_ignored_author(after.author):
             return
 
         # If the content didn't change, nothing to do

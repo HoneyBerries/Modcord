@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import warnings
+from prompt_toolkit import print_formatted_text
+from prompt_toolkit.formatted_text import ANSI
 
 # -------------------- Configuration --------------------
 LOGS_DIR: Path = Path(__file__).resolve().parents[3] / "logs"
@@ -33,6 +35,22 @@ class ColorFormatter(logging.Formatter):
         color = LOG_COLORS.get(record.levelname, "")
         message = super().format(record)
         return f"{color}{message}{RESET_COLOR}" if color else message
+
+
+class PromptToolkitHandler(logging.Handler):
+    """Custom logging handler that uses prompt_toolkit's print to avoid interfering with prompts."""
+
+    def __init__(self, formatter: logging.Formatter | None = None):
+        super().__init__()
+        if formatter:
+            self.setFormatter(formatter)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            print_formatted_text(ANSI(msg))
+        except Exception:
+            self.handleError(record)
 
 
 plain_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
@@ -73,10 +91,9 @@ def setup_logger(logger_name: str) -> logging.Logger:
     logger.setLevel(base_level)
     logger.propagate = False
 
-    # Console handler
-    console_handler = logging.StreamHandler()
+    # Console handler using prompt_toolkit integration
+    console_handler = PromptToolkitHandler(formatter=color_formatter)
     console_handler.setLevel(base_level)
-    console_handler.setFormatter(color_formatter)
     logger.addHandler(console_handler)
 
 
@@ -128,11 +145,20 @@ def handle_exception(exception_type, exception_instance, exception_traceback) ->
 
 
 # -------------------- Suppress Noisy Libraries --------------------
-for noisy_logger in [
+NOISY_LOGGERS = [
     "vllm", "vllm.engine", "vllm.client", "transformers", "urllib3",
-    "torch", "torch.distributed", "c10d", "gloo"
-]:
-    logging.getLogger(noisy_logger).setLevel(logging.ERROR)
+    "torch", "torch.distributed", "c10d", "gloo",
+    # Silence Discord internals and networking layers that spam INFO messages
+    "discord", "discord.gateway", "discord.client", "discord.http",
+    "websockets", "aiohttp", "cuda"
+]
+
+for noisy_logger in NOISY_LOGGERS:
+    lg = logging.getLogger(noisy_logger)
+    lg.setLevel(logging.ERROR)
+    lg.propagate = False
+    # Clear any handlers libraries may have added so output does not bypass our handler
+    lg.handlers = []
 
 os.environ.setdefault("GLOG_minloglevel", "2")   # 0=INFO,1=WARNING,2=ERROR
 os.environ.setdefault("NCCL_DEBUG", "ERROR")

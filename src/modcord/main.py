@@ -24,7 +24,7 @@ def resolve_base_dir() -> Path:
         return Path(env_home).resolve()
 
     if getattr(sys, "frozen", False) or getattr(sys, "compiled", False):
-        return Path(sys.argv[0]).resolve().parent  # works for Nuitka/PyInstaller
+        return Path(sys.argv[0]).resolve().parent
 
     return Path(__file__).resolve().parents[2]
 
@@ -36,7 +36,8 @@ import discord
 from dotenv import load_dotenv
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.shortcuts import PromptSession
-from rich.console import Console
+from prompt_toolkit import print_formatted_text
+from prompt_toolkit.formatted_text import FormattedText
 
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.ai.ai_lifecycle import (
@@ -51,8 +52,22 @@ from modcord.util.logger import get_logger, handle_exception
 # Set the base directory to the project root
 
 
-# Global rich console
-console = Console()
+def console_print(message: str, style: str = "") -> None:
+    """Print a message to console using prompt_toolkit to avoid interfering with prompts.
+    
+    Parameters
+    ----------
+    message:
+        Text to display in the console.
+    style:
+        Optional ANSI color code (e.g., 'ansigreen', 'ansired'). If empty, no styling is applied.
+    """
+    if style:
+        formatted_text = FormattedText([(style, message)])
+    else:
+        formatted_text = message
+    print_formatted_text(formatted_text)
+
 
 # Get logger for this module
 logger = get_logger("main")
@@ -108,7 +123,7 @@ async def restart_ai_engine(control: ConsoleControl) -> None:
         Console management helper providing access to the restart lock and bot reference.
     """
     async with control.restart_lock:
-        console.print("Restarting AI moderation engine…")
+        console_print("Restarting AI moderation engine…")
         try:
             available, detail = await restart_engine()
         except Exception as exc:
@@ -130,7 +145,7 @@ async def restart_ai_engine(control: ConsoleControl) -> None:
 
         status = "available" if available else "unavailable"
         detail_msg = detail or "ready"
-        console.print(f"AI engine restart complete: {status} ({detail_msg})")
+        console_print(f"AI engine restart complete: {status} ({detail_msg})")
 
 
 async def handle_console_command(command: str, control: ConsoleControl) -> None:
@@ -148,7 +163,7 @@ async def handle_console_command(command: str, control: ConsoleControl) -> None:
         return
 
     if cmd in {"quit", "exit", "shutdown"}:
-        console.print("Shutdown requested.")
+        console_print("Shutdown requested.")
         control.request_shutdown()
         bot = control.bot
         if bot is not None and not bot.is_closed():
@@ -166,14 +181,14 @@ async def handle_console_command(command: str, control: ConsoleControl) -> None:
         availability = "available" if model_state.available else "unavailable"
         detail = model_state.init_error or "ready"
         guilds = len(control.bot.guilds) if control.bot else 0
-        console.print(f"Status: AI {availability}, ({detail}); connected guilds: {guilds}")
+        console_print(f"Status: AI {availability}, ({detail}); connected guilds: {guilds}")
         return
 
     if cmd == "help":
-        console.print("Commands: help, status, restart, shutdown")
+        console_print("Commands: help, status, restart, shutdown")
         return
 
-    console.print(f"Unknown command '{command}'. Type 'help' for options.")
+    console_print(f"Unknown command '{command}'. Type 'help' for options.", "ansired")
 
 
 async def run_console(control: ConsoleControl) -> None:
@@ -185,7 +200,7 @@ async def run_console(control: ConsoleControl) -> None:
         ConsoleControl coordinating shutdown events and bot access.
     """
     session = PromptSession("> ")  # <-- classic '>' prompt
-    console.print("Interactive console ready. Type 'help' for commands.")
+    console_print("Interactive console ready. Type 'help' for commands.", "ansigreen")
 
     with patch_stdout():
         while not control.is_shutdown_requested():
@@ -194,12 +209,12 @@ async def run_console(control: ConsoleControl) -> None:
                 if line.strip():
                     await handle_console_command(line, control)
             except (EOFError, KeyboardInterrupt):
-                console.print("\nShutdown requested by user.")
+                console_print("\nShutdown requested by user.")
                 control.request_shutdown()
                 break
             except Exception as exc:
                 logger.exception("Error in console input loop: %s", exc)
-                console.print(f"Error: {exc}")
+                console_print(f"Error: {exc}", "ansired")
 
 
 def load_environment() -> str:

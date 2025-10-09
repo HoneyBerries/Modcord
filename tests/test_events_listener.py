@@ -79,7 +79,7 @@ def patched_dependencies(monkeypatch):
     monkeypatch.setattr(events_listener.guild_settings_manager, "is_ai_enabled", lambda guild_id: True)
 
     monkeypatch.setattr(events_listener.moderation_helper, "refresh_rules_cache_if_rules_channel", refresh_mock)
-    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda self, author: False)
+    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda author: False)
 
     events_listener.model_state.available = True
     events_listener.model_state.init_error = None
@@ -145,7 +145,7 @@ async def test_update_presence_handles_unavailable(fake_bot, patched_dependencie
 
 @pytest.mark.asyncio
 async def test_on_message_bails_for_ignored_author(fake_bot, patched_dependencies, monkeypatch):
-    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda self, author: True)
+    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda author: True)
 
     cog = events_listener.EventsListenerCog(fake_bot)
 
@@ -178,7 +178,7 @@ async def test_on_message_records_and_batches(fake_bot, patched_dependencies):
 
 @pytest.mark.asyncio
 async def test_on_message_edit_triggers_refresh(fake_bot, patched_dependencies, monkeypatch):
-    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda self, author: False)
+    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda author: False)
 
     cog = events_listener.EventsListenerCog(fake_bot)
 
