@@ -103,30 +103,6 @@ class ModerationProcessor:
                 logger.info("Skipping warmup; model unavailable (%s)", self.inference_processor.state.init_error or "no error")
                 return False
 
-            # Best-effort torch.compile on underlying model if possible.
-            try:
-                import torch  # type: ignore
-
-                underlying = getattr(model, "model", None)
-                if underlying is not None and hasattr(torch, "compile"):
-                    try:
-                        logger.info("Attempting torch.compile on underlying model for JIT optimizations...")
-                        compiled = torch.compile(underlying, mode="max-autotune")  # best-effort
-                        # Assign back if successful — some vLLM internals may not expect mutation,
-                        # but this is a best-effort optimization and non-fatal if it fails later.
-                        try:
-                            setattr(model, "model", compiled)
-                            logger.info("torch.compile completed successfully.")
-                        except Exception as assign_exc:
-                            # Non-fatal: log and continue to warmup generation
-                            logger.debug("Failed to assign compiled model back to vLLM wrapper: %s", assign_exc)
-                    except Exception as compile_exc:
-                        logger.error("torch.compile attempted but failed: %s", compile_exc)
-                else:
-                    logger.warning("torch.compile not available or underlying model not found; skipping JIT.")
-            except Exception:
-                logger.warning("torch not importable or compile unavailable; skipping JIT compile step.")
-
             # Trigger a small dummy generation to force vLLM to capture CUDA graphs / do first-time work.
             try:
                 dummy_prompt = "Warmup prompt: perform a short, harmless generation to prime runtime."

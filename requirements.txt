@@ -1,39 +1,23 @@
-# Primary index for PyTorch wheels with CUDA 12.5 support
 --index-url https://download.pytorch.org/whl/cu125
-# Fallback index for other packages from PyPI
 --extra-index-url https://pypi.org/simple
 
-# Install the current package in editable mode
 -e .
 
-# Core deep learning library
 torch
 torchvision
-# Hugging Face library for transformers and LLMs
 transformers
-# Optimized 8-bit/quantized operations for large models
 bitsandbytes
-# Acceleration and distributed training utilities
 accelerate
-# Discord bot library
+flashinfer-python
 py-cord
-# Load environment variables from .env files
 python-dotenv
-# YAML file parser
 pyyaml
-
-# Json schema validation
 jsonschema
-
-# vllm
 vllm
-# Async console input
-prompt_toolkit 
+prompt_toolkit
 rich
-# Python compiler
 nuitka
 
-# Unit Tests
 pytest
 pytest-cov
 pytest-asyncio

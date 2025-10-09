@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
@@ -70,7 +71,6 @@ class InferenceProcessor:
 
         params = GuidedDecodingParams(
             grammar=self._guided_grammar,
-            backend="xgrammar",
             disable_fallback=True,
         )
         self.guided_backend = "xgrammar"
@@ -174,6 +174,7 @@ class InferenceProcessor:
                 )
 
                 def build_llm() -> LLM:
+                    os.environ["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"
                     return LLM(
                         model=model_identifier,
                         dtype=dtype,

@@ -60,7 +60,7 @@ async def test_handle_console_shutdown_requests_and_closes():
     dummy_bot = DummyBot()
     control.set_bot(cast(main.discord.Bot, dummy_bot))
 
-    with patch.object(main.console, "print") as print_mock:
+    with patch("modcord.main.console_print") as print_mock:
         await main.handle_console_command("shutdown", control)
 
     assert control.is_shutdown_requested()
@@ -87,7 +87,7 @@ async def test_handle_console_status_reports_state():
     main.model_state.available = True
     main.model_state.init_error = None
 
-    with patch.object(main.console, "print") as print_mock:
+    with patch("modcord.main.console_print") as print_mock:
         await main.handle_console_command("status", control)
 
     print_mock.assert_called()
@@ -100,7 +100,7 @@ async def test_handle_console_status_reports_state():
 async def test_handle_console_help_lists_commands():
     control = main.ConsoleControl()
 
-    with patch.object(main.console, "print") as print_mock:
+    with patch("modcord.main.console_print") as print_mock:
         await main.handle_console_command("help", control)
 
     print_mock.assert_called_once()
@@ -111,7 +111,7 @@ async def test_handle_console_help_lists_commands():
 async def test_handle_console_unknown_command():
     control = main.ConsoleControl()
 
-    with patch.object(main.console, "print") as print_mock:
+    with patch("modcord.main.console_print") as print_mock:
         await main.handle_console_command("unknown", control)
 
     print_mock.assert_called_once()
