@@ -45,7 +45,7 @@ from modcord.ai.ai_lifecycle import (
     restart_engine,
     shutdown_engine,
 )
-from modcord.bot.cogs import events_listener
+from modcord.bot.cogs import events_listener, message_listener
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger, handle_exception
 
@@ -266,6 +266,7 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
     from modcord.bot.cogs import debug_cmds, guild_settings_cmds, moderation_cmds
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
+    message_listener.setup(discord_bot_instance)
     guild_settings_cmds.setup(discord_bot_instance)
     moderation_cmds.setup(discord_bot_instance)
     logger.info("All cogs loaded successfully.")
