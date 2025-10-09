@@ -7,7 +7,7 @@ and delegates heavy lifting to the helper module.
 
 import asyncio
 import discord
-
+import datetime
 from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
@@ -116,7 +116,8 @@ class EventsListenerCog(commands.Cog):
         await moderation_helper.refresh_rules_cache_if_rules_channel(self, message.channel)
 
         # Store message in the channel's history for contextual analysis
-        timestamp_iso = message.created_at.replace(tzinfo=None).isoformat() + "Z"
+        timestamp_iso = message.created_at.astimezone(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
         history_entry = ModerationMessage(
             message_id=str(message.id),
             user_id=str(message.author.id),

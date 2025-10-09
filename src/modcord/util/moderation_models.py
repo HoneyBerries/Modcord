@@ -94,7 +94,7 @@ class ModerationMessage:
     user_id: str
     username: str
     content: str
-    timestamp: str
+    timestamp: str  # ISO 8601 string, e.g. '2025-10-09T12:34:56Z'
     guild_id: Optional[int]
     channel_id: Optional[int]
     role: str = "user"
