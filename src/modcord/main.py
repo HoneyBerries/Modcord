@@ -397,10 +397,12 @@ def main() -> int:
         try:
             exit_code = asyncio.run(async_main())
             
-            # Exit code 42 signals a restart request
+            # Exit code 42 signals a restart request - spawn new process
             if exit_code == 42:
-                logger.info("Restarting bot...")
-                continue
+                logger.info("Restarting bot by spawning new process...")
+                # Use os.execv to replace the current process with a new one
+                # This ensures code changes are picked up (hot-reloading)
+                os.execv(sys.executable, [sys.executable] + sys.argv)
             
             return exit_code
         except KeyboardInterrupt:

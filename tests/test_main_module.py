@@ -69,14 +69,24 @@ async def test_handle_console_shutdown_requests_and_closes():
 
 
 @pytest.mark.asyncio
-async def test_handle_console_restart_invokes_restart():
+async def test_handle_console_restart_sets_flag_and_closes_bot():
     control = main.ConsoleControl()
-    restart_mock = AsyncMock()
+    class DummyBot:
+        def __init__(self) -> None:
+            self.close = AsyncMock()
 
-    with patch("modcord.main.restart_ai_engine", restart_mock):
+        def is_closed(self) -> bool:
+            return False
+
+    dummy_bot = DummyBot()
+    control.set_bot(cast(main.discord.Bot, dummy_bot))
+
+    with patch("modcord.main.console_print") as print_mock:
         await main.handle_console_command("restart", control)
 
-    restart_mock.assert_awaited_once_with(control)
+    assert control.is_restart_requested()
+    dummy_bot.close.assert_awaited_once()
+    print_mock.assert_any_call("Full restart requested. Bot will shut down and restart...")
 
 
 @pytest.mark.asyncio
@@ -103,8 +113,8 @@ async def test_handle_console_help_lists_commands():
     with patch("modcord.main.console_print") as print_mock:
         await main.handle_console_command("help", control)
 
-    print_mock.assert_called_once()
-    assert "Commands" in str(print_mock.call_args[0][0])
+    print_mock.assert_called()
+    assert any("Available commands" in str(call[0][0]) for call in print_mock.call_args_list)
 
 
 @pytest.mark.asyncio
@@ -116,3 +126,18 @@ async def test_handle_console_unknown_command():
 
     print_mock.assert_called_once()
     assert "Unknown command" in str(print_mock.call_args[0][0])
+
+
+def test_main_restarts_with_os_execv_on_exit_code_42():
+    """Test that exit code 42 triggers a new process spawn via os.execv."""
+    async def mock_async_main():
+        return 42
+
+    with patch("modcord.main.asyncio.run", return_value=42):
+        with patch("modcord.main.os.execv") as execv_mock:
+            with patch("modcord.main.sys.executable", "/usr/bin/python"):
+                with patch("modcord.main.sys.argv", ["modcord"]):
+                    main.main()
+
+    # Verify os.execv was called to spawn a new process
+    execv_mock.assert_called_once_with("/usr/bin/python", ["/usr/bin/python", "modcord"])
