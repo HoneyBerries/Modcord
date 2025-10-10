@@ -1,6 +1,12 @@
 """
 Fully async, self-contained vLLM-backed AI model module for moderation.
 Includes model initialization, inference, warmup, and JSON parsing.
+
+IMPORTANT: This module uses lazy imports for AI libraries (torch, vllm, transformers)
+to avoid loading heavy dependencies when AI features are disabled. The libraries are
+only imported inside functions when AI is actually enabled in the configuration.
+This significantly reduces startup time and memory usage when running as a regular
+Discord bot without AI moderation features.
 """
 from __future__ import annotations
 
@@ -9,6 +15,8 @@ import gc
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+# Use TYPE_CHECKING to avoid runtime imports of AI libraries
+# These imports are only for type hints and will not execute at runtime
 if TYPE_CHECKING:
     import torch
     from vllm import LLM, SamplingParams
