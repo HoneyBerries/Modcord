@@ -7,11 +7,12 @@ from __future__ import annotations
 import asyncio
 import gc
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import torch
-from vllm import LLM, SamplingParams
-from vllm.sampling_params import GuidedDecodingParams
+if TYPE_CHECKING:
+    import torch
+    from vllm import LLM, SamplingParams
+    from vllm.sampling_params import GuidedDecodingParams
 
 import modcord.configuration.app_configuration as cfg
 from modcord.util.logger import get_logger
@@ -41,8 +42,8 @@ class InferenceProcessor:
 
     def __init__(self) -> None:
         """Instantiate the inference processor with default sampling configuration."""
-        self.llm: Optional[LLM] = None
-        self.sampling_params: Optional[SamplingParams] = None
+        self.llm: Optional[Any] = None  # vllm.LLM when loaded
+        self.sampling_params: Optional[Any] = None  # vllm.SamplingParams when loaded
         self.base_system_prompt: Optional[str] = None
         self.state = ModelState()
         self.init_lock = asyncio.Lock()
@@ -50,8 +51,10 @@ class InferenceProcessor:
         self.guided_backend: Optional[str] = None
         self._guided_grammar: Optional[str] = None
 
-    def _build_guided_decoding(self) -> GuidedDecodingParams:
+    def _build_guided_decoding(self) -> Any:  # Returns GuidedDecodingParams
         """Construct the guided decoding configuration used for moderation responses."""
+        # Import here to avoid loading vllm when AI is disabled
+        from vllm.sampling_params import GuidedDecodingParams
 
         schema = moderation_parsing.moderation_schema
 
@@ -78,7 +81,7 @@ class InferenceProcessor:
         return params
 
     # ======== Model Initialization ========
-    async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
+    async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
         """Load the vLLM model and return its handles along with any initialization error.
 
         Parameters
@@ -88,7 +91,7 @@ class InferenceProcessor:
 
         Returns
         -------
-        tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]
+        tuple[Optional[Any], Optional[Any], Optional[str]]
             Model instance, sampling parameters, and an initialization error if one occurred.
         """
         async with self.init_lock:
@@ -151,6 +154,16 @@ class InferenceProcessor:
                 self.state.init_error = "missing model id"
                 return None, None, self.base_system_prompt
 
+            # Import AI libraries only when AI is enabled
+            try:
+                import torch
+                from vllm import LLM, SamplingParams
+            except ImportError as e:
+                logger.error("[AI MODEL] Failed to import AI libraries: %s", e, exc_info=True)
+                self.state.available = False
+                self.state.init_error = f"AI libraries not available: {e}"
+                return None, None, self.base_system_prompt
+
             cuda_available = torch.cuda.is_available()
             tp: int = torch.cuda.device_count() if cuda_available else 0
 
@@ -173,7 +186,7 @@ class InferenceProcessor:
                     top_p,
                 )
 
-                def build_llm() -> LLM:
+                def build_llm() -> Any:  # Returns LLM
                     return LLM(
                         model=model_identifier,
                         dtype=dtype,
@@ -211,12 +224,12 @@ class InferenceProcessor:
                 return None, None, self.base_system_prompt
 
     # ======== Model Accessors ========
-    async def get_model(self) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
+    async def get_model(self) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
         """Return the cached vLLM model and sampling parameters, if initialization succeeded.
 
         Returns
         -------
-        tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]
+        tuple[Optional[Any], Optional[Any], Optional[str]]
             Cached model, sampling configuration, and last recorded error.
         """
         if self.llm is None and not self.state.init_started:
@@ -329,10 +342,16 @@ class InferenceProcessor:
                 llm = None
 
         try:
+            # Import torch only if needed for cleanup
+            import torch
+
             if torch.cuda.is_available():  # pragma: no branch - defensive cleanup
                 torch.cuda.synchronize()
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
+        except ImportError:
+            # torch not available, skip CUDA cleanup
+            pass
         except Exception as exc:  # noqa: BLE001 - ignore cleanup failures
             logger.debug("[AI MODEL] Failed to clear CUDA cache during unload: %s", exc, exc_info=True)
 
@@ -341,6 +360,9 @@ class InferenceProcessor:
 
             if dist.is_available() and dist.is_initialized():
                 dist.destroy_process_group(dist.group.WORLD)
+        except ImportError:
+            # torch.distributed not available, skip cleanup
+            pass
         except Exception as exc:  # noqa: BLE001 - optional cleanup
             logger.warning("[AI MODEL] torch.distributed cleanup failed during unload: %s", exc, exc_info=True)
 
