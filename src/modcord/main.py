@@ -12,6 +12,7 @@ Refactored version using cogs for better organization and maintainability.
 import os
 import sys
 from pathlib import Path
+import time
 
 def resolve_base_dir() -> Path:
     """Determine the base directory of the project. Designed for compiled/bundled execution.
@@ -42,10 +43,8 @@ from prompt_toolkit.formatted_text import FormattedText
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.ai.ai_lifecycle import (
     initialize_engine,
-    restart_engine,
     shutdown_engine,
 )
-from modcord.bot.cogs import events_listener, message_listener
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger, handle_exception
 
@@ -77,13 +76,13 @@ class ConsoleControl:
     """Manage console-driven lifecycle controls for the running Discord bot.
 
     This helper centralizes access to the live bot instance, coordinates restart
-    locks, and exposes shutdown events to the interactive console layer.
+    requests, and exposes shutdown events to the interactive console layer.
     """
 
     def __init__(self) -> None:
         """Initialize synchronization primitives for console and bot coordination."""
         self.shutdown_event = asyncio.Event()
-        self.restart_lock = asyncio.Lock()
+        self.restart_event = asyncio.Event()
         self._bot: discord.Bot | None = None
 
     def set_bot(self, bot: discord.Bot | None) -> None:
@@ -105,6 +104,10 @@ class ConsoleControl:
         """Signal all console consumers to begin a coordinated shutdown."""
         self.shutdown_event.set()
 
+    def request_restart(self) -> None:
+        """Signal a full program restart."""
+        self.restart_event.set()
+
     def stop(self) -> None:
         """Compatibility alias that triggers a console-initiated shutdown."""
         self.shutdown_event.set()
@@ -113,39 +116,9 @@ class ConsoleControl:
         """Return ``True`` when a shutdown signal has been issued via the console."""
         return self.shutdown_event.is_set()
 
-
-async def restart_ai_engine(control: ConsoleControl) -> None:
-    """Restart the moderation engine and refresh the bot's presence indicators.
-
-    Parameters
-    ----------
-    control:
-        Console management helper providing access to the restart lock and bot reference.
-    """
-    async with control.restart_lock:
-        console_print("Restarting AI moderation engine…")
-        try:
-            available, detail = await restart_engine()
-        except Exception as exc:
-            logger.exception("Error while restarting AI engine: %s", exc)
-            available = False
-            detail = str(exc)
-
-        bot = control.bot
-        if bot is not None:
-            events_cog = bot.get_cog("EventsListenerCog")
-            updater = getattr(events_cog, "update_presence_for_model_state", None)
-            if callable(updater):
-                try:
-                    maybe_coro = updater()
-                    if asyncio.iscoroutine(maybe_coro):
-                        await maybe_coro
-                except Exception as exc:
-                    logger.exception("Failed to refresh presence after AI restart: %s", exc)
-
-        status = "available" if available else "unavailable"
-        detail_msg = detail or "ready"
-        console_print(f"AI engine restart complete: {status} ({detail_msg})")
+    def is_restart_requested(self) -> bool:
+        """Return ``True`` when a restart signal has been issued via the console."""
+        return self.restart_event.is_set()
 
 
 async def handle_console_command(command: str, control: ConsoleControl) -> None:
@@ -174,7 +147,14 @@ async def handle_console_command(command: str, control: ConsoleControl) -> None:
         return
 
     if cmd == "restart":
-        await restart_ai_engine(control)
+        console_print("Full restart requested. Bot will shut down and restart...")
+        control.request_restart()
+        bot = control.bot
+        if bot is not None and not bot.is_closed():
+            try:
+                await bot.close()
+            except Exception as exc:
+                logger.exception("Error while closing bot from console: %s", exc)
         return
 
     if cmd == "status":
@@ -185,7 +165,11 @@ async def handle_console_command(command: str, control: ConsoleControl) -> None:
         return
 
     if cmd == "help":
-        console_print("Commands: help, status, restart, shutdown")
+        console_print("Available commands:", "ansigreen")
+        console_print("  help     - Show this help message")
+        console_print("  status   - Display bot and AI status")
+        console_print("  restart  - Fully restart the entire bot (useful during development)")
+        console_print("  shutdown - Gracefully shut down the bot")
         return
 
     console_print(f"Unknown command '{command}'. Type 'help' for options.", "ansired")
@@ -199,7 +183,7 @@ async def run_console(control: ConsoleControl) -> None:
     control:
         ConsoleControl coordinating shutdown events and bot access.
     """
-    session = PromptSession("> ")  # <-- classic '>' prompt
+    session = PromptSession("> ")
     console_print("Interactive console ready. Type 'help' for commands.", "ansigreen")
 
     with patch_stdout():
@@ -263,12 +247,14 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
     discord_bot_instance:
         Py-Cord bot object that should receive the Modcord cogs.
     """
-    from modcord.bot.cogs import debug_cmds, guild_settings_cmds, moderation_cmds
+    from modcord.bot.cogs import debug_cmds, guild_settings_cmds, moderation_cmds, events_listener, message_listener
+
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
     message_listener.setup(discord_bot_instance)
     guild_settings_cmds.setup(discord_bot_instance)
     moderation_cmds.setup(discord_bot_instance)
+
     logger.info("All cogs loaded successfully.")
 
 
@@ -388,6 +374,11 @@ async def async_main() -> int:
                     pass
             await shutdown_runtime(bot)
 
+        # Check if restart was requested
+        if control.is_restart_requested():
+            logger.info("Restart requested, returning exit code 42 to trigger restart")
+            return 42
+
         return exit_code
     finally:
         control.stop()
@@ -399,28 +390,36 @@ def main() -> int:
     Returns
     -------
     int
-        Exit code propagated to the operating system.
+        Exit code propagated to the operating system. Returns 42 to trigger a restart.
     """
     logger.info("Starting Discord Moderation Bot…")
-    try:
-        return asyncio.run(async_main())
-    except KeyboardInterrupt:
-        logger.info("Shutdown requested by user.")
-        return 0
-    except SystemExit as exit_exc:
-        code = exit_exc.code
-        if isinstance(code, int):
-            return code
-        if code is None:
-            return 1
+    while True:
         try:
-            return int(code)
-        except (ValueError, TypeError):
-            logger.warning("SystemExit.code is not an int (%r); defaulting to 1", code)
+            exit_code = asyncio.run(async_main())
+            
+            # Exit code 42 signals a restart request
+            if exit_code == 42:
+                logger.info("Restarting bot...")
+                continue
+            
+            return exit_code
+        except KeyboardInterrupt:
+            logger.info("Shutdown requested by user.")
+            return 0
+        except SystemExit as exit_exc:
+            code = exit_exc.code
+            if isinstance(code, int):
+                return code
+            if code is None:
+                return 1
+            try:
+                return int(code)
+            except (ValueError, TypeError):
+                logger.warning("SystemExit.code is not an int (%r); defaulting to 1", code)
+                return 1
+        except Exception as exc:
+            logger.critical("An unexpected error occurred while running the bot: %s", exc, exc_info=True)
             return 1
-    except Exception as exc:
-        logger.critical("An unexpected error occurred while running the bot: %s", exc, exc_info=True)
-        return 1
 
 
 if __name__ == "__main__":

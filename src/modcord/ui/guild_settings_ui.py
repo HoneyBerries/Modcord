@@ -34,7 +34,6 @@ ACTION_UI_EMOJIS: dict[ActionType, str] = {
 
 def build_settings_embed(guild_id: int) -> discord.Embed:
     """Create an embed summarizing the current guild settings."""
-
     settings = guild_settings_manager.get_guild_settings(guild_id)
     ai_status = "Enabled ✅" if settings.ai_enabled else "Disabled ❌"
 
@@ -70,7 +69,7 @@ def build_settings_embed(guild_id: int) -> discord.Embed:
 class GuildSettingsView(discord.ui.View):
     """Interactive view that exposes guild settings via buttons."""
 
-    def __init__(self, guild_id: int, invoker_id: int, *, timeout_seconds: int = 300):
+    def __init__(self, guild_id: int, invoker_id: Optional[int], *, timeout_seconds: int = 300):
         super().__init__(timeout=timeout_seconds)
         self.guild_id = guild_id
         self.invoker_id = invoker_id
@@ -117,14 +116,27 @@ class GuildSettingsView(discord.ui.View):
         self.refresh_items()
         embed = build_settings_embed(self.guild_id)
 
-        content = flash
-
-        if not interaction.response.is_done():
-            await interaction.response.defer()
-
-        message = interaction.message or self._message
-        if message is not None:
-            await message.edit(content=content, embed=embed, view=self)
+        try:
+            # For ephemeral messages, we must use edit_original_response
+            await interaction.response.edit_message(
+                content=flash,
+                embed=embed,
+                view=self
+            )
+        except discord.InteractionResponded:
+            # If already responded, try to edit the original response
+            try:
+                await interaction.edit_original_response(
+                    content=flash,
+                    embed=embed,
+                    view=self
+                )
+            except discord.HTTPException as e:
+                # Log but don't crash if we can't update
+                pass
+        except discord.HTTPException as e:
+            # Handle any other Discord API errors gracefully
+            pass
 
     async def on_timeout(self) -> None:  # pragma: no cover - relies on Discord timers
         for child in self.children:
@@ -143,7 +155,7 @@ class ToggleAIButton(discord.ui.Button):
     def __init__(self, enabled: bool):
         label = "AI Moderation: ON" if enabled else "AI Moderation: OFF"
         emoji = "🟢" if enabled else "🔴"
-        style = discord.ButtonStyle.success if enabled else discord.ButtonStyle.danger
+        style = discord.ButtonStyle.success if enabled else discord.ButtonStyle.gray
         super().__init__(label=f"{emoji} {label}", style=style, row=0)
 
     async def callback(self, interaction: discord.Interaction) -> None:  # pragma: no cover - requires Discord runtime
@@ -171,10 +183,10 @@ class ToggleActionButton(discord.ui.Button):
     def __init__(self, action: ActionType, label: str, emoji: str, enabled: bool, *, row: int):
         self.action = action
         self.action_label = label
-        self.emoji = emoji
+        self.display_emoji = emoji
         super().__init__(
             label=f"{emoji} {label}: {'ON' if enabled else 'OFF'}",
-            style=discord.ButtonStyle.primary if enabled else discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.primary if enabled else discord.ButtonStyle.gray,
             row=row,
         )
 
@@ -193,7 +205,7 @@ class ToggleActionButton(discord.ui.Button):
         guild_settings_manager.set_action_allowed(view.guild_id, self.action, new_state)
         await view.refresh_message(
             interaction,
-            flash=f"{self.emoji} {self.action_label} actions are now {'enabled' if new_state else 'disabled'}.",
+            flash=f"{self.display_emoji} {self.action_label} actions are now {'enabled' if new_state else 'disabled'}.",
         )
 
 
@@ -201,7 +213,7 @@ class ClosePanelButton(discord.ui.Button):
     """Button to close the settings panel and disable controls."""
 
     def __init__(self):
-        super().__init__(label="Close", style=discord.ButtonStyle.secondary, row=4)
+        super().__init__(label="Close", style=discord.ButtonStyle.secondary, row=4, emoji="❌")
 
     async def callback(self, interaction: discord.Interaction) -> None:  # pragma: no cover - requires Discord runtime
         view: GuildSettingsView = self.view  # type: ignore[assignment]
@@ -209,9 +221,37 @@ class ClosePanelButton(discord.ui.Button):
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
 
-        if not interaction.response.is_done():
-            await interaction.response.defer()
-
-        target_message = interaction.message or view.message
-        if target_message is not None:
-            await target_message.edit(content="Settings panel closed.", view=view)
+        # For ephemeral messages we must use interaction methods; for non-ephemeral
+        # messages we can delete the message entirely to close the panel.
+        try:
+            if interaction.response.is_done():
+                # If we've already responded, edit the original response first to
+                # show the disabled controls, then attempt to delete the message.
+                await interaction.edit_original_response(content="Settings panel closed.", view=view)
+                # Try to delete the original response message
+                try:
+                    msg = await interaction.original_response()
+                    await msg.delete()
+                except Exception:
+                    # If deletion fails (e.g., message already deleted), ignore.
+                    pass
+            else:
+                # If no response yet, edit the ephemeral/response and then delete
+                await interaction.response.edit_message(content="Settings panel closed.", view=view)
+                # For ephemeral responses there is no message to delete; nothing else to do.
+                # If the message was not ephemeral, interaction.response.edit_message
+                # returns the message in some implementations; we try to delete via
+                # interaction.original_response() to be safe.
+                try:
+                    msg = await interaction.original_response()
+                    await msg.delete()
+                except Exception:
+                    pass
+        except discord.HTTPException:
+            # If editing the response fails, fall back to deleting the stored message
+            target = interaction.message or view.message
+            if target is not None:
+                try:
+                    await target.delete()
+                except Exception:
+                    pass

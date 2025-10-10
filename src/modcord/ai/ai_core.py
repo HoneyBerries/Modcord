@@ -174,7 +174,6 @@ class InferenceProcessor:
                 )
 
                 def build_llm() -> LLM:
-                    os.environ["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"
                     return LLM(
                         model=model_identifier,
                         dtype=dtype,
