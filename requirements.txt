@@ -1,5 +1,4 @@
 --index-url https://download.pytorch.org/whl/cu129
---index-url https://flashinfer.ai/whl/cu129
 --extra-index-url https://pypi.org/simple
 
 -e .
@@ -9,9 +8,6 @@ torchvision
 transformers
 bitsandbytes
 accelerate
-flashinfer-python
-flashinfer-cubin
-flashinfer-jit-cache
 py-cord
 python-dotenv
 pyyaml
