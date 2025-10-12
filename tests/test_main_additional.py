@@ -67,14 +67,15 @@ def test_load_cogs_invokes_setup(monkeypatch):
         return _setup
 
     monkeypatch.setattr("modcord.bot.cogs.debug_cmds.setup", make_setup("debug"))
-    monkeypatch.setattr(main.events_listener, "setup", make_setup("events"))
+    monkeypatch.setattr("modcord.bot.cogs.events_listener.setup", make_setup("events"))
+    monkeypatch.setattr("modcord.bot.cogs.message_listener.setup", make_setup("message"))
     monkeypatch.setattr("modcord.bot.cogs.guild_settings_cmds.setup", make_setup("guild"))
     monkeypatch.setattr("modcord.bot.cogs.moderation_cmds.setup", make_setup("mod"))
 
     fake_bot = cast(main.discord.Bot, SimpleNamespace())
     main.load_cogs(fake_bot)
 
-    assert calls == ["debug", "events", "guild", "mod"]
+    assert calls == ["debug", "events", "message", "guild", "mod"]
 
 
 @pytest.mark.asyncio
@@ -161,12 +162,14 @@ async def test_handle_console_command_shutdown(monkeypatch):
 @pytest.mark.asyncio
 async def test_handle_console_command_restart(monkeypatch):
     control = main.ConsoleControl()
-    restart_mock = AsyncMock()
-    monkeypatch.setattr(main, "restart_ai_engine", restart_mock)
+    close_mock = AsyncMock()
+    bot = cast(main.discord.Bot, SimpleNamespace(is_closed=lambda: False, close=close_mock))
+    control.set_bot(bot)
 
     await main.handle_console_command("restart", control)
 
-    restart_mock.assert_awaited_once_with(control)
+    assert control.is_restart_requested() is True
+    close_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
