@@ -1,4 +1,6 @@
 @echo off
+REM Change to the directory where this script is located (project root)
+cd /d %~dp0
 setlocal enabledelayedexpansion
 set "FOUND=0"
 set "PY_OK=0"

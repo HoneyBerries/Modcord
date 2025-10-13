@@ -1,4 +1,8 @@
 
+
+# Change to the directory where this script is located (project root)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+Set-Location $scriptDir
 Clear-Host
 
 # If already in a venv, skip venv logic and run bot

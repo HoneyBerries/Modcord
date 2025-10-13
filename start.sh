@@ -1,5 +1,8 @@
 
+
 #!/bin/bash
+# Change to the directory where this script is located (project root)
+cd "$(dirname "$0")"
 
 # If already in a venv, skip venv logic and run bot
 if [ -n "$VIRTUAL_ENV" ]; then
