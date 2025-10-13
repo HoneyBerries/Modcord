@@ -393,35 +393,34 @@ def main() -> int:
         Exit code propagated to the operating system. Returns 42 to trigger a restart.
     """
     logger.info("Starting Discord Moderation Bot…")
-    while True:
-        try:
-            exit_code = asyncio.run(async_main())
-            
-            # Exit code 42 signals a restart request - spawn new process
-            if exit_code == 42:
-                logger.info("Restarting bot by spawning new process...")
-                # Use os.execv to replace the current process with a new one
-                # This ensures code changes are picked up (hot-reloading)
-                os.execv(sys.executable, [sys.executable] + sys.argv)
-            
-            return exit_code
-        except KeyboardInterrupt:
-            logger.info("Shutdown requested by user.")
-            return 0
-        except SystemExit as exit_exc:
-            code = exit_exc.code
-            if isinstance(code, int):
-                return code
-            if code is None:
-                return 1
-            try:
-                return int(code)
-            except (ValueError, TypeError):
-                logger.warning("SystemExit.code is not an int (%r); defaulting to 1", code)
-                return 1
-        except Exception as exc:
-            logger.critical("An unexpected error occurred while running the bot: %s", exc, exc_info=True)
+    try:
+        exit_code = asyncio.run(async_main())
+        
+        # Exit code 42 signals a restart request - spawn new process
+        if exit_code == 42:
+            logger.info("Restarting bot by spawning new process...")
+            # Use os.execv to replace the current process with a new one
+            # This ensures code changes are picked up (hot-reloading)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        
+        return exit_code
+    except KeyboardInterrupt:
+        logger.info("Shutdown requested by user.")
+        return 0
+    except SystemExit as exit_exc:
+        code = exit_exc.code
+        if isinstance(code, int):
+            return code
+        if code is None:
             return 1
+        try:
+            return int(code)
+        except (ValueError, TypeError):
+            logger.warning("SystemExit.code is not an int (%r); defaulting to 1", code)
+            return 1
+    except Exception as exc:
+        logger.critical("An unexpected error occurred while running the bot: %s", exc, exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":

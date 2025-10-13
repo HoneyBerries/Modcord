@@ -59,33 +59,16 @@ class InferenceProcessor:
         self.guided_backend: Optional[str] = None
         self._guided_grammar: Optional[str] = None
 
-    def _build_guided_decoding(self) -> Any:  # Returns GuidedDecodingParams
-        """Construct the guided decoding configuration used for moderation responses."""
+    def _build_structured_outputs(self) -> Any:  # Returns StructuredOutputsParams
+        """Construct the structured outputs configuration for JSON schema enforcement."""
         # Import here to avoid loading vllm when AI is disabled
-        from vllm.sampling_params import GuidedDecodingParams
+        from vllm.sampling_params import StructuredOutputsParams
 
         schema = moderation_parsing.moderation_schema
 
-        if self._guided_grammar is None:
-            try:
-                from xgrammar import Grammar  # type: ignore
-            except Exception as exc:  # noqa: BLE001 - surface import issues
-                raise RuntimeError("xgrammar backend not available for guided decoding") from exc
-
-            try:
-                grammar_obj: Optional[Any] = Grammar.from_json_schema(schema, strict_mode=True)
-                grammar_str = str(grammar_obj)
-                self._guided_grammar = grammar_str
-            finally:
-                # Ensure any intermediate native handles can be cleaned up
-                grammar_obj = None
-
-        params = GuidedDecodingParams(
-            grammar=self._guided_grammar,
-            disable_fallback=True,
-        )
-        self.guided_backend = "xgrammar"
-        logger.info("[AI MODEL] Guided decoding backend=xgrammar (precompiled grammar)")
+        # Use JSON schema directly for structured outputs
+        params = StructuredOutputsParams(json=schema)
+        logger.info("[AI MODEL] Structured outputs configured with JSON schema")
         return params
 
     # ======== Model Initialization ========
@@ -201,13 +184,24 @@ class InferenceProcessor:
                         gpu_memory_utilization=gpu_mem_util,
                         max_model_len=max_model_length,
                         tensor_parallel_size=tp,
-                        guided_decoding_backend="xgrammar",
-                        guided_decoding_disable_fallback=True,
                     )
 
                 self.llm = await asyncio.to_thread(build_llm)
 
-                guided_decoding = self._build_guided_decoding()
+                # For Qwen3-Thinking models, we rely on prompt engineering + parsing
+                # to handle reasoning (up to 256 tokens) followed by JSON output.
+                # 
+                # NOTE: The 256-token reasoning limit is enforced via:
+                # 1. System prompt instruction (soft limit - model should follow)
+                # 2. max_tokens=512 in SamplingParams (hard limit on total output)
+                #    This allows ~256 tokens for reasoning + ~256 for JSON output
+                #
+                # For a hard per-phase limit, you would need vllm serve with:
+                #   --enable-reasoning --max-reasoning-tokens 256
+                # But that's not available with the offline LLM API.
+                #
+                # Structured outputs via JSON schema will help ensure valid JSON
+                structured_outputs = self._build_structured_outputs()
 
                 self.sampling_params = SamplingParams(
                     temperature=temperature,
@@ -217,7 +211,7 @@ class InferenceProcessor:
                     repetition_penalty=repetition_penalty,
                     presence_penalty=presence_penalty,
                     frequency_penalty=frequency_penalty,
-                    guided_decoding=guided_decoding,
+                    structured_outputs=structured_outputs,
                 )
 
                 self.state.available = True

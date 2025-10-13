@@ -4,16 +4,16 @@ ai_settings:
   vram_percentage: 0.85 # Percentage of GPU VRAM to utilize if using GPU; adjust based on your system
 
   # Path to your local model directory or model identifier from Hugging Face
-  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-instruct-nf4"
+  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-thinking-nf4"
   
   knobs:
     dtype: "bfloat16" # Options: "auto", "half", "float16", "bfloat16", float32
     max_new_tokens: 1024
-    max_model_length: 4096
+    max_model_length: 8192  # Increased to handle longer input prompts
     temperature: 0.1
     # Sampling and decoding controls for model output quality and diversity
     top_p: 0.95         # Nucleus sampling; lower for more focused output, higher for more diversity
-    top_k: 40           # Limits sampling to top-k tokens; 0 disables, 20–100 is typical
+    top_k: 20           # Limits sampling to top-k tokens; 0 disables, 20–100 is typical
     repetition_penalty: 1.1   # Penalizes repeated tokens; >1.0 discourages repetition
     presence_penalty: 0.2     # Encourages new topics; 0.0–0.5 is typical, higher = more novelty
     frequency_penalty: 0.1    # Penalizes frequent tokens; helps reduce spammy outputs 
@@ -21,7 +21,7 @@ ai_settings:
     # max_prompts: maximum number of prompts to aggregate into a single
     # batch call to the model. Larger values increase throughput but
     # may add batching latency for individual requests.
-    max_prompts: 16
+    max_prompts: 32
     # max_delay: maximum time (in seconds) the worker will wait to accumulate
     # additional prompts before sending the current batch. Lower values reduce
     # latency but may reduce batching effectiveness.
@@ -50,6 +50,9 @@ server_rules: >
 
 system_prompt: >
   You are a Discord moderation AI. Your ONLY job is to process messages in a channel and output JSON-formatted moderation actions for each user.
+
+  --- REASONING INSTRUCTION ---
+  First, reason briefly in plain English (MAXIMUM 256 tokens - keep it concise!). Then output ONLY the final answer in the required JSON schema with nothing else after it. Your total response should not exceed 512 tokens.
 
   --- INPUT FORMAT ---
   You will receive input as a single JSON object per channel, representing all messages in a batch:
