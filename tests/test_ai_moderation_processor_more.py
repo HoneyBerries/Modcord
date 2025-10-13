@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from modcord.ai.ai_moderation_processor import ModerationProcessor
-from modcord.util.moderation_models import ModerationMessage, ActionType
+from modcord.util.moderation_datatypes import ModerationMessage, ActionType
 import modcord.util.moderation_parsing as moderation_parsing
 
 

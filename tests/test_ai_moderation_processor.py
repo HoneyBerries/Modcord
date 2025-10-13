@@ -48,7 +48,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from modcord.ai.ai_moderation_processor import ModerationProcessor  # type: ignore[import]
-from modcord.util.moderation_models import ActionType, ModerationBatch, ModerationMessage  # type: ignore[import]
+from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage  # type: ignore[import]
 
 
 class ModerationProcessorBatchTests(unittest.IsolatedAsyncioTestCase):

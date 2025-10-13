@@ -28,7 +28,7 @@ async def test_ai_enable_calls_manager(monkeypatch):
     monkeypatch.setattr(guild_settings.guild_settings_manager, "set_ai_enabled", fake_set_ai_enabled)
 
     # Call the handler directly
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
@@ -55,7 +55,7 @@ async def test_ai_enable_requires_guild_context(monkeypatch):
     manager = SimpleNamespace(set_ai_enabled=fake_set_ai_enabled)
     monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
@@ -82,7 +82,7 @@ async def test_ai_enable_requires_manage_permission(monkeypatch):
     manager = SimpleNamespace(set_ai_enabled=fake_set_ai_enabled)
     monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
@@ -115,7 +115,7 @@ async def test_ai_disable_calls_manager(monkeypatch):
     manager = SimpleNamespace(set_ai_enabled=fake_set_ai_enabled)
     monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
@@ -141,7 +141,7 @@ async def test_ai_status_reports_manager_value(monkeypatch):
     manager = SimpleNamespace(is_ai_enabled=fake_is_ai_enabled)
     monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
@@ -153,13 +153,17 @@ async def test_ai_status_reports_manager_value(monkeypatch):
     assert cb is not None
     await cb(cog, ctx)
 
-    assert ctx.respond.await_count == 1
+    # New behaviour: status is returned as an embed in the response
+    ctx.respond.assert_awaited_once()
     call = ctx.respond.await_args
     assert call is not None
-    message = call.args[0]
     kwargs = call.kwargs
-    assert "disabled" in message.lower()
-    assert kwargs.get("ephemeral") is True
+    embed = kwargs.get("embed")
+    assert embed is not None
+    # Embed should contain AI Moderation field set to disabled
+    fields = {f.name: f.value for f in embed.fields}
+    assert "AI Moderation" in fields
+    assert "disabled" in fields["AI Moderation"].lower()
 
 
 @pytest.mark.asyncio
@@ -172,7 +176,7 @@ async def test_ai_set_action_updates_manager(monkeypatch):
     manager = SimpleNamespace(set_action_allowed=fake_set_action_allowed)
     monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
@@ -193,9 +197,11 @@ async def test_ai_set_action_updates_manager(monkeypatch):
     assert ctx.respond.await_count == 1
     call = ctx.respond.await_args
     assert call is not None
-    message = call.args[0]
     kwargs = call.kwargs
-    assert "disabled" in message
+    # The panel response includes a short flash content describing the change
+    content = kwargs.get("content") if kwargs.get("content") is not None else (call.args[0] if call.args else None)
+    assert content is not None
+    assert "disabled" in content.lower()
     assert kwargs.get("ephemeral") is True
 
 
@@ -209,7 +215,7 @@ async def test_ai_set_action_rejects_unknown_action(monkeypatch):
     manager = SimpleNamespace(set_action_allowed=fake_set_action_allowed)
     monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
@@ -231,7 +237,7 @@ async def test_settings_dump_requires_guild(monkeypatch):
     manager = SimpleNamespace(get_guild_settings=lambda _: None)
     monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
@@ -266,7 +272,7 @@ async def test_settings_dump_uses_followup_on_interaction_responded(monkeypatch)
     monkeypatch.setattr(guild_settings_cmds.discord, "InteractionResponded", FakeInteractionResponded)
     monkeypatch.setattr(guild_settings_cmds.discord, "File", lambda fp, filename: {"fp": fp, "filename": filename})
 
-    cog = guild_settings_cmds.SettingsCog(SimpleNamespace())
+    cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):

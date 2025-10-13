@@ -19,7 +19,6 @@ ENV/
 
 # Environment files (catch common variants)
 .env
-.env.*
 .env.local
 .env.*.local
 

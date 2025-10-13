@@ -30,7 +30,7 @@ from typing import List
 
 from jsonschema import Draft7Validator, ValidationError
 
-from modcord.util.moderation_models import ActionData, ActionType
+from modcord.util.moderation_datatypes import ActionData, ActionType
 
 logger = logging.getLogger("moderation_parsing")
 
@@ -86,7 +86,8 @@ async def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     assistant_response:
         Raw assistant text returned by the model. The parser tolerates fenced
         code blocks, leading/trailing commentary, or minor formatting issues
-        around the JSON payload.
+        around the JSON payload. For Qwen3-Thinking models, this may include
+        reasoning text before the JSON output.
 
     Returns
     -------
@@ -96,13 +97,40 @@ async def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     """
     try:
         s = assistant_response.strip()
+        # Remove fenced code blocks
         if s.startswith('```'):
             s = '\n'.join([ln for ln in s.splitlines() if not ln.strip().startswith('```')])
-        first_brace = min([i for i in [s.find('{'), s.find('[')] if i != -1], default=-1)
-        last_brace = max(s.rfind('}'), s.rfind(']'))
-        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-            s = s[first_brace:last_brace + 1]
-        parsed = json.loads(s)
+        
+        # Extract the last complete JSON object (handles reasoning prefix)
+        # Find all potential JSON start positions
+        json_starts = []
+        for i, char in enumerate(s):
+            if char in ('{', '['):
+                json_starts.append((i, char))
+        
+        if not json_starts:
+            return ActionType('null'), "invalid JSON response"
+        
+        # Try parsing from the last JSON start backwards
+        parsed = None
+        for start_idx, start_char in reversed(json_starts):
+            end_char = '}' if start_char == '{' else ']'
+            # Find matching end brace
+            for end_idx in range(len(s) - 1, start_idx, -1):
+                if s[end_idx] == end_char:
+                    try:
+                        candidate = s[start_idx:end_idx + 1]
+                        parsed = json.loads(candidate)
+                        if isinstance(parsed, dict):
+                            break
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+            if parsed and isinstance(parsed, dict):
+                break
+        
+        if not parsed:
+            return ActionType('null'), "invalid JSON response"
+        
         if isinstance(parsed, dict):
             action_value = str(parsed.get('action', 'null')).lower()
             reason = str(parsed.get('reason', 'Automated moderation action'))
@@ -112,7 +140,7 @@ async def parse_action(assistant_response: str) -> tuple[ActionType, str]:
     except Exception as e:
         logger.warning(f"Failed to parse JSON response: {e}")
         return ActionType('null'), "invalid JSON response"
-    return ActionType('null'), "no action found"
+    return ActionType('null'), "invalid JSON response"
 
 
 async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[ActionData]:
@@ -122,7 +150,8 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
     ----------
     assistant_response:
         Model response text that should contain a JSON object describing
-        channel ID and per-user actions.
+        channel ID and per-user actions. For Qwen3-Thinking models, this
+        may include reasoning text before the JSON output.
     channel_id:
         Expected channel identifier; mismatches trigger an empty result.
 
@@ -134,13 +163,33 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
     """
     try:
         s = assistant_response.strip()
+        # Remove fenced code blocks
         if s.startswith('```'):
             s = '\n'.join([ln for ln in s.splitlines() if not ln.strip().startswith('```')])
-        first_brace = min([i for i in [s.find('{'), s.find('[')] if i != -1], default=-1)
-        last_brace = max(s.rfind('}'), s.rfind(']'))
-        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-            s = s[first_brace:last_brace + 1]
-        parsed = json.loads(s)
+        
+        # Extract the last complete JSON object (handles reasoning prefix)
+        # Find all potential JSON start positions
+        json_starts = []
+        for i, char in enumerate(s):
+            if char in ('{', '['):
+                json_starts.append((i, char))
+        
+        # Try parsing from the last JSON start backwards
+        parsed = None
+        for start_idx, start_char in reversed(json_starts):
+            end_char = '}' if start_char == '{' else ']'
+            # Find matching end brace
+            for end_idx in range(len(s) - 1, start_idx, -1):
+                if s[end_idx] == end_char:
+                    try:
+                        candidate = s[start_idx:end_idx + 1]
+                        parsed = json.loads(candidate)
+                        if isinstance(parsed, dict) and 'users' in parsed:
+                            break
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+            if parsed and isinstance(parsed, dict) and 'users' in parsed:
+                break
 
         if not isinstance(parsed, dict):
             logger.warning("Batch response is not a JSON object; ignoring.")

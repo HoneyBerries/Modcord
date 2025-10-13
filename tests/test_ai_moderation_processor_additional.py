@@ -7,7 +7,7 @@ import pytest
 
 from modcord.ai import ai_core
 from modcord.ai.ai_moderation_processor import ModerationProcessor
-from modcord.util.moderation_models import ActionType, ModerationBatch, ModerationMessage
+from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
 
 
 class FakeState:

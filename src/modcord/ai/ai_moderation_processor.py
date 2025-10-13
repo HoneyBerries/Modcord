@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
-from modcord.util.moderation_models import ActionData, ActionType, ModerationBatch, ModerationMessage
+from modcord.util.moderation_datatypes import ActionData, ActionType, ModerationBatch, ModerationMessage
 import modcord.util.moderation_parsing as moderation_parsing
 from modcord.configuration.app_configuration import app_config
 
@@ -123,7 +123,8 @@ class ModerationProcessor:
                         try:
                             system_prompt = await self.inference_processor.get_system_prompt("")
                             system_msg = {"role": "system", "content": system_prompt}
-                            now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                            import datetime
+                            now_iso = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
                             dummy_payload = {
                                 "channel_id": "warmup",
                                 "message_count": 1,
@@ -568,7 +569,11 @@ class ModerationProcessor:
         system_prompt = await self.inference_processor.get_system_prompt(server_rules)
         system_msg = {"role": "system", "content": system_prompt}
 
-        now_iso = message_timestamp or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        import datetime
+        if message_timestamp:
+            now_iso = message_timestamp
+        else:
+            now_iso = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         payload_messages = [msg.to_history_payload() for msg in history]
         payload_messages.append(
             {

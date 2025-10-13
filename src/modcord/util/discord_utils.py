@@ -14,7 +14,7 @@ from typing import Union
 import discord
 
 from modcord.util.logger import get_logger
-from modcord.util.moderation_models import ActionData, ActionType, ModerationMessage
+from modcord.util.moderation_datatypes import ActionData, ActionType, ModerationMessage
 
 logger = get_logger("discord_utils")
 

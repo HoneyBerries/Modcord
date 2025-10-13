@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock
 
 from modcord.configuration.guild_settings import GuildSettingsManager
-from modcord.util.moderation_models import ActionType, ModerationMessage
+from modcord.util.moderation_datatypes import ActionType, ModerationMessage
 
 
 class _TestableGuildSettingsManager(GuildSettingsManager):

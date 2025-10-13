@@ -4,24 +4,23 @@ ai_settings:
   vram_percentage: 0.85 # Percentage of GPU VRAM to utilize if using GPU; adjust based on your system
 
   # Path to your local model directory or model identifier from Hugging Face
-  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-instruct-nf4"
+  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-thinking-nf4"
   
   knobs:
-    dtype: "bfloat16" # Options: "auto", "half", "float16", "bfloat16", float32
-    max_new_tokens: 1024
-    max_model_length: 4096
-    temperature: 0.1
-    # Sampling and decoding controls for model output quality and diversity
-    top_p: 0.95         # Nucleus sampling; lower for more focused output, higher for more diversity
-    top_k: 40           # Limits sampling to top-k tokens; 0 disables, 20–100 is typical
-    repetition_penalty: 1.1   # Penalizes repeated tokens; >1.0 discourages repetition
-    presence_penalty: 0.2     # Encourages new topics; 0.0–0.5 is typical, higher = more novelty
-    frequency_penalty: 0.1    # Penalizes frequent tokens; helps reduce spammy outputs 
+    dtype: "bfloat16"           # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
+    max_new_tokens: 1024        # Lowered for faster, more focused responses; increase if longer outputs are needed
+    max_model_length: 8192      # Keep high for large batch moderation, but avoid exceeding model limits
+    temperature: 0.05           # Lowered for more deterministic, reliable moderation output
+    top_p: 0.9                  # Slightly lower for more focused, less random output
+    top_k: 40                   # Increased to allow more candidate tokens, but still restricts to top choices
+    repetition_penalty: 1.2     # Increased to further discourage repeated phrases or spam
+    presence_penalty: 0.3       # Slightly higher to encourage more diverse, context-aware responses
+    frequency_penalty: 0.2      # Increased to further reduce repeated or spammy outputs
 
     # max_prompts: maximum number of prompts to aggregate into a single
     # batch call to the model. Larger values increase throughput but
     # may add batching latency for individual requests.
-    max_prompts: 16
+    max_prompts: 32
     # max_delay: maximum time (in seconds) the worker will wait to accumulate
     # additional prompts before sending the current batch. Lower values reduce
     # latency but may reduce batching effectiveness.
@@ -47,11 +46,15 @@ server_rules: >
   9. Report serious issues to moderators instead of attempting vigilante action.
   10. Repeated or intentional breaking of rules may result in warnings, timeouts, kicks, or bans.
 
+
 system_prompt: >
-  You are a Discord moderation AI. Your ONLY job is to process messages in a channel and output JSON-formatted moderation actions for each user.  
+  You are a Discord moderation AI. Your ONLY job is to process messages in a channel and output JSON-formatted moderation actions for each user.
+
+  --- REASONING INSTRUCTION ---
+  First, reason briefly in plain English (MAXIMUM 256 tokens - keep it concise!). Then output ONLY the final answer in the required JSON schema with nothing else after it. Your total response should not exceed 512 tokens.
 
   --- INPUT FORMAT ---
-  You will receive input as a single JSON object per channel, representing all messages in a batch (10–15 seconds):
+  You will receive input as a single JSON object per channel, representing all messages in a batch:
 
   {
     "channel_id": "<channel_id>",
@@ -64,7 +67,7 @@ system_prompt: >
         "user_id": "<user_id>",
         "username": "<username>",
         "message_id": "<message_id>",
-        "timestamp": "<ISO 8601 timestamp>",
+        "timestamp": "<ISO 8601 timestamp, e.g. 2025-10-09T12:34:56Z>",
         "content": "<message text>",
         "image_summary": "<optional text summary of image content, null if none>",
         "role": "<user|assistant|system>"
@@ -76,12 +79,12 @@ system_prompt: >
         "user_id": "<user_id>",
         "username": "<username>",
         "message_count": <messages_from_this_user>,
-        "first_message_timestamp": "<ISO 8601 timestamp>",
-        "latest_message_timestamp": "<ISO 8601 timestamp>",
+        "first_message_timestamp": "<ISO 8601 timestamp, e.g. 2025-10-09T12:34:56Z>",
+        "latest_message_timestamp": "<ISO 8601 timestamp, e.g. 2025-10-09T12:34:56Z>",
         "messages": [
           {
             "message_id": "<message_id>",
-            "timestamp": "<ISO 8601 timestamp>",
+            "timestamp": "<ISO 8601 timestamp, e.g. 2025-10-09T12:34:56Z>",
             "content": "<message text>",
             "image_summary": "<optional summary or null>",
             "role": "<user|assistant|system>"
@@ -94,6 +97,7 @@ system_prompt: >
   }
 
   Notes:
+  - All timestamps MUST be in human-readable ISO 8601 format with 'Z' for UTC (e.g. 2025-10-09T12:34:56Z).
   - Include ALL messages in both "messages" (flat view) and "users" (grouped view).
   - "message_id" is the unique Discord message ID for each message.
   - "timestamp" plus "window_start"/"window_end" help track repeated offenses over time.

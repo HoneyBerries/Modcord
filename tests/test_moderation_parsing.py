@@ -9,7 +9,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from modcord.util.moderation_models import ActionType
+from modcord.util.moderation_datatypes import ActionType
 from modcord.util import moderation_parsing
 
 
@@ -38,6 +38,18 @@ class ParseActionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(action, ActionType.NULL)
         self.assertEqual(reason, "invalid JSON response")
+
+    async def test_parse_action_with_reasoning_prefix(self) -> None:
+        """Reasoning text before JSON should be handled correctly."""
+        response = """Let me analyze this message. The user is spamming repeatedly 
+        which violates rule 2. I should issue a warning.
+        
+        {"action": "warn", "reason": "repeated spam violation"}"""
+
+        action, reason = await moderation_parsing.parse_action(response)
+
+        self.assertEqual(action, ActionType.WARN)
+        self.assertEqual(reason, "repeated spam violation")
 
 
 class ParseBatchActionsTests(unittest.IsolatedAsyncioTestCase):
@@ -103,6 +115,23 @@ class ParseBatchActionsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(action.reason, "second")
         self.assertCountEqual(action.message_ids, ["a", "b"])
         self.assertEqual(action.timeout_duration, 600)
+
+    async def test_parse_batch_with_reasoning_prefix(self) -> None:
+        """Batch responses with reasoning text before JSON should be handled correctly."""
+        response = """Looking at the messages in this channel, I see user u1 has been spamming.
+        This is a clear violation. I will issue a timeout.
+        
+        {"channel_id":"123","users":[{"user_id":"u1","action":"timeout","reason":"spam","message_ids_to_delete":["m1"],"timeout_duration":300,"ban_duration":null}]}"""
+
+        actions = await moderation_parsing.parse_batch_actions(response, 123)
+
+        self.assertEqual(len(actions), 1)
+        action = actions[0]
+        self.assertEqual(action.user_id, "u1")
+        self.assertEqual(action.action, ActionType.TIMEOUT)
+        self.assertEqual(action.reason, "spam")
+        self.assertEqual(action.message_ids, ["m1"])
+        self.assertEqual(action.timeout_duration, 300)
 
         async def test_parse_batch_actions_handles_code_fence_and_string_durations(self) -> None:
                 """Ensure fenced payloads with string durations and invalid values are parsed safely."""

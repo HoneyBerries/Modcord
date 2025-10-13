@@ -12,7 +12,7 @@ import discord
 from modcord.ai.ai_moderation_processor import model_state, moderation_processor
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.bot import rules_manager
-from modcord.util.moderation_models import ActionData, ActionType, ModerationBatch, ModerationMessage
+from modcord.util.moderation_datatypes import ActionData, ActionType, ModerationBatch, ModerationMessage
 from modcord.util import discord_utils
 from modcord.util.logger import get_logger
 

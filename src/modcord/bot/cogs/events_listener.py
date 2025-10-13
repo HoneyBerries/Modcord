@@ -1,73 +1,65 @@
 """Event listener Cog for Modcord.
 
-This cog wires Discord events to the moderation helpers in
-``modcord.util.moderation_helper``. It intentionally keeps logic small
-and delegates heavy lifting to the helper module.
+This cog handles bot lifecycle events (on_ready) and command error handling.
+Message-related events are handled by the MessageListenerCog.
 """
 
 import asyncio
 import discord
-
 from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.ai.ai_moderation_processor import model_state
-from modcord.util.moderation_models import ModerationMessage
 from modcord.util.logger import get_logger
-
 from modcord.util import moderation_helper
-from modcord.util import discord_utils
 
 logger = get_logger("events_listener_cog")
 
 
 class EventsListenerCog(commands.Cog):
-    """
-    Cog containing all bot event handlers.
-    """
+    """Cog containing bot lifecycle and command error handlers."""
 
     def __init__(self, discord_bot_instance):
-        """Attach the cog to the Discord bot and initialize logger references."""
-        # Keep both names for compatibility: some code/tests reference `self.bot`,
-        # while the constructor parameter name used here is `discord_bot_instance`.
-        self.discord_bot_instance = discord_bot_instance
+        """Initialize the events listener cog.
+        
+        Parameters
+        ----------
+        discord_bot_instance:
+            The Discord bot instance to attach this cog to.
+        """
         self.bot = discord_bot_instance
+        self.discord_bot_instance = discord_bot_instance
         logger.info("Events listener cog loaded")
-
-        # The helpers live in `modcord.util.moderation_helper` and are called
-        # by passing the cog instance explicitly (no binding to `self`).
-    
 
     @commands.Cog.listener(name='on_ready')
     async def on_ready(self):
-        """Handle the bot ready event and update presence for the current model state.
-
-        This registers the periodic rules-refresh task and the batch
-        processing callback. Lightweight: the actual work is done in the
-        moderation helper module.
+        """Handle bot startup: initialize presence, rules cache, and batch processing.
+        
+        This method:
+        1. Updates the bot's Discord presence based on AI model state
+        2. Starts the periodic rules cache refresh task
+        3. Registers the batch processing callback
         """
         if self.bot.user:
-            await self.update_presence_for_model_state()
+            await self._update_presence()
             logger.info(f"Bot connected as {self.bot.user} (ID: {self.bot.user.id})")
         else:
             logger.warning("Bot partially connected, but user information not yet available.")
         
-        # Start the rules cache refresh task (call helper with self)
+        # Start the rules cache refresh task
         logger.info("Starting server rules cache refresh task...")
         asyncio.create_task(moderation_helper.refresh_rules_cache_task(self))
 						
         # Set up batch processing callback for channel-based batching
         logger.info("Setting up batch processing callback...")
-        # The callback will be called with the batch; forward it to the helper.
         guild_settings_manager.set_batch_processing_callback(
             lambda batch: moderation_helper.process_message_batch(self, batch)
         )
         
         logger.info("-" * 60)
 
-    
-    async def update_presence_for_model_state(self) -> None:
-        """Synchronize the bot's activity status with the AI model availability."""
+    async def _update_presence(self) -> None:
+        """Update bot's Discord presence based on AI model availability."""
         if not self.bot.user:
             return
 
@@ -88,112 +80,41 @@ class EventsListenerCog(commands.Cog):
         )
 
 
-    @commands.Cog.listener(name='on_message')
-    async def on_message(self, message: discord.Message):
-        """Intercept new messages, batch them, and trigger moderation processing.
-
-        This handler performs quick filtering (ignore DMs, bots, admins,
-        empty content) then records the message in the per-guild history
-        and forwards it to the batching system. Heavy processing occurs
-        as asynchronously via the moderation helper pipeline.
-        """
-        if message.guild is None:
-            # Ignore messages that don't come from a server
-            return
-
-        # Ignore messages from bots and administrators
-        logger.debug(f"Received message from {message.author}: {message.content}")
-        if discord_utils.is_ignored_author(message.author):
-            logger.debug("Ignoring message from non-user.")
-            return
-
-        # Skip empty messages or messages with only whitespace
-        actual_content = message.clean_content.strip()
-        if actual_content == "":
-            return
-
-        # Possibly refresh rules cache if this was posted in a rules channel
-        await moderation_helper.refresh_rules_cache_if_rules_channel(self, message.channel)
-
-        # Store message in the channel's history for contextual analysis
-        timestamp_iso = message.created_at.replace(tzinfo=None).isoformat() + "Z"
-        history_entry = ModerationMessage(
-            message_id=str(message.id),
-            user_id=str(message.author.id),
-            username=str(message.author),
-            content=actual_content,
-            timestamp=timestamp_iso,
-            guild_id=message.guild.id if message.guild else None,
-            channel_id=message.channel.id if hasattr(message.channel, "id") else None,
-        )
-        guild_settings_manager.add_message_to_history(message.channel.id, history_entry)
-
-        # Respect per-guild AI moderation toggle
-        if not guild_settings_manager.is_ai_enabled(message.guild.id):
-            if message.guild:
-                logger.debug(f"AI moderation disabled for guild {message.guild.name}; skipping AI filtration.")
-            return
-
-        # Add message to the batching system instead of immediate processing
-        try:
-            batch_message = ModerationMessage(
-                message_id=str(message.id),
-                user_id=str(message.author.id),
-                username=str(message.author),
-                content=actual_content,
-                timestamp=timestamp_iso,
-                guild_id=message.guild.id if message.guild else None,
-                channel_id=message.channel.id if hasattr(message.channel, "id") else None,
-                image_summary=None,
-                discord_message=message,
-            )
-            await guild_settings_manager.add_message_to_batch(message.channel.id, batch_message)
-            logger.debug(f"Added message from {message.author} to batch for channel {message.channel.id}")
-        except Exception as e:
-            logger.error(f"Error adding message to batch for {message.author}: {e}")
-
-
-    @commands.Cog.listener(name='on_message_edit')
-    async def on_message_edit(self, before: discord.Message, after: discord.Message):
-        """Handle message edits by updating batches and re-running moderation checks.
-
-        Only triggers a refresh when the channel matches the rules-channel
-        heuristics; otherwise it's a no-op.
-        """
-        # Ignore edits where author is a bot or admin
-        if discord_utils.is_ignored_author(after.author):
-            return
-
-        # If the content didn't change, nothing to do
-        if (before.content or "").strip() == (after.content or "").strip():
-            return
-
-        # Possibly refresh rules cache if this edit occurred in a rules channel
-        await moderation_helper.refresh_rules_cache_if_rules_channel(self, after.channel)
-
-
     @commands.Cog.listener(name='on_application_command_error')
     async def on_application_command_error(self, application_context: discord.ApplicationContext, error: Exception):
-        """Log and respond to unhandled errors raised by application commands.
-
-        Logs the exception and sends a short, safe error reply to the
-        command invoker. Designed to avoid leaking internal details.
+        """Handle errors from application commands with logging and user feedback.
+        
+        Parameters
+        ----------
+        application_context:
+            The command invocation context.
+        error:
+            The exception raised during command execution.
         """
         # Ignore commands that don't exist
         if isinstance(error, commands.CommandNotFound):
             return
 
-        # Log the error with traceback
-        logger.debug(f"[Error] Error in command '{getattr(application_context.command, 'name', '<unknown>')}': {error}", exc_info=True)
+        # Log the error with full traceback
+        command_name = getattr(application_context.command, 'name', '<unknown>')
+        logger.error(f"Error in command '{command_name}': {error}", exc_info=True)
 
-        # Respond to the user with a generic error message
-        # Use a try-except block in case the interaction has already been responded to
+        # Send a user-friendly error message
+        error_message = "A :bug: showed up while running this command."
         try:
-            await application_context.respond("A :bug: showed up while running this command.", ephemeral=True)
+            await application_context.respond(error_message, ephemeral=True)
         except discord.InteractionResponded:
-            await application_context.followup.send("A :bug: showed up while running this command.", ephemeral=True)
+            await application_context.followup.send(error_message, ephemeral=True)
+
+
 
 
 def setup(discord_bot_instance):
-    """Setup function for the cog."""
+    """Register the EventsListenerCog with the bot.
+    
+    Parameters
+    ----------
+    discord_bot_instance:
+        The Discord bot instance to add this cog to.
+    """
     discord_bot_instance.add_cog(EventsListenerCog(discord_bot_instance))

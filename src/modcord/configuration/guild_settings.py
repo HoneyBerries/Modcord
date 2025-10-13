@@ -26,7 +26,7 @@ import concurrent.futures
 from dataclasses import dataclass
 
 from modcord.util.logger import get_logger
-from modcord.util.moderation_models import ActionType, ModerationBatch, ModerationMessage
+from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
 from modcord.configuration.app_configuration import app_config
 
 logger = get_logger("guild_settings_manager")
@@ -41,9 +41,9 @@ class GuildSettings:
     rules: str = ""
     auto_warn_enabled: bool = True
     auto_delete_enabled: bool = True
-    auto_timeout_enabled: bool = False
-    auto_kick_enabled: bool = False
-    auto_ban_enabled: bool = False
+    auto_timeout_enabled: bool = True
+    auto_kick_enabled: bool = True
+    auto_ban_enabled: bool = True
 
     @classmethod
     def from_dict(cls, guild_id: int, payload: Dict[str, object]) -> "GuildSettings":
@@ -54,9 +54,9 @@ class GuildSettings:
         rules = str(rules_raw) if rules_raw is not None else ""
         auto_warn_enabled = bool(payload.get("auto_warn_enabled", True))
         auto_delete_enabled = bool(payload.get("auto_delete_enabled", True))
-        auto_timeout_enabled = bool(payload.get("auto_timeout_enabled", False))
-        auto_kick_enabled = bool(payload.get("auto_kick_enabled", False))
-        auto_ban_enabled = bool(payload.get("auto_ban_enabled", False))
+        auto_timeout_enabled = bool(payload.get("auto_timeout_enabled", True))
+        auto_kick_enabled = bool(payload.get("auto_kick_enabled", True))
+        auto_ban_enabled = bool(payload.get("auto_ban_enabled", True))
         return cls(
             guild_id=guild_id,
             ai_enabled=ai_enabled,
@@ -318,6 +318,7 @@ class GuildSettingsManager:
         # Stop the writer loop and join the thread
         self.stop_writer_loop()
         logger.info("Shutdown complete: batch timers cleared and writer stopped")
+        logger.info("--------------------------------------------------------------------------------")
 
     # --- AI moderation enable/disable ---
     def is_ai_enabled(self, guild_id: int) -> bool:

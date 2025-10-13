@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from modcord.bot.cogs import events_listener
-from modcord.util.moderation_models import ModerationMessage
+from modcord.bot.cogs import events_listener, message_listener
+from modcord.util.moderation_datatypes import ModerationMessage
 
 
 class FakeStatus:
@@ -46,6 +46,11 @@ def patch_discord(monkeypatch):
     monkeypatch.setattr(events_listener.discord, "ActivityType", FakeActivityType, raising=False)
     monkeypatch.setattr(events_listener.discord, "Activity", FakeActivity, raising=False)
     monkeypatch.setattr(events_listener.discord, "InteractionResponded", FakeConnectionError, raising=False)
+    # Also patch the message_listener module's discord reference so its tests use the same fakes
+    monkeypatch.setattr(message_listener.discord, "Status", FakeStatus, raising=False)
+    monkeypatch.setattr(message_listener.discord, "ActivityType", FakeActivityType, raising=False)
+    monkeypatch.setattr(message_listener.discord, "Activity", FakeActivity, raising=False)
+    monkeypatch.setattr(message_listener.discord, "InteractionResponded", FakeConnectionError, raising=False)
     yield
 
 
@@ -73,13 +78,23 @@ def patched_dependencies(monkeypatch):
     def set_callback(cb):
         deps.callback = cb
 
+    # Patch both cogs' references to the shared guild_settings_manager so tests using either module
+    # receive the same mocked behavior.
     monkeypatch.setattr(events_listener.guild_settings_manager, "set_batch_processing_callback", set_callback)
+    monkeypatch.setattr(message_listener.guild_settings_manager, "set_batch_processing_callback", set_callback)
+
     monkeypatch.setattr(events_listener.guild_settings_manager, "add_message_to_history", history_mock)
+    monkeypatch.setattr(message_listener.guild_settings_manager, "add_message_to_history", history_mock)
     monkeypatch.setattr(events_listener.guild_settings_manager, "add_message_to_batch", batch_mock)
+    monkeypatch.setattr(message_listener.guild_settings_manager, "add_message_to_batch", batch_mock)
+
     monkeypatch.setattr(events_listener.guild_settings_manager, "is_ai_enabled", lambda guild_id: True)
+    monkeypatch.setattr(message_listener.guild_settings_manager, "is_ai_enabled", lambda guild_id: True)
 
     monkeypatch.setattr(events_listener.moderation_helper, "refresh_rules_cache_if_rules_channel", refresh_mock)
-    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda author: False)
+    monkeypatch.setattr(message_listener.moderation_helper, "refresh_rules_cache_if_rules_channel", refresh_mock)
+
+    monkeypatch.setattr(message_listener.discord_utils, "is_ignored_author", lambda author: False)
 
     events_listener.model_state.available = True
     events_listener.model_state.init_error = None
@@ -134,7 +149,8 @@ async def test_update_presence_handles_unavailable(fake_bot, patched_dependencie
 
     cog = events_listener.EventsListenerCog(fake_bot)
 
-    await cog.update_presence_for_model_state()
+    # method was renamed to a private helper
+    await cog._update_presence()
 
     kwargs = fake_bot.change_presence.await_args.kwargs
     assert kwargs["status"] == FakeStatus.idle
@@ -145,9 +161,9 @@ async def test_update_presence_handles_unavailable(fake_bot, patched_dependencie
 
 @pytest.mark.asyncio
 async def test_on_message_bails_for_ignored_author(fake_bot, patched_dependencies, monkeypatch):
-    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda author: True)
+    monkeypatch.setattr(message_listener.discord_utils, "is_ignored_author", lambda author: True)
 
-    cog = events_listener.EventsListenerCog(fake_bot)
+    cog = message_listener.MessageListenerCog(fake_bot)
 
     guild = SimpleNamespace(id=5)
     author = SimpleNamespace(id=6)
@@ -162,7 +178,7 @@ async def test_on_message_bails_for_ignored_author(fake_bot, patched_dependencie
 
 @pytest.mark.asyncio
 async def test_on_message_records_and_batches(fake_bot, patched_dependencies):
-    cog = events_listener.EventsListenerCog(fake_bot)
+    cog = message_listener.MessageListenerCog(fake_bot)
 
     guild = SimpleNamespace(id=7, name="Guild")
     author = SimpleNamespace(id=8)
@@ -178,14 +194,14 @@ async def test_on_message_records_and_batches(fake_bot, patched_dependencies):
 
 @pytest.mark.asyncio
 async def test_on_message_edit_triggers_refresh(fake_bot, patched_dependencies, monkeypatch):
-    monkeypatch.setattr(events_listener.discord_utils, "is_ignored_author", lambda author: False)
+    monkeypatch.setattr(message_listener.discord_utils, "is_ignored_author", lambda author: False)
 
-    cog = events_listener.EventsListenerCog(fake_bot)
+    cog = message_listener.MessageListenerCog(fake_bot)
 
     guild = SimpleNamespace(id=3)
     channel = SimpleNamespace(id=13, name="rules", guild=guild)
-    before = cast(events_listener.discord.Message, SimpleNamespace(content="old"))
-    after = cast(events_listener.discord.Message, SimpleNamespace(content="new", guild=guild, author=SimpleNamespace(id=9), channel=channel))
+    before = cast(message_listener.discord.Message, SimpleNamespace(content="old"))
+    after = cast(message_listener.discord.Message, SimpleNamespace(content="new", guild=guild, author=SimpleNamespace(id=9), channel=channel))
 
     await cog.on_message_edit(before, after)
 

@@ -4,7 +4,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from modcord.configuration.guild_settings import GuildSettingsManager
-from modcord.util.moderation_models import ModerationBatch, ModerationMessage
+from modcord.util.moderation_datatypes import ModerationBatch, ModerationMessage
 
 
 class GuildSettingsBatchingTests(unittest.IsolatedAsyncioTestCase):

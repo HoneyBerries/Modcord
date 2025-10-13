@@ -1,17 +1,26 @@
 """
 Fully async, self-contained vLLM-backed AI model module for moderation.
 Includes model initialization, inference, warmup, and JSON parsing.
+
+IMPORTANT: This module uses lazy imports for AI libraries (torch, vllm, transformers)
+to avoid loading heavy dependencies when AI features are disabled. The libraries are
+only imported inside functions when AI is actually enabled in the configuration.
+This significantly reduces startup time and memory usage when running as a regular
+Discord bot without AI moderation features.
 """
 from __future__ import annotations
 
 import asyncio
 import gc
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import torch
-from vllm import LLM, SamplingParams
-from vllm.sampling_params import GuidedDecodingParams
+# Use TYPE_CHECKING to avoid runtime imports of AI libraries
+# These imports are only for type hints and will not execute at runtime
+if TYPE_CHECKING:
+    import torch
+    from vllm import LLM, SamplingParams
+    from vllm.sampling_params import GuidedDecodingParams
 
 import modcord.configuration.app_configuration as cfg
 from modcord.util.logger import get_logger
@@ -41,8 +50,8 @@ class InferenceProcessor:
 
     def __init__(self) -> None:
         """Instantiate the inference processor with default sampling configuration."""
-        self.llm: Optional[LLM] = None
-        self.sampling_params: Optional[SamplingParams] = None
+        self.llm: Optional[Any] = None  # vllm.LLM when loaded
+        self.sampling_params: Optional[Any] = None  # vllm.SamplingParams when loaded
         self.base_system_prompt: Optional[str] = None
         self.state = ModelState()
         self.init_lock = asyncio.Lock()
@@ -50,35 +59,20 @@ class InferenceProcessor:
         self.guided_backend: Optional[str] = None
         self._guided_grammar: Optional[str] = None
 
-    def _build_guided_decoding(self) -> GuidedDecodingParams:
-        """Construct the guided decoding configuration used for moderation responses."""
+    def _build_structured_outputs(self) -> Any:  # Returns StructuredOutputsParams
+        """Construct the structured outputs configuration for JSON schema enforcement."""
+        # Import here to avoid loading vllm when AI is disabled
+        from vllm.sampling_params import StructuredOutputsParams
 
         schema = moderation_parsing.moderation_schema
 
-        if self._guided_grammar is None:
-            try:
-                from xgrammar import Grammar  # type: ignore
-            except Exception as exc:  # noqa: BLE001 - surface import issues
-                raise RuntimeError("xgrammar backend not available for guided decoding") from exc
-
-            try:
-                grammar_obj: Optional[Any] = Grammar.from_json_schema(schema, strict_mode=True)
-                grammar_str = str(grammar_obj)
-                self._guided_grammar = grammar_str
-            finally:
-                # Ensure any intermediate native handles can be cleaned up
-                grammar_obj = None
-
-        params = GuidedDecodingParams(
-            grammar=self._guided_grammar,
-            disable_fallback=True,
-        )
-        self.guided_backend = "xgrammar"
-        logger.info("[AI MODEL] Guided decoding backend=xgrammar (precompiled grammar)")
+        # Use JSON schema directly for structured outputs
+        params = StructuredOutputsParams(json=schema)
+        logger.info("[AI MODEL] Structured outputs configured with JSON schema")
         return params
 
     # ======== Model Initialization ========
-    async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
+    async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
         """Load the vLLM model and return its handles along with any initialization error.
 
         Parameters
@@ -88,7 +82,7 @@ class InferenceProcessor:
 
         Returns
         -------
-        tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]
+        tuple[Optional[Any], Optional[Any], Optional[str]]
             Model instance, sampling parameters, and an initialization error if one occurred.
         """
         async with self.init_lock:
@@ -151,6 +145,16 @@ class InferenceProcessor:
                 self.state.init_error = "missing model id"
                 return None, None, self.base_system_prompt
 
+            # Import AI libraries only when AI is enabled
+            try:
+                import torch
+                from vllm import LLM, SamplingParams
+            except ImportError as e:
+                logger.error("[AI MODEL] Failed to import AI libraries: %s", e, exc_info=True)
+                self.state.available = False
+                self.state.init_error = f"AI libraries not available: {e}"
+                return None, None, self.base_system_prompt
+
             cuda_available = torch.cuda.is_available()
             tp: int = torch.cuda.device_count() if cuda_available else 0
 
@@ -173,21 +177,31 @@ class InferenceProcessor:
                     top_p,
                 )
 
-                def build_llm() -> LLM:
-                    os.environ["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"
+                def build_llm() -> Any:  # Returns LLM
                     return LLM(
                         model=model_identifier,
                         dtype=dtype,
                         gpu_memory_utilization=gpu_mem_util,
                         max_model_len=max_model_length,
                         tensor_parallel_size=tp,
-                        guided_decoding_backend="xgrammar",
-                        guided_decoding_disable_fallback=True,
                     )
 
                 self.llm = await asyncio.to_thread(build_llm)
 
-                guided_decoding = self._build_guided_decoding()
+                # For Qwen3-Thinking models, we rely on prompt engineering + parsing
+                # to handle reasoning (up to 256 tokens) followed by JSON output.
+                # 
+                # NOTE: The 256-token reasoning limit is enforced via:
+                # 1. System prompt instruction (soft limit - model should follow)
+                # 2. max_tokens=512 in SamplingParams (hard limit on total output)
+                #    This allows ~256 tokens for reasoning + ~256 for JSON output
+                #
+                # For a hard per-phase limit, you would need vllm serve with:
+                #   --enable-reasoning --max-reasoning-tokens 256
+                # But that's not available with the offline LLM API.
+                #
+                # Structured outputs via JSON schema will help ensure valid JSON
+                structured_outputs = self._build_structured_outputs()
 
                 self.sampling_params = SamplingParams(
                     temperature=temperature,
@@ -197,7 +211,7 @@ class InferenceProcessor:
                     repetition_penalty=repetition_penalty,
                     presence_penalty=presence_penalty,
                     frequency_penalty=frequency_penalty,
-                    guided_decoding=guided_decoding,
+                    structured_outputs=structured_outputs,
                 )
 
                 self.state.available = True
@@ -212,12 +226,12 @@ class InferenceProcessor:
                 return None, None, self.base_system_prompt
 
     # ======== Model Accessors ========
-    async def get_model(self) -> Tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]:
+    async def get_model(self) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
         """Return the cached vLLM model and sampling parameters, if initialization succeeded.
 
         Returns
         -------
-        tuple[Optional[LLM], Optional[SamplingParams], Optional[str]]
+        tuple[Optional[Any], Optional[Any], Optional[str]]
             Cached model, sampling configuration, and last recorded error.
         """
         if self.llm is None and not self.state.init_started:
@@ -330,10 +344,16 @@ class InferenceProcessor:
                 llm = None
 
         try:
+            # Import torch only if needed for cleanup
+            import torch
+
             if torch.cuda.is_available():  # pragma: no branch - defensive cleanup
                 torch.cuda.synchronize()
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
+        except ImportError:
+            # torch not available, skip CUDA cleanup
+            pass
         except Exception as exc:  # noqa: BLE001 - ignore cleanup failures
             logger.debug("[AI MODEL] Failed to clear CUDA cache during unload: %s", exc, exc_info=True)
 
@@ -342,6 +362,9 @@ class InferenceProcessor:
 
             if dist.is_available() and dist.is_initialized():
                 dist.destroy_process_group(dist.group.WORLD)
+        except ImportError:
+            # torch.distributed not available, skip cleanup
+            pass
         except Exception as exc:  # noqa: BLE001 - optional cleanup
             logger.warning("[AI MODEL] torch.distributed cleanup failed during unload: %s", exc, exc_info=True)
 

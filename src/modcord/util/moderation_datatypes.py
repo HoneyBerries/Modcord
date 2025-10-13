@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Sequence, TYPE_CHECKING
-
-if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
-    import discord
+from typing import Dict, Iterable, List, Optional, Sequence
+import discord
 
 
 class ActionType(Enum):
@@ -21,7 +19,7 @@ class ActionType(Enum):
     TIMEOUT = "timeout"
     NULL = "null"
 
-    def __str__(self) -> str:  # pragma: no cover - trivial
+    def __str__(self) -> str:
         return self.value
 
 
@@ -94,7 +92,7 @@ class ModerationMessage:
     user_id: str
     username: str
     content: str
-    timestamp: str
+    timestamp: str  # ISO 8601 string, e.g. '2025-10-09T12:34:56Z'
     guild_id: Optional[int]
     channel_id: Optional[int]
     role: str = "user"
