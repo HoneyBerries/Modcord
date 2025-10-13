@@ -7,16 +7,15 @@ ai_settings:
   model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-thinking-nf4"
   
   knobs:
-    dtype: "bfloat16" # Options: "auto", "half", "float16", "bfloat16", float32
-    max_new_tokens: 1024
-    max_model_length: 8192  # Increased to handle longer input prompts
-    temperature: 0.1
-    # Sampling and decoding controls for model output quality and diversity
-    top_p: 0.95         # Nucleus sampling; lower for more focused output, higher for more diversity
-    top_k: 20           # Limits sampling to top-k tokens; 0 disables, 20–100 is typical
-    repetition_penalty: 1.1   # Penalizes repeated tokens; >1.0 discourages repetition
-    presence_penalty: 0.2     # Encourages new topics; 0.0–0.5 is typical, higher = more novelty
-    frequency_penalty: 0.1    # Penalizes frequent tokens; helps reduce spammy outputs 
+    dtype: "bfloat16"           # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
+    max_new_tokens: 1024        # Lowered for faster, more focused responses; increase if longer outputs are needed
+    max_model_length: 8192      # Keep high for large batch moderation, but avoid exceeding model limits
+    temperature: 0.05           # Lowered for more deterministic, reliable moderation output
+    top_p: 0.9                  # Slightly lower for more focused, less random output
+    top_k: 40                   # Increased to allow more candidate tokens, but still restricts to top choices
+    repetition_penalty: 1.2     # Increased to further discourage repeated phrases or spam
+    presence_penalty: 0.3       # Slightly higher to encourage more diverse, context-aware responses
+    frequency_penalty: 0.2      # Increased to further reduce repeated or spammy outputs
 
     # max_prompts: maximum number of prompts to aggregate into a single
     # batch call to the model. Larger values increase throughput but
