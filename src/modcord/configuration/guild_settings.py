@@ -318,6 +318,7 @@ class GuildSettingsManager:
         # Stop the writer loop and join the thread
         self.stop_writer_loop()
         logger.info("Shutdown complete: batch timers cleared and writer stopped")
+        logger.info("--------------------------------------------------------------------------------")
 
     # --- AI moderation enable/disable ---
     def is_ai_enabled(self, guild_id: int) -> bool:
