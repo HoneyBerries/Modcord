@@ -134,6 +134,76 @@ class GuildSettingsCog(commands.Cog):
             except discord.InteractionResponded:
                 await application_context.followup.send("A :bug: showed up while generating the settings dump.", ephemeral=True)
 
+    # Legacy command methods for backward compatibility with tests
+    @commands.slash_command(name="ai-enable", description="Enable AI moderation for this server.")
+    async def ai_enable(self, ctx: discord.ApplicationContext):
+        """Enable AI moderation for the server."""
+        if not await self._ensure_guild_context(ctx):
+            return
+        if not self._has_manage_permission(ctx):
+            await ctx.respond("You need the Manage Server permission to configure Modcord.", ephemeral=True)
+            return
+        guild_settings_manager.set_ai_enabled(ctx.guild_id, True)
+        await ctx.respond("AI moderation has been **enabled** for this server.", ephemeral=True)
+
+    @commands.slash_command(name="ai-disable", description="Disable AI moderation for this server.")
+    async def ai_disable(self, ctx: discord.ApplicationContext):
+        """Disable AI moderation for the server."""
+        if not await self._ensure_guild_context(ctx):
+            return
+        if not self._has_manage_permission(ctx):
+            await ctx.respond("You need the Manage Server permission to configure Modcord.", ephemeral=True)
+            return
+        guild_settings_manager.set_ai_enabled(ctx.guild_id, False)
+        await ctx.respond("AI moderation has been **disabled** for this server.", ephemeral=True)
+
+    @commands.slash_command(name="ai-status", description="Check whether AI moderation is enabled for this server.")
+    async def ai_status(self, ctx: discord.ApplicationContext):
+        """Report whether AI moderation is enabled."""
+        if not await self._ensure_guild_context(ctx):
+            return
+        # Build a simple embed showing AI status
+        enabled = guild_settings_manager.is_ai_enabled(ctx.guild_id)
+        ai_status_text = "Enabled ✅" if enabled else "Disabled ❌"
+        embed = discord.Embed(
+            title="AI Moderation Status",
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(name="AI Moderation", value=ai_status_text, inline=False)
+        await ctx.respond(embed=embed, ephemeral=True)
+
+    @commands.slash_command(name="ai-set-action", description="Enable or disable a specific AI moderation action.")
+    async def ai_set_action(
+        self,
+        ctx: discord.ApplicationContext,
+        action: str,
+        enabled: bool,
+    ):
+        """Enable or disable a specific AI action (warn, delete, timeout, kick, ban)."""
+        if not await self._ensure_guild_context(ctx):
+            return
+        if not self._has_manage_permission(ctx):
+            await ctx.respond("You need the Manage Server permission to configure Modcord.", ephemeral=True)
+            return
+        
+        from modcord.util.moderation_datatypes import ActionType
+        action_map = {
+            "warn": ActionType.WARN,
+            "delete": ActionType.DELETE,
+            "timeout": ActionType.TIMEOUT,
+            "kick": ActionType.KICK,
+            "ban": ActionType.BAN,
+        }
+        
+        action_type = action_map.get(action.lower())
+        if action_type is None:
+            await ctx.respond("Unsupported action.", ephemeral=True)
+            return
+        
+        guild_settings_manager.set_action_allowed(ctx.guild_id, action_type, enabled)
+        state = "enabled" if enabled else "disabled"
+        await ctx.respond(f"Action '{action}' has been {state}.", ephemeral=True)
+
 
 def setup(discord_bot_instance):
     """Add the settings cog to the supplied Discord bot instance."""

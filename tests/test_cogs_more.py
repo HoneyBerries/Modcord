@@ -79,14 +79,14 @@ async def test_settings_commands_and_dump(monkeypatch):
             self.resp = (a, k)
 
     ctx = Ctx()
-    cb = getattr(settings_cmds.SettingsCog.ai_enable, "callback", None)
+    cb = getattr(settings_cmds.GuildSettingsCog.ai_enable, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
     assert called['set'] == (5, True)
 
     # settings_dump returns a file; simulate respond
     ctx2 = Ctx()
-    cb2 = getattr(settings_cmds.SettingsCog.settings_dump, "callback", None)
+    cb2 = getattr(settings_cmds.GuildSettingsCog.settings_dump, "callback", None)
     assert cb2 is not None
     await cb2(cog, ctx2)
     assert hasattr(ctx2, 'resp') or True

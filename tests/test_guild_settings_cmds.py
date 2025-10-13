@@ -15,7 +15,7 @@ def test_setup_adds_cog():
     fake_bot = SimpleNamespace(add_cog=fake_add_cog)
     guild_settings_cmds.setup(fake_bot)
     assert "cog" in captured
-    assert isinstance(captured["cog"], guild_settings_cmds.SettingsCog)
+    assert isinstance(captured["cog"], guild_settings_cmds.GuildSettingsCog)
 
 
 @pytest.mark.asyncio
@@ -39,7 +39,7 @@ async def test_ai_enable_calls_manager(monkeypatch):
             pass
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_enable, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.ai_enable, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
     assert called["args"] == (10, True)
@@ -64,7 +64,7 @@ async def test_ai_enable_requires_guild_context(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_enable, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.ai_enable, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
@@ -91,7 +91,7 @@ async def test_ai_enable_requires_manage_permission(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_enable, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.ai_enable, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
@@ -124,7 +124,7 @@ async def test_ai_disable_calls_manager(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_disable, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.ai_disable, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
@@ -149,7 +149,7 @@ async def test_ai_status_reports_manager_value(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_status, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.ai_status, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
@@ -185,7 +185,7 @@ async def test_ai_set_action_updates_manager(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_set_action, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.ai_set_action, "callback", None)
     assert cb is not None
     await cb(cog, ctx, action="warn", enabled=False)
 
@@ -224,7 +224,7 @@ async def test_ai_set_action_rejects_unknown_action(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_set_action, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.ai_set_action, "callback", None)
     assert cb is not None
     await cb(cog, ctx, action="invalid", enabled=True)
 
@@ -245,7 +245,7 @@ async def test_settings_dump_requires_guild(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.settings_dump, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_dump, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
@@ -281,7 +281,7 @@ async def test_settings_dump_uses_followup_on_interaction_responded(monkeypatch)
             self.followup = SimpleNamespace(send=AsyncMock())
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.settings_dump, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_dump, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
