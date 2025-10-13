@@ -28,6 +28,39 @@ import modcord.util.moderation_parsing as moderation_parsing
 
 logger = get_logger("ai_core")
 
+# Module-level variables for testability (allow monkeypatching)
+LLM = None
+SamplingParams = None
+# Create a minimal torch object with cuda attribute for tests
+class _FakeCuda:
+    @staticmethod
+    def is_available():
+        return False
+    @staticmethod
+    def device_count():
+        return 0
+    @staticmethod
+    def synchronize():
+        pass
+    @staticmethod
+    def empty_cache():
+        pass
+    @staticmethod
+    def ipc_collect():
+        pass
+class _FakeTorch:
+    cuda = _FakeCuda()
+    # Add distributed attribute for tests
+    class _FakeDist:
+        @staticmethod
+        def is_available():
+            return False
+        @staticmethod
+        def is_initialized():
+            return False
+    distributed = _FakeDist()
+torch = _FakeTorch()
+
 # ========= State Containers =========
 
 
@@ -59,8 +92,11 @@ class InferenceProcessor:
         self.guided_backend: Optional[str] = None
         self._guided_grammar: Optional[str] = None
 
-    def _build_structured_outputs(self) -> Any:  # Returns StructuredOutputsParams
-        """Construct the structured outputs configuration for JSON schema enforcement."""
+    def _build_guided_decoding(self) -> Any:
+        """Construct the structured outputs configuration for JSON schema enforcement.
+        
+        This is the primary method that can be mocked in tests.
+        """
         # Import here to avoid loading vllm when AI is disabled
         from vllm.sampling_params import StructuredOutputsParams
 
@@ -70,6 +106,10 @@ class InferenceProcessor:
         params = StructuredOutputsParams(json=schema)
         logger.info("[AI MODEL] Structured outputs configured with JSON schema")
         return params
+
+    def _build_structured_outputs(self) -> Any:  # Returns StructuredOutputsParams
+        """Construct the structured outputs configuration (delegates to _build_guided_decoding)."""
+        return self._build_guided_decoding()
 
     # ======== Model Initialization ========
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
@@ -146,14 +186,20 @@ class InferenceProcessor:
                 return None, None, self.base_system_prompt
 
             # Import AI libraries only when AI is enabled
-            try:
-                import torch
-                from vllm import LLM, SamplingParams
-            except ImportError as e:
-                logger.error("[AI MODEL] Failed to import AI libraries: %s", e, exc_info=True)
-                self.state.available = False
-                self.state.init_error = f"AI libraries not available: {e}"
-                return None, None, self.base_system_prompt
+            # Use module-level variables if set (for tests), otherwise import
+            global LLM, SamplingParams, torch
+            if LLM is None or SamplingParams is None or not hasattr(torch, '__module__'):
+                try:
+                    import torch as torch_module
+                    from vllm import LLM as LLM_class, SamplingParams as SamplingParams_class
+                    torch = torch_module
+                    LLM = LLM_class
+                    SamplingParams = SamplingParams_class
+                except ImportError as e:
+                    logger.error("[AI MODEL] Failed to import AI libraries: %s", e, exc_info=True)
+                    self.state.available = False
+                    self.state.init_error = f"AI libraries not available: {e}"
+                    return None, None, self.base_system_prompt
 
             cuda_available = torch.cuda.is_available()
             tp: int = torch.cuda.device_count() if cuda_available else 0
