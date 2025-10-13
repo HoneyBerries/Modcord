@@ -42,6 +42,9 @@ from modcord.ai.ai_lifecycle import (
 )
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
+from modcord.ui.console import console_print as _console_print_impl
+from modcord.ui.console import handle_console_command as _handle_console_command_impl
+from modcord.ui.console import run_console as _run_console_impl
 from modcord.util.logger import get_logger, handle_exception
 
 
@@ -145,6 +148,7 @@ async def start_bot(bot: discord.Bot, token: str) -> None:
         await bot.start(token)
     except asyncio.CancelledError:
         logger.info("Discord bot start cancelled; shutting down")
+        raise  # Re-raise to propagate cancellation
     finally:
         logger.info("Discord bot start routine finished.")
 
@@ -168,6 +172,58 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
         await guild_settings_manager.shutdown()
     except Exception as exc:
         logger.exception("Error during guild settings shutdown: %s", exc)
+
+
+# ========= Console Command Handling (wrappers for testability) =========
+
+def console_print(message: str, style: str = "") -> None:
+    """Print to console - wrapper that can be mocked in tests."""
+    _console_print_impl(message, style)
+
+
+async def handle_console_command(command: str, control: ConsoleControl) -> None:
+    """Handle console command - wrapper that uses local console_print for testability."""
+    cmd = command.strip().lower()
+    if not cmd:
+        return
+
+    if cmd in {"quit", "exit", "shutdown"}:
+        console_print("Shutdown requested.")
+        control.request_shutdown()
+        bot = control.bot
+        if bot and not bot.is_closed():
+            await bot.close()
+        return
+
+    if cmd == "restart":
+        console_print("Full restart requested. Bot will shut down and restart...")
+        control.request_restart()
+        bot = control.bot
+        if bot and not bot.is_closed():
+            await bot.close()
+        return
+
+    if cmd == "status":
+        availability = "available" if model_state.available else "unavailable"
+        detail = model_state.init_error or "ready"
+        guilds = len(control.bot.guilds) if control.bot else 0
+        console_print(f"Status: AI {availability}, ({detail}); connected guilds: {guilds}")
+        return
+
+    if cmd == "help":
+        console_print("Available commands:")
+        console_print("  help     - Show this help message")
+        console_print("  status   - Display bot and AI status")
+        console_print("  restart  - Fully restart the entire bot")
+        console_print("  shutdown - Gracefully shut down the bot")
+        return
+
+    console_print(f"Unknown command: {cmd}")
+
+
+async def run_console(control: ConsoleControl) -> None:
+    """Run the console - wrapper for compatibility."""
+    await _run_console_impl(control)
 
 
 async def run_bot_session(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
