@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from modcord import main
+from modcord.ui import console
 
 
 @pytest.fixture(autouse=True)
@@ -49,7 +50,7 @@ def test_resolve_base_dir_source(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_console_shutdown_requests_and_closes():
-    control = main.ConsoleControl()
+    control = console.ConsoleControl()
     class DummyBot:
         def __init__(self) -> None:
             self.close = AsyncMock()
@@ -60,8 +61,8 @@ async def test_handle_console_shutdown_requests_and_closes():
     dummy_bot = DummyBot()
     control.set_bot(cast(main.discord.Bot, dummy_bot))
 
-    with patch("modcord.main.console_print") as print_mock:
-        await main.handle_console_command("shutdown", control)
+    with patch("modcord.ui.console.console_print") as print_mock:
+        await console.handle_console_command("shutdown", control)
 
     assert control.is_shutdown_requested()
     dummy_bot.close.assert_awaited_once()
@@ -70,7 +71,7 @@ async def test_handle_console_shutdown_requests_and_closes():
 
 @pytest.mark.asyncio
 async def test_handle_console_restart_sets_flag_and_closes_bot():
-    control = main.ConsoleControl()
+    control = console.ConsoleControl()
     class DummyBot:
         def __init__(self) -> None:
             self.close = AsyncMock()
@@ -81,8 +82,8 @@ async def test_handle_console_restart_sets_flag_and_closes_bot():
     dummy_bot = DummyBot()
     control.set_bot(cast(main.discord.Bot, dummy_bot))
 
-    with patch("modcord.main.console_print") as print_mock:
-        await main.handle_console_command("restart", control)
+    with patch("modcord.ui.console.console_print") as print_mock:
+        await console.handle_console_command("restart", control)
 
     assert control.is_restart_requested()
     dummy_bot.close.assert_awaited_once()
@@ -91,14 +92,15 @@ async def test_handle_console_restart_sets_flag_and_closes_bot():
 
 @pytest.mark.asyncio
 async def test_handle_console_status_reports_state():
-    control = main.ConsoleControl()
+    control = console.ConsoleControl()
     fake_bot = cast(main.discord.Bot, SimpleNamespace(guilds=[1, 2, 3]))
     control.set_bot(fake_bot)
-    main.model_state.available = True
-    main.model_state.init_error = None
+    from modcord.ai.ai_moderation_processor import model_state
+    model_state.available = True
+    model_state.init_error = None
 
-    with patch("modcord.main.console_print") as print_mock:
-        await main.handle_console_command("status", control)
+    with patch("modcord.ui.console.console_print") as print_mock:
+        await console.handle_console_command("status", control)
 
     print_mock.assert_called()
     text = " ".join(str(arg) for call in print_mock.call_args_list for arg in call[0])
@@ -108,10 +110,10 @@ async def test_handle_console_status_reports_state():
 
 @pytest.mark.asyncio
 async def test_handle_console_help_lists_commands():
-    control = main.ConsoleControl()
+    control = console.ConsoleControl()
 
-    with patch("modcord.main.console_print") as print_mock:
-        await main.handle_console_command("help", control)
+    with patch("modcord.ui.console.console_print") as print_mock:
+        await console.handle_console_command("help", control)
 
     print_mock.assert_called()
     assert any("Available commands" in str(call[0][0]) for call in print_mock.call_args_list)
@@ -119,10 +121,10 @@ async def test_handle_console_help_lists_commands():
 
 @pytest.mark.asyncio
 async def test_handle_console_unknown_command():
-    control = main.ConsoleControl()
+    control = console.ConsoleControl()
 
-    with patch("modcord.main.console_print") as print_mock:
-        await main.handle_console_command("unknown", control)
+    with patch("modcord.ui.console.console_print") as print_mock:
+        await console.handle_console_command("unknown", control)
 
     print_mock.assert_called_once()
     assert "Unknown command" in str(print_mock.call_args[0][0])
