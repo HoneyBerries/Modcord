@@ -39,11 +39,11 @@ class GuildSettings:
     guild_id: int
     ai_enabled: bool = True
     rules: str = ""
-    auto_warn_enabled: bool = True
-    auto_delete_enabled: bool = True
-    auto_timeout_enabled: bool = True
-    auto_kick_enabled: bool = True
-    auto_ban_enabled: bool = True
+    auto_warn_enabled: bool = False
+    auto_delete_enabled: bool = False
+    auto_timeout_enabled: bool = False
+    auto_kick_enabled: bool = False
+    auto_ban_enabled: bool = False
 
     @classmethod
     def from_dict(cls, guild_id: int, payload: Dict[str, object]) -> "GuildSettings":
@@ -52,11 +52,11 @@ class GuildSettings:
         ai_enabled = bool(payload.get("ai_enabled", True))
         rules_raw = payload.get("rules", "")
         rules = str(rules_raw) if rules_raw is not None else ""
-        auto_warn_enabled = bool(payload.get("auto_warn_enabled", True))
-        auto_delete_enabled = bool(payload.get("auto_delete_enabled", True))
-        auto_timeout_enabled = bool(payload.get("auto_timeout_enabled", True))
-        auto_kick_enabled = bool(payload.get("auto_kick_enabled", True))
-        auto_ban_enabled = bool(payload.get("auto_ban_enabled", True))
+        auto_warn_enabled = bool(payload.get("auto_warn_enabled", False))
+        auto_delete_enabled = bool(payload.get("auto_delete_enabled", False))
+        auto_timeout_enabled = bool(payload.get("auto_timeout_enabled", False))
+        auto_kick_enabled = bool(payload.get("auto_kick_enabled", False))
+        auto_ban_enabled = bool(payload.get("auto_ban_enabled", False))
         return cls(
             guild_id=guild_id,
             ai_enabled=ai_enabled,
