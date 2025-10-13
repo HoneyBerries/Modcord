@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from modcord import main
+from modcord.ui import console
 
 
 @pytest.fixture(autouse=True)
@@ -93,6 +94,7 @@ async def test_initialize_ai_model_propagates_exception(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_start_bot_propagates_cancelled():
+    """Test that start_bot handles CancelledError gracefully without propagating."""
     class CancelBot:
         def __init__(self):
             self.started = False
@@ -101,8 +103,8 @@ async def test_start_bot_propagates_cancelled():
             raise asyncio.CancelledError()
 
     bot = cast(main.discord.Bot, CancelBot())
-    with pytest.raises(asyncio.CancelledError):
-        await main.start_bot(bot, "token")
+    # CancelledError should be caught and logged, not propagated
+    await main.start_bot(bot, "token")  # Should not raise
 
 
 @pytest.mark.asyncio
@@ -148,12 +150,12 @@ async def test_shutdown_runtime_closes_bot_and_subsystems(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_console_command_shutdown(monkeypatch):
-    control = main.ConsoleControl()
+    control = console.ConsoleControl()
     close_mock = AsyncMock()
     bot = cast(main.discord.Bot, SimpleNamespace(is_closed=lambda: False, close=close_mock))
     control.set_bot(bot)
 
-    await main.handle_console_command("shutdown", control)
+    await console.handle_console_command("shutdown", control)
 
     assert control.is_shutdown_requested() is True
     close_mock.assert_awaited_once()
@@ -161,12 +163,12 @@ async def test_handle_console_command_shutdown(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_console_command_restart(monkeypatch):
-    control = main.ConsoleControl()
+    control = console.ConsoleControl()
     close_mock = AsyncMock()
     bot = cast(main.discord.Bot, SimpleNamespace(is_closed=lambda: False, close=close_mock))
     control.set_bot(bot)
 
-    await main.handle_console_command("restart", control)
+    await console.handle_console_command("restart", control)
 
     assert control.is_restart_requested() is True
     close_mock.assert_awaited_once()
@@ -174,18 +176,19 @@ async def test_handle_console_command_restart(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_console_command_status(monkeypatch):
-    control = main.ConsoleControl()
+    control = console.ConsoleControl()
     control.set_bot(cast(main.discord.Bot, SimpleNamespace(guilds=[1, 2, 3])))
-    main.model_state.available = False
-    main.model_state.init_error = "offline"
+    from modcord.ai.ai_moderation_processor import model_state
+    model_state.available = False
+    model_state.init_error = "offline"
 
-    await main.handle_console_command("status", control)
+    await console.handle_console_command("status", control)
 
 
 @pytest.mark.asyncio
 async def test_handle_console_command_unknown():
-    control = main.ConsoleControl()
-    await main.handle_console_command("unknown", control)
+    control = console.ConsoleControl()
+    await console.handle_console_command("unknown", control)
 
 
 def test_main_handles_keyboard_interrupt(monkeypatch):
