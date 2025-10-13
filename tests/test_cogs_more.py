@@ -61,12 +61,20 @@ async def test_refresh_rules_failure(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_settings_commands_and_dump(monkeypatch):
-    called = {}
+    """Test settings panel and dump command."""
+    def fake_get_settings(guild_id):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            ai_enabled=True,
+            rules="",
+            auto_warn_enabled=False,
+            auto_delete_enabled=False,
+            auto_timeout_enabled=False,
+            auto_kick_enabled=False,
+            auto_ban_enabled=True,
+        )
 
-    def fake_set(guild_id, enabled):
-        called['set'] = (guild_id, enabled)
-
-    monkeypatch.setattr(guild_settings.guild_settings_manager, "set_ai_enabled", fake_set)
+    monkeypatch.setattr(guild_settings.guild_settings_manager, "get_guild_settings", fake_get_settings)
 
     cog = settings_cmds.GuildSettingsCog(SimpleNamespace())
 
@@ -74,19 +82,21 @@ async def test_settings_commands_and_dump(monkeypatch):
         def __init__(self):
             self.guild_id = 5
             self.user = SimpleNamespace(guild_permissions=SimpleNamespace(manage_guild=True))
+            self.interaction = SimpleNamespace(original_response=AsyncMock())
 
         async def respond(self, *a, **k):
             self.resp = (a, k)
 
+    # Test settings panel
     ctx = Ctx()
-    cb = getattr(settings_cmds.SettingsCog.ai_enable, "callback", None)
+    cb = getattr(settings_cmds.GuildSettingsCog.settings_panel, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
-    assert called['set'] == (5, True)
+    assert hasattr(ctx, 'resp')
 
     # settings_dump returns a file; simulate respond
     ctx2 = Ctx()
-    cb2 = getattr(settings_cmds.SettingsCog.settings_dump, "callback", None)
+    cb2 = getattr(settings_cmds.GuildSettingsCog.settings_dump, "callback", None)
     assert cb2 is not None
     await cb2(cog, ctx2)
     assert hasattr(ctx2, 'resp') or True

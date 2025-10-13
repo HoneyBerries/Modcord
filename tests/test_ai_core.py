@@ -93,24 +93,49 @@ async def test_init_model_success_and_generate_text(monkeypatch):
         return func(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(ai_core, "LLM", FakeLLM)
-    monkeypatch.setattr(ai_core, "SamplingParams", FakeSamplingParams)
-    monkeypatch.setattr(ai_core.InferenceProcessor, "_build_guided_decoding", lambda self: "grammar")
-    monkeypatch.setattr(ai_core.torch.cuda, "is_available", lambda: True)
-    monkeypatch.setattr(ai_core.torch.cuda, "device_count", lambda: 1)
+    
+    # Mock the imports that happen inside init_model
+    fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True, device_count=lambda: 1))
+    
+    # Create a mock for the vllm module
+    import sys
+    from unittest.mock import MagicMock
+    fake_vllm = MagicMock()
+    fake_vllm.LLM = FakeLLM
+    fake_vllm.SamplingParams = FakeSamplingParams
+    
+    # Patch sys.modules to inject fake imports
+    original_torch = sys.modules.get('torch')
+    original_vllm = sys.modules.get('vllm')
+    sys.modules['torch'] = fake_torch
+    sys.modules['vllm'] = fake_vllm
+    
+    try:
+        processor = ai_core.InferenceProcessor()
+        
+        # Mock _build_structured_outputs to avoid needing full vllm
+        monkeypatch.setattr(processor, "_build_structured_outputs", lambda: None)
 
-    processor = ai_core.InferenceProcessor()
+        model, params, prompt = await processor.init_model()
 
-    model, params, prompt = await processor.init_model()
+        assert isinstance(model, FakeLLM)
+        assert isinstance(params, FakeSamplingParams)
+        assert prompt == fake_config.system_prompt_template
+        assert processor.state.available is True
 
-    assert isinstance(model, FakeLLM)
-    assert isinstance(params, FakeSamplingParams)
-    assert prompt == fake_config.system_prompt_template
-    assert processor.state.available is True
+        responses = await processor.generate_text(["hello", "world"])
 
-    responses = await processor.generate_text(["hello", "world"])
-
-    assert responses == ["reply:hello", "reply:world"]
+        assert responses == ["reply:hello", "reply:world"]
+    finally:
+        # Restore original modules
+        if original_torch is not None:
+            sys.modules['torch'] = original_torch
+        else:
+            sys.modules.pop('torch', None)
+        if original_vllm is not None:
+            sys.modules['vllm'] = original_vllm
+        else:
+            sys.modules.pop('vllm', None)
 
 
 @pytest.mark.asyncio
@@ -128,30 +153,59 @@ async def test_unload_model_resets_state(monkeypatch):
         return func(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(ai_core, "LLM", FakeLLM)
-    monkeypatch.setattr(ai_core, "SamplingParams", FakeSamplingParams)
-    monkeypatch.setattr(ai_core.InferenceProcessor, "_build_guided_decoding", lambda self: "grammar")
-
-    monkeypatch.setattr(ai_core.torch.cuda, "is_available", lambda: False)
-    monkeypatch.setattr(ai_core.torch.cuda, "synchronize", lambda: None)
-    monkeypatch.setattr(ai_core.torch.cuda, "empty_cache", lambda: None)
-    monkeypatch.setattr(ai_core.torch.cuda, "ipc_collect", lambda: None)
-
+    
+    # Mock the imports that happen inside init_model
     fake_dist = SimpleNamespace(
         is_available=lambda: True,
         is_initialized=lambda: True,
         destroy_process_group=lambda group=None: None,
         group=SimpleNamespace(WORLD=object()),
     )
-    monkeypatch.setattr(ai_core.torch, "distributed", fake_dist, raising=False)
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(
+            is_available=lambda: False,
+            synchronize=lambda: None,
+            empty_cache=lambda: None,
+            ipc_collect=lambda: None,
+        ),
+        distributed=fake_dist
+    )
+    
+    # Create a mock for the vllm module
+    import sys
+    from unittest.mock import MagicMock
+    fake_vllm = MagicMock()
+    fake_vllm.LLM = FakeLLM
+    fake_vllm.SamplingParams = FakeSamplingParams
+    
+    # Patch sys.modules to inject fake imports
+    original_torch = sys.modules.get('torch')
+    original_vllm = sys.modules.get('vllm')
+    sys.modules['torch'] = fake_torch
+    sys.modules['vllm'] = fake_vllm
+    
+    try:
+        processor = ai_core.InferenceProcessor()
+        
+        # Mock _build_structured_outputs to avoid needing full vllm
+        monkeypatch.setattr(processor, "_build_structured_outputs", lambda: None)
+        
+        await processor.init_model()
+        assert processor.llm is not None
 
-    processor = ai_core.InferenceProcessor()
-    await processor.init_model()
-    assert processor.llm is not None
+        await processor.unload_model()
 
-    await processor.unload_model()
-
-    assert processor.llm is None
-    assert processor.state.available is False
+        assert processor.llm is None
+        assert processor.state.available is False
+    finally:
+        # Restore original modules
+        if original_torch is not None:
+            sys.modules['torch'] = original_torch
+        else:
+            sys.modules.pop('torch', None)
+        if original_vllm is not None:
+            sys.modules['vllm'] = original_vllm
+        else:
+            sys.modules.pop('vllm', None)
     assert processor.state.init_started is False
     assert processor.state.init_error is None

@@ -41,12 +41,14 @@ def test_set_and_get_server_rules(tmp_path) -> None:
 def test_set_action_allowed_updates_flags(tmp_path) -> None:
     manager, persist_mock = create_manager(tmp_path)
 
-    assert manager.is_action_allowed(1, ActionType.BAN) is False
+    # BAN is now enabled by default
+    assert manager.is_action_allowed(1, ActionType.BAN) is True
 
-    updated = manager.set_action_allowed(1, ActionType.BAN, True)
+    # Disable it
+    updated = manager.set_action_allowed(1, ActionType.BAN, False)
 
     assert updated is True
-    assert manager.is_action_allowed(1, ActionType.BAN) is True
+    assert manager.is_action_allowed(1, ActionType.BAN) is False
     persist_mock.assert_called_once()
 
     persist_mock.reset_mock()
