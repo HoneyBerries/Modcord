@@ -159,6 +159,8 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
     """
     await close_bot_instance(bot, log_close=True)
 
+    await bot.http.close() # type: ignore
+
     try:
         await shutdown_engine()
     except Exception as exc:
@@ -168,6 +170,8 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
         await guild_settings_manager.shutdown()
     except Exception as exc:
         logger.exception("Error during guild settings shutdown: %s", exc)
+    
+    logger.info("Shutdown complete.")
 
 
 async def run_bot_session(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
