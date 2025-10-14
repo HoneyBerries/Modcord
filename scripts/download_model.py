@@ -1,10 +1,10 @@
 import os
 import torch
-from transformers import AutoModelForCausalLM, Qwen3VLForConditionalGeneration, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, Qwen3VLForConditionalGeneration, AutoTokenizer, BitsAndBytesConfig, AutoProcessor
 
-model_name = "Qwen/Qwen3-VL-4B-Thinking"
+model_name = "Qwen/Qwen3-VL-8B-Thinking"
 
-# load the tokenizer and the model
+# load the tokenizer, model, and processor
 model = Qwen3VLForConditionalGeneration.from_pretrained(
     model_name,
     dtype=torch.bfloat16,
@@ -17,12 +17,15 @@ model = Qwen3VLForConditionalGeneration.from_pretrained(
     )
 )
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+processor = AutoProcessor.from_pretrained(model_name)
 
-directory = "/mnt/d/Model Folder/modcord_custom_models/qwen3-vl-4b-thinking-nf4"
+directory = "/mnt/d/Model Folder/modcord_custom_models/qwen3-vl-8b-thinking-nf4"
 os.makedirs(directory, exist_ok=True)
 
 # Save with safe_serialization=True (default) for quantized models
+print(f"Saving model, tokenizer, and processor to {directory}...")
 model.save_pretrained(directory)
 tokenizer.save_pretrained(directory)
+processor.save_pretrained(directory)
 
-print(f"Model and tokenizer saved to {directory}")
+print(f"Model, tokenizer, and processor saved to {directory}")
