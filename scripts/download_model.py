@@ -1,15 +1,14 @@
 import os
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, Qwen3VLForConditionalGeneration, AutoTokenizer, BitsAndBytesConfig
 
-model_name = "Qwen/Qwen3-4B-Thinking-2507"
+model_name = "Qwen/Qwen3-VL-4B-Thinking"
 
 # load the tokenizer and the model
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(
+model = Qwen3VLForConditionalGeneration.from_pretrained(
     model_name,
-    torch_dtype=torch.bfloat16,  # Changed from dtype to torch_dtype
-    device_map="cpu",
+    dtype=torch.bfloat16,
+    device_map="cuda",
     quantization_config=BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.bfloat16,
@@ -17,8 +16,9 @@ model = AutoModelForCausalLM.from_pretrained(
         bnb_4bit_use_double_quant=True
     )
 )
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-directory = "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-thinking-nf4"
+directory = "/mnt/d/Model Folder/modcord_custom_models/qwen3-vl-4b-thinking-nf4"
 os.makedirs(directory, exist_ok=True)
 
 # Save with safe_serialization=True (default) for quantized models
