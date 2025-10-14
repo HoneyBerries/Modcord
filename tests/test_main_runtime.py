@@ -1,10 +1,12 @@
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+from contextlib import asynccontextmanager
 
 import pytest
 
 from modcord import main
+from modcord.ui import console
 
 
 class FakeBot:
@@ -38,7 +40,13 @@ async def test_async_main_successful_shutdown(monkeypatch):
     monkeypatch.setattr(main, "load_cogs", lambda bot: None)
     monkeypatch.setattr(main, "initialize_ai_model", AsyncMock(return_value=None))
     main.model_state.available = True
-    monkeypatch.setattr(main, "run_console", AsyncMock(return_value=None))
+    
+    # Mock console_session as a simple async context manager
+    @asynccontextmanager
+    async def fake_console_session(control):
+        yield control
+    
+    monkeypatch.setattr(main, "console_session", fake_console_session)
     shutdown_mock = AsyncMock()
     monkeypatch.setattr(main, "shutdown_runtime", shutdown_mock)
     start_bot_mock = AsyncMock(side_effect=asyncio.CancelledError())
@@ -61,7 +69,13 @@ async def test_async_main_handles_initialization_failure(monkeypatch):
     monkeypatch.setattr(main, "initialize_ai_model", failure)
     shutdown_mock = AsyncMock()
     monkeypatch.setattr(main, "shutdown_runtime", shutdown_mock)
-    monkeypatch.setattr(main, "run_console", AsyncMock(return_value=None))
+    
+    # Mock console_session as a simple async context manager
+    @asynccontextmanager
+    async def fake_console_session(control):
+        yield control
+    
+    monkeypatch.setattr(main, "console_session", fake_console_session)
     monkeypatch.setattr(main, "start_bot", AsyncMock())
     main.model_state.available = False
     main.model_state.init_error = "fatal"

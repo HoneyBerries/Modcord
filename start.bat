@@ -1,28 +1,57 @@
 @echo off
+REM Change to the directory where this script is located (project root)
+cd /d %~dp0
 setlocal enabledelayedexpansion
+set "FOUND=0"
+set "PY_OK=0"
 
-REM Find the first activate.bat file in any subdirectory
+REM If already in a venv, skip venv logic and run bot
+if defined VIRTUAL_ENV (
+    set "VENV_DIR=%VIRTUAL_ENV%"
+    if exist "%VENV_DIR%\pyvenv.cfg" if exist "%VENV_DIR%\Scripts\python.exe" (
+        echo Using already-active virtual environment: %VIRTUAL_ENV%
+        echo Running bot...
+        python src\modcord\main.py
+        exit /b %ERRORLEVEL%
+    )
+)
+
+REM Search and try activate.bat scripts in Scripts dir with pyvenv.cfg and python.exe
 for /r %%F in (activate.bat) do (
-    set "ACTIVATE_PATH=%%F"
-    goto :found
+    for %%G in ("%%~dpF.") do set "SCRIPTS_DIR=%%~nxG"
+    if /I "!SCRIPTS_DIR!"=="Scripts" (
+        for %%H in ("%%~dpF..") do set "VENV_DIR=%%~fH"
+        pushd "!VENV_DIR!" >nul 2>&1
+        set "VENV_DIR=!CD!"
+        popd >nul 2>&1
+        if exist "!VENV_DIR!\pyvenv.cfg" if exist "!VENV_DIR!\Scripts\python.exe" (
+            echo Trying virtual environment: !VENV_DIR!
+            call "%%~fF"
+            python --version >nul 2>&1
+            if not errorlevel 1 (
+                set "FOUND=1"
+                echo Successfully activated: !VENV_DIR!
+                echo Running bot...
+                python src\modcord\main.py
+                exit /b %ERRORLEVEL%
+            )
+            echo Activation failed for: !VENV_DIR!
+        )
+    )
 )
 
-echo No virtual environment activate script found. Exiting.
-exit /b 1
-
-:found
-REM Get the virtual environment directory (two levels up)
-for %%A in ("%ACTIVATE_PATH%") do (
-    set "SCRIPTS_DIR=%%~dpA"
-)
-for %%B in ("%SCRIPTS_DIR%..\") do (
-    set "VENV_DIR=%%~fB"
-)
-
-echo Activating virtual environment: %VENV_DIR%
-
-REM Activate the environment
-call "%ACTIVATE_PATH%"
-
-REM Run your Python script
-python src\modcord\main.py
+if !FOUND! equ 0 (
+    echo No working Python virtual environment found.
+    set /p CREATEVENV="Would you like to create a new venv and install dependencies? (Y/N): "
+    if /i "!CREATEVENV!"=="Y" (
+        python -m venv venv
+        call venv\Scripts\activate.bat
+        pip install -r requirements.txt
+        echo Running bot...
+        python src\modcord\main.py
+        exit /b %ERRORLEVEL%
+    ) else (
+        echo Exiting.
+        exit /b 1
+    )
+}

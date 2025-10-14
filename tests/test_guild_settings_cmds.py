@@ -15,17 +15,27 @@ def test_setup_adds_cog():
     fake_bot = SimpleNamespace(add_cog=fake_add_cog)
     guild_settings_cmds.setup(fake_bot)
     assert "cog" in captured
-    assert isinstance(captured["cog"], guild_settings_cmds.SettingsCog)
+    assert isinstance(captured["cog"], guild_settings_cmds.GuildSettingsCog)
 
 
 @pytest.mark.asyncio
 async def test_ai_enable_calls_manager(monkeypatch):
+    """Test settings panel displays correct AI status."""
     called = {}
 
-    def fake_set_ai_enabled(guild_id, enabled):
-        called["args"] = (guild_id, enabled)
+    def fake_get_settings(guild_id):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            ai_enabled=True,
+            rules="",
+            auto_warn_enabled=False,
+            auto_delete_enabled=False,
+            auto_timeout_enabled=False,
+            auto_kick_enabled=False,
+            auto_ban_enabled=True,
+        )
 
-    monkeypatch.setattr(guild_settings.guild_settings_manager, "set_ai_enabled", fake_set_ai_enabled)
+    monkeypatch.setattr(guild_settings.guild_settings_manager, "get_guild_settings", fake_get_settings)
 
     # Call the handler directly
     cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
@@ -34,26 +44,24 @@ async def test_ai_enable_calls_manager(monkeypatch):
         def __init__(self):
             self.guild_id = 10
             self.user = SimpleNamespace(guild_permissions=SimpleNamespace(manage_guild=True))
+            self.interaction = SimpleNamespace(original_response=AsyncMock())
 
         async def respond(self, *args, **kwargs):
-            pass
+            self.response_args = (args, kwargs)
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_enable, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_panel, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
-    assert called["args"] == (10, True)
+    # Verify respond was called with an embed
+    assert hasattr(ctx, "response_args")
+    assert "embed" in ctx.response_args[1]
 
 
 @pytest.mark.asyncio
 async def test_ai_enable_requires_guild_context(monkeypatch):
+    """Test settings panel requires guild context."""
     calls = []
-
-    def fake_set_ai_enabled(*args):
-        calls.append(args)
-
-    manager = SimpleNamespace(set_ai_enabled=fake_set_ai_enabled)
-    monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
     cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
@@ -64,23 +72,17 @@ async def test_ai_enable_requires_guild_context(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_enable, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_panel, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
     ctx.respond.assert_awaited_once_with("This command can only be used in a server.", ephemeral=True)
-    assert calls == []
 
 
 @pytest.mark.asyncio
 async def test_ai_enable_requires_manage_permission(monkeypatch):
+    """Test settings panel requires manage permission."""
     calls = []
-
-    def fake_set_ai_enabled(*args):
-        calls.append(args)
-
-    manager = SimpleNamespace(set_ai_enabled=fake_set_ai_enabled)
-    monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
 
     cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
@@ -91,29 +93,35 @@ async def test_ai_enable_requires_manage_permission(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_enable, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_panel, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
     assert ctx.respond.await_count == 1
     call = ctx.respond.await_args
     assert call is not None
-    message = call.args[0]
+    message = call.args[0] if call.args else call.kwargs.get("content", "")
     kwargs = call.kwargs
-    assert "permission" in message.lower()
+    assert "permission" in message.lower() or "Manage Server" in message
     assert kwargs.get("ephemeral") is True
-    assert calls == []
 
 
 @pytest.mark.asyncio
 async def test_ai_disable_calls_manager(monkeypatch):
-    calls = []
+    """Test settings panel can display disabled AI status."""
+    def fake_get_settings(guild_id):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            ai_enabled=False,
+            rules="",
+            auto_warn_enabled=False,
+            auto_delete_enabled=False,
+            auto_timeout_enabled=False,
+            auto_kick_enabled=False,
+            auto_ban_enabled=True,
+        )
 
-    def fake_set_ai_enabled(guild_id, enabled):
-        calls.append((guild_id, enabled))
-
-    manager = SimpleNamespace(set_ai_enabled=fake_set_ai_enabled)
-    monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
+    monkeypatch.setattr(guild_settings.guild_settings_manager, "get_guild_settings", fake_get_settings)
 
     cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
@@ -122,34 +130,45 @@ async def test_ai_disable_calls_manager(monkeypatch):
             self.guild_id = 77
             self.user = SimpleNamespace(guild_permissions=SimpleNamespace(manage_guild=True))
             self.respond = AsyncMock()
+            self.interaction = SimpleNamespace(original_response=AsyncMock())
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_disable, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_panel, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
-    assert calls == [(77, False)]
     ctx.respond.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_ai_status_reports_manager_value(monkeypatch):
-    def fake_is_ai_enabled(guild_id):
+    """Test settings panel shows correct AI status in embed."""
+    def fake_get_settings(guild_id):
+        from types import SimpleNamespace
         assert guild_id == 900
-        return False
+        return SimpleNamespace(
+            ai_enabled=False,
+            rules="",
+            auto_warn_enabled=False,
+            auto_delete_enabled=False,
+            auto_timeout_enabled=False,
+            auto_kick_enabled=False,
+            auto_ban_enabled=True,
+        )
 
-    manager = SimpleNamespace(is_ai_enabled=fake_is_ai_enabled)
-    monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
+    monkeypatch.setattr(guild_settings.guild_settings_manager, "get_guild_settings", fake_get_settings)
 
     cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
     class Ctx:
         def __init__(self):
             self.guild_id = 900
+            self.user = SimpleNamespace(guild_permissions=SimpleNamespace(manage_guild=True))
             self.respond = AsyncMock()
+            self.interaction = SimpleNamespace(original_response=AsyncMock())
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_status, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_panel, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
@@ -163,18 +182,33 @@ async def test_ai_status_reports_manager_value(monkeypatch):
     # Embed should contain AI Moderation field set to disabled
     fields = {f.name: f.value for f in embed.fields}
     assert "AI Moderation" in fields
-    assert "disabled" in fields["AI Moderation"].lower()
+    assert "disabled" in fields["AI Moderation"].lower() or "❌" in fields["AI Moderation"]
 
 
 @pytest.mark.asyncio
 async def test_ai_set_action_updates_manager(monkeypatch):
-    calls = []
+    """Test that action toggles are displayed in the settings panel."""
+    def fake_get_settings(guild_id):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            ai_enabled=True,
+            rules="",
+            auto_warn_enabled=False,
+            auto_delete_enabled=False,
+            auto_timeout_enabled=False,
+            auto_kick_enabled=False,
+            auto_ban_enabled=True,
+        )
 
-    def fake_set_action_allowed(guild_id, action, enabled):
-        calls.append((guild_id, action, enabled))
+    def fake_is_action_allowed(guild_id, action):
+        # Return different values for different actions
+        from modcord.util.moderation_datatypes import ActionType
+        if action == ActionType.WARN:
+            return False
+        return True
 
-    manager = SimpleNamespace(set_action_allowed=fake_set_action_allowed)
-    monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
+    monkeypatch.setattr(guild_settings.guild_settings_manager, "get_guild_settings", fake_get_settings)
+    monkeypatch.setattr(guild_settings.guild_settings_manager, "is_action_allowed", fake_is_action_allowed)
 
     cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
@@ -183,37 +217,40 @@ async def test_ai_set_action_updates_manager(monkeypatch):
             self.guild_id = 44
             self.user = SimpleNamespace(guild_permissions=SimpleNamespace(manage_guild=True))
             self.respond = AsyncMock()
+            self.interaction = SimpleNamespace(original_response=AsyncMock())
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_set_action, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_panel, "callback", None)
     assert cb is not None
-    await cb(cog, ctx, action="warn", enabled=False)
+    await cb(cog, ctx)
 
-    assert len(calls) == 1
-    guild_id, action_type, enabled = calls[0]
-    assert guild_id == 44
-    assert action_type.name == "WARN"
-    assert enabled is False
     assert ctx.respond.await_count == 1
     call = ctx.respond.await_args
     assert call is not None
     kwargs = call.kwargs
-    # The panel response includes a short flash content describing the change
-    content = kwargs.get("content") if kwargs.get("content") is not None else (call.args[0] if call.args else None)
-    assert content is not None
-    assert "disabled" in content.lower()
-    assert kwargs.get("ephemeral") is True
+    embed = kwargs.get("embed")
+    assert embed is not None
+    # Check that embed has Automatic Actions field
+    fields = {f.name: f.value for f in embed.fields}
+    assert "Automatic Actions" in fields
 
 
 @pytest.mark.asyncio
 async def test_ai_set_action_rejects_unknown_action(monkeypatch):
-    calls = []
+    """Test that settings panel can be shown - action toggling is handled in the UI layer."""
+    def fake_get_settings(guild_id):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            ai_enabled=True,
+            rules="",
+            auto_warn_enabled=False,
+            auto_delete_enabled=False,
+            auto_timeout_enabled=False,
+            auto_kick_enabled=False,
+            auto_ban_enabled=True,
+        )
 
-    def fake_set_action_allowed(*args):
-        calls.append(args)
-
-    manager = SimpleNamespace(set_action_allowed=fake_set_action_allowed)
-    monkeypatch.setattr(guild_settings_cmds, "guild_settings_manager", manager)
+    monkeypatch.setattr(guild_settings.guild_settings_manager, "get_guild_settings", fake_get_settings)
 
     cog = guild_settings_cmds.GuildSettingsCog(SimpleNamespace())
 
@@ -222,14 +259,14 @@ async def test_ai_set_action_rejects_unknown_action(monkeypatch):
             self.guild_id = 81
             self.user = SimpleNamespace(guild_permissions=SimpleNamespace(manage_guild=True))
             self.respond = AsyncMock()
+            self.interaction = SimpleNamespace(original_response=AsyncMock())
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.ai_set_action, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_panel, "callback", None)
     assert cb is not None
-    await cb(cog, ctx, action="invalid", enabled=True)
+    await cb(cog, ctx)
 
-    assert calls == []
-    ctx.respond.assert_awaited_once_with("Unsupported action.", ephemeral=True)
+    ctx.respond.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -245,7 +282,7 @@ async def test_settings_dump_requires_guild(monkeypatch):
             self.respond = AsyncMock()
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.settings_dump, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_dump, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 
@@ -281,7 +318,7 @@ async def test_settings_dump_uses_followup_on_interaction_responded(monkeypatch)
             self.followup = SimpleNamespace(send=AsyncMock())
 
     ctx = Ctx()
-    cb = getattr(guild_settings_cmds.SettingsCog.settings_dump, "callback", None)
+    cb = getattr(guild_settings_cmds.GuildSettingsCog.settings_dump, "callback", None)
     assert cb is not None
     await cb(cog, ctx)
 

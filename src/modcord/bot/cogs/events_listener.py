@@ -68,8 +68,7 @@ class EventsListenerCog(commands.Cog):
             activity_name = "over your server while you're asleep!"
         else:
             status = discord.Status.idle
-            reason = model_state.init_error or "AI offline"
-            activity_name = f"AI offline – {reason}"[:128]
+            activity_name = f"your server drunkenly because the AI is tired."
 
         await self.bot.change_presence(
             status=status,
