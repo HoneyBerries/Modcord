@@ -119,7 +119,7 @@ class MessageListenerCog(commands.Cog):
         if not should_process or actual_content is None:
             return
 
-        logger.debug(f"Processing message from {message.author}: {message.content[:50]}")
+        logger.debug(f"Received message from {message.author}: {message.content[:50]}")
 
         # Refresh rules cache if this was posted in a rules channel
         await moderation_helper.refresh_rules_cache_if_rules_channel(self, message.channel)

@@ -170,6 +170,7 @@ class ModerationProcessor:
         }
         user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
         resp = await self.submit_inference([system_msg, user_msg])
+        logger.debug("Raw AI batch response for channel %s: %s", batch.channel_id, resp)
 
         parsed_actions = await moderation_parsing.parse_batch_actions(resp, batch.channel_id)
 

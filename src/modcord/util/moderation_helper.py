@@ -58,28 +58,17 @@ async def process_message_batch(self, batch: ModerationBatch) -> None:
             )
             return
 
-        # Process the batch with AI
-        
-        resp = await moderation_processor.submit_inference([
-            {"role": "system", "content": await moderation_processor.inference_processor.get_system_prompt(server_rules)},
-            {"role": "user", "content": json.dumps({
-                "channel_id": str(batch.channel_id),
-                "message_count": len(batch.messages),
-                "unique_user_count": len(set(m.user_id for m in batch.messages)),
-                "window_start": min((str(m.timestamp) for m in batch.messages if m.timestamp), default=None),
-                "window_end": max((str(m.timestamp) for m in batch.messages if m.timestamp), default=None),
-                "messages": batch.to_model_payload(),
-                "users": batch.to_user_payload(),
-            }, ensure_ascii=False)}
-        ])
-        logger.debug(f"Raw AI output for channel {channel_id}: {resp}")
-
-
         actions = await moderation_processor.get_batch_moderation_actions(
             batch=batch,
             server_rules=server_rules,
         )
-        logger.debug(f"AI returned {len(actions)} actions for channel {channel_id}")
+        actionable_actions = [action for action in actions if action.action is not ActionType.NULL]
+        logger.debug(
+            "AI returned %d actionable actions (total entries=%d) for channel %s",
+            len(actionable_actions),
+            len(actions),
+            channel_id,
+        )
 
         # Build lookup for message IDs per user to guard against cross-batch actions
         message_ids_by_user: dict[str, set[str]] = {}
@@ -88,7 +77,7 @@ async def process_message_batch(self, batch: ModerationBatch) -> None:
             message_ids_by_user.setdefault(user_key, set()).add(str(message.message_id))
 
         # Apply each action
-        for action_data in actions:
+        for action_data in actionable_actions:
             allowed_ids = message_ids_by_user.get(action_data.user_id, set())
             if action_data.message_ids:
                 filtered_ids = [mid for mid in action_data.message_ids if mid in allowed_ids]
