@@ -169,7 +169,7 @@ class InferenceProcessor:
                 from vllm import SamplingParams
                 from vllm.engine.async_llm_engine import AsyncLLMEngine
                 from vllm.engine.arg_utils import AsyncEngineArgs
-            except ImportError as exc:  # noqa: PERF203
+            except ImportError as exc:
                 self.state.available = False
                 self.state.init_error = f"AI libraries not available: {exc}"
                 logger.error("[AI MODEL] vLLM imports failed: %s", exc)
@@ -242,7 +242,7 @@ class InferenceProcessor:
         Returns the system prompt with server rules injected.
 
         Args:
-            server_rules: Server rules to inject into the {SERVER_RULES} placeholder.
+            server_rules: Server rules to inject into the <|SERVER_RULES|> placeholder.
 
         Returns:
             Formatted system prompt string with rules inserted.
@@ -252,9 +252,9 @@ class InferenceProcessor:
         template_str = str(template or "")
         rules_str = str(server_rules or "")
         
-        # Simple string replacement - avoids .format() issues with JSON curly braces
-        if "{SERVER_RULES}" in template_str:
-            return template_str.replace("{SERVER_RULES}", rules_str)
+        # Simple string replacement - supports <|SERVER_RULES|> placeholder format
+        if "<|SERVER_RULES|>" in template_str:
+            return template_str.replace("<|SERVER_RULES|>", rules_str)
         
         # Fallback: append rules if no placeholder found
         if rules_str:

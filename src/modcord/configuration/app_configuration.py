@@ -65,7 +65,7 @@ class AppConfig:
         except FileNotFoundError:
             logger.error("Config file %s not found.", self.config_path)
             return {}
-        except Exception as exc:  # noqa: BLE001 - log and fall back to empty config
+        except Exception as exc:
             logger.error("Failed to load config %s: %s", self.config_path, exc, exc_info=True)
             return {}
 

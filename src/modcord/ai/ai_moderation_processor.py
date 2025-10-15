@@ -50,10 +50,11 @@ class ModerationProcessor:
         if not ok:
             return f"null: {reason}"
 
-        prompt = self.messages_to_prompt(messages)
+        prompt = await self.messages_to_prompt(messages)
+        logger.debug("Final prompt sent to model (first 500 chars): %s", repr(prompt[:500]))
         try:
             results = await self.inference_processor.generate_text([prompt])
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.error("Inference error: %s", exc, exc_info=True)
             return "null: inference error"
 
@@ -81,7 +82,7 @@ class ModerationProcessor:
             await self.inference_processor.generate_text(["Warmup prompt: prime runtime."])
             self.inference_processor.warmup_completed = True
             return True
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.debug("Warmup skipped: %s", exc)
             return False
 
@@ -97,15 +98,23 @@ class ModerationProcessor:
         return (True, "") if ready else (False, state.init_error or "AI model unavailable")
 
     # ======== Helpers: Prompt Construction ========
-    def messages_to_prompt(self, messages: List[Dict[str, Any]]) -> str:
-        """Convert message dicts to a single prompt string."""
-        role_tag = {"system": "[SYSTEM]", "assistant": "[ASSISTANT]", "user": "[USER]"}
-        parts: List[str] = []
-        for message in messages:
-            role = role_tag.get((message.get("role") or "user").lower(), "[USER]")
-            content = str(message.get("content") or "").strip()
-            parts.append(f"{role}\n{content}")
-        return "\n\n".join(parts).strip()
+    async def messages_to_prompt(self, messages: List[Dict[str, Any]]) -> str:
+        """Convert message dicts to a prompt string using the tokenizer's chat template.
+        
+        Uses Qwen3's official chat template for proper message formatting.
+        """
+        engine = self.inference_processor.engine
+        if not engine or not hasattr(engine, 'get_tokenizer'):
+            logger.error("Engine or tokenizer not available for chat template")
+            raise RuntimeError("Model engine not properly initialized")
+        
+        tokenizer = await engine.get_tokenizer()
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        return prompt.strip()
 
     def _resolve_server_rules(self, server_rules: str = "") -> str:
         """Pick guild-specific rules when provided, otherwise fall back to global defaults."""
@@ -120,6 +129,12 @@ class ModerationProcessor:
         """Compose system+user messages from JSON payload and submit inference."""
         merged_rules = self._resolve_server_rules(server_rules)
         system_prompt = await self.inference_processor.get_system_prompt(merged_rules)
+
+        # Debug logging to verify system prompt is properly injected
+        logger.debug("System prompt length: %d chars, contains placeholder: %s, contains server rules: %s",
+            len(system_prompt),
+            "<|SERVER_RULES|>" in system_prompt,
+            "No hate speech" in system_prompt or "discrimination" in system_prompt)
 
         messages = [
             {"role": "system", "content": system_prompt},

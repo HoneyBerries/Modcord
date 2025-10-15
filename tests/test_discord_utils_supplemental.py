@@ -75,7 +75,7 @@ class FakeChannel:
     def add_message(self, message: object) -> None:
         self._messages.append(message)
 
-    async def history(self, limit: int = 50, after=None):  # noqa: ANN001 - signature mirrors discord
+    async def history(self, limit: int = 50, after=None):
         if self._history_error == "forbidden":
             raise discord_utils.discord.Forbidden(None, "no access")
         if self._history_error == "error":
