@@ -33,8 +33,8 @@ class FakeAuthor:
 
 
 class FakeMessage:
-    def __init__(self) -> None:
-        self.id = 101
+    def __init__(self, message_id: int = 101) -> None:
+        self.id = message_id
         self.guild = FakeGuild()
         self.author = FakeAuthor()
         self.channel = FakeChannel()
@@ -206,3 +206,47 @@ async def test_apply_action_decision_delete_returns_immediately(monkeypatch):
     safe_delete.assert_awaited_once()
     delete_messages.assert_not_called()
     assert pivot_message.channel.sent_embeds == []
+
+
+@pytest.mark.asyncio
+async def test_apply_action_decision_uses_cached_messages(monkeypatch):
+    pivot_message = FakeMessage(200)
+    extra_message = FakeMessage(201)
+
+    pivot = ModerationMessage(
+        message_id=str(pivot_message.id),
+        user_id=str(pivot_message.author.id),
+        username="user",
+        content="text",
+        timestamp="2024-01-01T00:00:00Z",
+        guild_id=1,
+        channel_id=10,
+        discord_message=cast(discord.Message, pivot_message),
+    )
+    action = ActionData(
+        user_id=str(pivot_message.author.id),
+        action=ActionType.DELETE,
+        reason="Delete",
+        message_ids=[str(extra_message.id)],
+    )
+    bot_user = cast(discord.ClientUser, SimpleNamespace())
+    bot_client = cast(discord.Client, SimpleNamespace())
+
+    safe_delete = AsyncMock(return_value=True)
+    delete_messages = AsyncMock(return_value=0)
+
+    with patch.object(discord_utils, "safe_delete_message", safe_delete), \
+        patch.object(discord_utils, "delete_messages_by_ids", delete_messages):
+        result = await discord_utils.apply_action_decision(
+            action,
+            pivot,
+            bot_user,
+            bot_client,
+            message_lookup={str(extra_message.id): cast(discord.Message, extra_message)},
+        )
+
+    assert result is True
+    assert safe_delete.await_count == 2
+    # Second deletion should target the cached extra message
+    assert safe_delete.await_args_list[1].args[0] is extra_message
+    delete_messages.assert_not_called()

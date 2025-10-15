@@ -178,6 +178,8 @@ async def test_apply_batch_action_filters_invalid_messages(monkeypatch, fake_set
     assert await_args is not None
     called_action = await_args.kwargs["action"]
     assert called_action.message_ids == ["5", "missing"]
+    lookup = await_args.kwargs["message_lookup"]
+    assert "5" in lookup
 
 
 @pytest.mark.asyncio

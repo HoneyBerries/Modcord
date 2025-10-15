@@ -9,7 +9,7 @@ All logic here should be Discord-specific and stateless, suitable for use by hig
 
 
 import datetime
-from typing import Union
+from typing import Mapping, Union
 
 import discord
 
@@ -561,6 +561,8 @@ async def apply_action_decision(
     pivot: ModerationMessage,
     bot_user: discord.ClientUser,
     bot_client: discord.Client,
+    *,
+    message_lookup: Mapping[str, discord.Message] | None = None,
 ) -> bool:
     """Execute a moderation decision produced by the AI pipeline.
 
@@ -593,22 +595,39 @@ async def apply_action_decision(
         logger.debug("Skipping action %s; missing guild or non-member author", action.action.value)
         return False
     channel = discord_message.channel
-    logger.info(
+    logger.debug(
         "Executing %s on user %s (%s) for reason '%s'", action.action.value, author.display_name, author.id, action.reason
     )
     try:
         await safe_delete_message(discord_message)
     except Exception as exc:
         logger.warning("Failed to delete pivot message %s: %s", discord_message.id, exc)
-    message_ids = {mid for mid in (action.message_ids or []) if mid}
+    raw_ids = [mid for mid in (action.message_ids or []) if mid]
     pivot_id = str(discord_message.id)
-    message_ids.discard(pivot_id)
-    if message_ids:
-        try:
-            deleted_count = await delete_messages_by_ids(guild, list(message_ids))
-            logger.debug("Deleted %s referenced messages for user %s", deleted_count, author.display_name)
-        except Exception as exc:
-            logger.error("Failed to delete referenced messages %s: %s", sorted(message_ids), exc)
+    filtered_ids = [mid for mid in raw_ids if mid != pivot_id]
+    if filtered_ids:
+        cached_messages = message_lookup or {}
+        delete_queue: list[str] = []
+        deleted_total = 0
+        for mid in filtered_ids:
+            cached = cached_messages.get(mid)
+            if cached is None:
+                delete_queue.append(mid)
+                continue
+            if await safe_delete_message(cached):
+                deleted_total += 1
+            else:
+                delete_queue.append(mid)
+
+        if delete_queue:
+            try:
+                deleted_total += await delete_messages_by_ids(guild, delete_queue)
+            except Exception as exc:
+                logger.error("Failed to delete referenced messages %s: %s", sorted(delete_queue), exc)
+            else:
+                logger.debug("Deleted %s referenced messages for user %s", deleted_total, author.display_name)
+        else:
+            logger.debug("Deleted %s referenced messages for user %s", deleted_total, author.display_name)
     if action.action is ActionType.DELETE:
         return True
     embed: discord.Embed | None = None

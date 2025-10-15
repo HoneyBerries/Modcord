@@ -203,11 +203,18 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationBatch) -
                 logger.warning("Cannot delete messages in channel %s; missing manage_messages", base_channel.id)
                 return False
 
+        message_lookup = {
+            str(msg.message_id).strip(): msg.discord_message
+            for msg in batch.messages
+            if msg.discord_message is not None
+        }
+
         return await discord_utils.apply_action_decision(
             action=action,
             pivot=pivot_entry,
             bot_user=self.bot.user,
             bot_client=self.bot,
+            message_lookup=message_lookup,
         )
 
     except Exception as e:
