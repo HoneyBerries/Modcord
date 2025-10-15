@@ -2,6 +2,9 @@
 Fully async, self-contained vLLM-backed AI model module for moderation.
 Includes model initialization, inference, warmup, and JSON parsing.
 
+This module now uses vLLM's native AsyncLLMEngine for fully async inference
+without any synchronous wrappers or thread pools.
+
 IMPORTANT: This module uses lazy imports for AI libraries (torch, vllm, transformers)
 to avoid loading heavy dependencies when AI features are disabled. The libraries are
 only imported inside functions when AI is actually enabled in the configuration.
@@ -12,14 +15,15 @@ from __future__ import annotations
 
 import asyncio
 import gc
-import os
+import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 # Use TYPE_CHECKING to avoid runtime imports of AI libraries
 # These imports are only for type hints and will not execute at runtime
 if TYPE_CHECKING:
     import torch
-    from vllm import LLM, SamplingParams
+    from vllm.engine.async_llm_engine import AsyncLLMEngine
+    from vllm import SamplingParams
     from vllm.sampling_params import GuidedDecodingParams
 
 import modcord.configuration.app_configuration as cfg
@@ -42,22 +46,20 @@ class ModelState:
 class InferenceProcessor:
     """Manage lifecycle and inference for the vLLM-backed moderation model.
 
-    This class handles initialization, configuration, and synchronous-to-
-    asynchronous bridging for the vLLM model. Consumers should call
-    ``init_model`` before running inference and use ``generate_text`` to
-    perform generation from async code.
+    This class handles async initialization, configuration, and inference using
+    vLLM's native AsyncLLMEngine. All operations are fully async without thread pools.
+    Consumers should call ``init_model`` before running inference and use 
+    ``generate_text`` to perform batch generation from async code.
     """
 
     def __init__(self) -> None:
         """Instantiate the inference processor with default sampling configuration."""
-        self.llm: Optional[Any] = None  # vllm.LLM when loaded
+        self.engine: Optional[Any] = None  # AsyncLLMEngine when loaded
         self.sampling_params: Optional[Any] = None  # vllm.SamplingParams when loaded
         self.base_system_prompt: Optional[str] = None
         self.state = ModelState()
         self.init_lock = asyncio.Lock()
         self.warmup_completed: bool = False
-        self.guided_backend: Optional[str] = None
-        self._guided_grammar: Optional[str] = None
 
     def _build_structured_outputs(self) -> Any:  # Returns StructuredOutputsParams
         """Construct the structured outputs configuration for JSON schema enforcement."""
@@ -73,7 +75,7 @@ class InferenceProcessor:
 
     # ======== Model Initialization ========
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
-        """Load the vLLM model and return its handles along with any initialization error.
+        """Load the vLLM AsyncLLMEngine and return its handles along with any initialization error.
 
         Parameters
         ----------
@@ -83,17 +85,20 @@ class InferenceProcessor:
         Returns
         -------
         tuple[Optional[Any], Optional[Any], Optional[str]]
-            Model instance, sampling parameters, and an initialization error if one occurred.
+            Engine instance, sampling parameters, and an initialization error if one occurred.
         """
         async with self.init_lock:
-            if self.state.available and self.llm is not None and self.sampling_params is not None:
-                return self.llm, self.sampling_params, self.base_system_prompt
+            # Return cached engine if already initialized
+            if self.state.available and self.engine is not None and self.sampling_params is not None:
+                return self.engine, self.sampling_params, self.base_system_prompt
 
+            # Return early if initialization previously failed
             if self.state.init_started and not self.state.available and self.state.init_error:
-                return self.llm, self.sampling_params, self.base_system_prompt
+                return self.engine, self.sampling_params, self.base_system_prompt
 
             self.state.init_started = True
 
+            # Load and validate configuration
             base_configuration = cfg.app_config.reload()
             if not base_configuration:
                 logger.error("[AI MODEL] Configuration is empty; cannot initialize AI model.")
@@ -108,6 +113,7 @@ class InferenceProcessor:
             vram_percentage = ai_configuration.get("vram_percentage", 0.5)
             model_identifier = model or ai_configuration.get("model_id")
 
+            # Extract sampling and model configuration knobs
             knobs = ai_configuration.get("knobs", {})
             dtype = knobs.get("dtype", "auto")
             max_new_tokens = knobs.get("max_new_tokens", 256)
@@ -145,26 +151,30 @@ class InferenceProcessor:
                 self.state.init_error = "missing model id"
                 return None, None, self.base_system_prompt
 
-            # Import AI libraries only when AI is enabled
+            # Lazy import AI libraries only when AI is enabled
             try:
                 import torch
-                from vllm import LLM, SamplingParams
+                from vllm.engine.async_llm_engine import AsyncLLMEngine
+                from vllm.engine.arg_utils import AsyncEngineArgs
+                from vllm import SamplingParams
             except ImportError as e:
                 logger.error("[AI MODEL] Failed to import AI libraries: %s", e, exc_info=True)
                 self.state.available = False
                 self.state.init_error = f"AI libraries not available: {e}"
                 return None, None, self.base_system_prompt
 
+            # Check CUDA availability and configure tensor parallelism
             cuda_available = torch.cuda.is_available()
-            tp: int = torch.cuda.device_count() if cuda_available else 0
+            tp: int = torch.cuda.device_count() if cuda_available else 1
 
             if is_gpu_allowed and not cuda_available:
                 logger.warning("[AI MODEL] GPU allowed but CUDA not available. Using CPU.")
 
             try:
+                # Configure GPU memory utilization based on availability
                 gpu_mem_util = vram_percentage if is_gpu_allowed and cuda_available else 0.0
                 logger.info(
-                    "[AI MODEL] Loading vLLM model '%s' (dtype=%s, tp=%s, gpu_mem=%s)",
+                    "[AI MODEL] Loading AsyncLLMEngine for model '%s' (dtype=%s, tp=%s, gpu_mem=%s)",
                     model_identifier,
                     dtype,
                     tp,
@@ -177,28 +187,29 @@ class InferenceProcessor:
                     top_p,
                 )
 
-                def build_llm() -> Any:  # Returns LLM
-                    return LLM(
-                        model=model_identifier,
-                        dtype=dtype,
-                        gpu_memory_utilization=gpu_mem_util,
-                        max_model_len=max_model_length,
-                        tensor_parallel_size=tp,
-                    )
+                # Create AsyncEngineArgs with all configuration parameters
+                engine_args = AsyncEngineArgs(
+                    model=model_identifier,
+                    dtype=dtype,
+                    gpu_memory_utilization=gpu_mem_util,
+                    max_model_len=max_model_length,
+                    tensor_parallel_size=tp,
+                    trust_remote_code=True,  # Often needed for custom models
+                    enforce_eager=False,  # Allow CUDA graphs for better performance
+                )
 
-                self.llm = await asyncio.to_thread(build_llm)
+                # Initialize AsyncLLMEngine from engine args (fully async, no blocking)
+                logger.info("[AI MODEL] Initializing AsyncLLMEngine...")
+                self.engine = await AsyncLLMEngine.from_engine_args(engine_args)
 
+                # Configure sampling parameters with structured outputs for JSON schema
                 # For Qwen3-Thinking models, we rely on prompt engineering + parsing
                 # to handle reasoning (up to 256 tokens) followed by JSON output.
                 # 
                 # NOTE: The 256-token reasoning limit is enforced via:
                 # 1. System prompt instruction (soft limit - model should follow)
-                # 2. max_tokens=512 in SamplingParams (hard limit on total output)
-                #    This allows ~256 tokens for reasoning + ~256 for JSON output
-                #
-                # For a hard per-phase limit, you would need vllm serve with:
-                #   --enable-reasoning --max-reasoning-tokens 256
-                # But that's not available with the offline LLM API.
+                # 2. max_tokens in SamplingParams (hard limit on total output)
+                #    This allows for reasoning + JSON output within the limit
                 #
                 # Structured outputs via JSON schema will help ensure valid JSON
                 structured_outputs = self._build_structured_outputs()
@@ -216,27 +227,27 @@ class InferenceProcessor:
 
                 self.state.available = True
                 self.state.init_error = None
-                logger.info("[AI MODEL] vLLM initialized successfully.")
-                return self.llm, self.sampling_params, self.base_system_prompt
+                logger.info("[AI MODEL] AsyncLLMEngine initialized successfully.")
+                return self.engine, self.sampling_params, self.base_system_prompt
 
             except Exception as e:
                 self.state.available = False
                 self.state.init_error = f"Initialization failed: {e}"
-                logger.error(f"[AI MODEL] Failed to initialize vLLM model: {e}", exc_info=True)
+                logger.error(f"[AI MODEL] Failed to initialize AsyncLLMEngine: {e}", exc_info=True)
                 return None, None, self.base_system_prompt
 
     # ======== Model Accessors ========
     async def get_model(self) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
-        """Return the cached vLLM model and sampling parameters, if initialization succeeded.
+        """Return the cached AsyncLLMEngine and sampling parameters, if initialization succeeded.
 
         Returns
         -------
         tuple[Optional[Any], Optional[Any], Optional[str]]
-            Cached model, sampling configuration, and last recorded error.
+            Cached engine, sampling configuration, and last recorded error.
         """
-        if self.llm is None and not self.state.init_started:
+        if self.engine is None and not self.state.init_started:
             await self.init_model()
-        return self.llm, self.sampling_params, self.base_system_prompt
+        return self.engine, self.sampling_params, self.base_system_prompt
 
     async def is_model_available(self) -> bool:
         """Return ``True`` when the model has been initialized and is ready for inference."""
@@ -264,36 +275,63 @@ class InferenceProcessor:
         return cfg.app_config.format_system_prompt(server_rules, template_override=template)
 
     # ======== Inference Helpers ========
-    def sync_generate(self, prompts: List[str]) -> List[str]:
-        """Synchronous wrapper around the model's generate API.
-
-        This runs in the calling thread and is intended to be invoked from
-        a threadpool via ``asyncio.to_thread`` by async callers.
-        """
-        if self.llm is None or self.sampling_params is None:
-            raise RuntimeError("Model not initialized")
-
-        outputs = self.llm.generate(prompts, self.sampling_params)
-
-        logger.debug("[AI MODEL] Generated outputs: %s", [o.outputs[0].text.strip() if o.outputs else "" for o in outputs])
-
-        results = []
-        for out in outputs:
-            results.append(out.outputs[0].text.strip() if out.outputs else "")
-        return results
-
     async def generate_text(self, prompts: List[str]) -> List[str]:
-        """Asynchronously generate text for the supplied prompts.
+        """Asynchronously generate text for the supplied prompts using AsyncLLMEngine.
 
-        Ensures the model is initialized and delegates heavy work to a
-        threadpool so callers need not block the event loop.
+        This method uses native async generation without thread pools. It submits
+        all prompts concurrently to the engine and collects final outputs.
+
+        Parameters
+        ----------
+        prompts:
+            List of prompt strings to generate completions for.
+
+        Returns
+        -------
+        list[str]
+            Generated text completions, one per prompt in the same order.
         """
-        model, params, _ = await self.get_model()
-        if model is None or params is None:
+        # Ensure model is initialized
+        engine, params, _ = await self.get_model()
+        if engine is None or params is None:
             reason = self.state.init_error or "AI model unavailable"
             raise RuntimeError(reason)
 
-        return await asyncio.to_thread(self.sync_generate, prompts)
+        # Submit all prompts to the engine concurrently and collect results
+        results: List[str] = []
+        
+        # Create async tasks for each prompt generation
+        async def generate_single(prompt: str, request_id: str) -> str:
+            """Generate completion for a single prompt and extract final text."""
+            final_output = None
+            
+            # AsyncLLMEngine.generate returns an async generator that yields results
+            async for request_output in engine.generate(
+                prompt=prompt,
+                sampling_params=params,
+                request_id=request_id,
+            ):
+                # Keep updating with latest output until generation completes
+                final_output = request_output
+            
+            # Extract text from the final output
+            if final_output and final_output.outputs:
+                text = final_output.outputs[0].text.strip()
+                logger.debug("[AI MODEL] Generated output for request %s: %s", request_id, text[:100])
+                return text
+            return ""
+        
+        # Generate unique request IDs for each prompt
+        tasks = [
+            generate_single(prompt, f"moderation-{uuid.uuid4().hex}")
+            for prompt in prompts
+        ]
+        
+        # Run all generations concurrently
+        results = await asyncio.gather(*tasks)
+        
+        logger.debug("[AI MODEL] Generated %d outputs", len(results))
+        return results
 
     # ======== State Accessors ========
     def get_model_state(self) -> ModelState:
@@ -304,71 +342,62 @@ class InferenceProcessor:
         return self.state
 
     async def unload_model(self) -> None:
-        """Release the underlying vLLM engine and reset state flags."""
-
+        """Release the underlying AsyncLLMEngine and reset state flags.
+        
+        This method gracefully shuts down the async engine and clears GPU memory.
+        """
         async with self.init_lock:
-            llm = self.llm
-            self.llm = None
+            engine = self.engine
+            self.engine = None
             self.sampling_params = None
             self.state.available = False
             self.state.init_started = False
             self.state.init_error = None
             self.warmup_completed = False
-            self.guided_backend = None
-            self._guided_grammar = None
 
-        if llm is not None:
+        # Shut down the AsyncLLMEngine if it exists
+        if engine is not None:
             try:
-                engine = getattr(llm, "llm_engine", None)
-                if engine is not None:
-                    structured_manager = getattr(engine, "structured_output_manager", None)
-                    if structured_manager is not None and hasattr(structured_manager, "clear_backend"):
-                        try:
-                            structured_manager.clear_backend()
-                        except Exception as exc:
-                            logger.debug(
-                                "[AI MODEL] Failed to clear structured output backend during unload: %s",
-                                exc,
-                                exc_info=True,
-                            )
-                    if hasattr(engine, "shutdown"):
-                        await asyncio.to_thread(engine.shutdown)
-                if engine is not None:
-                    try:
-                        setattr(llm, "llm_engine", None)
-                    except Exception:
-                        pass
-            except Exception as exc:  # noqa: BLE001 - best effort cleanup
-                logger.warning("[AI MODEL] Error while shutting down vLLM engine: %s", exc, exc_info=True)
+                # AsyncLLMEngine has an async shutdown method
+                if hasattr(engine, 'shutdown'):
+                    await engine.shutdown()
+                    logger.info("[AI MODEL] AsyncLLMEngine shut down successfully")
+            except Exception as exc:
+                logger.warning("[AI MODEL] Error while shutting down AsyncLLMEngine: %s", exc, exc_info=True)
             finally:
-                llm = None
+                engine = None
 
+        # Clear CUDA cache if torch is available
         try:
-            # Import torch only if needed for cleanup
             import torch
 
-            if torch.cuda.is_available():  # pragma: no branch - defensive cleanup
+            if torch.cuda.is_available():
                 torch.cuda.synchronize()
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
+                logger.debug("[AI MODEL] CUDA cache cleared")
         except ImportError:
             # torch not available, skip CUDA cleanup
             pass
-        except Exception as exc:  # noqa: BLE001 - ignore cleanup failures
+        except Exception as exc:
             logger.debug("[AI MODEL] Failed to clear CUDA cache during unload: %s", exc, exc_info=True)
 
+        # Clean up distributed processes if needed
         try:
             import torch.distributed as dist
 
             if dist.is_available() and dist.is_initialized():
                 dist.destroy_process_group(dist.group.WORLD)
+                logger.debug("[AI MODEL] Distributed process group destroyed")
         except ImportError:
             # torch.distributed not available, skip cleanup
             pass
-        except Exception as exc:  # noqa: BLE001 - optional cleanup
+        except Exception as exc:
             logger.warning("[AI MODEL] torch.distributed cleanup failed during unload: %s", exc, exc_info=True)
 
+        # Force garbage collection to free memory
         gc.collect()
+        logger.info("[AI MODEL] Model unloaded and memory released")
 
 
 inference_processor = InferenceProcessor()

@@ -103,70 +103,16 @@ class ModerationProcessor:
                 logger.info("Skipping warmup; model unavailable (%s)", self.inference_processor.state.init_error or "no error")
                 return False
 
-            # Trigger a small dummy generation to force vLLM to capture CUDA graphs / do first-time work.
+            # Trigger a small dummy generation to force AsyncLLMEngine to warm up
             try:
                 dummy_prompt = "Warmup prompt: perform a short, harmless generation to prime runtime."
-                # Use engine.sync_generate via thread to avoid blocking event loop if it's a blocking function.
+                # Use the async generate_text method directly (fully async, no thread pools)
                 try:
-                    await asyncio.to_thread(self.inference_processor.sync_generate, [dummy_prompt])
-                except AttributeError:
-                    # If engine does not expose sync_generate, fall back to engine.generate_text or submit_inference
-                    if hasattr(self.inference_processor, "generate_text"):
-                        try:
-                            results = await self.inference_processor.generate_text([dummy_prompt])
-                            logger.debug("warmup: generate_text returned %s", bool(results))
-                        except Exception as gen_exc:
-                            logger.warning("warmup: generate_text failed: %s", gen_exc, exc_info=True)
-                            return False
-                    else:
-                        # Last resort: call submit_inference with simple system/user wrapper
-                        try:
-                            system_prompt = await self.inference_processor.get_system_prompt("")
-                            system_msg = {"role": "system", "content": system_prompt}
-                            import datetime
-                            now_iso = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-                            dummy_payload = {
-                                "channel_id": "warmup",
-                                "message_count": 1,
-                                "unique_user_count": 1,
-                                "window_start": now_iso,
-                                "window_end": now_iso,
-                                "messages": [
-                                    {
-                                        "user_id": "warmup_user",
-                                        "username": "warmup",
-                                        "message_id": "warmup-0",
-                                        "timestamp": now_iso,
-                                        "content": dummy_prompt,
-                                        "image_summary": None,
-                                        "role": "user",
-                                    }
-                                ],
-                                "users": [
-                                    {
-                                        "user_id": "warmup_user",
-                                        "username": "warmup",
-                                        "message_count": 1,
-                                        "first_message_timestamp": now_iso,
-                                        "latest_message_timestamp": now_iso,
-                                        "messages": [
-                                            {
-                                                "message_id": "warmup-0",
-                                                "timestamp": now_iso,
-                                                "content": dummy_prompt,
-                                                "image_summary": None,
-                                                "role": "user",
-                                            }
-                                        ],
-                                    }
-                                ],
-                            }
-                            user_msg = {"role": "user", "content": json.dumps(dummy_payload, ensure_ascii=False)}
-                            resp = await self.submit_inference([system_msg, user_msg])
-                            logger.debug("warmup: submit_inference returned length %d", len(resp) if isinstance(resp, str) else 0)
-                        except Exception as si_exc:
-                            logger.warning("warmup: fallback submit_inference failed: %s", si_exc, exc_info=True)
-                            return False
+                    results = await self.inference_processor.generate_text([dummy_prompt])
+                    logger.debug("warmup: generate_text returned %s", bool(results))
+                except Exception as gen_exc:
+                    logger.warning("warmup: generate_text failed: %s", gen_exc, exc_info=True)
+                    return False
 
                 # If we reached here, warmup was attempted successfully
                 self.inference_processor.warmup_completed = True
@@ -228,7 +174,7 @@ class ModerationProcessor:
 
         if (
             not self.inference_processor.state.available
-            or self.inference_processor.llm is None
+            or self.inference_processor.engine is None
             or self.inference_processor.sampling_params is None
         ):
             reason = self.inference_processor.state.init_error or "AI model unavailable"
@@ -467,10 +413,8 @@ class ModerationProcessor:
                 )
 
                 try:
-                    if hasattr(self.inference_processor, "generate_text"):
-                        results = await self.inference_processor.generate_text(prompts)  # type: ignore[arg-type]
-                    else:
-                        results = await asyncio.to_thread(self.inference_processor.sync_generate, prompts)
+                    # Use the fully async generate_text method (no thread pools needed)
+                    results = await self.inference_processor.generate_text(prompts)  # type: ignore[arg-type]
                 except Exception as exc:  # noqa: BLE001
                     for fut in futures:
                         if not fut.done():

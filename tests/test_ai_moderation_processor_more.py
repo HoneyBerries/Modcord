@@ -12,7 +12,7 @@ import modcord.util.moderation_parsing as moderation_parsing
 class FakeEngine:
     def __init__(self):
         self.state = SimpleNamespace(init_started=True, available=True, init_error=None)
-        self.llm = object()
+        self.engine = object()
         self.sampling_params = {}
         self.warmup_completed = False
 

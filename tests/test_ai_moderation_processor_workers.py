@@ -22,7 +22,7 @@ class DummyState:
 class DummyEngine:
     def __init__(self) -> None:
         self.state = DummyState()
-        self.llm = object()
+        self.engine = object()
         self.sampling_params = object()
         self.warmup_completed = False
 
@@ -31,7 +31,7 @@ class DummyEngine:
         return True
 
     async def get_model(self):  # pragma: no cover - simple passthrough
-        return self.llm, self.sampling_params, "prompt"
+        return self.engine, self.sampling_params, "prompt"
 
     async def get_system_prompt(self, server_rules: str = "") -> str:
         return f"SYSTEM:{server_rules}"

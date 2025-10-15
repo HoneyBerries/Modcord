@@ -10,7 +10,7 @@ from modcord.ai.ai_moderation_processor import ModerationProcessor
 class EngineBlocking:
     def __init__(self):
         self.state = SimpleNamespace(init_started=True, available=True, init_error=None)
-        self.llm = object()
+        self.engine = object()
         self.sampling_params = {}
         self.warmup_completed = False
 
@@ -33,7 +33,7 @@ class EngineBlocking:
 class EngineError:
     def __init__(self):
         self.state = SimpleNamespace(init_started=True, available=True, init_error=None)
-        self.llm = object()
+        self.engine = object()
         self.sampling_params = {}
         self.warmup_completed = False
 
@@ -75,7 +75,7 @@ async def test_worker_mismatched_results_sets_exception(monkeypatch):
     class BadEngine:
         def __init__(self):
             self.state = SimpleNamespace(init_started=True, available=True, init_error=None)
-            self.llm = object()
+            self.engine = object()
             self.sampling_params = {}
             self.warmup_completed = False
 
@@ -127,7 +127,7 @@ async def test_worker_drains_queue_on_shutdown(monkeypatch):
     class QuickEngine:
         def __init__(self):
             self.state = SimpleNamespace(init_started=True, available=True, init_error=None)
-            self.llm = object()
+            self.engine = object()
             self.sampling_params = {}
             self.warmup_completed = False
             self.call_count = 0
