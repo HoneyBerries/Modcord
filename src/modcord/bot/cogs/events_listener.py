@@ -46,6 +46,8 @@ class EventsListenerCog(commands.Cog):
         else:
             logger.warning("Bot partially connected, but user information not yet available.")
         
+        logger.info("--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--")
+        
         # Start the rules cache refresh task
         logger.info("Starting server rules cache refresh task...")
         asyncio.create_task(moderation_helper.refresh_rules_cache_task(self))
@@ -56,7 +58,6 @@ class EventsListenerCog(commands.Cog):
             lambda batch: moderation_helper.process_message_batch(self, batch)
         )
         
-        logger.info("-" * 60)
 
     async def _update_presence(self) -> None:
         """Update bot's Discord presence based on AI model availability."""

@@ -22,9 +22,7 @@ import json
 import os
 import tempfile
 import concurrent.futures
-
 from dataclasses import dataclass
-
 from modcord.util.logger import get_logger
 from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
 from modcord.configuration.app_configuration import app_config
@@ -212,7 +210,7 @@ class GuildSettingsManager:
     def set_batch_processing_callback(self, callback: Callable[[ModerationBatch], Awaitable[None]]) -> None:
         """Set the async callback invoked when a channel batch is ready."""
         self.batch_processing_callback = callback
-        logger.debug("Batch processing callback set")
+        logger.info("Batch processing callback set")
 
 
     async def add_message_to_batch(self, channel_id: int, message: ModerationMessage) -> None:
@@ -259,7 +257,7 @@ class GuildSettingsManager:
 
             # Process the batch if we have messages and a callback
             if messages and self.batch_processing_callback:
-                logger.info("Processing batch for channel %s with %d messages", channel_id, len(messages))
+                logger.debug("Processing batch for channel %s with %d messages", channel_id, len(messages))
                 batch = ModerationBatch(channel_id=channel_id, messages=messages)
                 try:
                     await self.batch_processing_callback(batch)
@@ -412,6 +410,7 @@ class GuildSettingsManager:
         # Ensure dir exists
         self.ensure_data_dir()
         temp_path = None
+        success = False
         try:
             # Create a temp file in the same directory for atomic replace
             fd, temp_path = tempfile.mkstemp(prefix="guild_settings_", dir=str(self.data_dir), text=True)
@@ -423,7 +422,7 @@ class GuildSettingsManager:
             # Atomic replace
             os.replace(str(temp_path), str(self.settings_path))
             logger.debug("Wrote settings to %s", self.settings_path)
-            return True
+            success = True
         
         except Exception:
             logger.exception("Failed to write settings to %s", self.settings_path)
@@ -433,8 +432,9 @@ class GuildSettingsManager:
                     os.remove(temp_path)
             except Exception:
                 pass
-        finally:
             return False
+
+        return success
         
 
     async def write_settings_async(self, settings_data: dict) -> bool:
@@ -491,13 +491,28 @@ class GuildSettingsManager:
 
         payload = self.build_payload()
         try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        try:
             fut = asyncio.run_coroutine_threadsafe(self.write_settings_async(payload), self.writer_loop)
             self.pending_writes.append(fut)
+            if loop is not None:
+                def _cleanup(completed: concurrent.futures.Future) -> None:
+                    loop.call_soon_threadsafe(self._remove_pending_write, completed)
+
+                fut.add_done_callback(_cleanup)
         except Exception:
             logger.exception("Failed to schedule persistent write for guild %s", guild_id)
             return False
 
         return True
+
+    def _remove_pending_write(self, completed: concurrent.futures.Future) -> None:
+        try:
+            self.pending_writes.remove(completed)
+        except ValueError:
+            pass
 
     def load_from_disk(self) -> bool:
         """Load persisted guild settings into memory."""
