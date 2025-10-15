@@ -94,7 +94,7 @@ async def refresh_rules_cache_if_rules_channel(channel: discord.abc.Messageable)
         return
     try:
         await rules_manager.refresh_guild_rules(guild, settings=guild_settings_manager)
-        logger.info(f"Rules refreshed in {channel.name}")
+        logger.debug(f"Rules refreshed in {channel.name}")
     except Exception as e:
         logger.error(f"Failed to refresh rules: {e}")
 
@@ -104,7 +104,7 @@ async def refresh_rules_cache_task(self):
     try:
         await rules_manager.run_periodic_refresh(self.bot, settings=guild_settings_manager)
     except asyncio.CancelledError:
-        logger.info("Rules refresh task cancelled")
+        logger.debug("Rules refresh task cancelled")
         raise
     except Exception as e:
         logger.error(f"Error in rules refresh task: {e}")

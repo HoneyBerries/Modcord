@@ -139,7 +139,7 @@ async def refresh_guild_rules(
 			"Cached %s characters of rules for guild %s", len(rules_text), guild.name
 		)
 	else:
-		logger.info("Rules fetch for guild %s returned no content", guild.name)
+		logger.debug("Rules fetch for guild %s returned no content", guild.name)
 
 	return rules_text
 

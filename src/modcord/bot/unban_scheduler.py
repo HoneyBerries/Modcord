@@ -189,7 +189,7 @@ class UnbanScheduler:
         try:
             user_obj = discord.Object(id=user_id)
             await guild.unban(user_obj, reason=payload.reason)
-            logger.info(f"Unbanned user {user_id} after ban expired.")
+            logger.debug(f"Unbanned user {user_id} after ban expired.")
 
             # Try to notify in the provided channel with a simple embed (keeps this
             # module independent from util.discord_utils).

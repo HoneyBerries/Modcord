@@ -378,7 +378,7 @@ class GuildSettingsManager:
 
         settings = self.ensure_guild(guild_id)
         setattr(settings, field_name, bool(enabled))
-        logger.info(
+        logger.debug(
             "Set %s to %s for guild %s",
             field_name,
             enabled,

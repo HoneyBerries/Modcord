@@ -498,7 +498,7 @@ async def send_dm_to_user(target_user: discord.Member, message_content: str) -> 
         await target_user.send(message_content)
         return True
     except discord.Forbidden:
-        logger.info(f"Could not DM {target_user.display_name}: They may have DMs disabled.")
+        logger.warning(f"Could not DM {target_user.display_name}: They may have DMs disabled.")
     except Exception as e:
         logger.error(f"Failed to send DM to {target_user.display_name}: {e}")
     return False
