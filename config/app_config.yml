@@ -4,13 +4,13 @@ ai_settings:
   vram_percentage: 0.85 # Percentage of GPU VRAM to utilize if using GPU; adjust based on your system
 
   # Path to your local model directory or model identifier from Hugging Face
-  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-thinking-2507-nf4"
+  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-instruct-2507-nf4"
   
   knobs:
     dtype: "bfloat16"           # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
     max_new_tokens: 1024        # Lowered for faster, more focused responses; increase if longer outputs are needed
     max_model_length: 8192      # Keep high for large batch moderation, but avoid exceeding model limits
-    temperature: 0.3            # Increased from 0.05 - very low temps can cause degenerate/truncated outputs
+    temperature: 0.7            # Increased from 0.05 - very low temps can cause degenerate/truncated outputs
     top_p: 0.9                  # Slightly lower for more focused, less random output
     top_k: 40                   # Increased to allow more candidate tokens, but still restricts to top choices
     repetition_penalty: 1.2     # Increased to further discourage repeated phrases or spam
