@@ -5,6 +5,55 @@ Includes model initialization, inference, warmup, and JSON parsing.
 This module now uses vLLM's native AsyncLLMEngine for fully async inference
 without any synchronous wrappers or thread pools.
 
+Architecture:
+-------------
+- AsyncLLMEngine: vLLM's native async engine for non-blocking inference
+- AsyncEngineArgs: Configuration class for engine initialization
+- SamplingParams: Controls generation behavior (temperature, top_p, etc.)
+- StructuredOutputsParams: Enforces JSON schema compliance in outputs
+
+Key Features:
+-------------
+1. Fully Async: All operations use native async/await without thread pools
+2. Lazy Imports: AI libraries (torch, vllm) only loaded when AI is enabled
+3. Structured Outputs: JSON schema enforcement for reliable moderation data
+4. Batch Processing: Efficient concurrent generation for multiple prompts
+5. State Management: Thread-safe initialization and lifecycle tracking
+
+Usage Example:
+--------------
+    # Initialize the processor
+    processor = InferenceProcessor()
+    
+    # Initialize the model (happens once)
+    engine, params, prompt = await processor.init_model()
+    
+    # Check if model is ready
+    if await processor.is_model_available():
+        # Generate responses for multiple prompts
+        prompts = ["Review this message", "Check this content"]
+        results = await processor.generate_text(prompts)
+        
+    # Clean up when done
+    await processor.unload_model()
+
+Migration from Synchronous LLM:
+--------------------------------
+Old synchronous approach:
+    llm = LLM(model=..., dtype=..., gpu_memory_utilization=...)
+    outputs = await asyncio.to_thread(llm.generate, prompts, sampling_params)
+
+New async approach:
+    engine_args = AsyncEngineArgs(model=..., dtype=..., gpu_memory_utilization=...)
+    engine = await AsyncLLMEngine.from_engine_args(engine_args)
+    
+    async def generate_one(prompt):
+        async for output in engine.generate(prompt, sampling_params, request_id):
+            pass  # Collect outputs
+        return output
+    
+    results = await asyncio.gather(*[generate_one(p) for p in prompts])
+
 IMPORTANT: This module uses lazy imports for AI libraries (torch, vllm, transformers)
 to avoid loading heavy dependencies when AI features are disabled. The libraries are
 only imported inside functions when AI is actually enabled in the configuration.
@@ -188,17 +237,26 @@ class InferenceProcessor:
                 )
 
                 # Create AsyncEngineArgs with all configuration parameters
+                # AsyncEngineArgs is the modern way to configure vLLM engines.
+                # It provides a clean interface for all engine settings including:
+                # - Model loading (model path, dtype, quantization)
+                # - Resource allocation (GPU memory, tensor parallelism)
+                # - Performance tuning (CUDA graphs, KV cache)
+                # - Trust and security (trust_remote_code for custom models)
                 engine_args = AsyncEngineArgs(
                     model=model_identifier,
                     dtype=dtype,
                     gpu_memory_utilization=gpu_mem_util,
                     max_model_len=max_model_length,
                     tensor_parallel_size=tp,
-                    trust_remote_code=True,  # Often needed for custom models
+                    trust_remote_code=True,  # Often needed for custom models like Qwen
                     enforce_eager=False,  # Allow CUDA graphs for better performance
                 )
 
                 # Initialize AsyncLLMEngine from engine args (fully async, no blocking)
+                # This replaces the old LLM() constructor and asyncio.to_thread pattern.
+                # from_engine_args() is an async classmethod that initializes the engine
+                # without blocking the event loop, making it perfect for async applications.
                 logger.info("[AI MODEL] Initializing AsyncLLMEngine...")
                 self.engine = await AsyncLLMEngine.from_engine_args(engine_args)
 
@@ -280,6 +338,18 @@ class InferenceProcessor:
 
         This method uses native async generation without thread pools. It submits
         all prompts concurrently to the engine and collects final outputs.
+        
+        Implementation Details:
+        -----------------------
+        AsyncLLMEngine.generate() returns an async generator that yields intermediate
+        results as generation progresses. For each prompt, we:
+        1. Create a unique request ID
+        2. Submit the prompt to the engine
+        3. Iterate through the async generator to get updates
+        4. Extract the final output when generation completes
+        
+        All prompts are processed concurrently using asyncio.gather(), allowing
+        the engine to batch them efficiently for maximum throughput.
 
         Parameters
         ----------
@@ -290,6 +360,11 @@ class InferenceProcessor:
         -------
         list[str]
             Generated text completions, one per prompt in the same order.
+            
+        Raises
+        ------
+        RuntimeError:
+            If the model is not initialized or unavailable.
         """
         # Ensure model is initialized
         engine, params, _ = await self.get_model()
@@ -302,10 +377,16 @@ class InferenceProcessor:
         
         # Create async tasks for each prompt generation
         async def generate_single(prompt: str, request_id: str) -> str:
-            """Generate completion for a single prompt and extract final text."""
+            """Generate completion for a single prompt and extract final text.
+            
+            AsyncLLMEngine.generate() is an async generator that yields RequestOutput
+            objects as tokens are generated. We iterate through all outputs and keep
+            the final one, which contains the complete generated text.
+            """
             final_output = None
             
             # AsyncLLMEngine.generate returns an async generator that yields results
+            # as generation progresses. We iterate until completion.
             async for request_output in engine.generate(
                 prompt=prompt,
                 sampling_params=params,
@@ -321,13 +402,13 @@ class InferenceProcessor:
                 return text
             return ""
         
-        # Generate unique request IDs for each prompt
+        # Generate unique request IDs for each prompt to track them in the engine
         tasks = [
             generate_single(prompt, f"moderation-{uuid.uuid4().hex}")
             for prompt in prompts
         ]
         
-        # Run all generations concurrently
+        # Run all generations concurrently and collect results in order
         results = await asyncio.gather(*tasks)
         
         logger.debug("[AI MODEL] Generated %d outputs", len(results))
