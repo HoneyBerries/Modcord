@@ -5,8 +5,6 @@ Discord Moderation Bot
 A Discord bot that uses an AI model to moderate chat, handle rule violations,
 and provide server administration commands for manual moderation actions like
 banning, kicking, and timing out users.
-
-Refactored version using cogs for better organization and maintainability.
 """
 
 import os

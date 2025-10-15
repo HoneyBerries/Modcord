@@ -21,8 +21,9 @@ class MessageListenerCog(commands.Cog):
     """Cog responsible for handling message creation and editing events."""
 
     def __init__(self, discord_bot_instance):
-        """Initialize the message listener cog.
-        
+        """
+        Initialize the message listener cog.
+
         Parameters
         ----------
         discord_bot_instance:
@@ -38,8 +39,9 @@ class MessageListenerCog(commands.Cog):
         content: str,
         include_discord_message: bool = False
     ) -> ModerationMessage:
-        """Create a ModerationMessage from a Discord message.
-        
+        """
+        Create a ModerationMessage from a Discord message.
+
         Parameters
         ----------
         message:
@@ -48,7 +50,7 @@ class MessageListenerCog(commands.Cog):
             The cleaned message content.
         include_discord_message:
             Whether to include the Discord message reference in the payload.
-            
+
         Returns
         -------
         ModerationMessage
@@ -71,13 +73,14 @@ class MessageListenerCog(commands.Cog):
         )
 
     async def _should_process_message(self, message: discord.Message) -> tuple[bool, str | None]:
-        """Check if a message should be processed for moderation.
-        
+        """
+        Check if a message should be processed for moderation.
+
         Parameters
         ----------
         message:
             The Discord message to check.
-            
+
         Returns
         -------
         tuple[bool, str | None]
@@ -102,14 +105,15 @@ class MessageListenerCog(commands.Cog):
 
     @commands.Cog.listener(name='on_message')
     async def on_message(self, message: discord.Message):
-        """Handle new messages: store in history and queue for AI moderation.
-        
+        """
+        Handle new messages: store in history and queue for AI moderation.
+
         This handler:
         1. Filters out DMs, bots, admins, and empty messages
         2. Refreshes rules cache if posted in a rules channel
         3. Stores message in channel history
         4. Queues message for batch AI moderation (if enabled)
-        
+
         Parameters
         ----------
         message:
@@ -147,11 +151,12 @@ class MessageListenerCog(commands.Cog):
 
     @commands.Cog.listener(name='on_message_edit')
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
-        """Handle message edits: refresh rules cache if needed.
-        
+        """
+        Handle message edits: refresh rules cache if needed.
+
         This handler checks if the edited message is in a rules channel
         and triggers a rules cache refresh if necessary.
-        
+
         Parameters
         ----------
         before:
@@ -172,8 +177,9 @@ class MessageListenerCog(commands.Cog):
 
 
 def setup(discord_bot_instance):
-    """Register the MessageListenerCog with the bot.
-    
+    """
+    Register the MessageListenerCog with the bot.
+
     Parameters
     ----------
     discord_bot_instance:

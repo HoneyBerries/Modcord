@@ -25,9 +25,35 @@ class ModelState:
 
 
 class InferenceProcessor:
-    """Manage model lifecycle and inference calls."""
+    """
+    Asynchronous moderation model core backed by vLLM.
+
+    The InferenceProcessor manages the lifecycle and inference operations of an AI model for moderation tasks.
+    It supports asynchronous model initialization, text generation, and resource cleanup, with configuration driven by application settings.
+
+    Core Responsibilities:
+        - Handles initialization, configuration, and unloading of the model engine.
+        - Manages concurrency for model initialization using an asyncio lock.
+        - Loads model configuration and sampling parameters from application settings.
+        - Supports structured output parsing for moderation tasks.
+        - Provides methods to check model availability and retrieve initialization errors.
+        - Formats and returns system prompts, optionally customized with server rules.
+        - Generates text outputs asynchronously for given prompts using the loaded model.
+        - Cleans up resources and GPU memory upon model unload.
+
+    Attributes:
+        engine (Optional[Any]): The loaded model engine instance.
+        sampling_params (Optional[Any]): Parameters for sampling/generation.
+        base_system_prompt (Optional[str]): The base system prompt template.
+        state (ModelState): Tracks model state, availability, and errors.
+        init_lock (asyncio.Lock): Ensures thread-safe model initialization.
+        warmup_completed (bool): Indicates if the model warmup is complete.
+    """
 
     def __init__(self) -> None:
+        """
+        Initializes the InferenceProcessor instance, setting up state and concurrency primitives.
+        """
         self.engine: Optional[Any] = None
         self.sampling_params: Optional[Any] = None
         self.base_system_prompt: Optional[str] = None
@@ -36,11 +62,28 @@ class InferenceProcessor:
         self.warmup_completed = False
 
     def _build_structured_outputs(self) -> Any:
-        from vllm.sampling_params import StructuredOutputsParams
+        """
+        Builds structured output parameters for the model, using the moderation schema.
 
+        Returns:
+            StructuredOutputsParams: Structured outputs configuration for vLLM.
+        """
+        from vllm.sampling_params import StructuredOutputsParams
         return StructuredOutputsParams(json=moderation_parsing.moderation_schema)
 
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
+        """
+        Asynchronously initializes the model and its parameters if not already initialized.
+
+        Args:
+            model (Optional[str]): Optional override for the model identifier.
+
+        Returns:
+            Tuple[Optional[Any], Optional[Any], Optional[str]]:
+                - The model engine instance (or None if unavailable).
+                - The sampling parameters (or None if unavailable).
+                - The base system prompt (or None if unavailable).
+        """
         async with self.init_lock:
             if self.state.available and self.engine and self.sampling_params:
                 return self.engine, self.sampling_params, self.base_system_prompt
@@ -123,7 +166,7 @@ class InferenceProcessor:
                     frequency_penalty=knobs["frequency_penalty"],
                     structured_outputs=self._build_structured_outputs(),
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self.state.available = False
                 self.state.init_error = f"Initialization failed: {exc}"
                 logger.error("[AI MODEL] AsyncLLMEngine initialization failed: %s", exc)
@@ -135,22 +178,64 @@ class InferenceProcessor:
             return self.engine, self.sampling_params, self.base_system_prompt
 
     async def get_model(self) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
+        """
+        Ensures the model is initialized, then returns the engine, sampling params, and system prompt.
+
+        Returns:
+            Tuple[Optional[Any], Optional[Any], Optional[str]]:
+                - The model engine instance (or None if unavailable).
+                - The sampling parameters (or None if unavailable).
+                - The base system prompt (or None if unavailable).
+        """
         if not self.state.init_started:
             await self.init_model()
         return self.engine, self.sampling_params, self.base_system_prompt
 
     async def is_model_available(self) -> bool:
+        """
+        Checks if the model is available for inference.
+
+        Returns:
+            bool: True if the model is available, False otherwise.
+        """
         return self.state.available
 
     async def get_model_init_error(self) -> Optional[str]:
+        """
+        Retrieves the last initialization error, if any.
+
+        Returns:
+            Optional[str]: The initialization error, or None if there is no error.
+        """
         return self.state.init_error
 
     async def get_system_prompt(self, server_rules: str = "") -> str:
+        """
+        Returns the formatted system prompt, optionally including server rules.
+
+        Args:
+            server_rules (str): Additional rules or context to inject into the system prompt.
+
+        Returns:
+            str: The formatted system prompt string.
+        """
         await self.get_model()
         template = self.base_system_prompt or cfg.app_config.system_prompt_template
         return cfg.app_config.format_system_prompt(server_rules, template_override=template)
 
     async def generate_text(self, prompts: List[str]) -> List[str]:
+        """
+        Generates text outputs asynchronously for a list of prompts using the model.
+
+        Args:
+            prompts (List[str]): List of input prompt strings.
+
+        Returns:
+            List[str]: List of generated output strings corresponding to each prompt.
+
+        Raises:
+            RuntimeError: If the model is not available or initialization failed.
+        """
         engine, params, _ = await self.get_model()
         if not engine or not params:
             reason = self.state.init_error or "AI model unavailable"
@@ -172,9 +257,19 @@ class InferenceProcessor:
         return await asyncio.gather(*(run_single(prompt) for prompt in prompts))
 
     def get_model_state(self) -> ModelState:
+        """
+        Returns the current model state object.
+
+        Returns:
+            ModelState: The current state of the model (init, available, errors).
+        """
         return self.state
 
     async def unload_model(self) -> None:
+        """
+        Unloads the model, cleans up resources, and resets state.
+        This includes shutting down the engine, clearing GPU memory, and resetting state attributes.
+        """
         async with self.init_lock:
             engine = self.engine
             self.engine = None
@@ -187,7 +282,7 @@ class InferenceProcessor:
         if engine and hasattr(engine, "shutdown"):
             try:
                 await engine.shutdown()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("[AI MODEL] Shutdown raised: %s", exc)
 
         try:
@@ -197,7 +292,7 @@ class InferenceProcessor:
                 torch.cuda.empty_cache()
         except ImportError:
             pass
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.debug("[AI MODEL] CUDA cache cleanup failed: %s", exc)
 
         gc.collect()
@@ -206,4 +301,3 @@ class InferenceProcessor:
 
 inference_processor = InferenceProcessor()
 model_state = inference_processor.state
-

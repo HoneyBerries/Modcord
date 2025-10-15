@@ -21,7 +21,8 @@ logger = get_logger("moderation_helper")
 
 
 async def process_message_batch(self, batch: ModerationBatch) -> None:
-    """Process a batch of messages.
+    """
+    Process a batch of messages.
 
     Runs the AI moderation pipeline for the provided batch and applies
     any resulting actions.
@@ -98,7 +99,8 @@ async def process_message_batch(self, batch: ModerationBatch) -> None:
 
 
 async def apply_batch_action(self, action: ActionData, batch: ModerationBatch) -> bool:
-    """Execute a single moderation action produced by the AI.
+    """
+    Execute a single moderation action produced by the AI.
 
     Finds a suitable pivot message, performs the action (ban/kick/timeout/etc.),
     and returns True on success or False on failure.
@@ -214,7 +216,8 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationBatch) -
 
 
 async def refresh_rules_cache_if_rules_channel(self, channel: discord.abc.Messageable) -> None:
-    """Refresh the rules cache when activity occurs in a rules channel.
+    """
+    Refresh the rules cache when activity occurs in a rules channel.
 
     No-op when the channel does not match the rules-channel heuristics.
 
@@ -235,7 +238,9 @@ async def refresh_rules_cache_if_rules_channel(self, channel: discord.abc.Messag
 
 
 async def refresh_rules_cache_task(self):
-    """Background task that periodically refreshes the cached server rules."""
+    """
+    Background task that periodically refreshes the cached server rules.
+    """
     try:
         await rules_manager.run_periodic_refresh(self.bot, settings=guild_settings_manager)
     except asyncio.CancelledError:
