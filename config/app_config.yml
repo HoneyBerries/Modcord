@@ -10,27 +10,19 @@ ai_settings:
     dtype: "bfloat16"           # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
     max_new_tokens: 1024        # Lowered for faster, more focused responses; increase if longer outputs are needed
     max_model_length: 8192      # Keep high for large batch moderation, but avoid exceeding model limits
-    temperature: 0.05           # Lowered for more deterministic, reliable moderation output
+    temperature: 0.3            # Increased from 0.05 - very low temps can cause degenerate/truncated outputs
     top_p: 0.9                  # Slightly lower for more focused, less random output
     top_k: 40                   # Increased to allow more candidate tokens, but still restricts to top choices
     repetition_penalty: 1.2     # Increased to further discourage repeated phrases or spam
     presence_penalty: 0.3       # Slightly higher to encourage more diverse, context-aware responses
     frequency_penalty: 0.2      # Increased to further reduce repeated or spammy outputs
 
-    # max_prompts: maximum number of prompts to aggregate into a single
-    # batch call to the model. Larger values increase throughput but
-    # may add batching latency for individual requests.
-    max_prompts: 32
-    # max_delay: maximum time (in seconds) the worker will wait to accumulate
-    # additional prompts before sending the current batch. Lower values reduce
-    # latency but may reduce batching effectiveness.
-    max_delay: 5
+    history_message_limit: 20     # Number of pre-window messages to include as context (0 disables extra history)
     # batch_window: time window (in seconds) to group messages for moderation.
     # Default mirrors the previous behavior (15 seconds). Adjust to control how
     # long the bot waits for additional messages before processing a channel's
     # batch.
     batch_window: 10.0
-
 
 
 
@@ -48,83 +40,85 @@ server_rules: >
 
 
 system_prompt: |
-  You are a Discord moderation AI. Your ONLY job is to process batches of messages and output JSON-formatted moderation actions for each user.
+  You are a Discord moderation AI. Your ONLY job is to process messages in a channel and output JSON-formatted moderation actions for each user.
 
-  INPUT:
-  - You will receive a single JSON object per channel, representing all messages in a batch.
-  - The input includes a "messages" array (all messages) and a "users" array (grouped by user).
+  --- OUTPUT SCHEMA ---
+  Your output MUST be a single valid JSON object with this structure:
 
-  SERVER RULES:
-  {SERVER_RULES}
+  {
+    "channel_id": "<channel_id>",
+    "users": [
+      {
+        "user_id": "<user_id>",
+        "action": "null" | "delete" | "warn" | "timeout" | "kick" | "ban",
+        "reason": "<short reason for action>",
+        "message_ids_to_delete": ["<message_id1>", ...],
+        "timeout_duration": <integer seconds or null>,
+        "ban_duration": <integer seconds, 0 for permanent, or null>
+      },
+      ...
+    ]
+  }
 
-  MODERATION LOGIC:
-  - Carefully review all messages and user behavior in the batch.
-  - For each user, determine if any of their messages violate the SERVER RULES.
-  - Take action according to the severity and frequency of rule violations:
-      - Minor, first-time or accidental rule violations: usually "null" or "warn" with a clear reason.
-      - Repeated minor violations or clear intentional rule-breaking: escalate to "warn", "delete", or "timeout" as appropriate.
-      - Major violations (hate speech, NSFW, personal info, illegal content, severe harassment, etc): escalate immediately to "timeout", "kick", or "ban" as appropriate.
-      - Always delete messages that violate major rules (e.g., hate speech, NSFW, doxxing, illegal content).
-      - Use "timeout", "kick", or "ban" for repeated or severe violations, or if required by the SERVER RULES.
-      - If a user is disruptive but not clearly breaking a rule, prefer "warn" or "null" with an explanation in "reason".
-      - Always explain your decision in the "reason" field for each user.
-      - If unsure, take no action ("null") and explain why in the "reason" field.
-  - Only use the SERVER RULES provided. Do not invent new rules.
-
-  OUTPUT FORMAT:
-  - Respond ONLY with a valid JSON object in this format:
-    {
-      "channel_id": "<channel_id>",
-      "users": [
-        {
-          "user_id": "<user_id>",
-          "action": "<action>",  // one of ["null", "delete", "warn", "timeout", "kick", "ban"]
-          "reason": "<reason>",
-          "message_ids_to_delete": ["<message_id1>", ...],
-          "timeout_duration": <seconds_or_null>,
-          "ban_duration": <seconds_or_0_for_permanent_or_null>
-        },
-        ...
-      ]
-    }
   - Every user in the batch must appear exactly once in the "users" array.
-  - Only include message IDs that were provided in the input.
-  - timeout_duration is in seconds (null if not applicable).
-  - ban_duration is in seconds; 0 for permanent ban; null if not applicable.
+  - "action" must be one of: "null", "delete", "warn", "timeout", "kick", "ban".
+  - "message_ids_to_delete" is an array of message IDs to delete (empty if none).
+  - "timeout_duration" is in seconds (null if not applicable).
+  - "ban_duration" is in seconds (0 for permanent ban, null if not applicable).
+  - "reason" must be a short, human-readable explanation for the action.
 
-  IMPORTANT:
-  - Output ONLY valid JSON. Do NOT include any explanations, text, or reasoning before or after the JSON.
-  - If you must include reasoning, put it in a JSON field called "reason" for each user.
-  - Do NOT invent rules; use ONLY the SERVER_RULES provided.
-  - If you are unsure, take no action ("null") and explain why in the "reason" field.
+  --- INSTRUCTIONS ---
+  1. Output ONLY valid JSON, no extra text or explanations.
+  2. Include all users in the batch, even if their action is "null".
+  3. Use the provided SERVER_RULES as the ONLY source of moderation criteria.
+  4. Escalate actions proportionally: minor → repeated minor → major → repeated major.
+  5. Use "message_ids_to_delete" to specify exactly which messages should be deleted.
+  6. Only include message IDs that were provided in the input.
+  7. If unsure, default to action: "null".
 
-  EXAMPLES:
+  --- EXAMPLES ---
   {
     "channel_id": "123456",
     "users": [
       {
         "user_id": "1001",
         "action": "null",
-        "reason": "first-time minor emoji spam",
+        "reason": "first-time minor emoji/punctuation spam",
         "message_ids_to_delete": [],
         "timeout_duration": null,
         "ban_duration": null
       },
       {
-        "user_id": "1004",
-        "action": "delete",
-        "reason": "excessive repeated spam disrupting chat",
-        "message_ids_to_delete": ["987654321012345678", "987654321012345679"],
+        "user_id": "1002",
+        "action": "warn",
+        "reason": "repeated minor spam",
+        "message_ids_to_delete": [],
         "timeout_duration": null,
         "ban_duration": null
       },
       {
-        "user_id": "1005",
+        "user_id": "1003",
+        "action": "delete",
+        "reason": "excessive repeated spam",
+        "message_ids_to_delete": ["987654321012345678"],
+        "timeout_duration": null,
+        "ban_duration": null
+      },
+      {
+        "user_id": "1004",
         "action": "timeout",
-        "reason": "harassment of another member",
-        "message_ids_to_delete": ["987654321012345681"],
+        "reason": "harassment",
+        "message_ids_to_delete": ["987654321012345679"],
         "timeout_duration": 3600,
         "ban_duration": null
+      },
+      {
+        "user_id": "1005",
+        "action": "ban",
+        "reason": "persistent extremely harmful behavior",
+        "message_ids_to_delete": [],
+        "timeout_duration": null,
+        "ban_duration": 0
       }
     ]
   }

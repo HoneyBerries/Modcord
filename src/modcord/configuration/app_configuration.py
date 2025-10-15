@@ -96,8 +96,8 @@ class AppConfig:
                     "Loaded config: ai.enabled=%s, ai.model_id=%s, knobs=%s, batching=%s",
                     bool(ai.enabled),
                     ai.model_id or "<none>",
-                    {k: knobs.get(k) for k in ("dtype", "max_new_tokens", "temperature") if k in knobs},
-                    {k: batching.get(k) for k in ("max_prompts", "max_delay", "batch_window") if k in batching},
+                    {k: knobs.get(k) for k in ("dtype", "max_new_tokens", "temperature", "history_message_limit") if k in knobs},
+                    {k: batching.get(k) for k in ("batch_window",) if k in batching},
                 )
             except Exception:
                 # Non-fatal: don't block reload on logging errors
@@ -150,7 +150,7 @@ class AppConfig:
         return str(value or "")
 
     @property
-    def ai_settings(self) -> "AISettings":
+    def ai_settings(self) -> AISettings:
         """Return the AI settings wrapped in an AISettings helper.
 
         The wrapper provides both attribute-style access for common fields and
@@ -160,28 +160,8 @@ class AppConfig:
             settings = self._data.get("ai_settings", {})
             if not isinstance(settings, dict):
                 settings = {}
-            # Wrap raw dict in AISettings for typed access while remaining
-            # backward-compatible with dict-like .get(...) usage.
+            
             return AISettings(settings)
-
-    def format_system_prompt(self, server_rules: str = "", *, template_override: Optional[str] = None) -> str:
-        """Render the system prompt template with the provided server rules.
-
-        If no template is configured and `server_rules` is provided, the
-        returned value will be the server rules. If the template's placeholders
-        do not match, we fall back to a readable concatenation so callers still
-        receive useful text rather than an exception.
-        """
-        template = template_override if template_override is not None else self.system_prompt_template
-        if not template:
-            return server_rules if server_rules else ""
-
-        try:
-            return template.format(SERVER_RULES=server_rules)
-        except Exception:  # noqa: BLE001 - fallback for mismatched placeholders
-            if server_rules:
-                return f"{template}\n\nServer rules:\n{server_rules}"
-            return template
 
 
 class AISettings(Mapping):

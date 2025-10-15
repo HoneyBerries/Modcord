@@ -17,7 +17,7 @@ Schema example:
 import collections
 import asyncio
 import threading
-from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List
+from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence
 from collections import deque
 from pathlib import Path
 import json
@@ -234,7 +234,14 @@ class GuildSettingsManager:
             # Process the batch if we have messages and a callback
             if messages and self.batch_processing_callback:
                 logger.debug("Processing batch for channel %s with %d messages", channel_id, len(messages))
-                batch = ModerationBatch(channel_id=channel_id, messages=messages)
+                history_context = self._resolve_history_context(channel_id, messages)
+                if history_context:
+                    logger.debug(
+                        "Including %d prior messages as context for channel %s",
+                        len(history_context),
+                        channel_id,
+                    )
+                batch = ModerationBatch(channel_id=channel_id, messages=messages, history=history_context)
                 try:
                     await self.batch_processing_callback(batch)
                 except Exception:
@@ -261,6 +268,49 @@ class GuildSettingsManager:
         for channel_id, timer_task in list(self.channel_batch_timers.items()):
             timer_task.cancel()
         logger.info("Requested cancellation of all batch timers")
+
+    def _resolve_history_context(
+        self,
+        channel_id: int,
+        current_batch: Sequence[ModerationMessage],
+    ) -> List[ModerationMessage]:
+        """Select prior channel messages to provide as model context."""
+        try:
+            knobs = app_config.ai_settings.knobs if app_config else {}
+            raw_limit = knobs.get("history_message_limit", 0)
+            history_limit = int(raw_limit)
+        except Exception:
+            history_limit = 0
+
+        if history_limit <= 0:
+            return []
+
+        history_snapshot = self.get_chat_history(channel_id)
+        if not history_snapshot:
+            return []
+
+        current_ids = {str(msg.message_id) for msg in current_batch}
+        earliest_index = len(history_snapshot)
+        for idx, entry in enumerate(history_snapshot):
+            if str(entry.message_id) in current_ids and idx < earliest_index:
+                earliest_index = idx
+
+        if earliest_index == len(history_snapshot):
+            search_space = history_snapshot
+        else:
+            search_space = history_snapshot[:earliest_index]
+        selected: List[ModerationMessage] = []
+
+        for entry in reversed(search_space):
+            entry_id = str(entry.message_id)
+            if entry_id in current_ids:
+                continue
+            selected.append(entry)
+            if len(selected) >= history_limit:
+                break
+
+        selected.reverse()
+        return selected
 
     async def shutdown(self) -> None:
         """Gracefully cancel and await all outstanding batch timers (await on shutdown)."""

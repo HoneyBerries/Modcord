@@ -26,33 +26,36 @@ class ModelState:
 
 class InferenceProcessor:
     """
-    Asynchronous moderation model core backed by vLLM.
+    Asynchronous moderation model core backed by vLLM with guided decoding.
 
-    The InferenceProcessor manages the lifecycle and inference operations of an AI model for moderation tasks.
-    It supports asynchronous model initialization, text generation, and resource cleanup, with configuration driven by application settings.
+    Manages the lifecycle and inference operations of an AI model for moderation tasks.
+    Uses xgrammar-based guided decoding to enforce JSON schema compliance while allowing
+    free-form reasoning before structured output.
 
     Core Responsibilities:
-        - Handles initialization, configuration, and unloading of the model engine.
-        - Manages concurrency for model initialization using an asyncio lock.
-        - Loads model configuration and sampling parameters from application settings.
-        - Supports structured output parsing for moderation tasks.
-        - Provides methods to check model availability and retrieve initialization errors.
-        - Formats and returns system prompts, optionally customized with server rules.
-        - Generates text outputs asynchronously for given prompts using the loaded model.
-        - Cleans up resources and GPU memory upon model unload.
+        - Handles initialization, configuration, and unloading of the vLLM async engine
+        - Manages concurrency for model initialization using an asyncio lock
+        - Loads model configuration and sampling parameters from application settings
+        - Configures guided decoding with xgrammar backend for JSON schema enforcement
+        - Provides methods to check model availability and retrieve initialization errors
+        - Formats and returns system prompts with server rules injection
+        - Generates text outputs asynchronously using the loaded model
+        - Cleans up resources and GPU memory upon model unload
 
     Attributes:
-        engine (Optional[Any]): The loaded model engine instance.
-        sampling_params (Optional[Any]): Parameters for sampling/generation.
+        engine (Optional[Any]): The AsyncLLMEngine instance.
+        sampling_params (Optional[Any]): SamplingParams with guided decoding configuration.
         base_system_prompt (Optional[str]): The base system prompt template.
         state (ModelState): Tracks model state, availability, and errors.
         init_lock (asyncio.Lock): Ensures thread-safe model initialization.
         warmup_completed (bool): Indicates if the model warmup is complete.
+        guided_backend (Optional[str]): The guided decoding backend name (xgrammar).
+        _guided_grammar (Optional[str]): Cached compiled grammar string for reuse.
     """
 
     def __init__(self) -> None:
         """
-        Initializes the InferenceProcessor instance, setting up state and concurrency primitives.
+        Initializes the InferenceProcessor with default state and guided decoding support.
         """
         self.engine: Optional[Any] = None
         self.sampling_params: Optional[Any] = None
@@ -60,29 +63,60 @@ class InferenceProcessor:
         self.state = ModelState()
         self.init_lock = asyncio.Lock()
         self.warmup_completed = False
+        self.guided_backend: Optional[str] = None
+        self._guided_grammar: Optional[str] = None
 
-    def _build_structured_outputs(self) -> Any:
+    def _build_guided_decoding(self) -> Any:
         """
-        Builds structured output parameters for the model, using the moderation schema.
+        Constructs guided decoding configuration for JSON schema enforcement.
+        
+        Uses xgrammar backend to compile the moderation schema into a grammar that
+        constrains model generation. The compiled grammar is cached for reuse across
+        inference calls. Supports models with or without reasoning capabilities.
 
         Returns:
-            StructuredOutputsParams: Structured outputs configuration for vLLM.
+            GuidedDecodingParams: Configured with compiled grammar and fallback disabled.
+
+        Raises:
+            RuntimeError: If xgrammar backend is not available.
         """
-        from vllm.sampling_params import StructuredOutputsParams
-        return StructuredOutputsParams(json=moderation_parsing.moderation_schema)
+        from vllm.sampling_params import GuidedDecodingParams
+        
+        schema = moderation_parsing.moderation_schema
+
+        if self._guided_grammar is None:
+            try:
+                from xgrammar import Grammar  # type: ignore
+            except Exception as exc:
+                raise RuntimeError("xgrammar backend not available for guided decoding") from exc
+
+            try:
+                grammar_obj: Optional[Any] = Grammar.from_json_schema(schema, strict_mode=True)
+                grammar_str = str(grammar_obj)
+                self._guided_grammar = grammar_str
+            finally:
+                # Ensure any intermediate native handles can be cleaned up
+                grammar_obj = None
+
+        params = GuidedDecodingParams(
+            grammar=self._guided_grammar,
+            disable_fallback=True,
+        )
+        self.guided_backend = "xgrammar"
+        logger.info("[AI MODEL] Guided decoding configured with xgrammar backend (precompiled grammar)")
+        return params
+
 
     async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
         """
-        Asynchronously initializes the model and its parameters if not already initialized.
+        Initializes the vLLM async engine with guided decoding support.
 
         Args:
-            model (Optional[str]): Optional override for the model identifier.
+            model: Optional model identifier override.
 
         Returns:
-            Tuple[Optional[Any], Optional[Any], Optional[str]]:
-                - The model engine instance (or None if unavailable).
-                - The sampling parameters (or None if unavailable).
-                - The base system prompt (or None if unavailable).
+            Tuple of (engine, sampling_params, system_prompt). Returns None for engine/params
+            if initialization fails, with error details in self.state.init_error.
         """
         async with self.init_lock:
             if self.state.available and self.engine and self.sampling_params:
@@ -153,9 +187,15 @@ class InferenceProcessor:
                     max_model_len=knobs["max_model_length"],
                     tensor_parallel_size=tensor_parallel,
                     trust_remote_code=True,
+                    guided_decoding_backend="xgrammar",
+                    guided_decoding_disable_fallback=True,
                 )
 
                 self.engine = AsyncLLMEngine.from_engine_args(engine_args)
+                
+                # Build guided decoding params for JSON schema enforcement
+                guided_decoding = self._build_guided_decoding()
+                
                 self.sampling_params = SamplingParams(
                     temperature=knobs["temperature"],
                     max_tokens=knobs["max_new_tokens"],
@@ -164,8 +204,9 @@ class InferenceProcessor:
                     repetition_penalty=knobs["repetition_penalty"],
                     presence_penalty=knobs["presence_penalty"],
                     frequency_penalty=knobs["frequency_penalty"],
-                    structured_outputs=self._build_structured_outputs(),
+                    guided_decoding=guided_decoding,
                 )
+                logger.info("[AI MODEL] Sampling params created with guided_decoding (xgrammar backend)")
             except Exception as exc:
                 self.state.available = False
                 self.state.init_error = f"Initialization failed: {exc}"
@@ -179,59 +220,56 @@ class InferenceProcessor:
 
     async def get_model(self) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
         """
-        Ensures the model is initialized, then returns the engine, sampling params, and system prompt.
+        Ensures the model is initialized and returns engine handles.
 
         Returns:
-            Tuple[Optional[Any], Optional[Any], Optional[str]]:
-                - The model engine instance (or None if unavailable).
-                - The sampling parameters (or None if unavailable).
-                - The base system prompt (or None if unavailable).
+            Tuple of (engine, sampling_params, system_prompt).
         """
         if not self.state.init_started:
             await self.init_model()
         return self.engine, self.sampling_params, self.base_system_prompt
 
     async def is_model_available(self) -> bool:
-        """
-        Checks if the model is available for inference.
-
-        Returns:
-            bool: True if the model is available, False otherwise.
-        """
+        """Checks if the model is available for inference."""
         return self.state.available
 
     async def get_model_init_error(self) -> Optional[str]:
-        """
-        Retrieves the last initialization error, if any.
-
-        Returns:
-            Optional[str]: The initialization error, or None if there is no error.
-        """
+        """Retrieves the last initialization error, if any."""
         return self.state.init_error
 
     async def get_system_prompt(self, server_rules: str = "") -> str:
         """
-        Returns the formatted system prompt, optionally including server rules.
+        Returns the system prompt with server rules injected.
 
         Args:
-            server_rules (str): Additional rules or context to inject into the system prompt.
+            server_rules: Server rules to inject into the {SERVER_RULES} placeholder.
 
         Returns:
-            str: The formatted system prompt string.
+            Formatted system prompt string with rules inserted.
         """
         await self.get_model()
         template = self.base_system_prompt or cfg.app_config.system_prompt_template
-        return cfg.app_config.format_system_prompt(server_rules, template_override=template)
+        template_str = str(template or "")
+        rules_str = str(server_rules or "")
+        
+        # Simple string replacement - avoids .format() issues with JSON curly braces
+        if "{SERVER_RULES}" in template_str:
+            return template_str.replace("{SERVER_RULES}", rules_str)
+        
+        # Fallback: append rules if no placeholder found
+        if rules_str:
+            return f"{template_str}\n\nServer rules:\n{rules_str}"
+        return template_str
 
     async def generate_text(self, prompts: List[str]) -> List[str]:
         """
-        Generates text outputs asynchronously for a list of prompts using the model.
+        Generates text outputs asynchronously using the model with guided decoding.
 
         Args:
-            prompts (List[str]): List of input prompt strings.
+            prompts: List of input prompt strings.
 
         Returns:
-            List[str]: List of generated output strings corresponding to each prompt.
+            List of generated output strings (JSON constrained by schema).
 
         Raises:
             RuntimeError: If the model is not available or initialization failed.
@@ -257,18 +295,14 @@ class InferenceProcessor:
         return await asyncio.gather(*(run_single(prompt) for prompt in prompts))
 
     def get_model_state(self) -> ModelState:
-        """
-        Returns the current model state object.
-
-        Returns:
-            ModelState: The current state of the model (init, available, errors).
-        """
+        """Returns the current model state."""
         return self.state
 
     async def unload_model(self) -> None:
         """
-        Unloads the model, cleans up resources, and resets state.
-        This includes shutting down the engine, clearing GPU memory, and resetting state attributes.
+        Unloads the model and cleans up resources.
+        
+        Shuts down the engine, clears GPU memory, and resets all state attributes.
         """
         async with self.init_lock:
             engine = self.engine

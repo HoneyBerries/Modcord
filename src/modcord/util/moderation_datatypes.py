@@ -126,10 +126,11 @@ class ModerationMessage:
 
 @dataclass(slots=True)
 class ModerationBatch:
-    """Container for the ordered set of messages batched for moderation inference."""
+    """Container for batched moderation messages plus optional historical context."""
 
     channel_id: int
     messages: List[ModerationMessage] = field(default_factory=list)
+    history: List[ModerationMessage] = field(default_factory=list)
 
     def add_message(self, message: ModerationMessage) -> None:
         self.messages.append(message)
@@ -137,11 +138,17 @@ class ModerationBatch:
     def extend(self, messages: Sequence[ModerationMessage]) -> None:
         self.messages.extend(messages)
 
+    def set_history(self, history: Sequence[ModerationMessage]) -> None:
+        self.history = list(history)
+
     def is_empty(self) -> bool:
         return not self.messages
 
     def to_model_payload(self) -> List[dict]:
         return [msg.to_model_payload() for msg in self.messages]
+
+    def history_to_model_payload(self) -> List[dict]:
+        return [msg.to_model_payload() for msg in self.history]
 
     def to_user_payload(self) -> List[dict]:
         """Group batch messages by user and return a summary payload.

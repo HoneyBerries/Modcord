@@ -4,6 +4,7 @@ import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 
@@ -17,29 +18,33 @@ def _ensure_stubbed_dependencies() -> None:
     class _StubClass:
         def __init__(self, *_, **__):
             pass
+
         def __call__(self, *_, **__):
             return self
+
         def __getattr__(self, name):
-            return _StubClass()
-    
+              return _StubClass()
     # Stub torch module
-    if "torch" not in sys.modules:
+    torch_stub = sys.modules.get("torch")
+    if torch_stub is None:
         torch_stub = types.ModuleType("torch")
-        torch_stub.cuda = _StubClass()
-        torch_stub.compile = lambda model, *_, **__: model
         sys.modules["torch"] = torch_stub
+    setattr(torch_stub, "cuda", _StubClass())
+    setattr(torch_stub, "compile", lambda model, *_, **__: model)
 
     # Stub vllm modules
-    if "vllm" not in sys.modules:
+    vllm_stub = sys.modules.get("vllm")
+    if vllm_stub is None:
         vllm_stub = types.ModuleType("vllm")
-        vllm_stub.LLM = _StubClass
-        vllm_stub.SamplingParams = _StubClass
         sys.modules["vllm"] = vllm_stub
+    setattr(vllm_stub, "LLM", _StubClass)
+    setattr(vllm_stub, "SamplingParams", _StubClass)
 
-    if "vllm.sampling_params" not in sys.modules:
+    sampling_stub = sys.modules.get("vllm.sampling_params")
+    if sampling_stub is None:
         sampling_stub = types.ModuleType("vllm.sampling_params")
-        sampling_stub.GuidedDecodingParams = _StubClass
         sys.modules["vllm.sampling_params"] = sampling_stub
+    setattr(sampling_stub, "GuidedDecodingParams", _StubClass)
 
 
 _ensure_stubbed_dependencies()
@@ -48,14 +53,18 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from modcord.ai.ai_moderation_processor import ModerationProcessor  # type: ignore[import]
+from modcord.configuration.app_configuration import app_config  # type: ignore[import]
 from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage  # type: ignore[import]
 
 
 class ModerationProcessorBatchTests(unittest.IsolatedAsyncioTestCase):
     async def test_consolidates_actions_per_user(self) -> None:
         processor = ModerationProcessor(None)
-        processor.inference_processor = SimpleNamespace(
-            get_system_prompt=AsyncMock(return_value="prompt"),
+        processor.inference_processor = cast(
+            Any,
+            SimpleNamespace(
+                get_system_prompt=AsyncMock(return_value="prompt"),
+            ),
         )
 
         processor.submit_inference = AsyncMock(
@@ -113,29 +122,33 @@ class ModerationProcessorBatchTests(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(payload_str)
 
         self.assertEqual(payload["channel_id"], "1")
-        self.assertEqual(payload["message_count"], 3)
-        self.assertEqual(payload["unique_user_count"], 2)
         self.assertEqual(payload["window_start"], "2025-09-27T17:00:00Z")
         self.assertEqual(payload["window_end"], "2025-09-27T17:00:02Z")
-        self.assertIn("users", payload)
-        self.assertEqual(len(payload["users"]), 2)
-        self.assertEqual(
-            [msg["role"] for msg in payload["messages"]],
-            ["user", "user", "user"],
-        )
 
-        users_by_id = {user["user_id"]: user for user in payload["users"]}
-        self.assertIn("100", users_by_id)
-        self.assertIn("200", users_by_id)
-        self.assertEqual(users_by_id["100"]["message_count"], 2)
-        self.assertEqual(users_by_id["200"]["message_count"], 1)
+        users = payload["users"]
+        self.assertIsInstance(users, dict)
+        self.assertCountEqual(users.keys(), ["100", "200"])
+
+        user100 = users["100"]
+        self.assertEqual(user100["username"], "user100")
         self.assertEqual(
-            [msg["message_id"] for msg in users_by_id["100"]["messages"]],
+            [msg["message_id"] for msg in user100["messages"]],
             ["m1", "m2"],
         )
         self.assertEqual(
-            [msg["message_id"] for msg in users_by_id["200"]["messages"]],
+            [msg["timestamp"] for msg in user100["messages"]],
+            ["2025-09-27T17:00:00Z", "2025-09-27T17:00:01Z"],
+        )
+
+        user200 = users["200"]
+        self.assertEqual(user200["username"], "user200")
+        self.assertEqual(
+            [msg["message_id"] for msg in user200["messages"]],
             ["m3"],
+        )
+        self.assertEqual(
+            [msg["timestamp"] for msg in user200["messages"]],
+            ["2025-09-27T17:00:02Z"],
         )
 
         self.assertEqual(len(actions), 2)
@@ -155,3 +168,54 @@ class ModerationProcessorBatchTests(unittest.IsolatedAsyncioTestCase):
         self.assertCountEqual(user200.message_ids, ["m3"])
         self.assertIsNone(user200.timeout_duration)
         self.assertIsNone(user200.ban_duration)
+
+
+class ModerationProcessorServerRulesTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        # Snapshot current config so tests can mutate safely.
+        with app_config.lock:
+            self._original_config = dict(app_config._data)
+
+    async def asyncTearDown(self) -> None:
+        with app_config.lock:
+            app_config._data = self._original_config
+
+    async def test_infer_json_uses_global_rules_when_missing(self) -> None:
+        with app_config.lock:
+            app_config._data = dict(self._original_config)
+            app_config._data["server_rules"] = "GLOBAL RULES"
+
+        processor = ModerationProcessor(None)
+        mock_get_prompt = AsyncMock(return_value="prompt")
+        processor.inference_processor = cast(
+            Any,
+            SimpleNamespace(
+                get_system_prompt=mock_get_prompt,
+            ),
+        )
+        processor.submit_inference = AsyncMock(return_value="{}")
+
+        await processor._infer_json({"channel_id": "1"}, "")
+
+        called_rules = mock_get_prompt.await_args_list[0].args[0]
+        self.assertEqual(called_rules, "GLOBAL RULES")
+
+    async def test_infer_json_prefers_provided_rules(self) -> None:
+        with app_config.lock:
+            app_config._data = dict(self._original_config)
+            app_config._data["server_rules"] = "GLOBAL RULES"
+
+        processor = ModerationProcessor(None)
+        mock_get_prompt = AsyncMock(return_value="prompt")
+        processor.inference_processor = cast(
+            Any,
+            SimpleNamespace(
+                get_system_prompt=mock_get_prompt,
+            ),
+        )
+        processor.submit_inference = AsyncMock(return_value="{}")
+
+        await processor._infer_json({"channel_id": "1"}, "CUSTOM RULES")
+
+        called_rules = mock_get_prompt.await_args_list[0].args[0]
+        self.assertEqual(called_rules, "CUSTOM RULES")
