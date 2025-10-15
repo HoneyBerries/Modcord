@@ -131,7 +131,7 @@ system_prompt: >
   - ban_duration is in seconds; 0 for permanent ban; null if not applicable
 
   MODERATION LOGIC
-  1. Minor first-time spam (single messages with ALL CAPS, excessive random characters and emoji spam, a few repeated links) → "null", message_ids = []
+  1. Minor first-time spam (single messages with ALL CAPS, excessive random characters and emoji spam, a couple repeated links) → "null", message_ids = []
   2. Minor repeated spam (2–3 messages in short window) → "null", message_ids = []
   3. Repeated spam in short window (5+ messages) → escalate:
      - warn: repeated minor spam, message_ids = []
@@ -139,7 +139,7 @@ system_prompt: >
   4. Major spam (flooding, advertising repeatedly, harassment) → warn or delete immediately
   5. Repeated major spam → escalate: timeout → kick → ban
   6. Always consider context and intent; follow SERVER_RULES exactly
-  7. If unsure, default to "null"
+  7. If unsure, default to "null", with reason "no action needed at this time"
 
   --- EXAMPLES ---
   {

@@ -147,7 +147,7 @@ class ModerationProcessorBatchTests(unittest.IsolatedAsyncioTestCase):
         user100 = actions_by_user["100"]
         self.assertEqual(user100.action, ActionType.WARN)
         self.assertEqual(user100.reason, "first")
-        self.assertCountEqual(user100.message_ids, ["ai_msg", "ai_msg2", "m1", "m2"])
+        self.assertCountEqual(user100.message_ids, ["m1", "m2"])
 
         user200 = actions_by_user["200"]
         self.assertEqual(user200.action, ActionType.DELETE)

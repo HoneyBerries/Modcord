@@ -168,13 +168,22 @@ class ModerationProcessor:
             "messages": flat_messages,
             "users": grouped_users,
         }
-        user_msg = {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
+
+        user_msg_content = json.dumps(payload, ensure_ascii=False)
+        logger.debug("Raw moderation batch input JSON for channel %s: %s", batch.channel_id, user_msg_content)
+
+        # Submit to the model for inference
+        user_msg = {"role": "user", "content": user_msg_content}
         resp = await self.submit_inference([system_msg, user_msg])
+        
         logger.debug("Raw AI batch response for channel %s: %s", batch.channel_id, resp)
 
+        # Parse the model response into structured actions
         parsed_actions = await moderation_parsing.parse_batch_actions(resp, batch.channel_id)
 
         parsed_by_user: Dict[str, ActionData] = {}
+
+        # Apply actions by user ID
         for action in parsed_actions:
             user_key = action.user_id.strip()
             if not user_key:
@@ -192,6 +201,7 @@ class ModerationProcessor:
                 )
                 continue
 
+            # Merge actions conservatively
             if existing.action == ActionType.NULL and action.action != ActionType.NULL:
                 existing.action = action.action
                 existing.reason = action.reason
@@ -202,9 +212,11 @@ class ModerationProcessor:
 
             if action.timeout_duration is not None:
                 existing.timeout_duration = action.timeout_duration
+
             if action.ban_duration is not None:
                 existing.ban_duration = action.ban_duration
 
+        # Reconcile AI-provided message IDs with actual batch content
         user_message_ids: Dict[str, List[str]] = {}
         user_order: List[str] = []
         for message in batch.messages:
@@ -218,6 +230,7 @@ class ModerationProcessor:
             if message_id and message_id not in user_message_ids[user_id]:
                 user_message_ids[user_id].append(message_id)
 
+        # Finalize actions by user ID
         final_actions: List[ActionData] = []
         for user_id in user_order:
             source = parsed_by_user.get(user_id)
@@ -225,16 +238,32 @@ class ModerationProcessor:
                 reason = "no action"
                 source = ActionData(user_id, ActionType.NULL, reason)
 
+            actual_ids = list(user_message_ids.get(user_id, []))
+            ai_ids = [mid.strip() for mid in source.message_ids if mid]
+
+            valid_ai_ids = [mid for mid in ai_ids if mid in actual_ids]
+
+            if ai_ids and not valid_ai_ids and actual_ids:
+                fallback_count = min(len(ai_ids), len(actual_ids))
+                valid_ai_ids = actual_ids[-fallback_count:]
+
+            message_ids = valid_ai_ids or actual_ids
+
+            if ai_ids and not valid_ai_ids and not actual_ids:
+                logger.debug(
+                    "No matching batch messages for AI-provided ids %s (user %s)",
+                    ai_ids,
+                    user_id,
+                )
+
             action = ActionData(
                 user_id,
                 source.action,
                 source.reason,
-                list(source.message_ids),
+                list(message_ids),
                 source.timeout_duration,
                 source.ban_duration,
             )
-
-            action.add_message_ids(*user_message_ids.get(user_id, []))
 
             final_actions.append(action)
 

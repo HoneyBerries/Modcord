@@ -198,7 +198,7 @@ class GuildSettingsManager:
         # Add message to current batch
         self.channel_message_batches[channel_id].append(message)
         logger.debug(
-            "Added message to batch for channel %s, batch size: %d",
+            "Added message to batch for channel %s, message group size: %d",
             channel_id,
             len(self.channel_message_batches[channel_id]),
         )
