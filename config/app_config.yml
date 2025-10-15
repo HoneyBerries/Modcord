@@ -4,7 +4,7 @@ ai_settings:
   vram_percentage: 0.85 # Percentage of GPU VRAM to utilize if using GPU; adjust based on your system
 
   # Path to your local model directory or model identifier from Hugging Face
-  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-thinking-nf4"
+  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-thinking-2507-nf4"
   
   knobs:
     dtype: "bfloat16"           # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs

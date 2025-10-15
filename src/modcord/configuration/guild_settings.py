@@ -22,9 +22,7 @@ import json
 import os
 import tempfile
 import concurrent.futures
-
 from dataclasses import dataclass
-
 from modcord.util.logger import get_logger
 from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
 from modcord.configuration.app_configuration import app_config
@@ -259,7 +257,7 @@ class GuildSettingsManager:
 
             # Process the batch if we have messages and a callback
             if messages and self.batch_processing_callback:
-                logger.info("Processing batch for channel %s with %d messages", channel_id, len(messages))
+                logger.debug("Processing batch for channel %s with %d messages", channel_id, len(messages))
                 batch = ModerationBatch(channel_id=channel_id, messages=messages)
                 try:
                     await self.batch_processing_callback(batch)

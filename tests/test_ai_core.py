@@ -116,10 +116,10 @@ async def test_init_model_success_and_generate_text(monkeypatch):
     
     fake_async_llm_engine_module = MagicMock()
     fake_async_llm_engine_module.AsyncLLMEngine = FakeAsyncLLMEngine
-    # Mock the from_engine_args class method
-    async def mock_from_engine_args(engine_args, **kwargs):
+    # Mock the from_engine_args class method (it's synchronous, not async)
+    def mock_from_engine_args(engine_args, **kwargs):
         return FakeAsyncLLMEngine(**engine_args.kwargs)
-    FakeAsyncLLMEngine.from_engine_args = staticmethod(mock_from_engine_args)
+    FakeAsyncLLMEngine.from_engine_args = staticmethod(mock_from_engine_args) # type: ignore
     
     fake_arg_utils = MagicMock()
     fake_arg_utils.AsyncEngineArgs = FakeAsyncEngineArgs
@@ -133,7 +133,7 @@ async def test_init_model_success_and_generate_text(monkeypatch):
     original_async_llm = sys.modules.get('vllm.engine.async_llm_engine')
     original_arg_utils = sys.modules.get('vllm.engine.arg_utils')
     
-    sys.modules['torch'] = fake_torch
+    sys.modules['torch'] = fake_torch # type: ignore
     sys.modules['vllm'] = fake_vllm
     sys.modules['vllm.engine.async_llm_engine'] = fake_async_llm_engine_module
     sys.modules['vllm.engine.arg_utils'] = fake_arg_utils
@@ -208,10 +208,10 @@ async def test_unload_model_resets_state(monkeypatch):
     
     fake_async_llm_engine_module = MagicMock()
     fake_async_llm_engine_module.AsyncLLMEngine = FakeAsyncLLMEngine
-    # Mock the from_engine_args class method
-    async def mock_from_engine_args(engine_args, **kwargs):
+    # Mock the from_engine_args class method (it's synchronous, not async)
+    def mock_from_engine_args(engine_args, **kwargs):
         return FakeAsyncLLMEngine(**engine_args.kwargs)
-    FakeAsyncLLMEngine.from_engine_args = staticmethod(mock_from_engine_args)
+    FakeAsyncLLMEngine.from_engine_args = staticmethod(mock_from_engine_args) # type: ignore
     
     fake_arg_utils = MagicMock()
     fake_arg_utils.AsyncEngineArgs = FakeAsyncEngineArgs
@@ -225,7 +225,7 @@ async def test_unload_model_resets_state(monkeypatch):
     original_async_llm = sys.modules.get('vllm.engine.async_llm_engine')
     original_arg_utils = sys.modules.get('vllm.engine.arg_utils')
     
-    sys.modules['torch'] = fake_torch
+    sys.modules['torch'] = fake_torch # type: ignore
     sys.modules['vllm'] = fake_vllm
     sys.modules['vllm.engine.async_llm_engine'] = fake_async_llm_engine_module
     sys.modules['vllm.engine.arg_utils'] = fake_arg_utils
