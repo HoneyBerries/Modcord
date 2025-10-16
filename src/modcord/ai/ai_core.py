@@ -148,7 +148,7 @@ class InferenceProcessor:
                 self.state.init_error = "missing model id"
                 return None, None, self.base_system_prompt
 
-            knobs_defaults = {
+            sampling_defaults = {
                 "dtype": "auto",
                 "max_new_tokens": 256,
                 "max_model_length": 2048,
@@ -159,9 +159,7 @@ class InferenceProcessor:
                 "presence_penalty": 0.0,
                 "frequency_penalty": 0.0,
             }
-            knobs = {**knobs_defaults, **(ai_config.get("knobs") or {})}
-
-            allow_gpu = bool(ai_config.get("allow_gpu", False))
+            sampling_parameters = {**sampling_defaults, **(ai_config.get("sampling_parameters") or {})}
             vram_percentage = float(ai_config.get("vram_percentage", 0.5))
 
             try:
@@ -177,18 +175,32 @@ class InferenceProcessor:
 
             cuda_available = torch.cuda.is_available()
             tensor_parallel = torch.cuda.device_count() if cuda_available else 1
-            gpu_mem_util = vram_percentage if allow_gpu and cuda_available else 0.0
+
+            chosen_dtype = sampling_parameters.get("dtype", "auto")
+            if not cuda_available:
+                if str(chosen_dtype).lower() in {"half", "float16", "bfloat16", "bf16"}:
+                    logger.info(
+                        "[AI MODEL] Forcing dtype to 'float32' due to GPU being unavailable"
+                    )
+                    chosen_dtype = "float32"
+
+            gpu_mem_util = vram_percentage if cuda_available else 0.0
 
             try:
+                # Configure multimodal limits to disable video cache
+                limit_mm_per_prompt = {"image": 16, "video": 0}
+                
                 engine_args = AsyncEngineArgs(
                     model=model_id,
-                    dtype=knobs["dtype"],
+                    dtype=chosen_dtype,
                     gpu_memory_utilization=gpu_mem_util,
-                    max_model_len=knobs["max_model_length"],
+                    max_model_len=sampling_parameters["max_model_length"],
                     tensor_parallel_size=tensor_parallel,
                     trust_remote_code=True,
                     guided_decoding_backend="xgrammar",
                     guided_decoding_disable_fallback=True,
+                    limit_mm_per_prompt=limit_mm_per_prompt,
+                    skip_mm_profiling=True
                 )
 
                 self.engine = AsyncLLMEngine.from_engine_args(engine_args)
@@ -197,13 +209,13 @@ class InferenceProcessor:
                 guided_decoding = self._build_guided_decoding()
                 
                 self.sampling_params = SamplingParams(
-                    temperature=knobs["temperature"],
-                    max_tokens=knobs["max_new_tokens"],
-                    top_p=knobs["top_p"],
-                    top_k=knobs["top_k"],
-                    repetition_penalty=knobs["repetition_penalty"],
-                    presence_penalty=knobs["presence_penalty"],
-                    frequency_penalty=knobs["frequency_penalty"],
+                    temperature=sampling_parameters["temperature"],
+                    max_tokens=sampling_parameters["max_new_tokens"],
+                    top_p=sampling_parameters["top_p"],
+                    top_k=sampling_parameters["top_k"],
+                    repetition_penalty=sampling_parameters["repetition_penalty"],
+                    presence_penalty=sampling_parameters["presence_penalty"],
+                    frequency_penalty=sampling_parameters["frequency_penalty"],
                     guided_decoding=guided_decoding,
                 )
                 logger.info("[AI MODEL] Sampling params created with guided_decoding (xgrammar backend)")
@@ -242,7 +254,7 @@ class InferenceProcessor:
         Returns the system prompt with server rules injected.
 
         Args:
-            server_rules: Server rules to inject into the <|SERVER_RULES|> placeholder.
+            server_rules: Server rules to inject into the <|SERVER_RULES_INJECT|> placeholder.
 
         Returns:
             Formatted system prompt string with rules inserted.
@@ -252,9 +264,9 @@ class InferenceProcessor:
         template_str = str(template or "")
         rules_str = str(server_rules or "")
         
-        # Simple string replacement - supports <|SERVER_RULES|> placeholder format
-        if "<|SERVER_RULES|>" in template_str:
-            return template_str.replace("<|SERVER_RULES|>", rules_str)
+        # Simple string replacement - supports <|SERVER_RULES_INJECT|> placeholder format
+        if "<|SERVER_RULES_INJECT|>" in template_str:
+            return template_str.replace("<|SERVER_RULES_INJECT|>", rules_str)
         
         # Fallback: append rules if no placeholder found
         if rules_str:

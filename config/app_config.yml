@@ -1,35 +1,35 @@
 ai_settings:
   enabled: true
-  allow_gpu: true # Highly recommended if your hardware supports it
-  vram_percentage: 0.85 # Percentage of GPU VRAM to utilize if using GPU; adjust based on your system
+  vram_percentage: 0.85 # Percentage of GPU VRAM to use if using GPU (0.0 to 1.0)
 
   # Path to your local model directory or model identifier from Hugging Face
-  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-4b-instruct-2507-nf4"
-  
-  knobs:
-    dtype: "bfloat16"           # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
-    max_new_tokens: 1024        # Lowered for faster, more focused responses; increase if longer outputs are needed
-    max_model_length: 8192      # Keep high for large batch moderation, but avoid exceeding model limits
-    temperature: 0.7            # Increased from 0.05 - very low temps can cause degenerate/truncated outputs
-    top_p: 0.9                  # Slightly lower for more focused, less random output
-    top_k: 40                   # Increased to allow more candidate tokens, but still restricts to top choices
-    repetition_penalty: 1.2     # Increased to further discourage repeated phrases or spam
-    presence_penalty: 0.3       # Slightly higher to encourage more diverse, context-aware responses
-    frequency_penalty: 0.2      # Increased to further reduce repeated or spammy outputs
+  model_id: "/mnt/d/Model Folder/modcord_custom_models/qwen3-vl-4b-instruct-nf4"
 
-    history_message_limit: 20     # Number of pre-window messages to include as context (0 disables extra history)
-    # batch_window: time window (in seconds) to group messages for moderation.
-    # Default mirrors the previous behavior (15 seconds). Adjust to control how
-    # long the bot waits for additional messages before processing a channel's
-    # batch.
-    batch_window: 10.0
+  sampling_parameters:
+    dtype: "bfloat16" # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
+    max_new_tokens: 1024
+    max_model_length: 4096
+    temperature: 0.7
+    top_p: 0.95
+    top_k: 50
+    repetition_penalty: 1.1
+    presence_penalty: 0.0
+    frequency_penalty: 0.0
 
+  # moderation_batch_seconds: time window (in seconds) to group messages for moderation.
+  moderation_batch_seconds: 10.0
+
+  # Message cache configuration for dynamic history fetching (Discord API fallback)
+  cache:
+    max_messages_per_channel: 16 # Maximum messages to retain in memory per channel
+    cache_ttl_seconds: 3600 # Time-to-live for cached messages (1 hour default); older messages are discarded
+    api_fetch_limit: 128  # Max messages to fetch from Discord API in one call
 
 
 system_prompt: |
-  You are a Discord moderation AI. Reason briefly (max 256 tokens), then output JSON-formatted moderation actions.
+  You are a Discord moderation AI. Your only job is to output JSON-formatted moderation actions.
 
-  --- REASONING ---
+  --- REASONING/Thought Process ---
   Strictly follow the SERVER_RULES below. Do not invent or ignore rules. Analyze each user's messages only by these rules. Keep reasoning concise and focused.
   
   --- OUTPUT SCHEMA ---
@@ -48,7 +48,7 @@ system_prompt: |
   }
 
   --- RULES ---
-  <|SERVER_RULES|>
+  <|SERVER_RULES_INJECT|>
 
   --- EXAMPLE ---
   {
@@ -60,7 +60,7 @@ system_prompt: |
   }
 
 
-server_rules: |
+default_server_rules: |
   1. Be respectful to all members and moderators.
   2. No spamming, flooding, or excessive use of caps/emoji. (Minor: occasional caps/emoji; Major: repeated spamming)
   3. No hate speech, racism, sexism, homophobia, or any form of discrimination. (Always major)
@@ -71,5 +71,3 @@ server_rules: |
   8. Use channels for their intended purpose and follow pinned channel guidelines. (Minor if off-topic once; Major if repeated)
   9. Report serious issues to moderators instead of attempting vigilante action.
   10. Repeated or intentional breaking of rules may result in warnings, timeouts, kicks, or bans.
-
-

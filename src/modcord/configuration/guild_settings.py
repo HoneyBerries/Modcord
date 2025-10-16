@@ -24,6 +24,7 @@ import os
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
 from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
+from modcord.util.message_cache import message_history_cache
 from modcord.configuration.app_configuration import app_config
 
 logger = get_logger("guild_settings_manager")
@@ -108,7 +109,7 @@ class GuildSettingsManager:
         self.guilds: Dict[int, GuildSettings] = {}
 
         # Per-channel chat history for AI context
-        self.chat_history: DefaultDict[int, deque] = collections.defaultdict(lambda: collections.deque(maxlen=128))
+    # self.chat_history is now obsolete; use message_history_cache instead
 
         # Channel-based message batching system (15-second intervals)
         self.channel_message_batches: DefaultDict[int, List[ModerationMessage]] = collections.defaultdict(list)
@@ -169,12 +170,11 @@ class GuildSettingsManager:
         self._trigger_persist()
 
     def add_message_to_history(self, channel_id: int, message: ModerationMessage) -> None:
-        """Append a message to the channel's history deque."""
-        self.chat_history[channel_id].append(message)
+        """Add a message to the dynamic message cache for Discord API fallback."""
+        message_history_cache.add_message(channel_id, message)
 
-    def get_chat_history(self, channel_id: int) -> list:
-        """Return a list copy of the channel's chat history."""
-        return list(self.chat_history[channel_id])
+
+    # get_chat_history is now obsolete; use message_history_cache.get_cached_messages if needed
 
     # --- Channel-based message batching for 15-second intervals ---
     def set_batch_processing_callback(self, callback: Callable[[ModerationBatch], Awaitable[None]]) -> None:
@@ -200,13 +200,10 @@ class GuildSettingsManager:
     async def batch_timer(self, channel_id: int) -> None:
         """Await the batching window, then invoke the batch callback with messages."""
         try:
-            try:
-                batching_cfg = app_config.ai_settings.batching if app_config else {}
-                batch_window = float(batching_cfg.get("batch_window", 15.0))
-            except Exception:
-                batch_window = 15.0
-            logger.debug("Using batch_window=%s seconds for channel %s", batch_window, channel_id)
-            await asyncio.sleep(batch_window)
+            ai_settings = app_config.ai_settings if app_config else {}
+            moderation_batch_seconds = float(ai_settings.get("moderation_batch_seconds", 10.0))
+            logger.debug("Using moderation_batch_seconds=%s seconds for channel %s", moderation_batch_seconds, channel_id)
+            await asyncio.sleep(moderation_batch_seconds)
 
             # Get the current batch and clear it
             messages = list(self.channel_message_batches[channel_id])
@@ -223,7 +220,7 @@ class GuildSettingsManager:
             # Process the batch if we have messages and a callback
             if messages and self.batch_processing_callback:
                 logger.debug("Processing batch for channel %s with %d messages", channel_id, len(messages))
-                history_context = self._resolve_history_context(channel_id, messages)
+                history_context = await self._resolve_history_context(channel_id, messages)
                 if history_context:
                     logger.debug(
                         "Including %d prior messages as context for channel %s",
@@ -287,48 +284,42 @@ class GuildSettingsManager:
         self._trigger_persist()
         return True
 
-    def _resolve_history_context(
+    async def _resolve_history_context(
         self,
         channel_id: int,
         current_batch: Sequence[ModerationMessage],
     ) -> List[ModerationMessage]:
-        """Select prior channel messages to provide as model context."""
-        try:
-            knobs = app_config.ai_settings.knobs if app_config else {}
-            raw_limit = knobs.get("history_message_limit", 0)
-            history_limit = int(raw_limit)
-        except Exception:
-            history_limit = 0
-
-        if history_limit <= 0:
-            return []
-
-        history_snapshot = self.get_chat_history(channel_id)
-        if not history_snapshot:
-            return []
-
+        """Select prior channel messages to provide as model context.
+        
+        Uses the message cache and Discord API fallback to fetch historical
+        context, ensuring availability even if the bot was offline when
+        messages were posted.
+        """
+        # Build set of message IDs to exclude (current batch)
         current_ids = {str(msg.message_id) for msg in current_batch}
-        earliest_index = len(history_snapshot)
-        for idx, entry in enumerate(history_snapshot):
-            if str(entry.message_id) in current_ids and idx < earliest_index:
-                earliest_index = idx
 
-        if earliest_index == len(history_snapshot):
-            search_space = history_snapshot
-        else:
-            search_space = history_snapshot[:earliest_index]
-        selected: List[ModerationMessage] = []
-
-        for entry in reversed(search_space):
-            entry_id = str(entry.message_id)
-            if entry_id in current_ids:
-                continue
-            selected.append(entry)
-            if len(selected) >= history_limit:
-                break
-
-        selected.reverse()
-        return selected
+        # Use a default or config-driven value for history context length, or make it a parameter if needed
+        default_limit = 20  # You can make this configurable elsewhere if desired
+        try:
+            history_messages = await message_history_cache.fetch_history_for_context(
+                channel_id,
+                limit=default_limit,
+                exclude_message_ids=current_ids,
+            )
+            if history_messages:
+                logger.debug(
+                    "Resolved %d history messages for channel %s from cache/API",
+                    len(history_messages),
+                    channel_id,
+                )
+            return history_messages
+        except Exception as exc:
+            logger.warning(
+                "Error fetching history context for channel %s: %s",
+                channel_id,
+                exc,
+            )
+            return []
 
     async def shutdown(self) -> None:
         """Gracefully cancel and await all outstanding batch timers (await on shutdown)."""

@@ -90,14 +90,13 @@ class AppConfig:
             # Log a concise summary of important AI settings for observability.
             try:
                 ai = self.ai_settings
-                knobs = ai.knobs if hasattr(ai, "knobs") else {}
-                batching = ai.batching if hasattr(ai, "batching") else {}
+                sampling_parameters = ai.sampling_parameters if hasattr(ai, "sampling_parameters") else {}
                 logger.info(
-                    "Loaded config: ai.enabled=%s, ai.model_id=%s, knobs=%s, batching=%s",
+                    "Loaded config: ai.enabled=%s, ai.model_id=%s, sampling_parameters=%s, moderation_batch_seconds=%s",
                     bool(ai.enabled),
                     ai.model_id or "<none>",
-                    {k: knobs.get(k) for k in ("dtype", "max_new_tokens", "temperature", "history_message_limit") if k in knobs},
-                    {k: batching.get(k) for k in ("batch_window",) if k in batching},
+                    {k: sampling_parameters.get(k) for k in ("dtype", "max_new_tokens", "temperature") if k in sampling_parameters},
+                    ai.get("moderation_batch_seconds", 10.0),
                 )
             except Exception:
                 # Non-fatal: don't block reload on logging errors
@@ -135,7 +134,7 @@ class AppConfig:
         prompts without additional checks.
         """
         with self.lock:
-            value = self._data.get("server_rules", "")
+            value = self._data.get("default_server_rules", "")
         return str(value or "")
 
     @property
@@ -206,14 +205,9 @@ class AISettings(Mapping):
         return str(val) if val else None
 
     @property
-    def knobs(self) -> Dict[str, Any]:
-        k = self.data.get("knobs", {})
+    def sampling_parameters(self) -> Dict[str, Any]:
+        k = self.data.get("sampling_parameters", {})
         return k if isinstance(k, dict) else {}
-
-    @property
-    def batching(self) -> Dict[str, Any]:
-        b = self.data.get("batching", {})
-        return b if isinstance(b, dict) else {}
 
     # Allow attribute-like fallback access for any key
     def __getattr__(self, item: str) -> Any:  # pragma: no cover - thin shim

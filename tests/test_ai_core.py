@@ -71,7 +71,7 @@ async def test_init_model_missing_configuration(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_init_model_disabled_returns_prompt(monkeypatch):
-    ai_settings = {"enabled": False, "model_id": "model", "allow_gpu": False}
+    ai_settings = {"enabled": False, "model_id": "model"}
     fake_config = FakeConfig(reload_payload={"ok": True}, ai_settings=ai_settings)
     monkeypatch.setattr(ai_core.cfg, "app_config", fake_config)
 
@@ -89,10 +89,9 @@ async def test_init_model_disabled_returns_prompt(monkeypatch):
 async def test_init_model_success_and_generate_text(monkeypatch):
     ai_settings = {
         "enabled": True,
-        "allow_gpu": True,
         "vram_percentage": 0.5,
         "model_id": "fake-model",
-        "knobs": {
+        "sampling_parameters": {
             "dtype": "auto",
             "max_new_tokens": 16,
             "max_model_length": 512,
@@ -178,9 +177,8 @@ async def test_init_model_success_and_generate_text(monkeypatch):
 async def test_unload_model_resets_state(monkeypatch):
     ai_settings = {
         "enabled": True,
-        "allow_gpu": False,
-        "model_id": "fake-model",
-        "knobs": {},
+    "model_id": "fake-model",
+    "sampling_parameters": {},
     }
     fake_config = FakeConfig(reload_payload={"ok": True}, ai_settings=ai_settings)
     monkeypatch.setattr(ai_core.cfg, "app_config", fake_config)

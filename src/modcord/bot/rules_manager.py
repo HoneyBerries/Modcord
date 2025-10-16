@@ -59,7 +59,8 @@ async def _collect_channel_messages(channel: discord.TextChannel) -> list[str]:
 		async for message in channel.history(oldest_first=True):
 			if message.content and isinstance(message.content, str) and (text := message.content.strip()):
 				messages.append(text)
-			messages.extend(_extract_embed_text(embed) for embed in message.embeds)
+			for embed in message.embeds:
+				messages.extend(_extract_embed_text(embed))
 	except discord.Forbidden:
 		logger.warning("No permission to read rules channel: %s", channel.name)
 	except asyncio.CancelledError:

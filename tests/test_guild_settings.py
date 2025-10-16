@@ -11,7 +11,7 @@ class GuildSettingsBatchingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         patcher = patch(
             "modcord.configuration.guild_settings.app_config",
-            MagicMock(ai_settings=MagicMock(batching={"batch_window": 0.01})),
+            MagicMock(ai_settings=MagicMock(get=lambda k, d=None: {"moderation_batch_seconds": 0.01}.get(k, d))),
         )
         self.addCleanup(patcher.stop)
         patcher.start()

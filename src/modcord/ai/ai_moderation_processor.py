@@ -133,7 +133,7 @@ class ModerationProcessor:
         # Debug logging to verify system prompt is properly injected
         logger.debug("System prompt length: %d chars, contains placeholder: %s, contains server rules: %s",
             len(system_prompt),
-            "<|SERVER_RULES|>" in system_prompt,
+            "<|SERVER_RULES_INJECT|>" in system_prompt,
             "No hate speech" in system_prompt or "discrimination" in system_prompt)
 
         messages = [
