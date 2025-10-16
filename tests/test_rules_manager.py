@@ -90,8 +90,9 @@ async def test_refresh_guild_rules_updates_settings(monkeypatch):
     guild = FakeGuild("Guild", [FakeTextChannel("rules", [FakeMessage("content")])])
 
     monkeypatch.setattr(rules_manager, "collect_rules_text", AsyncMock(return_value="collected"))
+    monkeypatch.setattr(rules_manager, "guild_settings_manager", settings)
 
-    result = await rules_manager.refresh_guild_rules(guild, settings=settings) # type: ignore
+    result = await rules_manager.refresh_guild_rules(guild)
 
     assert result == "collected"
     assert settings.rules[guild.id] == "collected"
@@ -106,9 +107,9 @@ async def test_refresh_rules_cache_handles_exceptions(monkeypatch):
 
     refresh_mock = AsyncMock(side_effect=["ok", Exception("boom")])
     monkeypatch.setattr(rules_manager, "refresh_guild_rules", refresh_mock)
-    monkeypatch.setattr(rules_manager, "resolve_settings", lambda settings=None: settings or FakeSettings())
+    monkeypatch.setattr(rules_manager, "guild_settings_manager", settings)
 
-    await rules_manager.refresh_rules_cache(bot, settings=settings) # type: ignore
+    await rules_manager.refresh_rules_cache(bot)
 
     assert refresh_mock.await_count == 2
 
@@ -122,6 +123,6 @@ async def test_run_periodic_refresh_cancels(monkeypatch):
     bot = SimpleNamespace(guilds=[])
 
     with pytest.raises(asyncio.CancelledError):
-        await rules_manager.run_periodic_refresh(bot, settings=FakeSettings(), interval_seconds=0.01) # type: ignore
+        await rules_manager.run_periodic_refresh(bot, interval_seconds=0.01)
 
     assert refresh_mock.await_count >= 1

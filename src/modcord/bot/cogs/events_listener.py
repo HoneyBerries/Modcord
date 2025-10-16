@@ -10,6 +10,7 @@ from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.ai.ai_moderation_processor import model_state
+from modcord.bot import rules_manager
 from modcord.util.logger import get_logger
 from modcord.util import moderation_helper
 
@@ -52,7 +53,7 @@ class EventsListenerCog(commands.Cog):
 
         # Start the rules cache refresh task
         logger.info("Starting server rules cache refresh task...")
-        asyncio.create_task(moderation_helper.refresh_rules_cache_task(self))
+        asyncio.create_task(rules_manager.start_periodic_refresh_task(self.bot))
 
         # Set up batch processing callback for channel-based batching
         logger.info("Setting up batch processing callback...")
@@ -109,8 +110,11 @@ class EventsListenerCog(commands.Cog):
         error_message = "A :bug: showed up while running this command."
         try:
             await application_context.respond(error_message, ephemeral=True)
-        except discord.InteractionResponded:
-            await application_context.followup.send(error_message, ephemeral=True)
+        except Exception:
+            try:
+                await application_context.followup.send(error_message, ephemeral=True)
+            except Exception:
+                pass
 
 
 def setup(discord_bot_instance):

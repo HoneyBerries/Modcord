@@ -11,7 +11,7 @@ from discord.ext import commands
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.moderation_datatypes import ModerationMessage
 from modcord.util.logger import get_logger
-from modcord.util import moderation_helper
+from modcord.bot import rules_manager
 from modcord.util import discord_utils
 
 logger = get_logger("message_listener_cog")
@@ -126,7 +126,8 @@ class MessageListenerCog(commands.Cog):
         logger.debug(f"Received message from {message.author}: {message.content[:50]}")
 
         # Refresh rules cache if this was posted in a rules channel
-        await moderation_helper.refresh_rules_cache_if_rules_channel(self, message.channel)
+        if isinstance(message.channel, discord.abc.GuildChannel):
+            await rules_manager.refresh_rules_if_channel(message.channel)
 
         # Create and store message in history
         history_entry = self._create_moderation_message(message, actual_content)
@@ -173,7 +174,8 @@ class MessageListenerCog(commands.Cog):
             return
 
         # Refresh rules cache if this edit occurred in a rules channel
-        await moderation_helper.refresh_rules_cache_if_rules_channel(self, after.channel)
+        if isinstance(after.channel, discord.abc.GuildChannel):
+            await rules_manager.refresh_rules_if_channel(after.channel)
 
 
 def setup(discord_bot_instance):

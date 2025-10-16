@@ -16,14 +16,11 @@ Schema example:
 
 import collections
 import asyncio
-import threading
-from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence
+from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence, Set
 from collections import deque
 from pathlib import Path
 import json
 import os
-import tempfile
-import concurrent.futures
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
 from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
@@ -107,9 +104,6 @@ class GuildSettingsManager:
         self.data_dir = Path("data")
         self.settings_path = self.data_dir / "guild_settings.json"
 
-        # Internal synchronization primitives
-        self.io_lock = asyncio.Lock()
-
         # Persisted guild settings registry (guild_id -> GuildSettings)
         self.guilds: Dict[int, GuildSettings] = {}
 
@@ -121,12 +115,9 @@ class GuildSettingsManager:
         self.channel_batch_timers: Dict[int, asyncio.Task] = {}  # channel_id -> timer task
         self.batch_processing_callback: Optional[Callable[[ModerationBatch], Awaitable[None]]] = None
 
-        # Background writer loop and thread so writes can always be scheduled asynchronously
-        self.writer_loop: Optional[asyncio.AbstractEventLoop] = None
-        self.writer_thread: Optional[threading.Thread] = None
-        self.writer_ready = threading.Event()
-        self.pending_writes: List[concurrent.futures.Future] = []
-        self.start_writer_loop()
+        # Persistence helpers
+        self._persist_lock = asyncio.Lock()
+        self._active_persists: Set[asyncio.Task] = set()
 
         # Load persisted settings (if present)
         self.load_from_disk()
@@ -175,9 +166,7 @@ class GuildSettingsManager:
         settings.rules = rules
         logger.debug(f"Updated rules cache for guild {guild_id} (len={len(rules)})")
 
-        # Persist change by scheduling on the dedicated writer loop
-        self.schedule_persist(guild_id)
-        logger.debug("Scheduled async persist for guild %s", guild_id)
+        self._trigger_persist()
 
     def add_message_to_history(self, channel_id: int, message: ModerationMessage) -> None:
         """Append a message to the channel's history deque."""
@@ -269,6 +258,35 @@ class GuildSettingsManager:
             timer_task.cancel()
         logger.info("Requested cancellation of all batch timers")
 
+    def _trigger_persist(self) -> None:
+        """Schedule a best-effort snapshot of guild settings to disk."""
+        payload = self.build_payload()
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            if not self.write_settings(payload):
+                logger.error("Failed to persist guild settings synchronously")
+            return
+
+        task = loop.create_task(self.write_settings_async(payload))
+        self._active_persists.add(task)
+
+        def _cleanup(completed: asyncio.Task) -> None:
+            self._active_persists.discard(completed)
+            try:
+                if not completed.result():
+                    logger.error("Failed to persist guild settings snapshot")
+            except Exception:
+                logger.exception("Error while writing guild settings snapshot")
+
+        task.add_done_callback(_cleanup)
+
+    def schedule_persist(self, guild_id: int) -> bool:  # pragma: no cover - maintained for compatibility
+        """Backward-compatible wrapper that triggers a settings persist."""
+        self._trigger_persist()
+        return True
+
     def _resolve_history_context(
         self,
         channel_id: int,
@@ -314,32 +332,21 @@ class GuildSettingsManager:
 
     async def shutdown(self) -> None:
         """Gracefully cancel and await all outstanding batch timers (await on shutdown)."""
-        # Request cancellation
-        for task in list(self.channel_batch_timers.values()):
-            task.cancel()
-        # Await tasks to finish
-        awaitables = [t for t in list(self.channel_batch_timers.values())]
-        for t in awaitables:
-            try:
-                await t
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.exception("Exception waiting for batch timer during shutdown")
+        timers = list(self.channel_batch_timers.values())
         self.channel_batch_timers.clear()
-        self.channel_message_batches.clear()
-        # Wait for any pending writes scheduled on the writer loop
-        if self.pending_writes:
-            for fut in list(self.pending_writes):
-                try:
-                    fut.result(timeout=2)
-                except Exception:
-                    logger.exception("Pending write did not complete during shutdown")
-            self.pending_writes.clear()
+        for task in timers:
+            task.cancel()
+        if timers:
+            await asyncio.gather(*timers, return_exceptions=True)
 
-        # Stop the writer loop and join the thread
-        self.stop_writer_loop()
-        logger.info("Shutdown complete: batch timers cleared and writer stopped")
+        self.channel_message_batches.clear()
+
+        pending = list(self._active_persists)
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        self._active_persists.clear()
+
+        logger.info("Shutdown complete: batch timers cleared")
         logger.info("--------------------------------------------------------------------------------")
 
     # --- AI moderation enable/disable ---
@@ -357,8 +364,7 @@ class GuildSettingsManager:
         settings.ai_enabled = bool(enabled)
         state = "enabled" if enabled else "disabled"
         logger.info("AI moderation %s for guild %s", state, guild_id)
-        self.schedule_persist(guild_id)
-        logger.debug("Scheduled async persist for guild %s", guild_id)
+        self._trigger_persist()
         return True
 
     def is_action_allowed(self, guild_id: int, action: ActionType) -> bool:
@@ -384,7 +390,7 @@ class GuildSettingsManager:
             enabled,
             guild_id,
         )
-        self.schedule_persist(guild_id)
+        self._trigger_persist()
         return True
 
     # --- Persistence helpers ---
@@ -422,114 +428,30 @@ class GuildSettingsManager:
         return {"guilds": {}}
 
     def write_settings(self, settings_data: dict) -> bool:
-        """
-        Write settings JSON to disk atomically (synchronous helper).
-
-        Return whether the write was successful or not.
-
-        This performs a write-to-temp-file followed by an atomic replace of the
-        target file and fsync to reduce the chance of corruption. It is a
-        synchronous helper intended to be executed in a background thread when
-        called from the event loop.
-        """
+        """Synchronously persist guild settings to disk using an atomic replace."""
         self.ensure_data_dir()
-        temp_path = None
-        success = False
+        temp_path = self.settings_path.with_suffix(".tmp")
         try:
-            fd, temp_path = tempfile.mkstemp(prefix="guild_settings_", dir=str(self.data_dir), text=True)
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            with temp_path.open("w", encoding="utf-8") as fh:
                 json.dump(settings_data, fh, ensure_ascii=False, indent=2)
                 fh.flush()
                 os.fsync(fh.fileno())
-            os.replace(str(temp_path), str(self.settings_path))
-            logger.debug("Wrote settings to %s", self.settings_path)
-            success = True
-
+            os.replace(temp_path, self.settings_path)
+            logger.debug("Persisted guild settings to %s", self.settings_path)
+            return True
         except Exception:
             logger.exception("Failed to write settings to %s", self.settings_path)
             try:
-                if temp_path and os.path.exists(temp_path):
-                    os.remove(temp_path)
+                if temp_path.exists():
+                    temp_path.unlink()
             except Exception:
                 pass
             return False
-
-        return success
 
     async def write_settings_async(self, settings_data: dict) -> bool:
-        """
-        Async wrapper that runs the synchronous writer in a thread.
-
-        Returns whether the write was successful or not.
-
-        Uses an async lock to serialize concurrent writes and offloads the
-        blocking file work to a thread via asyncio.to_thread.
-        """
-        async with self.io_lock:
+        """Async helper that offloads :meth:`write_settings` to a worker thread."""
+        async with self._persist_lock:
             return await asyncio.to_thread(self.write_settings, settings_data)
-
-    # --- Background writer loop helpers (ensure async-only persistence) ---
-    def start_writer_loop(self) -> None:
-        """Start a background thread running an asyncio event loop for persistence."""
-        def run():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            self.writer_loop = loop
-            self.writer_ready.set()
-            try:
-                loop.run_forever()
-            finally:
-                try:
-                    loop.run_until_complete(loop.shutdown_asyncgens())
-                except Exception:
-                    pass
-                loop.close()
-
-        th = threading.Thread(target=run, name="guild-settings-writer", daemon=True)
-        th.start()
-        self.writer_thread = th
-        self.writer_ready.wait()
-
-    def stop_writer_loop(self) -> None:
-        """Stop the background writer loop and wait for thread exit."""
-        if self.writer_loop:
-            try:
-                self.writer_loop.call_soon_threadsafe(self.writer_loop.stop)
-            except Exception:
-                pass
-        if self.writer_thread:
-            self.writer_thread.join()
-
-    def schedule_persist(self, guild_id: int) -> bool:
-        """Schedule a persist for a guild on the writer loop without blocking."""
-        if not self.writer_loop:
-            logger.error("Writer loop not available; cannot schedule persist for %s", guild_id)
-            return False
-
-        payload = self.build_payload()
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        try:
-            fut = asyncio.run_coroutine_threadsafe(self.write_settings_async(payload), self.writer_loop)
-            self.pending_writes.append(fut)
-            if loop is not None:
-                def _cleanup(completed: concurrent.futures.Future) -> None:
-                    loop.call_soon_threadsafe(self._remove_pending_write, completed)
-
-                fut.add_done_callback(_cleanup)
-        except Exception:
-            logger.exception("Failed to schedule persistent write for guild %s", guild_id)
-            return False
-
-        return True
-
-    def _remove_pending_write(self, completed: concurrent.futures.Future) -> None:
-        try:
-            self.pending_writes.remove(completed)
-        except ValueError:
-            pass
 
     def load_from_disk(self) -> bool:
         """Load persisted guild settings into memory."""
@@ -562,8 +484,7 @@ class GuildSettingsManager:
         payload = self.build_payload()
 
         try:
-            await self.write_settings_async(payload)
-            return True
+            return await self.write_settings_async(payload)
         except Exception:
             logger.exception("Failed to persist guild %s asynchronously", guild_id)
             return False

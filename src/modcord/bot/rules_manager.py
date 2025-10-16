@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Iterable, Optional
 
 import discord
 
-from modcord.configuration.guild_settings import GuildSettingsManager, guild_settings_manager
+from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
 
 logger = get_logger("rules_manager")
@@ -27,170 +26,114 @@ RULE_CHANNEL_PATTERN = re.compile(
 """Heuristic regex used to discover channels that likely contain server rules."""
 
 
-def resolve_settings(settings: Optional[GuildSettingsManager]) -> GuildSettingsManager:
-	"""Return the provided manager or fall back to the shared singleton.
+def _extract_embed_text(embed: discord.Embed) -> list[str]:
+	"""Extract text from embed description and fields."""
+	texts = []
+	if embed.description and isinstance(embed.description, str):
+		texts.append(embed.description.strip())
+	texts.extend(
+		f"{field.name}: {field.value}".strip() if field.name else field.value.strip()
+		for field in embed.fields
+		if isinstance(field.value, str) and field.value.strip()
+	)
+	return texts
 
-	Parameters
-	----------
-	settings:
-		Optional custom :class:`GuildSettingsManager`. When ``None`` the process-wide
-		singleton is returned.
 
-	Returns
-	-------
-	GuildSettingsManager
-		Resolved manager instance ready for rule-cache operations.
+def _is_rules_channel(channel: discord.abc.GuildChannel) -> bool:
+	"""Check if channel name matches rules pattern."""
+	# Handle duck typing for tests - check if it has the required attributes
+	name = getattr(channel, "name", None)
+	if name is None or not isinstance(name, str):
+		return False
+	return RULE_CHANNEL_PATTERN.search(name) is not None
+
+
+async def _collect_channel_messages(channel: discord.TextChannel) -> list[str]:
+	"""Collect message and embed text from a single channel.
+	
+	Logs and skips errors from individual channels so one issue doesn't
+	abort the entire collection.
 	"""
-
-	return settings if settings is not None else guild_settings_manager
+	messages = []
+	try:
+		async for message in channel.history(oldest_first=True):
+			if message.content and isinstance(message.content, str) and (text := message.content.strip()):
+				messages.append(text)
+			messages.extend(_extract_embed_text(embed) for embed in message.embeds)
+	except discord.Forbidden:
+		logger.warning("No permission to read rules channel: %s", channel.name)
+	except asyncio.CancelledError:
+		raise
+	except Exception as exc:
+		logger.warning("Error fetching rules from channel %s: %s", channel.name, exc)
+	return messages
 
 
 async def collect_rules_text(guild: discord.Guild) -> str:
-	"""Collect rule text from channels inside ``guild`` that match ``RULE_CHANNEL_PATTERN``.
+	"""Collect rule text from channels in guild matching RULE_CHANNEL_PATTERN.
 
-	The function walks each matching text channel, combines plain-text content
-	with embed descriptions and fields, and returns a newline-separated string.
-	Any recoverable errors (missing permissions, transient API issues) are
-	logged and skipped so that a single problematic channel does not abort the
-	entire fetch.
-
-	Parameters
-	----------
-	guild:
-		Discord guild whose channels should be scanned for rule content.
-
-	Returns
-	-------
-	str
-		Concatenated rules text or an empty string when no content is discovered.
+	Returns concatenated rules text, or empty string if none found.
+	Errors in individual channels are logged and skipped.
 	"""
-
-	messages: list[str] = []
-
-	for channel in getattr(guild, "text_channels", []):
-		channel_name = getattr(channel, "name", "") or ""
-		if not isinstance(channel_name, str):
-			continue
-
-		if not RULE_CHANNEL_PATTERN.search(channel_name):
-			continue
-
-		try:
-			async for message in channel.history(oldest_first=True):
-				content = getattr(message, "content", "")
-				if isinstance(content, str) and content.strip():
-					messages.append(content.strip())
-
-				embeds: Iterable[discord.Embed] = getattr(message, "embeds", [])
-				for embed in embeds:
-					description = getattr(embed, "description", None)
-					if isinstance(description, str) and description.strip():
-						messages.append(description.strip())
-
-					for field in getattr(embed, "fields", []):
-						field_name = getattr(field, "name", "")
-						field_value = getattr(field, "value", "")
-						if isinstance(field_value, str) and field_value.strip():
-							prefix = f"{field_name}: " if field_name else ""
-							messages.append(f"{prefix}{field_value}".strip())
-
-		except discord.Forbidden:
-			logger.warning("No permission to read rules channel %s in %s", channel_name, guild.name)
-		except asyncio.CancelledError:  # pragma: no cover - propagation is intentional
-			raise
-		except Exception as exc:  # pragma: no cover - defensive guard around discord internals
-			logger.warning("Error fetching rules from %s in %s: %s", channel_name, guild.name, exc)
-
-	if not messages:
-		logger.info("No rule-like content discovered in guild %s", guild.name)
+	all_messages = []
+	for channel in guild.text_channels:
+		if _is_rules_channel(channel):
+			all_messages.extend(await _collect_channel_messages(channel))
+	
+	if not all_messages:
+		logger.debug("No rule-like content discovered in guild %s", guild.name)
 		return ""
-
-	logger.debug(
-		"Collected %s rule messages across %s", len(messages), guild.name
-	)
-	return "\n\n".join(messages)
+	
+	logger.debug("Collected %d rule messages in guild %s", len(all_messages), guild.name)
+	return "\n\n".join(all_messages)
 
 
-async def refresh_guild_rules(
-	guild: discord.Guild,
-	*,
-	settings: Optional[GuildSettingsManager] = None,
-) -> str:
-	"""Fetch and persist the latest rules text for ``guild``.
+async def refresh_guild_rules(guild: discord.Guild) -> str:
+	"""Fetch and persist latest rules for guild.
 
-	Returns the freshly collected rules text. If collection fails, the cached
-	value is left untouched (initialised to an empty string if missing) and the
-	exception is propagated to the caller for handling.
+	Returns collected rules text. If collection fails, cached value
+	is left untouched and exception is propagated.
 	"""
-
-	resolved_settings = resolve_settings(settings)
-
 	try:
 		rules_text = await collect_rules_text(guild)
 	except Exception:
-		resolved_settings.get_guild_settings(guild.id)
 		logger.exception("Failed to collect rules for guild %s", guild.name)
 		raise
 
-	resolved_settings.set_server_rules(guild.id, rules_text)
-
-	if rules_text:
-		logger.debug(
-			"Cached %s characters of rules for guild %s", len(rules_text), guild.name
-		)
-	else:
-		logger.debug("Rules fetch for guild %s returned no content", guild.name)
-
+	guild_settings_manager.set_server_rules(guild.id, rules_text)
+	logger.debug("Cached %d characters of rules for guild %s", len(rules_text), guild.name)
 	return rules_text
 
 
-async def refresh_rules_cache(
-	bot: discord.Client,
-	*, settings: Optional[GuildSettingsManager] = None,
-) -> None:
-	"""Refresh cached rules for all guilds the bot is currently in.
+async def refresh_rules_cache(bot: discord.Client) -> None:
+	"""Refresh cached rules for all guilds the bot is in.
 
 	Parameters
 	----------
 	bot:
 		Discord client whose guilds should have their rules refreshed.
-	settings:
-		Optional guild settings manager used for persistence; defaults to the singleton.
 	"""
-
-	resolved_settings = resolve_settings(settings)
-
-	logger.debug("Refreshing server rules cache for %s guilds", len(bot.guilds))
-
+	logger.debug("Refreshing server rules cache for %d guilds", len(bot.guilds))
 	for guild in bot.guilds:
 		try:
-			await refresh_guild_rules(guild, settings=resolved_settings)
+			await refresh_guild_rules(guild)
 		except asyncio.CancelledError:
 			raise
 		except Exception as exc:
 			logger.warning("Failed to refresh rules for guild %s: %s", guild.name, exc)
-			resolved_settings.get_guild_settings(guild.id)
-
-	logger.debug(
-		"Rules cache now has entries for %s guilds",
-		len(resolved_settings.list_guild_ids()),
-	)
 
 
 async def run_periodic_refresh(
 	bot: discord.Client,
 	*,
-	settings: Optional[GuildSettingsManager] = None,
 	interval_seconds: float = 300.0,
 ) -> None:
-	"""Continuously refresh the rules cache on a fixed interval.
+	"""Continuously refresh rules cache on a fixed interval.
 
 	Parameters
 	----------
 	bot:
 		Discord client instance whose guilds require periodic refresh.
-	settings:
-		Optional guild settings manager override; defaults to the singleton.
 	interval_seconds:
 		Delay between successive refresh runs, in seconds.
 
@@ -199,27 +142,48 @@ async def run_periodic_refresh(
 	asyncio.CancelledError
 		Propagated when the enclosing task is cancelled.
 	"""
-
-	resolved_settings = resolve_settings(settings)
-
 	logger.info(
-		"Starting periodic rules refresh (interval=%ss) for %s guilds",
+		"Starting periodic rules refresh (interval=%.1fs) for %d guilds",
 		interval_seconds,
 		len(bot.guilds),
 	)
-
 	try:
 		while True:
 			try:
-				await refresh_rules_cache(bot, settings=resolved_settings)
+				await refresh_rules_cache(bot)
 			except asyncio.CancelledError:
 				raise
 			except Exception as exc:
 				logger.error("Unexpected error during rules refresh: %s", exc)
-
 			await asyncio.sleep(interval_seconds)
 	except asyncio.CancelledError:
 		logger.info("Periodic rules refresh cancelled")
 		raise
 
 
+
+async def refresh_rules_if_channel(channel: discord.abc.GuildChannel) -> None:
+	"""Refresh guild rules if channel matches the rules channel pattern."""
+	if not isinstance(channel, discord.TextChannel) or not _is_rules_channel(channel):
+		return
+
+	guild = channel.guild
+	if not guild:
+		return
+
+	try:
+		await refresh_guild_rules(guild)
+		logger.debug("Rules refreshed from channel: %s", channel.name)
+	except Exception as exc:
+		logger.error("Failed to refresh rules from channel %s: %s", channel.name, exc)
+
+
+async def start_periodic_refresh_task(bot: discord.Client, interval_seconds: float = 300.0) -> None:
+	"""Start the periodic rules refresh background task."""
+	try:
+		await run_periodic_refresh(bot, interval_seconds=interval_seconds)
+	except asyncio.CancelledError:
+		logger.debug("Rules refresh task cancelled")
+		raise
+	except Exception as exc:
+		logger.error("Error in rules refresh task: %s", exc)
