@@ -91,9 +91,9 @@ class MessageListenerCog(commands.Cog):
         if message.guild is None:
             return False, None
 
-        # Ignore messages from bots and administrators
+        # Ignore messages from bots
         if discord_utils.is_ignored_author(message.author):
-            logger.debug(f"Ignoring message from {message.author} (bot or admin)")
+            logger.debug(f"Ignoring message from {message.author} (bot)")
             return False, None
 
         # Skip empty messages

@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, Iterable, List, Optional, Sequence
 import discord
 from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_datatypes")
+
+
+def humanize_timestamp(value: str) -> str:
+    """Return a human-readable timestamp (YYYY-MM-DD HH:MM:SS) in UTC."""
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    dt = dt.astimezone(timezone.utc)
+    
+    return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 class ActionType(Enum):
@@ -98,31 +107,32 @@ class ModerationMessage:
     timestamp: str  # ISO 8601 string, e.g. '2025-10-09T12:34:56Z'
     guild_id: Optional[int]
     channel_id: Optional[int]
-    role: str = "user"
     image_summary: Optional[str] = None
     discord_message: "discord.Message | None" = None
 
     def to_model_payload(self) -> dict:
         """Convert to the dictionary structure expected by the AI model."""
 
+        timestamp_value = humanize_timestamp(self.timestamp)
+
         return {
             "message_id": self.message_id,
             "user_id": self.user_id,
             "username": self.username,
             "content": self.content,
-            "timestamp": self.timestamp,
+            "timestamp": timestamp_value or None,
             "image_summary": self.image_summary,
-            "role": self.role,
         }
 
     def to_history_payload(self) -> dict:
         """Convert to the history message shape used by single-message moderation."""
 
+        timestamp_value = humanize_timestamp(self.timestamp)
+
         return {
-            "role": self.role,
             "user_id": self.user_id,
             "username": self.username,
-            "timestamp": self.timestamp,
+            "timestamp": timestamp_value or None,
             "content": self.content,
         }
 
@@ -170,10 +180,9 @@ class ModerationBatch:
                     "user_id": user_id,
                     "username": message.username,
                     "message_count": 0,
-                    "first_message_timestamp": message.timestamp,
-                    "latest_message_timestamp": message.timestamp,
                     "messages": [],
                     "__first_index": index,
+                    "__first_timestamp": message.timestamp,
                 }
 
             entry = grouped[user_id]
@@ -181,19 +190,18 @@ class ModerationBatch:
             entry_messages.append(
                 {
                     "message_id": message.message_id,
-                    "timestamp": message.timestamp,
+                    "timestamp": humanize_timestamp(message.timestamp) or None,
                     "content": message.content,
                     "image_summary": message.image_summary,
                     "order_index": index,
-                    "role": message.role,
                 }
             )
             entry["message_count"] += 1
-            # Update timestamps for clarity in prompts
-            if message.timestamp < entry["first_message_timestamp"]:
-                entry["first_message_timestamp"] = message.timestamp
-            if message.timestamp > entry["latest_message_timestamp"]:
-                entry["latest_message_timestamp"] = message.timestamp
+            if message.timestamp and (
+                not entry.get("__first_timestamp")
+                or message.timestamp < entry["__first_timestamp"]
+            ):
+                entry["__first_timestamp"] = message.timestamp
 
         # Sort messages per user by original order to guarantee determinism
         for entry in grouped.values():
@@ -208,7 +216,7 @@ class ModerationBatch:
 
         ordered_users.sort(
             key=lambda entry: (
-                entry.get("first_message_timestamp") or "",
+                entry.get("__first_timestamp") or "",
                 entry.get("__first_index", 0),
                 entry["user_id"],
             )
@@ -216,6 +224,7 @@ class ModerationBatch:
 
         for entry in ordered_users:
             entry.pop("__first_index", None)
+            entry.pop("__first_timestamp", None)
 
         return ordered_users
 

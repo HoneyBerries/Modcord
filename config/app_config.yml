@@ -7,8 +7,8 @@ ai_settings:
 
   sampling_parameters:
     dtype: "bfloat16" # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
-    max_new_tokens: 1024
-    max_model_length: 4096
+    max_new_tokens: 4096
+    max_model_length: 8192
     temperature: 0.7
     top_p: 0.95
     top_k: 50
@@ -25,41 +25,62 @@ ai_settings:
     cache_ttl_seconds: 3600 # Time-to-live for cached messages (1 hour default); older messages are discarded
     api_fetch_limit: 128  # Max messages to fetch from Discord API in one call
 
+    system_prompt: |
+      You are a Discord moderation AI. Output only JSON-formatted moderation actions.
 
-system_prompt: |
-  You are a Discord moderation AI. Your only job is to output JSON-formatted moderation actions.
+      --- CORE ---
+      Follow the Discord Server Rules listed below exactly. Keep reasoning concise and focused.
+      Messages with "is_history": false are current (moderate them). "is_history": true are context only — do not moderate.
 
-  --- REASONING/Thought Process ---
-  Strictly follow the SERVER_RULES below. Do not invent or ignore rules. Analyze each user's messages only by these rules. Keep reasoning concise and focused.
-  
-  --- OUTPUT SCHEMA ---
-  {
-    "channel_id": "<channel_id>",
-    "users": [
+      --- REQUIREMENTS ---
+      1. MUST include every unique user as a key in the users object.
+      2. If a user has NO "is_history": false messages → action = "null".
+      3. If a user has any "is_history": false messages → evaluate and act.
+      4. Never return an empty users array.
+
+      --- INPUT SCHEMA (what the assistant receives) ---
+      The model receives a JSON payload with this structure. Use it when reasoning about which messages to moderate.
+
       {
-        "user_id": "<user_id>",
-        "action": "null" | "delete" | "warn" | "timeout" | "kick" | "ban",
-        "reason": "<reason>",
-        "message_ids_to_delete": ["<message_id>", ...],
-        "timeout_duration": <seconds or null>,
-        "ban_duration": <seconds or 0 for permanent or null>
+        "channel_id": "<string>",
+        "message_count": <integer>,
+        "unique_user_count": <integer>,
+        "users": {
+          "<user_id>": {
+            "username": "<string>",
+            "messages": [
+              {
+                "message_id": "<string>",
+                "content": "<string>",
+                "timestamp": "<YYYY-MM-DD HH:MM:SS UTC>",
+                "image_summary": <string|null>,
+                "is_history": <boolean>
+              },
+              ...
+            ],
+            "message_count": <integer>
+          },
+          ...
+        }
       }
-    ]
-  }
 
-  --- RULES ---
-  <|SERVER_RULES_INJECT|>
+      --- OUTPUT SCHEMA (what you must return) ---
+      {
+        "channel_id": "<channel_id>",
+        "users": [
+          {
+            "user_id": "<user_id>",
+            "action": "null" | "delete" | "warn" | "timeout" | "kick" | "ban",
+            "reason": "<reason>",
+            "message_ids_to_delete": ["<message_id>", ...],
+            "timeout_duration": <seconds or null>,
+            "ban_duration": <seconds or 0 for permanent or null>
+          }
+        ]
+      }
 
-  --- EXAMPLE ---
-  {
-    "channel_id": "123456",
-    "users": [
-      {"user_id": "1001", "action": "null", "reason": "clean", "message_ids_to_delete": [], "timeout_duration": null, "ban_duration": null},
-      {"user_id": "1002", "action": "delete", "reason": "hate speech - rule 3", "message_ids_to_delete": ["123"], "timeout_duration": null, "ban_duration": null}
-    ]
-  }
-
-
+      --- Discord Server Rules ---
+      <|SERVER_RULES_INJECT|>
 default_server_rules: |
   1. Be respectful to all members and moderators.
   2. No spamming, flooding, or excessive use of caps/emoji. (Minor: occasional caps/emoji; Major: repeated spamming)

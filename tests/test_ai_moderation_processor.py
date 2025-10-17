@@ -122,8 +122,9 @@ class ModerationProcessorBatchTests(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(payload_str)
 
         self.assertEqual(payload["channel_id"], "1")
-        self.assertEqual(payload["window_start"], "2025-09-27T17:00:00Z")
-        self.assertEqual(payload["window_end"], "2025-09-27T17:00:02Z")
+        self.assertEqual(payload["message_count"], 3)
+        self.assertEqual(payload["unique_user_count"], 2)
+        self.assertNotIn("messages", payload)
 
         users = payload["users"]
         self.assertIsInstance(users, dict)
@@ -137,8 +138,9 @@ class ModerationProcessorBatchTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             [msg["timestamp"] for msg in user100["messages"]],
-            ["2025-09-27T17:00:00Z", "2025-09-27T17:00:01Z"],
+            ["2025-09-27 17:00:00 UTC", "2025-09-27 17:00:01 UTC"],
         )
+        self.assertTrue(all(not msg["is_history"] for msg in user100["messages"]))
 
         user200 = users["200"]
         self.assertEqual(user200["username"], "user200")
@@ -148,8 +150,9 @@ class ModerationProcessorBatchTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             [msg["timestamp"] for msg in user200["messages"]],
-            ["2025-09-27T17:00:02Z"],
+            ["2025-09-27 17:00:02 UTC"],
         )
+        self.assertTrue(all(not msg["is_history"] for msg in user200["messages"]))
 
         self.assertEqual(len(actions), 2)
 

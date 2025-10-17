@@ -49,7 +49,6 @@ def test_moderationmessage_payload_helpers() -> None:
         timestamp="2024-01-01T00:00:00Z",
         guild_id=7,
         channel_id=9,
-        role="assistant",
         image_summary="img",
     )
 
@@ -61,16 +60,14 @@ def test_moderationmessage_payload_helpers() -> None:
         "user_id": "42",
         "username": "alice",
         "content": "hello",
-        "timestamp": "2024-01-01T00:00:00Z",
+        "timestamp": "2024-01-01 00:00:00 UTC",
         "image_summary": "img",
-        "role": "assistant",
     }
 
     assert history_payload == {
-        "role": "assistant",
         "user_id": "42",
         "username": "alice",
-        "timestamp": "2024-01-01T00:00:00Z",
+        "timestamp": "2024-01-01 00:00:00 UTC",
         "content": "hello",
     }
 
@@ -120,9 +117,9 @@ def test_moderationbatch_to_user_payload_orders_messages() -> None:
 
     alpha = next(entry for entry in user_payload if entry["user_id"] == "1")
     assert alpha["message_count"] == 2
-    assert alpha["first_message_timestamp"] == "2024-01-01T10:00:00Z"
-    assert alpha["latest_message_timestamp"] == "2024-01-01T12:00:00Z"
     assert [msg["message_id"] for msg in alpha["messages"]] == ["m1", "m3"]
+    assert all("first_message_timestamp" not in entry for entry in user_payload)
+    assert all("latest_message_timestamp" not in entry for entry in user_payload)
 
     model_payload = batch.to_model_payload()
     assert isinstance(model_payload, list)

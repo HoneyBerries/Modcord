@@ -7,7 +7,13 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
-from modcord.util.moderation_datatypes import ActionData, ActionType, ModerationBatch, ModerationMessage
+from modcord.util.moderation_datatypes import (
+    ActionData,
+    ActionType,
+    ModerationBatch,
+    ModerationMessage,
+    humanize_timestamp,
+)
 import modcord.util.moderation_parsing as moderation_parsing
 from modcord.configuration.app_configuration import app_config
 
@@ -44,28 +50,15 @@ class ModerationProcessor:
     async def submit_inference(self, messages: List[Dict[str, Any]]) -> str:
         """Submit a fully composed prompt to the inference engine."""
         if self._shutdown:
-            return "null: shutting down"
+            return self._null_response("shutting down")
 
         ok, reason = await self._ensure_model_available()
         if not ok:
-            return f"null: {reason}"
+            return self._null_response(reason)
 
         prompt = await self.messages_to_prompt(messages)
         logger.debug("Final prompt sent to model (first 500 chars): %s", repr(prompt[:500]))
-        try:
-            results = await self.inference_processor.generate_text([prompt])
-        except Exception as exc:
-            logger.error("Inference error: %s", exc, exc_info=True)
-            return "null: inference error"
-
-        if not results:
-            logger.warning("Inference returned no results")
-            return "null: no response"
-
-        if len(results) != 1:
-            logger.warning("Expected single inference result, received %d", len(results))
-
-        return (results[0] or "").strip()
+        return await self._generate_single_completion(prompt)
 
     # ======== Helpers: Engine ========
     async def _ensure_model_initialized(self) -> bool:
@@ -96,6 +89,23 @@ class ModerationProcessor:
             and self.inference_processor.sampling_params is not None
         )
         return (True, "") if ready else (False, state.init_error or "AI model unavailable")
+
+    async def _generate_single_completion(self, prompt: str) -> str:
+        """Run inference for a single prompt and normalize null responses."""
+        try:
+            results = await self.inference_processor.generate_text([prompt])
+        except Exception as exc:
+            logger.error("Inference error: %s", exc, exc_info=True)
+            return self._null_response("inference error")
+
+        if not results:
+            logger.warning("Inference returned no results")
+            return self._null_response("no response")
+
+        if len(results) != 1:
+            logger.warning("Expected single inference result, received %d", len(results))
+
+        return (results[0] or "").strip()
 
     # ======== Helpers: Prompt Construction ========
     async def messages_to_prompt(self, messages: List[Dict[str, Any]]) -> str:
@@ -200,10 +210,9 @@ class ModerationProcessor:
         payload_messages = [msg.to_history_payload() for msg in history]
         payload_messages.append(
             {
-                "role": "user",
                 "user_id": str(user_id),
                 "username": username or f"user_{user_id}",
-                "timestamp": now_iso,
+                "timestamp": humanize_timestamp(now_iso) or None,
                 "content": message_to_assess,
             }
         )
@@ -222,95 +231,107 @@ class ModerationProcessor:
         batch: ModerationBatch,
     ) -> tuple[Dict[str, Any], List[str], Dict[str, List[str]]]:
         """Build the AI payload for a batch and track ordering/id maps."""
+
+        def _new_user_entry(username: str) -> Dict[str, Any]:
+            return {
+                "username": username,
+                "messages": [],
+                "message_count": 0,
+            }
+
+        def _add_entry(
+            user_id: str,
+            message_id: str,
+            timestamp: Optional[str],
+            content: str,
+            image_summary: Optional[str],
+            is_history: bool,
+        ) -> bool:
+            """Add message to user entry if not duplicate. Returns True if added."""
+            if message_id in seen_message_ids:
+                return False
+
+            if user_id not in users_payload:
+                return False
+
+            users_payload[user_id]["messages"].append(
+                {
+                    "message_id": message_id,
+                    "timestamp": timestamp,
+                    "content": content,
+                    "image_summary": image_summary,
+                    "is_history": is_history,
+                }
+            )
+            users_payload[user_id]["message_count"] = len(users_payload[user_id]["messages"])
+            if message_id:
+                seen_message_ids.add(message_id)
+            return True
+
         users_payload: Dict[str, Dict[str, Any]] = {}
         user_message_ids: Dict[str, List[str]] = {}
         user_order: List[str] = []
-        window_start: Optional[str] = None
-        window_end: Optional[str] = None
+        seen_message_ids: set[str] = set()
+        total_message_count = 0
 
-        flat_messages: List[Dict[str, Any]] = []
-
+        # Process current batch messages
         for message in batch.messages:
-            timestamp_value = str(message.timestamp).strip() if message.timestamp else ""
-            if timestamp_value:
-                window_start = timestamp_value if window_start is None else min(window_start, timestamp_value)
-                window_end = timestamp_value if window_end is None else max(window_end, timestamp_value)
-
             user_id = str(message.user_id).strip()
             if not user_id:
                 continue
 
+            message_id = str(message.message_id).strip()
+            if message_id in seen_message_ids:
+                continue
+
             if user_id not in users_payload:
-                users_payload[user_id] = {
-                    "username": str(message.username or ""),
-                    "messages": [],
-                    "first_message_timestamp": None,
-                    "latest_message_timestamp": None,
-                }
+                users_payload[user_id] = _new_user_entry(str(message.username or ""))
                 user_message_ids[user_id] = []
                 user_order.append(user_id)
 
-            entry = users_payload[user_id]
-            if timestamp_value:
-                if entry["first_message_timestamp"] is None:
-                    entry["first_message_timestamp"] = timestamp_value
-                entry["latest_message_timestamp"] = timestamp_value
-            entry["messages"].append(
-                {
-                    "message_id": str(message.message_id),
-                    "content": str(message.content or ""),
-                    "timestamp": timestamp_value or None,
-                }
-            )
-
-            message_id = str(message.message_id).strip()
             if message_id and message_id not in user_message_ids[user_id]:
                 user_message_ids[user_id].append(message_id)
 
-            flat_messages.append(
-                {
-                    "message_id": str(message.message_id),
-                    "user_id": user_id,
-                    "username": str(message.username or ""),
-                    "timestamp": timestamp_value or None,
-                    "content": str(message.content or ""),
-                    "image_summary": message.image_summary,
-                    "role": message.role,
-                    "is_context": False,
-                }
-            )
+            timestamp_value = humanize_timestamp(message.timestamp) or None
+            if _add_entry(
+                user_id,
+                message_id,
+                timestamp_value,
+                str(message.content or ""),
+                message.image_summary,
+                False,
+            ):
+                total_message_count += 1
 
-        for entry in users_payload.values():
-            entry["message_count"] = len(entry["messages"])
+        # Process history messages
+        for history_entry in batch.history:
+            history_user_id = str(history_entry.user_id).strip()
+            message_id = str(history_entry.message_id).strip()
 
-        history_messages: List[Dict[str, Any]] = []
-        if batch.history:
-            for history_entry in batch.history:
-                history_messages.append(
-                    {
-                        "message_id": str(history_entry.message_id),
-                        "user_id": str(history_entry.user_id),
-                        "username": str(history_entry.username or ""),
-                        "timestamp": str(history_entry.timestamp or "") or None,
-                        "content": str(history_entry.content or ""),
-                        "image_summary": history_entry.image_summary,
-                        "role": history_entry.role,
-                        "is_context": True,
-                    }
-                )
+            if message_id in seen_message_ids:
+                continue
+
+            if history_user_id not in users_payload:
+                users_payload[history_user_id] = _new_user_entry(str(history_entry.username or ""))
+                user_message_ids[history_user_id] = []
+                user_order.append(history_user_id)
+
+            if _add_entry(
+                history_user_id,
+                message_id,
+                humanize_timestamp(history_entry.timestamp) or None,
+                str(history_entry.content or ""),
+                history_entry.image_summary,
+                True,
+            ):
+                total_message_count += 1
 
         payload = {
             "channel_id": str(batch.channel_id),
-            "window_start": window_start,
-            "window_end": window_end,
-            "message_count": len(flat_messages),
+            "message_count": total_message_count,
             "unique_user_count": len(user_order),
-            "messages": flat_messages,
             "users": users_payload,
         }
-        if history_messages:
-            payload["history"] = history_messages
-            payload["history_count"] = len(history_messages)
         return payload, user_order, user_message_ids
 
     def _finalize_batch_actions(
@@ -411,6 +432,10 @@ class ModerationProcessor:
             .isoformat()
             .replace("+00:00", "Z")
         )
+
+    @staticmethod
+    def _null_response(reason: str) -> str:
+        return f"null: {reason}"
 
 
 moderation_processor = ModerationProcessor()

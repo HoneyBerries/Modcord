@@ -188,7 +188,7 @@ class InferenceProcessor:
 
             try:
                 # Configure multimodal limits to disable video cache
-                limit_mm_per_prompt = {"image": 16, "video": 0}
+                limit_mm_per_prompt = {"image": 8, "video": 0}
                 
                 engine_args = AsyncEngineArgs(
                     model=model_id,
