@@ -20,7 +20,7 @@ class FakeState:
 class FakeEngine:
     def __init__(self) -> None:
         self.state = FakeState()
-        self.llm = object()
+        self.engine = object()  # Changed from llm to engine for AsyncLLMEngine
         self.sampling_params = object()
         self.system_prompt_calls: list[str] = []
 
@@ -29,7 +29,7 @@ class FakeEngine:
         return True
 
     async def get_model(self):
-        return self.llm, self.sampling_params, "prompt"
+        return self.engine, self.sampling_params, "prompt"
 
     async def get_system_prompt(self, server_rules: str = "") -> str:
         self.system_prompt_calls.append(server_rules)
@@ -105,7 +105,7 @@ async def test_submit_inference_handles_get_model_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_submit_inference_detects_unready_model(monkeypatch):
     engine = FakeEngine()
-    engine.llm = None
+    engine.engine = None
     engine.sampling_params = None
     processor = ModerationProcessor()
     processor.inference_processor = cast(ai_core.InferenceProcessor, engine)

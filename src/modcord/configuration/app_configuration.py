@@ -65,7 +65,7 @@ class AppConfig:
         except FileNotFoundError:
             logger.error("Config file %s not found.", self.config_path)
             return {}
-        except Exception as exc:  # noqa: BLE001 - log and fall back to empty config
+        except Exception as exc:
             logger.error("Failed to load config %s: %s", self.config_path, exc, exc_info=True)
             return {}
 
@@ -90,14 +90,13 @@ class AppConfig:
             # Log a concise summary of important AI settings for observability.
             try:
                 ai = self.ai_settings
-                knobs = ai.knobs if hasattr(ai, "knobs") else {}
-                batching = ai.batching if hasattr(ai, "batching") else {}
+                sampling_parameters = ai.sampling_parameters if hasattr(ai, "sampling_parameters") else {}
                 logger.info(
-                    "Loaded config: ai.enabled=%s, ai.model_id=%s, knobs=%s, batching=%s",
+                    "Loaded config: ai.enabled=%s, ai.model_id=%s, sampling_parameters=%s, moderation_batch_seconds=%s",
                     bool(ai.enabled),
                     ai.model_id or "<none>",
-                    {k: knobs.get(k) for k in ("dtype", "max_new_tokens", "temperature") if k in knobs},
-                    {k: batching.get(k) for k in ("max_prompts", "max_delay", "batch_window") if k in batching},
+                    {k: sampling_parameters.get(k) for k in ("dtype", "max_new_tokens", "temperature") if k in sampling_parameters},
+                    ai.get("moderation_batch_seconds", 10.0),
                 )
             except Exception:
                 # Non-fatal: don't block reload on logging errors
@@ -135,7 +134,7 @@ class AppConfig:
         prompts without additional checks.
         """
         with self.lock:
-            value = self._data.get("server_rules", "")
+            value = self._data.get("default_server_rules", "")
         return str(value or "")
 
     @property
@@ -150,7 +149,7 @@ class AppConfig:
         return str(value or "")
 
     @property
-    def ai_settings(self) -> "AISettings":
+    def ai_settings(self) -> AISettings:
         """Return the AI settings wrapped in an AISettings helper.
 
         The wrapper provides both attribute-style access for common fields and
@@ -160,28 +159,8 @@ class AppConfig:
             settings = self._data.get("ai_settings", {})
             if not isinstance(settings, dict):
                 settings = {}
-            # Wrap raw dict in AISettings for typed access while remaining
-            # backward-compatible with dict-like .get(...) usage.
+            
             return AISettings(settings)
-
-    def format_system_prompt(self, server_rules: str = "", *, template_override: Optional[str] = None) -> str:
-        """Render the system prompt template with the provided server rules.
-
-        If no template is configured and `server_rules` is provided, the
-        returned value will be the server rules. If the template's placeholders
-        do not match, we fall back to a readable concatenation so callers still
-        receive useful text rather than an exception.
-        """
-        template = template_override if template_override is not None else self.system_prompt_template
-        if not template:
-            return server_rules if server_rules else ""
-
-        try:
-            return template.format(SERVER_RULES=server_rules)
-        except Exception:  # noqa: BLE001 - fallback for mismatched placeholders
-            if server_rules:
-                return f"{template}\n\nServer rules:\n{server_rules}"
-            return template
 
 
 class AISettings(Mapping):
@@ -226,14 +205,9 @@ class AISettings(Mapping):
         return str(val) if val else None
 
     @property
-    def knobs(self) -> Dict[str, Any]:
-        k = self.data.get("knobs", {})
+    def sampling_parameters(self) -> Dict[str, Any]:
+        k = self.data.get("sampling_parameters", {})
         return k if isinstance(k, dict) else {}
-
-    @property
-    def batching(self) -> Dict[str, Any]:
-        b = self.data.get("batching", {})
-        return b if isinstance(b, dict) else {}
 
     # Allow attribute-like fallback access for any key
     def __getattr__(self, item: str) -> Any:  # pragma: no cover - thin shim

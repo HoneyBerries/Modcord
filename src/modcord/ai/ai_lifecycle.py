@@ -32,7 +32,7 @@ class AIEngineLifecycle:
         logger.info("[AI LIFECYCLE] Restart requested; shutting down current engine…")
         try:
             await self._processor.shutdown()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "[AI LIFECYCLE] Shutdown during restart raised: %s",
                 exc,

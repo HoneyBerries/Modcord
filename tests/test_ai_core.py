@@ -29,12 +29,30 @@ class FakeSamplingParams:
         self.kwargs = kwargs
 
 
-class FakeLLM:
+class FakeAsyncLLMEngine:
+    """Mock AsyncLLMEngine that simulates async generation."""
+    
     def __init__(self, **kwargs) -> None:
         self.kwargs = kwargs
+        self._shutdown_called = False
 
-    def generate(self, prompts, sampling_params):
-        return [SimpleNamespace(outputs=[SimpleNamespace(text=f"reply:{prompt}")]) for prompt in prompts]
+    async def generate(self, prompt, sampling_params, request_id, **kwargs):
+        """Async generator that yields a single RequestOutput."""
+        # Simulate async generation by yielding a final output
+        output = SimpleNamespace(
+            outputs=[SimpleNamespace(text=f"reply:{prompt}")]
+        )
+        yield output
+
+    async def shutdown(self):
+        """Mock shutdown method."""
+        self._shutdown_called = True
+
+
+class FakeAsyncEngineArgs:
+    """Mock AsyncEngineArgs."""
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
 
 
 @pytest.mark.asyncio
@@ -53,7 +71,7 @@ async def test_init_model_missing_configuration(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_init_model_disabled_returns_prompt(monkeypatch):
-    ai_settings = {"enabled": False, "model_id": "model", "allow_gpu": False}
+    ai_settings = {"enabled": False, "model_id": "model"}
     fake_config = FakeConfig(reload_payload={"ok": True}, ai_settings=ai_settings)
     monkeypatch.setattr(ai_core.cfg, "app_config", fake_config)
 
@@ -71,10 +89,9 @@ async def test_init_model_disabled_returns_prompt(monkeypatch):
 async def test_init_model_success_and_generate_text(monkeypatch):
     ai_settings = {
         "enabled": True,
-        "allow_gpu": True,
         "vram_percentage": 0.5,
         "model_id": "fake-model",
-        "knobs": {
+        "sampling_parameters": {
             "dtype": "auto",
             "max_new_tokens": 16,
             "max_model_length": 512,
@@ -88,27 +105,37 @@ async def test_init_model_success_and_generate_text(monkeypatch):
     }
     fake_config = FakeConfig(reload_payload={"ok": True}, ai_settings=ai_settings)
     monkeypatch.setattr(ai_core.cfg, "app_config", fake_config)
-
-    async def fake_to_thread(func, *args, **kwargs):
-        return func(*args, **kwargs)
-
-    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
     
     # Mock the imports that happen inside init_model
     fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True, device_count=lambda: 1))
     
-    # Create a mock for the vllm module
+    # Create a mock for the vllm module with AsyncLLMEngine
     import sys
-    from unittest.mock import MagicMock
+    from unittest.mock import MagicMock, AsyncMock
+    
+    fake_async_llm_engine_module = MagicMock()
+    fake_async_llm_engine_module.AsyncLLMEngine = FakeAsyncLLMEngine
+    # Mock the from_engine_args class method (it's synchronous, not async)
+    def mock_from_engine_args(engine_args, **kwargs):
+        return FakeAsyncLLMEngine(**engine_args.kwargs)
+    FakeAsyncLLMEngine.from_engine_args = staticmethod(mock_from_engine_args) # type: ignore
+    
+    fake_arg_utils = MagicMock()
+    fake_arg_utils.AsyncEngineArgs = FakeAsyncEngineArgs
+    
     fake_vllm = MagicMock()
-    fake_vllm.LLM = FakeLLM
     fake_vllm.SamplingParams = FakeSamplingParams
     
     # Patch sys.modules to inject fake imports
     original_torch = sys.modules.get('torch')
     original_vllm = sys.modules.get('vllm')
-    sys.modules['torch'] = fake_torch
+    original_async_llm = sys.modules.get('vllm.engine.async_llm_engine')
+    original_arg_utils = sys.modules.get('vllm.engine.arg_utils')
+    
+    sys.modules['torch'] = fake_torch # type: ignore
     sys.modules['vllm'] = fake_vllm
+    sys.modules['vllm.engine.async_llm_engine'] = fake_async_llm_engine_module
+    sys.modules['vllm.engine.arg_utils'] = fake_arg_utils
     
     try:
         processor = ai_core.InferenceProcessor()
@@ -116,9 +143,9 @@ async def test_init_model_success_and_generate_text(monkeypatch):
         # Mock _build_structured_outputs to avoid needing full vllm
         monkeypatch.setattr(processor, "_build_structured_outputs", lambda: None)
 
-        model, params, prompt = await processor.init_model()
+        engine, params, prompt = await processor.init_model()
 
-        assert isinstance(model, FakeLLM)
+        assert isinstance(engine, FakeAsyncLLMEngine)
         assert isinstance(params, FakeSamplingParams)
         assert prompt == fake_config.system_prompt_template
         assert processor.state.available is True
@@ -136,23 +163,25 @@ async def test_init_model_success_and_generate_text(monkeypatch):
             sys.modules['vllm'] = original_vllm
         else:
             sys.modules.pop('vllm', None)
+        if original_async_llm is not None:
+            sys.modules['vllm.engine.async_llm_engine'] = original_async_llm
+        else:
+            sys.modules.pop('vllm.engine.async_llm_engine', None)
+        if original_arg_utils is not None:
+            sys.modules['vllm.engine.arg_utils'] = original_arg_utils
+        else:
+            sys.modules.pop('vllm.engine.arg_utils', None)
 
 
 @pytest.mark.asyncio
 async def test_unload_model_resets_state(monkeypatch):
     ai_settings = {
         "enabled": True,
-        "allow_gpu": False,
-        "model_id": "fake-model",
-        "knobs": {},
+    "model_id": "fake-model",
+    "sampling_parameters": {},
     }
     fake_config = FakeConfig(reload_payload={"ok": True}, ai_settings=ai_settings)
     monkeypatch.setattr(ai_core.cfg, "app_config", fake_config)
-
-    async def fake_to_thread(func, *args, **kwargs):
-        return func(*args, **kwargs)
-
-    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
     
     # Mock the imports that happen inside init_model
     fake_dist = SimpleNamespace(
@@ -171,18 +200,33 @@ async def test_unload_model_resets_state(monkeypatch):
         distributed=fake_dist
     )
     
-    # Create a mock for the vllm module
+    # Create a mock for the vllm module with AsyncLLMEngine
     import sys
     from unittest.mock import MagicMock
+    
+    fake_async_llm_engine_module = MagicMock()
+    fake_async_llm_engine_module.AsyncLLMEngine = FakeAsyncLLMEngine
+    # Mock the from_engine_args class method (it's synchronous, not async)
+    def mock_from_engine_args(engine_args, **kwargs):
+        return FakeAsyncLLMEngine(**engine_args.kwargs)
+    FakeAsyncLLMEngine.from_engine_args = staticmethod(mock_from_engine_args) # type: ignore
+    
+    fake_arg_utils = MagicMock()
+    fake_arg_utils.AsyncEngineArgs = FakeAsyncEngineArgs
+    
     fake_vllm = MagicMock()
-    fake_vllm.LLM = FakeLLM
     fake_vllm.SamplingParams = FakeSamplingParams
     
     # Patch sys.modules to inject fake imports
     original_torch = sys.modules.get('torch')
     original_vllm = sys.modules.get('vllm')
-    sys.modules['torch'] = fake_torch
+    original_async_llm = sys.modules.get('vllm.engine.async_llm_engine')
+    original_arg_utils = sys.modules.get('vllm.engine.arg_utils')
+    
+    sys.modules['torch'] = fake_torch # type: ignore
     sys.modules['vllm'] = fake_vllm
+    sys.modules['vllm.engine.async_llm_engine'] = fake_async_llm_engine_module
+    sys.modules['vllm.engine.arg_utils'] = fake_arg_utils
     
     try:
         processor = ai_core.InferenceProcessor()
@@ -191,11 +235,11 @@ async def test_unload_model_resets_state(monkeypatch):
         monkeypatch.setattr(processor, "_build_structured_outputs", lambda: None)
         
         await processor.init_model()
-        assert processor.llm is not None
+        assert processor.engine is not None
 
         await processor.unload_model()
 
-        assert processor.llm is None
+        assert processor.engine is None
         assert processor.state.available is False
     finally:
         # Restore original modules
@@ -207,5 +251,13 @@ async def test_unload_model_resets_state(monkeypatch):
             sys.modules['vllm'] = original_vllm
         else:
             sys.modules.pop('vllm', None)
+        if original_async_llm is not None:
+            sys.modules['vllm.engine.async_llm_engine'] = original_async_llm
+        else:
+            sys.modules.pop('vllm.engine.async_llm_engine', None)
+        if original_arg_utils is not None:
+            sys.modules['vllm.engine.arg_utils'] = original_arg_utils
+        else:
+            sys.modules.pop('vllm.engine.arg_utils', None)
     assert processor.state.init_started is False
     assert processor.state.init_error is None

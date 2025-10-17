@@ -34,6 +34,7 @@ data/guild_settings.json
 # PyCharm / IntelliJ
 .idea/
 *.iml
+.pytest_cache/
 
 # Eclipse / NetBeans
 .project

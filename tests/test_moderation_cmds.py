@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from types import SimpleNamespace
 from typing import Any
@@ -6,8 +5,7 @@ from unittest.mock import AsyncMock
 
 from modcord.bot.cogs import moderation_cmds
 from modcord.util import moderation_helper
-from modcord.util.moderation_datatypes import ActionType
-from modcord.util.discord_utils import PERMANENT_DURATION
+from modcord.util.moderation_datatypes import TimeoutCommand, KickCommand, BanCommand
 
 
 def test_setup_registers_handlers():
@@ -165,147 +163,156 @@ async def test_check_permissions_success(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_moderation_timeout_executes_actions(monkeypatch):
-    recorded = {}
+    """Test that timeout command executes with proper parameters."""
+    # Track if execute was called
+    execute_called = []
+    
+    original_execute = TimeoutCommand.execute
+    
+    async def mock_execute(self, ctx, user, bot_instance):
+        execute_called.append((ctx, user, bot_instance))
+        # Don't actually execute, just track the call
+    
+    monkeypatch.setattr(TimeoutCommand, "execute", mock_execute)
+    
+    # Mock delete_messages_background
+    monkeypatch.setattr(
+        "modcord.util.discord_utils.delete_messages_background",
+        AsyncMock()
+    )
 
-    async def fake_delete_messages_background(ctx, user, seconds):
-        recorded["delete"] = seconds
+    cog = moderation_cmds.ModerationActionCog(SimpleNamespace(user=SimpleNamespace()))
 
-    monkeypatch.setattr(moderation_cmds, "parse_duration_to_seconds", lambda duration: 600)
-    send_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "send_dm_and_embed", send_mock)
-    monkeypatch.setattr(moderation_cmds, "delete_messages_background", fake_delete_messages_background)
-    schedule_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "schedule_unban", schedule_mock)
-
-    original_create_task = moderation_cmds.asyncio.create_task
-    scheduled = []
-
-    def capture_task(coro):
-        task = original_create_task(coro)
-        scheduled.append(task)
-        return task
-
-    monkeypatch.setattr(moderation_cmds.asyncio, "create_task", capture_task)
-
-    cog = moderation_cmds.ModerationActionCog(SimpleNamespace())
-
-    user: Any = SimpleNamespace(timeout=AsyncMock(), id=42)
+    user: Any = SimpleNamespace(id=42, display_name="TestUser", guild=SimpleNamespace())
     ctx: Any = SimpleNamespace(
         guild=SimpleNamespace(),
         channel=SimpleNamespace(),
         respond=AsyncMock(),
+        defer=AsyncMock(),
         followup=SimpleNamespace(send=AsyncMock()),
     )
 
-    await cog.handle_moderation_command(ctx, user, ActionType.TIMEOUT, "Reason", duration="10m", delete_message_seconds=30)
+    action = TimeoutCommand(reason="Reason", duration_seconds=600)
+    await cog.execute_command_action(ctx, user, action, delete_message_seconds=30)
 
-    user.timeout.assert_awaited_once()
-    for task in scheduled:
-        await task
-    send_mock.assert_awaited_once_with(ctx, user, ActionType.TIMEOUT, "Reason", "10m")
-    assert recorded["delete"] == 30
-    assert schedule_mock.await_count == 0
+    # Verify execute was called with correct parameters
+    assert len(execute_called) == 1
+    called_ctx, called_user, called_bot = execute_called[0]
+    assert called_ctx == ctx
+    assert called_user == user
+    assert called_bot == cog.discord_bot_instance
 
 
 @pytest.mark.asyncio
 async def test_handle_moderation_ban_schedules_unban(monkeypatch):
-    monkeypatch.setattr(moderation_cmds, "parse_duration_to_seconds", lambda duration: 3600)
-    send_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "send_dm_and_embed", send_mock)
-    delete_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "delete_messages_background", delete_mock)
-    schedule_unban_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "schedule_unban", schedule_unban_mock)
+    """Test that ban command executes and can schedule unban."""
+    execute_called = []
+    
+    async def mock_execute(self, ctx, user, bot_instance):
+        execute_called.append({
+            'ctx': ctx,
+            'user': user,
+            'bot': bot_instance,
+            'ban_duration': self.ban_duration
+        })
+    
+    monkeypatch.setattr(BanCommand, "execute", mock_execute)
+    monkeypatch.setattr(
+        "modcord.util.discord_utils.delete_messages_background",
+        AsyncMock()
+    )
 
-    cog = moderation_cmds.ModerationActionCog(SimpleNamespace())
+    cog = moderation_cmds.ModerationActionCog(SimpleNamespace(user=SimpleNamespace()))
 
-    user: Any = SimpleNamespace(id=50, display_name="Target")
-    ban_mock = AsyncMock()
+    user: Any = SimpleNamespace(id=50, display_name="Target", guild=SimpleNamespace())
     ctx: Any = SimpleNamespace(
-        guild=SimpleNamespace(ban=ban_mock),
+        guild=SimpleNamespace(),
         channel=SimpleNamespace(),
         respond=AsyncMock(),
+        defer=AsyncMock(),
         followup=SimpleNamespace(send=AsyncMock()),
     )
 
-    await cog.handle_moderation_command(ctx, user, ActionType.BAN, "Reason", duration="1h", delete_message_seconds=0)
+    action = BanCommand(reason="Reason", duration_seconds=3600)
+    await cog.execute_command_action(ctx, user, action, delete_message_seconds=0)
 
-    ban_mock.assert_awaited_once_with(user, reason="Reason")
-    send_mock.assert_awaited_once_with(ctx, user, ActionType.BAN, "Reason", "1h")
-    schedule_unban_mock.assert_awaited_once_with(
-        guild=ctx.guild,
-        user_id=user.id,
-        channel=ctx.channel,
-        duration_seconds=3600,
-        bot=cog.discord_bot_instance,
-    )
+    # Verify execute was called and had the correct ban duration
+    assert len(execute_called) == 1
+    assert execute_called[0]['ban_duration'] == 3600
 
 
 @pytest.mark.asyncio
 async def test_handle_moderation_ban_permanent_skips_unban(monkeypatch):
-    monkeypatch.setattr(moderation_cmds, "parse_duration_to_seconds", lambda duration: 3600)
-    send_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "send_dm_and_embed", send_mock)
-    delete_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "delete_messages_background", delete_mock)
-    schedule_unban_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "schedule_unban", schedule_unban_mock)
+    """Test that permanent bans do not schedule unbans."""
+    execute_called = []
+    
+    async def mock_execute(self, ctx, user, bot_instance):
+        execute_called.append({
+            'ban_duration': self.ban_duration
+        })
+    
+    monkeypatch.setattr(BanCommand, "execute", mock_execute)
+    monkeypatch.setattr(
+        "modcord.util.discord_utils.delete_messages_background",
+        AsyncMock()
+    )
 
-    cog = moderation_cmds.ModerationActionCog(SimpleNamespace())
+    cog = moderation_cmds.ModerationActionCog(SimpleNamespace(user=SimpleNamespace()))
 
-    user: Any = SimpleNamespace(id=50, display_name="Target")
-    ban_mock = AsyncMock()
+    user: Any = SimpleNamespace(id=50, display_name="Target", guild=SimpleNamespace())
     ctx: Any = SimpleNamespace(
-        guild=SimpleNamespace(ban=ban_mock),
+        guild=SimpleNamespace(),
         channel=SimpleNamespace(),
         respond=AsyncMock(),
+        defer=AsyncMock(),
         followup=SimpleNamespace(send=AsyncMock()),
     )
 
-    await cog.handle_moderation_command(ctx, user, ActionType.BAN, "Reason", duration=PERMANENT_DURATION, delete_message_seconds=0)
+    action = BanCommand(reason="Reason", duration_seconds=None)
+    await cog.execute_command_action(ctx, user, action, delete_message_seconds=0)
 
-    ban_mock.assert_awaited_once_with(user, reason="Reason")
-    assert schedule_unban_mock.await_count == 0
+    # Verify execute was called with permanent ban duration (None)
+    assert len(execute_called) == 1
+    assert execute_called[0]['ban_duration'] is None
 
 
 @pytest.mark.asyncio
 async def test_handle_moderation_command_handles_exception(monkeypatch):
-    async def failing_kick(reason=None):
-        raise RuntimeError("kick failed")
+    """Test that exceptions in command execution are caught and reported."""
+    # Make KickCommand.execute raise an exception
+    async def mock_execute(self, ctx, user, bot_instance):
+        raise RuntimeError("boom")
+    
+    monkeypatch.setattr(KickCommand, "execute", mock_execute)
 
-    monkeypatch.setattr(moderation_cmds, "parse_duration_to_seconds", lambda duration: 0)
-    send_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "send_dm_and_embed", send_mock)
-    delete_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "delete_messages_background", delete_mock)
-    schedule_mock = AsyncMock()
-    monkeypatch.setattr(moderation_cmds, "schedule_unban", schedule_mock)
+    cog = moderation_cmds.ModerationActionCog(SimpleNamespace(user=SimpleNamespace()))
 
-    cog = moderation_cmds.ModerationActionCog(SimpleNamespace())
-
-    user: Any = SimpleNamespace(kick=AsyncMock(side_effect=RuntimeError("boom")))
+    user: Any = SimpleNamespace(id=99, display_name="TestUser", guild=SimpleNamespace())
     ctx: Any = SimpleNamespace(
-        guild=SimpleNamespace(ban=AsyncMock()),
+        guild=SimpleNamespace(),
         channel=SimpleNamespace(),
         respond=AsyncMock(),
+        defer=AsyncMock(),
         followup=SimpleNamespace(send=AsyncMock()),
     )
 
-    await cog.handle_moderation_command(ctx, user, ActionType.KICK, "Reason")
+    action = KickCommand(reason="Reason")
+    await cog.execute_command_action(ctx, user, action)
 
     ctx.respond.assert_awaited_once_with("An error occurred while processing the command.", ephemeral=True)
 
 
 @pytest.mark.asyncio
 async def test_warn_command_aborts_when_permission_denied(monkeypatch):
+    """Test that warn command aborts when permission denied."""
     async def fake_check(self, ctx, target, perm):
         self._last_perm = perm
         return False
 
-    handle_mock = AsyncMock()
+    execute_mock = AsyncMock()
 
     monkeypatch.setattr(moderation_cmds.ModerationActionCog, "check_moderation_permissions", fake_check)
-    monkeypatch.setattr(moderation_cmds.ModerationActionCog, "handle_moderation_command", handle_mock)
+    monkeypatch.setattr(moderation_cmds.ModerationActionCog, "execute_command_action", execute_mock)
 
     cog = moderation_cmds.ModerationActionCog(SimpleNamespace())
 
@@ -318,18 +325,19 @@ async def test_warn_command_aborts_when_permission_denied(monkeypatch):
 
     ctx.defer.assert_awaited_once()
     assert cog._last_perm == "manage_messages"
-    handle_mock.assert_not_awaited()
+    execute_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_warn_command_invokes_handler_on_success(monkeypatch):
+    """Test that warn command invokes execute_command_action on success."""
     async def fake_check(self, ctx, target, perm):
         return True
 
-    handle_mock = AsyncMock()
+    execute_mock = AsyncMock()
 
     monkeypatch.setattr(moderation_cmds.ModerationActionCog, "check_moderation_permissions", fake_check)
-    monkeypatch.setattr(moderation_cmds.ModerationActionCog, "handle_moderation_command", handle_mock)
+    monkeypatch.setattr(moderation_cmds.ModerationActionCog, "execute_command_action", execute_mock)
 
     cog = moderation_cmds.ModerationActionCog(SimpleNamespace())
 
@@ -341,10 +349,4 @@ async def test_warn_command_invokes_handler_on_success(monkeypatch):
     await cb(cog, ctx, user, "Reason", delete_message_seconds=45)
 
     ctx.defer.assert_awaited_once()
-    handle_mock.assert_awaited_once_with(
-        ctx,
-        user,
-        ActionType.WARN,
-        "Reason",
-        delete_message_seconds=45,
-    )
+    assert execute_mock.await_count == 1

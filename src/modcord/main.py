@@ -5,8 +5,6 @@ Discord Moderation Bot
 A Discord bot that uses an AI model to moderate chat, handle rule violations,
 and provide server administration commands for manual moderation actions like
 banning, kicking, and timing out users.
-
-Refactored version using cogs for better organization and maintainability.
 """
 
 import os
@@ -41,6 +39,7 @@ from modcord.ai.ai_lifecycle import (
     shutdown_engine,
 )
 from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.util.message_cache import message_history_cache, initialize_cache_from_config
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
 from modcord.util.logger import get_logger, handle_exception
 
@@ -109,6 +108,8 @@ def create_bot() -> discord.Bot:
     """Instantiate the Discord bot and register all cogs."""
     bot = discord.Bot(intents=build_intents())
     load_cogs(bot)
+    # Wire the bot into the message cache for Discord API fallback
+    message_history_cache.set_bot(bot)
     return bot
 
 
@@ -121,6 +122,10 @@ async def initialize_ai_model() -> None:
         Propagated when the underlying initializer encounters an unexpected failure.
     """
     try:
+        from modcord.configuration.app_configuration import app_config
+        # Configure message cache from app_config
+        initialize_cache_from_config(app_config)
+        
         logger.info("Initializing AI moderation engine before bot startup…")
         available, detail = await initialize_engine()
         if detail and not available:
@@ -159,6 +164,8 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
     """
     await close_bot_instance(bot, log_close=True)
 
+    await bot.http.close() # type: ignore
+
     try:
         await shutdown_engine()
     except Exception as exc:
@@ -168,6 +175,8 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
         await guild_settings_manager.shutdown()
     except Exception as exc:
         logger.exception("Error during guild settings shutdown: %s", exc)
+    
+    logger.info("Shutdown complete.")
 
 
 async def run_bot_session(bot: discord.Bot, token: str, control: ConsoleControl) -> int:

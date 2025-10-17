@@ -10,6 +10,7 @@ from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.ai.ai_moderation_processor import model_state
+from modcord.bot import rules_manager
 from modcord.util.logger import get_logger
 from modcord.util import moderation_helper
 
@@ -20,8 +21,9 @@ class EventsListenerCog(commands.Cog):
     """Cog containing bot lifecycle and command error handlers."""
 
     def __init__(self, discord_bot_instance):
-        """Initialize the events listener cog.
-        
+        """
+        Initialize the events listener cog.
+
         Parameters
         ----------
         discord_bot_instance:
@@ -33,8 +35,9 @@ class EventsListenerCog(commands.Cog):
 
     @commands.Cog.listener(name='on_ready')
     async def on_ready(self):
-        """Handle bot startup: initialize presence, rules cache, and batch processing.
-        
+        """
+        Handle bot startup: initialize presence, rules cache, and batch processing.
+
         This method:
         1. Updates the bot's Discord presence based on AI model state
         2. Starts the periodic rules cache refresh task
@@ -45,21 +48,26 @@ class EventsListenerCog(commands.Cog):
             logger.info(f"Bot connected as {self.bot.user} (ID: {self.bot.user.id})")
         else:
             logger.warning("Bot partially connected, but user information not yet available.")
-        
+
+        logger.info("--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--")
+
         # Start the rules cache refresh task
         logger.info("Starting server rules cache refresh task...")
-        asyncio.create_task(moderation_helper.refresh_rules_cache_task(self))
-						
+        asyncio.create_task(rules_manager.start_periodic_refresh_task(self.bot))
+
         # Set up batch processing callback for channel-based batching
         logger.info("Setting up batch processing callback...")
         guild_settings_manager.set_batch_processing_callback(
             lambda batch: moderation_helper.process_message_batch(self, batch)
         )
-        
-        logger.info("-" * 60)
 
     async def _update_presence(self) -> None:
-        """Update bot's Discord presence based on AI model availability."""
+        """
+        Update bot's Discord presence based on AI model availability.
+
+        If the AI model is available, sets the bot status to online and a friendly message.
+        If not, sets the status to idle and a less enthusiastic message.
+        """
         if not self.bot.user:
             return
 
@@ -68,8 +76,7 @@ class EventsListenerCog(commands.Cog):
             activity_name = "over your server while you're asleep!"
         else:
             status = discord.Status.idle
-            reason = model_state.init_error or "AI offline"
-            activity_name = f"AI offline – {reason}"[:128]
+            activity_name = "your server drunkenly because the AI is tired."
 
         await self.bot.change_presence(
             status=status,
@@ -79,11 +86,11 @@ class EventsListenerCog(commands.Cog):
             )
         )
 
-
     @commands.Cog.listener(name='on_application_command_error')
     async def on_application_command_error(self, application_context: discord.ApplicationContext, error: Exception):
-        """Handle errors from application commands with logging and user feedback.
-        
+        """
+        Handle errors from application commands with logging and user feedback.
+
         Parameters
         ----------
         application_context:
@@ -103,15 +110,17 @@ class EventsListenerCog(commands.Cog):
         error_message = "A :bug: showed up while running this command."
         try:
             await application_context.respond(error_message, ephemeral=True)
-        except discord.InteractionResponded:
-            await application_context.followup.send(error_message, ephemeral=True)
-
-
+        except Exception:
+            try:
+                await application_context.followup.send(error_message, ephemeral=True)
+            except Exception:
+                pass
 
 
 def setup(discord_bot_instance):
-    """Register the EventsListenerCog with the bot.
-    
+    """
+    Register the EventsListenerCog with the bot.
+
     Parameters
     ----------
     discord_bot_instance:

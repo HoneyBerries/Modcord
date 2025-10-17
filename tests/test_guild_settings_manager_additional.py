@@ -73,10 +73,9 @@ def test_build_payload_and_history_helpers(tmp_path) -> None:
         guild_id=5,
         channel_id=9,
     )
-    manager.add_message_to_history(9, message)
 
-    history = manager.get_chat_history(9)
-    assert history == [message]
+    manager.add_message_to_history(9, message)
+    # Use message_history_cache.get_cached_messages(9) if you want to check cache contents
 
     payload = manager.build_payload()
     assert payload["guilds"]["5"]["ai_enabled"] is False

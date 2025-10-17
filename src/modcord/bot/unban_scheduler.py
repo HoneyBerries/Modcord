@@ -189,7 +189,7 @@ class UnbanScheduler:
         try:
             user_obj = discord.Object(id=user_id)
             await guild.unban(user_obj, reason=payload.reason)
-            logger.info(f"Unbanned user {user_id} after ban expired.")
+            logger.debug(f"Unbanned user {user_id} after ban expired.")
 
             # Try to notify in the provided channel with a simple embed (keeps this
             # module independent from util.discord_utils).
@@ -202,12 +202,12 @@ class UnbanScheduler:
                         timestamp=datetime.datetime.now(datetime.timezone.utc),
                     )
                     await payload.channel.send(embed=embed)
-                except Exception as e:  # noqa: BLE001 - log and continue
+                except Exception as e:
                     logger.warning(f"Could not send unban notification for {user_id}: {e}")
 
         except discord.NotFound:
             logger.warning(f"Could not unban user {user_id}: User not found in ban list.")
-        except Exception as e:  # noqa: BLE001 - propagate failure via log only
+        except Exception as e:
             logger.error(f"Failed to auto-unban user {user_id}: {e}")
 
 

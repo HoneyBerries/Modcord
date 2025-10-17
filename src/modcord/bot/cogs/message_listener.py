@@ -11,7 +11,7 @@ from discord.ext import commands
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.moderation_datatypes import ModerationMessage
 from modcord.util.logger import get_logger
-from modcord.util import moderation_helper
+from modcord.bot import rules_manager
 from modcord.util import discord_utils
 
 logger = get_logger("message_listener_cog")
@@ -21,8 +21,9 @@ class MessageListenerCog(commands.Cog):
     """Cog responsible for handling message creation and editing events."""
 
     def __init__(self, discord_bot_instance):
-        """Initialize the message listener cog.
-        
+        """
+        Initialize the message listener cog.
+
         Parameters
         ----------
         discord_bot_instance:
@@ -38,8 +39,9 @@ class MessageListenerCog(commands.Cog):
         content: str,
         include_discord_message: bool = False
     ) -> ModerationMessage:
-        """Create a ModerationMessage from a Discord message.
-        
+        """
+        Create a ModerationMessage from a Discord message.
+
         Parameters
         ----------
         message:
@@ -48,7 +50,7 @@ class MessageListenerCog(commands.Cog):
             The cleaned message content.
         include_discord_message:
             Whether to include the Discord message reference in the payload.
-            
+
         Returns
         -------
         ModerationMessage
@@ -71,13 +73,14 @@ class MessageListenerCog(commands.Cog):
         )
 
     async def _should_process_message(self, message: discord.Message) -> tuple[bool, str | None]:
-        """Check if a message should be processed for moderation.
-        
+        """
+        Check if a message should be processed for moderation.
+
         Parameters
         ----------
         message:
             The Discord message to check.
-            
+
         Returns
         -------
         tuple[bool, str | None]
@@ -88,9 +91,9 @@ class MessageListenerCog(commands.Cog):
         if message.guild is None:
             return False, None
 
-        # Ignore messages from bots and administrators
+        # Ignore messages from bots
         if discord_utils.is_ignored_author(message.author):
-            logger.debug(f"Ignoring message from {message.author} (bot or admin)")
+            logger.debug(f"Ignoring message from {message.author} (bot)")
             return False, None
 
         # Skip empty messages
@@ -102,14 +105,15 @@ class MessageListenerCog(commands.Cog):
 
     @commands.Cog.listener(name='on_message')
     async def on_message(self, message: discord.Message):
-        """Handle new messages: store in history and queue for AI moderation.
-        
+        """
+        Handle new messages: store in history and queue for AI moderation.
+
         This handler:
         1. Filters out DMs, bots, admins, and empty messages
         2. Refreshes rules cache if posted in a rules channel
         3. Stores message in channel history
         4. Queues message for batch AI moderation (if enabled)
-        
+
         Parameters
         ----------
         message:
@@ -119,10 +123,11 @@ class MessageListenerCog(commands.Cog):
         if not should_process or actual_content is None:
             return
 
-        logger.debug(f"Processing message from {message.author}: {message.content[:50]}")
+        logger.debug(f"Received message from {message.author}: {message.content[:50]}")
 
         # Refresh rules cache if this was posted in a rules channel
-        await moderation_helper.refresh_rules_cache_if_rules_channel(self, message.channel)
+        if isinstance(message.channel, discord.abc.GuildChannel):
+            await rules_manager.refresh_rules_if_channel(message.channel)
 
         # Create and store message in history
         history_entry = self._create_moderation_message(message, actual_content)
@@ -147,11 +152,12 @@ class MessageListenerCog(commands.Cog):
 
     @commands.Cog.listener(name='on_message_edit')
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
-        """Handle message edits: refresh rules cache if needed.
-        
+        """
+        Handle message edits: refresh rules cache if needed.
+
         This handler checks if the edited message is in a rules channel
         and triggers a rules cache refresh if necessary.
-        
+
         Parameters
         ----------
         before:
@@ -168,12 +174,14 @@ class MessageListenerCog(commands.Cog):
             return
 
         # Refresh rules cache if this edit occurred in a rules channel
-        await moderation_helper.refresh_rules_cache_if_rules_channel(self, after.channel)
+        if isinstance(after.channel, discord.abc.GuildChannel):
+            await rules_manager.refresh_rules_if_channel(after.channel)
 
 
 def setup(discord_bot_instance):
-    """Register the MessageListenerCog with the bot.
-    
+    """
+    Register the MessageListenerCog with the bot.
+
     Parameters
     ----------
     discord_bot_instance:
