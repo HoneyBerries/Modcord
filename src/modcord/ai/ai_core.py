@@ -218,6 +218,7 @@ class InferenceProcessor:
                     frequency_penalty=sampling_parameters["frequency_penalty"],
                     guided_decoding=guided_decoding,
                 )
+                
                 logger.info("[AI MODEL] Sampling params created with guided_decoding (xgrammar backend)")
             except Exception as exc:
                 self.state.available = False
@@ -325,11 +326,7 @@ class InferenceProcessor:
             self.state.init_error = None
             self.warmup_completed = False
 
-        if engine and hasattr(engine, "shutdown"):
-            try:
-                await engine.shutdown()
-            except Exception as exc:
-                logger.warning("[AI MODEL] Shutdown raised: %s", exc)
+        engine.shutdown() # type: ignore
 
         try:
             import torch
