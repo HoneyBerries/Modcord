@@ -89,7 +89,7 @@ class GuildSettingsManager:
     Manager for persistent per-guild settings and transient state.
 
     Responsibilities:
-    - Persist per-guild settings (ai_enabled, rules, action toggles) to data/guild_settings.json
+    - Persist per-guild settings (ai_enabled, rules, action toggles) to SQLite database
     - Cache server rules and per-channel chat history
     - Provide a 15s channel message batching mechanism with an async callback
     """
