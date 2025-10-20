@@ -210,6 +210,14 @@ async def async_main() -> int:
     """
     token = load_environment()
 
+    # Initialize database and load guild settings
+    try:
+        logger.info("Initializing database and loading guild settings...")
+        await guild_settings_manager.async_init()
+    except Exception as exc:
+        logger.critical("Failed to initialize database: %s", exc, exc_info=True)
+        return 1
+
     try:
         bot = create_bot()
     except Exception as exc:

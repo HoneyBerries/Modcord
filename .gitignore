@@ -22,8 +22,8 @@ ENV/
 .env.local
 .env.*.local
 
-# Ignore per-guild settings file
-data/guild_settings.json
+# Ignore per-guild settings (now stored in SQLite database)
+# data/guild_settings.json (deprecated - now using data/app.db)
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
