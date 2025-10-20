@@ -435,8 +435,6 @@ class GuildSettingsManager:
         """Load persisted guild settings from database into memory."""
         try:
             async with get_connection() as db:
-                await db.execute("PRAGMA foreign_keys = ON")
-                await db.execute("PRAGMA journal_mode = WAL")
                 async with db.execute("SELECT * FROM guild_settings") as cursor:
                     rows = await cursor.fetchall()
                     
