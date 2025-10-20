@@ -400,8 +400,6 @@ class GuildSettingsManager:
         async with self._persist_lock:
             try:
                 async with get_connection() as db:
-                    await db.execute("PRAGMA foreign_keys = ON")
-                    await db.execute("PRAGMA journal_mode = WAL")
                     await db.execute("""
                         INSERT INTO guild_settings (
                             guild_id, ai_enabled, rules,
