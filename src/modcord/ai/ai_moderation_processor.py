@@ -184,7 +184,7 @@ class ModerationProcessor:
         try:
             await self.inference_processor.unload_model()
         except Exception as exc:
-            logger.warning("Failed to unload AI model cleanly: %s", exc, exc_info=True)
+            logger.warning("Failed to unload AI model cleanly: %s", exc)
 
     async def get_appropriate_action(
         self,
