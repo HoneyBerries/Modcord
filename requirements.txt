@@ -12,6 +12,7 @@ py-cord
 python-dotenv
 pyyaml
 jsonschema
+aiosqlite
 vllm
 prompt_toolkit
 rich

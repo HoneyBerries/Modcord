@@ -2,16 +2,12 @@
 Bot settings: persistent per-guild flags and runtime batching.
 
 Responsibilities:
-- Persist per-guild settings (ai_enabled, rules, and action toggles) to data/guild_settings.json
+- Persist per-guild settings (ai_enabled, rules, and action toggles) to SQLite database
 - Cache server rules and per-channel chat history
 - Provide a 15s channel message batching mechanism with an async callback
 
-Schema example:
-{
-  "guilds": {
-    "<guild_id>": { "ai_enabled": <bool>, "rules": "<string>" }
-  }
-}
+Database schema:
+- guild_settings table with columns: guild_id, ai_enabled, rules, auto_*_enabled flags
 """
 
 import collections
@@ -19,13 +15,12 @@ import asyncio
 from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence, Set
 from collections import deque
 from pathlib import Path
-import json
-import os
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
 from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
 from modcord.util.message_cache import message_history_cache
 from modcord.configuration.app_configuration import app_config
+from modcord.configuration.database import init_database, get_connection
 
 logger = get_logger("guild_settings_manager")
 
@@ -101,10 +96,6 @@ class GuildSettingsManager:
 
     def __init__(self):
         """Instantiate caches, batching queues, and persistence helpers."""
-        # Persistence path (root/data/guild_settings.json)
-        self.data_dir = Path("data")
-        self.settings_path = self.data_dir / "guild_settings.json"
-
         # Persisted guild settings registry (guild_id -> GuildSettings)
         self.guilds: Dict[int, GuildSettings] = {}
 
@@ -119,10 +110,19 @@ class GuildSettingsManager:
         # Persistence helpers
         self._persist_lock = asyncio.Lock()
         self._active_persists: Set[asyncio.Task] = set()
+        self._db_initialized = False
 
-        # Load persisted settings (if present)
-        self.load_from_disk()
+        # Initialize database and load settings asynchronously
+        # This will be called from an async context during bot startup
         logger.info("Guild settings manager initialized")
+
+    async def async_init(self) -> None:
+        """Initialize the database and load settings from disk (async)."""
+        if not self._db_initialized:
+            await init_database()
+            await self.load_from_disk()
+            self._db_initialized = True
+            logger.info("Database initialized and settings loaded")
 
     def ensure_guild(self, guild_id: int) -> GuildSettings:
         """Create default settings for a guild if none exist and return the record."""
@@ -133,7 +133,7 @@ class GuildSettingsManager:
         return settings
 
     def build_payload(self) -> Dict[str, Dict[str, Dict[str, object]]]:
-        """Serialize all persisted guild settings into a JSON-ready payload."""
+        """Serialize all persisted guild settings into a JSON-ready payload (for backward compatibility)."""
         return {
             "guilds": {
                 str(guild_id): settings.to_dict()
@@ -167,7 +167,7 @@ class GuildSettingsManager:
         settings.rules = rules
         logger.debug(f"Updated rules cache for guild {guild_id} (len={len(rules)})")
 
-        self._trigger_persist()
+        self._trigger_persist(guild_id)
 
     def add_message_to_history(self, channel_id: int, message: ModerationMessage) -> None:
         """Add a message to the dynamic message cache for Discord API fallback."""
@@ -255,33 +255,30 @@ class GuildSettingsManager:
             timer_task.cancel()
         logger.info("Requested cancellation of all batch timers")
 
-    def _trigger_persist(self) -> None:
-        """Schedule a best-effort snapshot of guild settings to disk."""
-        payload = self.build_payload()
-
+    def _trigger_persist(self, guild_id: int) -> None:
+        """Schedule a best-effort persist of a single guild's settings to database."""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            if not self.write_settings(payload):
-                logger.error("Failed to persist guild settings synchronously")
+            logger.warning("Cannot persist guild %s: no running event loop", guild_id)
             return
 
-        task = loop.create_task(self.write_settings_async(payload))
+        task = loop.create_task(self._persist_guild_async(guild_id))
         self._active_persists.add(task)
 
         def _cleanup(completed: asyncio.Task) -> None:
             self._active_persists.discard(completed)
             try:
                 if not completed.result():
-                    logger.error("Failed to persist guild settings snapshot")
+                    logger.error("Failed to persist guild %s to database", guild_id)
             except Exception:
-                logger.exception("Error while writing guild settings snapshot")
+                logger.exception("Error while persisting guild %s to database", guild_id)
 
         task.add_done_callback(_cleanup)
 
     def schedule_persist(self, guild_id: int) -> bool:  # pragma: no cover - maintained for compatibility
         """Backward-compatible wrapper that triggers a settings persist."""
-        self._trigger_persist()
+        self._trigger_persist(guild_id)
         return True
 
     async def _resolve_history_context(
@@ -355,7 +352,7 @@ class GuildSettingsManager:
         settings.ai_enabled = bool(enabled)
         state = "enabled" if enabled else "disabled"
         logger.info("AI moderation %s for guild %s", state, guild_id)
-        self._trigger_persist()
+        self._trigger_persist(guild_id)
         return True
 
     def is_action_allowed(self, guild_id: int, action: ActionType) -> bool:
@@ -381,104 +378,102 @@ class GuildSettingsManager:
             enabled,
             guild_id,
         )
-        self._trigger_persist()
+        self._trigger_persist(guild_id)
         return True
 
     # --- Persistence helpers ---
-    def ensure_data_dir(self) -> bool:
+    async def _persist_guild_async(self, guild_id: int) -> bool:
         """
-        Ensure the data directory exists.
+        Persist a single guild's settings to the database asynchronously.
 
-        Return True if the directory exists or was created successfully and
-        log errors on failure.
+        Args:
+            guild_id: The guild ID to persist
+
+        Returns:
+            bool: True if successful, False otherwise
         """
-        try:
-            self.data_dir.mkdir(parents=True, exist_ok=True)
-            return True
-        except Exception:
-            logger.exception("Failed to ensure data directory at %s", self.data_dir)
+        settings = self.guilds.get(guild_id)
+        if settings is None:
+            logger.warning("Cannot persist guild %s: not in cache", guild_id)
             return False
 
-    def read_settings(self) -> dict:
-        """
-        Load settings JSON from disk.
-
-        Always returns a mapping with a top-level 'guilds' key. Any disk I/O
-        errors are caught and logged; callers will receive an empty structure
-        on failure to ensure callers can continue operating.
-        """
-        try:
-            if self.settings_path.exists():
-                with self.settings_path.open("r", encoding="utf-8") as file_handle:
-                    settings_data = json.load(file_handle)
-                    if isinstance(settings_data, dict):
-                        settings_data.setdefault("guilds", {})
-                        return settings_data
-        except Exception:
-            logger.exception("Failed to read settings from %s", self.settings_path)
-        return {"guilds": {}}
-
-    def write_settings(self, settings_data: dict) -> bool:
-        """Synchronously persist guild settings to disk using an atomic replace."""
-        self.ensure_data_dir()
-        temp_path = self.settings_path.with_suffix(".tmp")
-        try:
-            with temp_path.open("w", encoding="utf-8") as fh:
-                json.dump(settings_data, fh, ensure_ascii=False, indent=2)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(temp_path, self.settings_path)
-            logger.debug("Persisted guild settings to %s", self.settings_path)
-            return True
-        except Exception:
-            logger.exception("Failed to write settings to %s", self.settings_path)
-            try:
-                if temp_path.exists():
-                    temp_path.unlink()
-            except Exception:
-                pass
-            return False
-
-    async def write_settings_async(self, settings_data: dict) -> bool:
-        """Async helper that offloads :meth:`write_settings` to a worker thread."""
         async with self._persist_lock:
-            return await asyncio.to_thread(self.write_settings, settings_data)
-
-    def load_from_disk(self) -> bool:
-        """Load persisted guild settings into memory."""
-        data = self.read_settings()
-        guild_payload = data.get("guilds", {}) if isinstance(data, dict) else {}
-        self.guilds.clear()
-        loaded = 0
-        for guild_id_str, payload in guild_payload.items():
             try:
-                guild_id = int(guild_id_str)
-            except (TypeError, ValueError):
-                continue
-            self.guilds[guild_id] = GuildSettings.from_dict(guild_id, payload)
-            loaded += 1
-        if loaded:
-            logger.info("Loaded %d guild settings from disk", loaded)
-            return True
-        return False
+                async with get_connection() as db:
+                    await db.execute("PRAGMA foreign_keys = ON")
+                    await db.execute("PRAGMA journal_mode = WAL")
+                    await db.execute("""
+                        INSERT INTO guild_settings (
+                            guild_id, ai_enabled, rules,
+                            auto_warn_enabled, auto_delete_enabled,
+                            auto_timeout_enabled, auto_kick_enabled, auto_ban_enabled
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(guild_id) DO UPDATE SET
+                            ai_enabled = excluded.ai_enabled,
+                            rules = excluded.rules,
+                            auto_warn_enabled = excluded.auto_warn_enabled,
+                            auto_delete_enabled = excluded.auto_delete_enabled,
+                            auto_timeout_enabled = excluded.auto_timeout_enabled,
+                            auto_kick_enabled = excluded.auto_kick_enabled,
+                            auto_ban_enabled = excluded.auto_ban_enabled
+                    """, (
+                        guild_id,
+                        1 if settings.ai_enabled else 0,
+                        settings.rules,
+                        1 if settings.auto_warn_enabled else 0,
+                        1 if settings.auto_delete_enabled else 0,
+                        1 if settings.auto_timeout_enabled else 0,
+                        1 if settings.auto_kick_enabled else 0,
+                        1 if settings.auto_ban_enabled else 0,
+                    ))
+                    await db.commit()
+                    logger.debug("Persisted guild %s to database", guild_id)
+                    return True
+            except Exception:
+                logger.exception("Failed to persist guild %s to database", guild_id)
+                return False
+
+    async def load_from_disk(self) -> bool:
+        """Load persisted guild settings from database into memory."""
+        try:
+            async with get_connection() as db:
+                await db.execute("PRAGMA foreign_keys = ON")
+                await db.execute("PRAGMA journal_mode = WAL")
+                async with db.execute("SELECT * FROM guild_settings") as cursor:
+                    rows = await cursor.fetchall()
+                    
+                self.guilds.clear()
+                for row in rows:
+                    guild_id = row[0]
+                    payload = {
+                        "ai_enabled": bool(row[1]),
+                        "rules": row[2],
+                        "auto_warn_enabled": bool(row[3]),
+                        "auto_delete_enabled": bool(row[4]),
+                        "auto_timeout_enabled": bool(row[5]),
+                        "auto_kick_enabled": bool(row[6]),
+                        "auto_ban_enabled": bool(row[7]),
+                    }
+                    self.guilds[guild_id] = GuildSettings.from_dict(guild_id, payload)
+                
+                if rows:
+                    logger.info("Loaded %d guild settings from database", len(rows))
+                    return True
+                return False
+        except Exception:
+            logger.exception("Failed to load guild settings from database")
+            return False
 
     async def persist_guild(self, guild_id: int) -> bool:
         """
-        Persist a single guild's settings to disk asynchronously.
+        Persist a single guild's settings to database asynchronously.
 
         Return whether the write was successful or not.
 
         This version performs only asynchronous writes. Callers must invoke
-        and await this coroutine from an active event loop. No synchronous
-        file operations or thread-blocking fallbacks are performed here.
+        and await this coroutine from an active event loop.
         """
-        payload = self.build_payload()
-
-        try:
-            return await self.write_settings_async(payload)
-        except Exception:
-            logger.exception("Failed to persist guild %s asynchronously", guild_id)
-            return False
+        return await self._persist_guild_async(guild_id)
 
 
 # Global guild settings manager instance
