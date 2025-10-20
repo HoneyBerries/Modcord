@@ -25,7 +25,6 @@ async def create_manager(tmp_path):
     
     # Mock _trigger_persist to track calls
     persist_mock = MagicMock()
-    original_trigger = manager._trigger_persist
     
     def mock_trigger(guild_id: int) -> None:
         persist_mock(guild_id)
