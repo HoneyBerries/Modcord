@@ -215,7 +215,7 @@ async def async_main() -> int:
         logger.info("Initializing database and loading guild settings...")
         await guild_settings_manager.async_init()
     except Exception as exc:
-        logger.critical("Failed to initialize database: %s", exc, exc_info=True)
+        logger.critical("Failed to initialize database: %s", exc)
         return 1
 
     try:

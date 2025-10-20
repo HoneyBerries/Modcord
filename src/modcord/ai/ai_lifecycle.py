@@ -33,11 +33,7 @@ class AIEngineLifecycle:
         try:
             await self._processor.shutdown()
         except Exception as exc:
-            logger.warning(
-                "[AI LIFECYCLE] Shutdown during restart raised: %s",
-                exc,
-                exc_info=True,
-            )
+            logger.warning("[AI LIFECYCLE] Shutdown during restart raised: %s", exc)
 
         self._state.available = False
         self._state.init_error = None
