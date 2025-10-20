@@ -2,6 +2,7 @@ from modcord.util.moderation_datatypes import (
     ActionData,
     ActionType,
     ModerationBatch,
+    ModerationImage,
     ModerationMessage,
 )
 
@@ -41,6 +42,15 @@ def test_actiondata_to_wire_dict_includes_all_fields() -> None:
 
 
 def test_moderationmessage_payload_helpers() -> None:
+    image = ModerationImage(
+        attachment_id="att-1",
+        message_id="m1",
+        user_id="42",
+        index=0,
+        filename="foo.png",
+        source_url="https://cdn.example/foo.png",
+    )
+
     message = ModerationMessage(
         message_id="m1",
         user_id="42",
@@ -49,7 +59,7 @@ def test_moderationmessage_payload_helpers() -> None:
         timestamp="2024-01-01T00:00:00Z",
         guild_id=7,
         channel_id=9,
-        image_summary="img",
+        images=[image],
     )
 
     model_payload = message.to_model_payload()
@@ -61,7 +71,16 @@ def test_moderationmessage_payload_helpers() -> None:
         "username": "alice",
         "content": "hello",
         "timestamp": "2024-01-01 00:00:00 UTC",
-        "image_summary": "img",
+        "images": [
+            {
+                "attachment_id": "att-1",
+                "message_id": "m1",
+                "user_id": "42",
+                "index": 0,
+                "filename": "foo.png",
+                "source_url": "https://cdn.example/foo.png",
+            }
+        ],
     }
 
     assert history_payload == {
@@ -69,6 +88,16 @@ def test_moderationmessage_payload_helpers() -> None:
         "username": "alice",
         "timestamp": "2024-01-01 00:00:00 UTC",
         "content": "hello",
+        "images": [
+            {
+                "attachment_id": "att-1",
+                "message_id": "m1",
+                "user_id": "42",
+                "index": 0,
+                "filename": "foo.png",
+                "source_url": "https://cdn.example/foo.png",
+            }
+        ],
     }
 
 

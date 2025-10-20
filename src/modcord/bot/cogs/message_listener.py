@@ -8,8 +8,9 @@ import datetime
 import discord
 from discord.ext import commands
 
+from modcord.util.moderation_datatypes import ModerationImage, ModerationMessage
+
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.util.moderation_datatypes import ModerationMessage
 from modcord.util.logger import get_logger
 from modcord.bot import rules_manager
 from modcord.util import discord_utils
@@ -32,6 +33,46 @@ class MessageListenerCog(commands.Cog):
         self.bot = discord_bot_instance
         self.discord_bot_instance = discord_bot_instance
         logger.info("Message listener cog loaded")
+
+    @staticmethod
+    def _is_image_attachment(attachment: discord.Attachment) -> bool:
+        """Return True if the Discord attachment should be treated as an image."""
+
+        content_type = (attachment.content_type or "").lower()
+        if content_type.startswith("image/"):
+            return True
+
+        if attachment.width is not None and attachment.height is not None:
+            return True
+
+        filename = (attachment.filename or "").lower()
+        return filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+
+    def _build_moderation_images(self, message: discord.Message) -> list[ModerationImage]:
+        """Transform Discord attachments into ModerationImage entries."""
+
+        images: list[ModerationImage] = []
+        image_index = 0
+        author_id = str(message.author.id) if message.author else ""
+
+        for attachment in message.attachments:
+            if not self._is_image_attachment(attachment):
+                continue
+
+            attachment_id = str(attachment.id or f"{message.id}:{image_index}")
+            images.append(
+                ModerationImage(
+                    attachment_id=attachment_id,
+                    message_id=str(message.id),
+                    user_id=author_id,
+                    index=image_index,
+                    filename=attachment.filename,
+                    source_url=attachment.url,
+                )
+            )
+            image_index += 1
+
+        return images
 
     def _create_moderation_message(
         self, 
@@ -67,8 +108,8 @@ class MessageListenerCog(commands.Cog):
             content=content,
             timestamp=timestamp_iso,
             guild_id=message.guild.id if message.guild else None,
-            channel_id=message.channel.id if hasattr(message.channel, "id") else None,
-            image_summary=None,
+            channel_id=message.channel.id,
+            images=self._build_moderation_images(message),
             discord_message=message if include_discord_message else None,
         )
 
@@ -96,12 +137,16 @@ class MessageListenerCog(commands.Cog):
             logger.debug(f"Ignoring message from {message.author} (bot)")
             return False, None
 
-        # Skip empty messages
         actual_content = message.clean_content.strip()
-        if not actual_content:
+        has_image_attachments = any(
+            self._is_image_attachment(attachment) for attachment in message.attachments
+        )
+
+        # Skip messages that lack both textual content and image attachments
+        if not actual_content and not has_image_attachments:
             return False, None
 
-        return True, actual_content
+        return True, actual_content if actual_content else ""
 
     @commands.Cog.listener(name='on_message')
     async def on_message(self, message: discord.Message):
@@ -123,7 +168,11 @@ class MessageListenerCog(commands.Cog):
         if not should_process or actual_content is None:
             return
 
-        logger.debug(f"Received message from {message.author}: {message.content[:50]}")
+        log_preview = actual_content if actual_content else "[no text]"
+        if any(self._is_image_attachment(att) for att in message.attachments):
+            log_preview = f"{log_preview} [images]"
+
+        logger.debug(f"Received message from {message.author}: {log_preview[:80]}")
 
         # Refresh rules cache if this was posted in a rules channel
         if isinstance(message.channel, discord.abc.GuildChannel):

@@ -19,7 +19,6 @@ def humanize_timestamp(value: str) -> str:
     
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
-
 class ActionType(Enum):
     """Enumeration of supported moderation actions."""
 
@@ -97,6 +96,30 @@ class ActionData:
 
 
 @dataclass(slots=True)
+class ModerationImage:
+    """Structured representation of an image attachment for moderation."""
+
+    attachment_id: str
+    message_id: str
+    user_id: str
+    index: int
+    filename: Optional[str] = None
+    source_url: Optional[str] = None
+
+    def to_model_payload(self) -> dict:
+        """Return a JSON-serializable representation of this image."""
+
+        return {
+            "attachment_id": self.attachment_id,
+            "message_id": self.message_id,
+            "user_id": self.user_id,
+            "index": self.index,
+            "filename": self.filename,
+            "source_url": self.source_url,
+        }
+
+
+@dataclass(slots=True)
 class ModerationMessage:
     """Normalized message data used to provide context to the moderation engine."""
 
@@ -107,7 +130,7 @@ class ModerationMessage:
     timestamp: str  # ISO 8601 string, e.g. '2025-10-09T12:34:56Z'
     guild_id: Optional[int]
     channel_id: Optional[int]
-    image_summary: Optional[str] = None
+    images: List[ModerationImage] = field(default_factory=list)
     discord_message: "discord.Message | None" = None
 
     def to_model_payload(self) -> dict:
@@ -121,7 +144,7 @@ class ModerationMessage:
             "username": self.username,
             "content": self.content,
             "timestamp": timestamp_value or None,
-            "image_summary": self.image_summary,
+            "images": [img.to_model_payload() for img in self.images],
         }
 
     def to_history_payload(self) -> dict:
@@ -134,6 +157,7 @@ class ModerationMessage:
             "username": self.username,
             "timestamp": timestamp_value or None,
             "content": self.content,
+            "images": [img.to_model_payload() for img in self.images],
         }
 
 
@@ -192,7 +216,7 @@ class ModerationBatch:
                     "message_id": message.message_id,
                     "timestamp": humanize_timestamp(message.timestamp) or None,
                     "content": message.content,
-                    "image_summary": message.image_summary,
+                    "images": [img.to_model_payload() for img in message.images],
                     "order_index": index,
                 }
             )

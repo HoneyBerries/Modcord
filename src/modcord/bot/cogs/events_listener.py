@@ -5,6 +5,7 @@ Message-related events are handled by the MessageListenerCog.
 """
 
 import asyncio
+import json
 import discord
 from discord.ext import commands
 
@@ -42,6 +43,7 @@ class EventsListenerCog(commands.Cog):
         1. Updates the bot's Discord presence based on AI model state
         2. Starts the periodic rules cache refresh task
         3. Registers the batch processing callback
+        4. Puts all registered commands into a file called commands.json for reference
         """
         if self.bot.user:
             await self._update_presence()
@@ -60,6 +62,10 @@ class EventsListenerCog(commands.Cog):
         guild_settings_manager.set_batch_processing_callback(
             lambda batch: moderation_helper.process_message_batch(self, batch)
         )
+
+        commands = await self.bot.http.get_global_commands(self.bot.user.id)
+        with open("config/commands.json", "w") as f:
+            f.write(json.dumps(commands, indent=4))
 
     async def _update_presence(self) -> None:
         """

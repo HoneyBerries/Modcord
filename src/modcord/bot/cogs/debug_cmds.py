@@ -44,6 +44,31 @@ class DebugCog(commands.Cog):
             ephemeral=True
         )
 
+    @commands.slash_command(
+        name="purge",
+        description="Delete ALL messages from the bot in the current channel.")
+    async def purge(self, application_context: discord.ApplicationContext):
+        """
+        Delete all messages sent by everyone in the current channel.
+        """
+        channel = application_context.channel
+        if not channel:
+            await application_context.respond("No channel found.", ephemeral=True)
+            return
+        
+        # Make sure that the user has administrator permissions
+        member = application_context.author
+        if not isinstance(member, discord.Member) or not member.guild_permissions.administrator:
+            await application_context.respond("You do not have permission to use this command.", ephemeral=True)
+            return
+
+        try:
+            await application_context.defer()
+            await channel.purge()
+            await application_context.send_followup("All messages deleted.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to purge messages in {channel.name}: {e}", exc_info=True)
+            await application_context.send_followup("An error occurred while purging messages.", ephemeral=True)
 
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
     async def refresh_rules(self, application_context: discord.ApplicationContext):
@@ -58,7 +83,7 @@ class DebugCog(commands.Cog):
             guild = application_context.guild
             if guild is None:
                 raise RuntimeError("/refresh_rules can only be used inside a guild context")
-            rules_text = await rules_manager.refresh_guild_rules(guild, settings=guild_settings_manager)
+            rules_text = await rules_manager.refresh_guild_rules(guild)
             
             if rules_text:
                 embed = discord.Embed(

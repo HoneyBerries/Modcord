@@ -244,7 +244,7 @@ class ModerationProcessor:
             message_id: str,
             timestamp: Optional[str],
             content: str,
-            image_summary: Optional[str],
+            images: Sequence[Dict[str, Any]],
             is_history: bool,
         ) -> bool:
             """Add message to user entry if not duplicate. Returns True if added."""
@@ -259,7 +259,7 @@ class ModerationProcessor:
                     "message_id": message_id,
                     "timestamp": timestamp,
                     "content": content,
-                    "image_summary": image_summary,
+                    "images": list(images),
                     "is_history": is_history,
                 }
             )
@@ -293,12 +293,13 @@ class ModerationProcessor:
                 user_message_ids[user_id].append(message_id)
 
             timestamp_value = humanize_timestamp(message.timestamp) or None
+            serialized_images = [img.to_model_payload() for img in message.images]
             if _add_entry(
                 user_id,
                 message_id,
                 timestamp_value,
                 str(message.content or ""),
-                message.image_summary,
+                serialized_images,
                 False,
             ):
                 total_message_count += 1
@@ -321,7 +322,7 @@ class ModerationProcessor:
                 message_id,
                 humanize_timestamp(history_entry.timestamp) or None,
                 str(history_entry.content or ""),
-                history_entry.image_summary,
+                [img.to_model_payload() for img in history_entry.images],
                 True,
             ):
                 total_message_count += 1
