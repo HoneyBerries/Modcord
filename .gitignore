@@ -25,9 +25,6 @@ ENV/
 # ignore commands.json
 config/commands.json
 
-# ignore app_config.yml
-config/app_config.yml
-
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
