@@ -84,9 +84,9 @@ async def test_build_payload_and_history_helpers(tmp_path) -> None:
     manager.add_message_to_history(9, message)
     # Use message_history_cache.get_cached_messages(9) if you want to check cache contents
 
-    payload = manager.build_payload()
-    assert payload["guilds"]["5"]["ai_enabled"] is False
-    assert payload["guilds"]["5"]["rules"] == "No spoilers"
+    settings = manager.get_guild_settings(5)
+    assert settings.ai_enabled is False
+    assert settings.rules == "No spoilers"
 
 
 @pytest.mark.asyncio

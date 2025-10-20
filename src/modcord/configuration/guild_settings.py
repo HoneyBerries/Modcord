@@ -13,8 +13,6 @@ Database schema:
 import collections
 import asyncio
 from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence, Set
-from collections import deque
-from pathlib import Path
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
 from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
@@ -25,7 +23,7 @@ from modcord.database.database import init_database, get_connection
 logger = get_logger("guild_settings_manager")
 
 
-@dataclass
+@dataclass(slots=True)
 class GuildSettings:
     """Persistent per-guild configuration along with transient batching state."""
 
@@ -37,42 +35,6 @@ class GuildSettings:
     auto_timeout_enabled: bool = True
     auto_kick_enabled: bool = True
     auto_ban_enabled: bool = True
-
-    @classmethod
-    def from_dict(cls, guild_id: int, payload: Dict[str, object]) -> "GuildSettings":
-        """Create a GuildSettings instance from a dictionary payload."""
-        if not isinstance(payload, dict):
-            return cls(guild_id=guild_id)
-        ai_enabled = bool(payload.get("ai_enabled", True))
-        rules_raw = payload.get("rules", "")
-        rules = str(rules_raw) if rules_raw is not None else ""
-        auto_warn_enabled = bool(payload.get("auto_warn_enabled", True))
-        auto_delete_enabled = bool(payload.get("auto_delete_enabled", True))
-        auto_timeout_enabled = bool(payload.get("auto_timeout_enabled", True))
-        auto_kick_enabled = bool(payload.get("auto_kick_enabled", True))
-        auto_ban_enabled = bool(payload.get("auto_ban_enabled", True))
-        return cls(
-            guild_id=guild_id,
-            ai_enabled=ai_enabled,
-            rules=rules,
-            auto_warn_enabled=auto_warn_enabled,
-            auto_delete_enabled=auto_delete_enabled,
-            auto_timeout_enabled=auto_timeout_enabled,
-            auto_kick_enabled=auto_kick_enabled,
-            auto_ban_enabled=auto_ban_enabled,
-        )
-
-    def to_dict(self) -> Dict[str, object]:
-        """Return a dictionary representation of guild settings for persistence."""
-        return {
-            "ai_enabled": self.ai_enabled,
-            "rules": self.rules,
-            "auto_warn_enabled": self.auto_warn_enabled,
-            "auto_delete_enabled": self.auto_delete_enabled,
-            "auto_timeout_enabled": self.auto_timeout_enabled,
-            "auto_kick_enabled": self.auto_kick_enabled,
-            "auto_ban_enabled": self.auto_ban_enabled,
-        }
 
 
 ACTION_FLAG_FIELDS: dict[ActionType, str] = {
@@ -131,15 +93,6 @@ class GuildSettingsManager:
             settings = GuildSettings(guild_id=guild_id)
             self.guilds[guild_id] = settings
         return settings
-
-    def build_payload(self) -> Dict[str, Dict[str, Dict[str, object]]]:
-        """Serialize all persisted guild settings into a JSON-ready payload (for backward compatibility)."""
-        return {
-            "guilds": {
-                str(guild_id): settings.to_dict()
-                for guild_id, settings in self.guilds.items()
-            }
-        }
 
     def get_guild_settings(self, guild_id: int) -> GuildSettings:
         """Fetch the cached :class:`GuildSettings` instance for the given guild."""
@@ -351,7 +304,7 @@ class GuildSettingsManager:
         settings = self.ensure_guild(guild_id)
         settings.ai_enabled = bool(enabled)
         state = "enabled" if enabled else "disabled"
-        logger.info("AI moderation %s for guild %s", state, guild_id)
+        logger.debug("AI moderation %s for guild %s", state, guild_id)
         self._trigger_persist(guild_id)
         return True
 
@@ -362,6 +315,7 @@ class GuildSettingsManager:
         if field_name is None:
             return True
         return bool(getattr(settings, field_name, True))
+    
 
     def set_action_allowed(self, guild_id: int, action: ActionType, enabled: bool) -> bool:
         """Enable or disable an AI action for the guild and persist the change."""
@@ -441,19 +395,19 @@ class GuildSettingsManager:
                 self.guilds.clear()
                 for row in rows:
                     guild_id = row[0]
-                    payload = {
-                        "ai_enabled": bool(row[1]),
-                        "rules": row[2],
-                        "auto_warn_enabled": bool(row[3]),
-                        "auto_delete_enabled": bool(row[4]),
-                        "auto_timeout_enabled": bool(row[5]),
-                        "auto_kick_enabled": bool(row[6]),
-                        "auto_ban_enabled": bool(row[7]),
-                    }
-                    self.guilds[guild_id] = GuildSettings.from_dict(guild_id, payload)
+                    self.guilds[guild_id] = GuildSettings(
+                        guild_id=guild_id,
+                        ai_enabled=bool(row[1]),
+                        rules=row[2],
+                        auto_warn_enabled=bool(row[3]),
+                        auto_delete_enabled=bool(row[4]),
+                        auto_timeout_enabled=bool(row[5]),
+                        auto_kick_enabled=bool(row[6]),
+                        auto_ban_enabled=bool(row[7]),
+                    )
                 
                 if rows:
-                    logger.info("Loaded %d guild settings from database", len(rows))
+                    logger.info("Loaded %d guild settings from database", len(list(rows)))
                     return True
                 return False
         except Exception:

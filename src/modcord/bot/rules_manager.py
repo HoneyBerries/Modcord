@@ -41,9 +41,8 @@ def _extract_embed_text(embed: discord.Embed) -> list[str]:
 
 def _is_rules_channel(channel: discord.abc.GuildChannel) -> bool:
 	"""Check if channel name matches rules pattern."""
-	# Handle duck typing for tests - check if it has the required attributes
-	name = getattr(channel, "name", None)
-	if name is None or not isinstance(name, str):
+	name = channel.name
+	if not name:
 		return False
 	return RULE_CHANNEL_PATTERN.search(name) is not None
 

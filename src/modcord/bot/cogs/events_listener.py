@@ -92,37 +92,7 @@ class EventsListenerCog(commands.Cog):
             )
         )
 
-    @commands.Cog.listener(name='on_application_command_error')
-    async def on_application_command_error(self, application_context: discord.ApplicationContext, error: Exception):
-        """
-        Handle errors from application commands with logging and user feedback.
-
-        Parameters
-        ----------
-        application_context:
-            The command invocation context.
-        error:
-            The exception raised during command execution.
-        """
-        # Ignore commands that don't exist
-        if isinstance(error, commands.CommandNotFound):
-            return
-
-        # Log the error with full traceback
-        command_name = getattr(application_context.command, 'name', '<unknown>')
-        logger.error(f"Error in command '{command_name}': {error}")
-
-        # Send a user-friendly error message
-        error_message = "A :bug: showed up while running this command."
-        try:
-            await application_context.respond(error_message, ephemeral=True)
-        except Exception:
-            try:
-                await application_context.followup.send(error_message, ephemeral=True)
-            except Exception:
-                pass
-
-
+        
 def setup(discord_bot_instance):
     """
     Register the EventsListenerCog with the bot.

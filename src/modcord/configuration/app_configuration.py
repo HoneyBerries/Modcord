@@ -209,18 +209,6 @@ class AISettings(Mapping):
         k = self.data.get("sampling_parameters", {})
         return k if isinstance(k, dict) else {}
 
-    # Allow attribute-like fallback access for any key
-    def __getattr__(self, item: str) -> Any:  # pragma: no cover - thin shim
-        if item in self.__dict__:
-            return self.__dict__[item]
-        if item in self.data:
-            return self.data[item]
-        raise AttributeError(item)
-
-    # (Intentionally no format_system_prompt here — AppConfig provides prompt
-    # formatting because templates and server_rules are global application
-    # data.)
-
 
 # Shared application-wide configuration instance
 app_config = AppConfig()

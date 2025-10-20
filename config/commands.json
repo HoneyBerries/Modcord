@@ -1,68 +1,5 @@
 [
     {
-        "id": "1426307901705683117",
-        "application_id": "1258947859617808456",
-        "version": "1426307901705683126",
-        "default_member_permissions": null,
-        "type": 1,
-        "name": "test",
-        "name_localizations": null,
-        "description": "Checks if the bot is online and its round trip time.",
-        "description_localizations": null,
-        "dm_permission": true,
-        "contexts": [
-            0,
-            1,
-            2
-        ],
-        "integration_types": [
-            0
-        ],
-        "nsfw": false
-    },
-    {
-        "id": "1426307901705683118",
-        "application_id": "1258947859617808456",
-        "version": "1426307901798223943",
-        "default_member_permissions": null,
-        "type": 1,
-        "name": "refresh_rules",
-        "name_localizations": null,
-        "description": "Manually refresh the server rules cache.",
-        "description_localizations": null,
-        "dm_permission": true,
-        "contexts": [
-            0,
-            1,
-            2
-        ],
-        "integration_types": [
-            0
-        ],
-        "nsfw": false
-    },
-    {
-        "id": "1426307901705683119",
-        "application_id": "1258947859617808456",
-        "version": "1426307901798223944",
-        "default_member_permissions": null,
-        "type": 1,
-        "name": "show_rules",
-        "name_localizations": null,
-        "description": "Display the current cached server rules.",
-        "description_localizations": null,
-        "dm_permission": true,
-        "contexts": [
-            0,
-            1,
-            2
-        ],
-        "integration_types": [
-            0
-        ],
-        "nsfw": false
-    },
-    {
         "id": "1426307901705683120",
         "application_id": "1258947859617808456",
         "version": "1426307901798223945",
@@ -71,27 +8,6 @@
         "name": "settings",
         "name_localizations": null,
         "description": "Open an interactive panel to configure Modcord for this server.",
-        "description_localizations": null,
-        "dm_permission": true,
-        "contexts": [
-            0,
-            1,
-            2
-        ],
-        "integration_types": [
-            0
-        ],
-        "nsfw": false
-    },
-    {
-        "id": "1426307901705683121",
-        "application_id": "1258947859617808456",
-        "version": "1426307901798223946",
-        "default_member_permissions": null,
-        "type": 1,
-        "name": "settings-dump",
-        "name_localizations": null,
-        "description": "Show current per-guild settings as raw JSON. For debugging purposes.",
         "description_localizations": null,
         "dm_permission": true,
         "contexts": [
@@ -541,14 +457,14 @@
         "nsfw": false
     },
     {
-        "id": "1429919775378903080",
+        "id": "1429948899585687598",
         "application_id": "1258947859617808456",
-        "version": "1429919775378903081",
+        "version": "1429948900047065230",
         "default_member_permissions": null,
         "type": 1,
-        "name": "purge",
+        "name": "debug",
         "name_localizations": null,
-        "description": "Delete ALL messages from the bot in the current channel.",
+        "description": "Debug commands for bot administration",
         "description_localizations": null,
         "dm_permission": true,
         "contexts": [
@@ -558,6 +474,36 @@
         ],
         "integration_types": [
             0
+        ],
+        "options": [
+            {
+                "type": 1,
+                "name": "test",
+                "name_localizations": null,
+                "description": "Test command to verify the bot is responsive",
+                "description_localizations": null
+            },
+            {
+                "type": 1,
+                "name": "purge",
+                "name_localizations": null,
+                "description": "Delete all messages in the current channel",
+                "description_localizations": null
+            },
+            {
+                "type": 1,
+                "name": "refresh_rules",
+                "name_localizations": null,
+                "description": "Manually refresh the server rules cache",
+                "description_localizations": null
+            },
+            {
+                "type": 1,
+                "name": "show_rules",
+                "name_localizations": null,
+                "description": "Display the current server rules",
+                "description_localizations": null
+            }
         ],
         "nsfw": false
     }

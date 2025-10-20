@@ -69,7 +69,7 @@ class ModerationProcessor:
 
     async def _warmup_engine(self) -> bool:
         """Perform a warmup generation once."""
-        if getattr(self.inference_processor, "warmup_completed", False):
+        if self.inference_processor.warmup_completed:
             return True
         try:
             await self.inference_processor.generate_text(["Warmup prompt: prime runtime."])
