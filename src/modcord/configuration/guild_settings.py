@@ -20,7 +20,7 @@ from modcord.util.logger import get_logger
 from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
 from modcord.util.message_cache import message_history_cache
 from modcord.configuration.app_configuration import app_config
-from modcord.configuration.database import init_database, get_connection
+from modcord.database.database import init_database, get_connection
 
 logger = get_logger("guild_settings_manager")
 

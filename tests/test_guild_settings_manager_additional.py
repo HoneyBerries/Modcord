@@ -18,7 +18,7 @@ class _TestableGuildSettingsManager(GuildSettingsManager):
 
 async def create_manager(tmp_path):
     # Override DB_PATH for testing
-    import modcord.configuration.database as db_module
+    import modcord.database.database as db_module
     db_module.DB_PATH = tmp_path / "test.db"
     
     manager = _TestableGuildSettingsManager()
@@ -92,7 +92,7 @@ async def test_build_payload_and_history_helpers(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_load_from_disk_filters_invalid_entries(tmp_path) -> None:
     """Test that load_from_disk handles database errors gracefully."""
-    import modcord.configuration.database as db_module
+    import modcord.database.database as db_module
     db_module.DB_PATH = tmp_path / "test.db"
     
     manager = _TestableGuildSettingsManager()
@@ -133,7 +133,7 @@ async def test_load_from_disk_filters_invalid_entries(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_load_from_empty_database(tmp_path) -> None:
     """Test that load_from_disk handles empty database correctly."""
-    import modcord.configuration.database as db_module
+    import modcord.database.database as db_module
     db_module.DB_PATH = tmp_path / "test.db"
     
     manager = _TestableGuildSettingsManager()

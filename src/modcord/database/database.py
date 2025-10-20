@@ -6,13 +6,12 @@ This module provides async database operations using aiosqlite.
 
 import aiosqlite
 from pathlib import Path
-from typing import Optional
 from modcord.util.logger import get_logger
 
 logger = get_logger("database")
 
 # Database file path
-DB_PATH = Path("data/app.db")
+DB_PATH = Path("data/app.db").resolve()
 
 
 async def init_database() -> None:
@@ -97,4 +96,4 @@ def get_connection_sync() -> aiosqlite.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
-    return conn
+    return conn # type: ignore

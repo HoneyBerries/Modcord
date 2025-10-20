@@ -6,13 +6,13 @@ import sqlite3
 import pytest
 from pathlib import Path
 from modcord.configuration import guild_settings
-from modcord.configuration.database import DB_PATH
+from modcord.database.database import DB_PATH
 
 @pytest.mark.asyncio
 async def test_database_initialization(tmp_path):
     """Test that database is initialized correctly."""
     # Temporarily override DB_PATH
-    import modcord.configuration.database as db_module
+    import modcord.database.database as db_module
     original_path = db_module.DB_PATH
     db_module.DB_PATH = tmp_path / "test.db"
     
@@ -40,7 +40,7 @@ async def test_database_initialization(tmp_path):
 async def test_schedule_persist_and_persist_guild(tmp_path):
     """Test persisting guild settings to database."""
     # Temporarily override DB_PATH
-    import modcord.configuration.database as db_module
+    import modcord.database.database as db_module
     original_path = db_module.DB_PATH
     db_module.DB_PATH = tmp_path / "test.db"
     
@@ -88,7 +88,7 @@ async def test_schedule_persist_and_persist_guild(tmp_path):
 async def test_load_from_disk(tmp_path):
     """Test loading guild settings from database."""
     # Temporarily override DB_PATH
-    import modcord.configuration.database as db_module
+    import modcord.database.database as db_module
     original_path = db_module.DB_PATH
     db_module.DB_PATH = tmp_path / "test.db"
     
