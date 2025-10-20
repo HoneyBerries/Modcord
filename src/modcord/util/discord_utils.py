@@ -644,7 +644,7 @@ async def apply_action_decision(
             await guild.ban(author, reason=f"AI Mod: {action.reason}")
             embed = await create_punishment_embed(ActionType.BAN, author, action.reason, duration_label, issuer=bot_user, bot_user=bot_user)
         except Exception as exc:
-            logger.error("Failed to ban user %s: %s", author.id, exc, exc_info=True)
+            logger.error("Failed to ban user %s: %s", author.id, exc)
             return False
         if not is_permanent:
             try:
@@ -657,7 +657,7 @@ async def apply_action_decision(
                     reason="Ban duration expired.",
                 )
             except Exception as exc:
-                logger.error("Failed to schedule unban for user %s: %s", author.id, exc, exc_info=True)
+                logger.error("Failed to schedule unban for user %s: %s", author.id, exc)
                 success = False
     elif action.action is ActionType.KICK:
         try:
@@ -668,7 +668,7 @@ async def apply_action_decision(
             await guild.kick(author, reason=f"AI Mod: {action.reason}")
             embed = await create_punishment_embed(ActionType.KICK, author, action.reason, issuer=bot_user, bot_user=bot_user)
         except Exception as exc:
-            logger.error("Failed to kick user %s: %s", author.id, exc, exc_info=True)
+            logger.error("Failed to kick user %s: %s", author.id, exc)
             return False
     elif action.action is ActionType.TIMEOUT:
         duration_seconds = action.timeout_duration if action.timeout_duration is not None else 10 * 60
@@ -684,7 +684,7 @@ async def apply_action_decision(
                 logger.debug("Failed to DM user about timeout, continuing.")
             embed = await create_punishment_embed(ActionType.TIMEOUT, author, action.reason, duration_label, issuer=bot_user, bot_user=bot_user)
         except Exception as exc:
-            logger.error("Failed to timeout user %s: %s", author.id, exc, exc_info=True)
+            logger.error("Failed to timeout user %s: %s", author.id, exc)
             return False
     elif action.action is ActionType.WARN:
         try:
@@ -694,13 +694,13 @@ async def apply_action_decision(
                 logger.debug("Failed to DM user for warning, continuing to post embed.")
             embed = await create_punishment_embed(ActionType.WARN, author, action.reason, issuer=bot_user, bot_user=bot_user)
         except Exception as exc:
-            logger.error("Failed to process warn for user %s: %s", author.id, exc, exc_info=True)
+            logger.error("Failed to process warn for user %s: %s", author.id, exc)
             return False
     elif action.action is ActionType.UNBAN:
         try:
             embed = await create_punishment_embed(ActionType.UNBAN, author, action.reason, issuer=bot_user, bot_user=bot_user)
         except Exception as exc:
-            logger.error("Failed to create unban embed for user %s: %s", author.id, exc, exc_info=True)
+            logger.error("Failed to create unban embed for user %s: %s", author.id, exc)
             return False
     if embed and isinstance(channel, (discord.TextChannel, discord.Thread)):
         try:

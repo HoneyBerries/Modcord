@@ -95,7 +95,7 @@ class ModerationProcessor:
         try:
             results = await self.inference_processor.generate_text([prompt])
         except Exception as exc:
-            logger.error("Inference error: %s", exc, exc_info=True)
+            logger.error("Inference error: %s", exc)
             return self._null_response("inference error")
 
         if not results:
@@ -184,7 +184,7 @@ class ModerationProcessor:
         try:
             await self.inference_processor.unload_model()
         except Exception as exc:
-            logger.warning("Failed to unload AI model cleanly: %s", exc, exc_info=True)
+            logger.warning("Failed to unload AI model cleanly: %s", exc)
 
     async def get_appropriate_action(
         self,

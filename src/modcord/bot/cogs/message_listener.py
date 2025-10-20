@@ -197,7 +197,7 @@ class MessageListenerCog(commands.Cog):
             await guild_settings_manager.add_message_to_batch(message.channel.id, batch_message)
             logger.debug(f"Added message to batch for channel {message.channel.id}")
         except Exception as e:
-            logger.error(f"Error adding message to batch: {e}", exc_info=True)
+            logger.error(f"Error adding message to batch: {e}")
 
     @commands.Cog.listener(name='on_message_edit')
     async def on_message_edit(self, before: discord.Message, after: discord.Message):

@@ -66,7 +66,7 @@ class AppConfig:
             logger.error("Config file %s not found.", self.config_path)
             return {}
         except Exception as exc:
-            logger.error("Failed to load config %s: %s", self.config_path, exc, exc_info=True)
+            logger.error("Failed to load config %s: %s", self.config_path, exc)
             return {}
 
         if not isinstance(loaded_data, dict):
@@ -100,7 +100,7 @@ class AppConfig:
                 )
             except Exception:
                 # Non-fatal: don't block reload on logging errors
-                logger.debug("Loaded config but failed to summarize ai settings for logging", exc_info=True)
+                logger.debug("Loaded config but failed to summarize ai settings for logging")
 
             return self._data
 

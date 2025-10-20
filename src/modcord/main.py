@@ -131,7 +131,7 @@ async def initialize_ai_model() -> None:
         if detail and not available:
             logger.critical("AI model failed to initialize: %s", detail)
     except Exception as exc:
-        logger.critical("Unexpected error during AI initialization: %s", exc, exc_info=True)
+        logger.critical("Unexpected error during AI initialization: %s", exc)
         raise
 
 
@@ -191,7 +191,7 @@ async def run_bot_session(bot: discord.Bot, token: str, control: ConsoleControl)
             except asyncio.CancelledError:
                 logger.info("Bot start cancelled; proceeding to shutdown")
             except Exception as exc:
-                logger.critical("Discord bot runtime error: %s", exc, exc_info=True)
+                logger.critical("Discord bot runtime error: %s", exc)
                 exit_code = 1
     finally:
         control.set_bot(None)
@@ -213,7 +213,7 @@ async def async_main() -> int:
     try:
         bot = create_bot()
     except Exception as exc:
-        logger.critical("Failed to initialize Discord bot: %s", exc, exc_info=True)
+        logger.critical("Failed to initialize Discord bot: %s", exc)
         return 1
 
     try:
@@ -276,7 +276,7 @@ def main() -> int:
             logger.warning("SystemExit.code is not an int (%r); defaulting to 1", code)
             return 1
     except Exception as exc:
-        logger.critical("An unexpected error occurred while running the bot: %s", exc, exc_info=True)
+        logger.critical("An unexpected error occurred while running the bot: %s", exc)
         return 1
 
 

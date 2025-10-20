@@ -110,7 +110,7 @@ class EventsListenerCog(commands.Cog):
 
         # Log the error with full traceback
         command_name = getattr(application_context.command, 'name', '<unknown>')
-        logger.error(f"Error in command '{command_name}': {error}", exc_info=True)
+        logger.error(f"Error in command '{command_name}': {error}")
 
         # Send a user-friendly error message
         error_message = "A :bug: showed up while running this command."

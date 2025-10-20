@@ -67,7 +67,7 @@ class DebugCog(commands.Cog):
             await channel.purge()
             await application_context.send_followup("All messages deleted.", ephemeral=True)
         except Exception as e:
-            logger.error(f"Failed to purge messages in {channel.name}: {e}", exc_info=True)
+            logger.error(f"Failed to purge messages in {channel.name}: {e}")
             await application_context.send_followup("An error occurred while purging messages.", ephemeral=True)
 
     @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
@@ -108,7 +108,7 @@ class DebugCog(commands.Cog):
             await application_context.respond(embed=embed, ephemeral=True)
             
         except Exception as e:
-            logger.error(f"Failed to refresh rules for {application_context.guild.name}: {e}", exc_info=True)
+            logger.error(f"Failed to refresh rules for {application_context.guild.name}: {e}")
             await application_context.respond("An error occurred while refreshing rules.", ephemeral=True)
 
     @commands.slash_command(name="show_rules", description="Display the current cached server rules.")
