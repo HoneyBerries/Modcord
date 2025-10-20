@@ -76,9 +76,27 @@ Follow these steps to get Modcord running on your local machine for development 
 ## Configuration & Architecture
 
 - **AI Lifecycle**: `modcord.ai.ai_lifecycle` (initialize/restart/shutdown).
-- **Configuration & Persistence**: `modcord.configuration.guild_settings`.
+- **Configuration & Persistence**: `modcord.configuration.guild_settings` (using SQLite database at `data/app.db`).
+- **Database**: Guild settings are stored in SQLite database for reliability and performance.
 - **Moderation Orchestration**: `modcord.ai.ai_moderation_processor` and `modcord.ai.ai_core`.
 - **Cogs**: Located under `src/modcord/bot/cogs`.
+
+---
+
+## Data Storage
+
+Modcord uses SQLite to store guild-specific settings persistently. The database is automatically created on first run and stored at `data/app.db`.
+
+### Database Schema
+
+The `guild_settings` table stores per-guild configuration:
+- `guild_id`: Discord guild/server ID (primary key)
+- `ai_enabled`: Whether AI moderation is enabled (default: true)
+- `rules`: Custom server rules for the AI to enforce
+- `auto_*_enabled`: Flags for each moderation action type (warn, delete, timeout, kick, ban)
+- `created_at`, `updated_at`: Timestamps for record tracking
+
+The database uses Write-Ahead Logging (WAL) mode for better concurrency and includes automatic timestamp updates via triggers.
 
 ---
 

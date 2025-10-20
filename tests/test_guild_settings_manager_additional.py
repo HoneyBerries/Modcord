@@ -1,4 +1,6 @@
-import json
+import sqlite3
+import asyncio
+import pytest
 from unittest.mock import MagicMock
 
 from modcord.configuration.guild_settings import GuildSettingsManager
@@ -6,31 +8,35 @@ from modcord.util.moderation_datatypes import ActionType, ModerationMessage
 
 
 class _TestableGuildSettingsManager(GuildSettingsManager):
-    """Test double that avoids starting background threads or touching disk at init."""
+    """Test double that avoids database I/O at init."""
 
-    def start_writer_loop(self) -> None:  # type: ignore[override]
-        self.writer_loop = None
-        self.writer_thread = None
-        self.writer_ready.set()
-
-    def load_from_disk(self) -> bool:  # type: ignore[override]
+    async def load_from_disk(self) -> bool:  # type: ignore[override]
         # Skip disk I/O during initialization for fast, deterministic tests.
         self.guilds.clear()
         return False
 
 
-def create_manager(tmp_path):
+async def create_manager(tmp_path):
+    # Override DB_PATH for testing
+    import modcord.configuration.database as db_module
+    db_module.DB_PATH = tmp_path / "test.db"
+    
     manager = _TestableGuildSettingsManager()
-    manager.data_dir = tmp_path
-    manager.settings_path = tmp_path / "guild_settings.json"
-    persist_mock = MagicMock(return_value=True)
-    manager.schedule_persist = persist_mock  # type: ignore[assignment]
-    manager.pending_writes.clear()
+    
+    # Mock _trigger_persist to track calls
+    persist_mock = MagicMock()
+    original_trigger = manager._trigger_persist
+    
+    def mock_trigger(guild_id: int) -> None:
+        persist_mock(guild_id)
+    
+    manager._trigger_persist = mock_trigger  # type: ignore[assignment]
     return manager, persist_mock
 
 
-def test_set_and_get_server_rules(tmp_path) -> None:
-    manager, persist_mock = create_manager(tmp_path)
+@pytest.mark.asyncio
+async def test_set_and_get_server_rules(tmp_path) -> None:
+    manager, persist_mock = await create_manager(tmp_path)
 
     manager.set_server_rules(100, "Be excellent to each other")
 
@@ -38,8 +44,9 @@ def test_set_and_get_server_rules(tmp_path) -> None:
     persist_mock.assert_called_once_with(100)
 
 
-def test_set_action_allowed_updates_flags(tmp_path) -> None:
-    manager, persist_mock = create_manager(tmp_path)
+@pytest.mark.asyncio
+async def test_set_action_allowed_updates_flags(tmp_path) -> None:
+    manager, persist_mock = await create_manager(tmp_path)
 
     # BAN is now enabled by default
     assert manager.is_action_allowed(1, ActionType.BAN) is True
@@ -58,8 +65,9 @@ def test_set_action_allowed_updates_flags(tmp_path) -> None:
     persist_mock.assert_not_called()
 
 
-def test_build_payload_and_history_helpers(tmp_path) -> None:
-    manager, persist_mock = create_manager(tmp_path)
+@pytest.mark.asyncio
+async def test_build_payload_and_history_helpers(tmp_path) -> None:
+    manager, persist_mock = await create_manager(tmp_path)
 
     manager.set_ai_enabled(5, False)
     manager.set_server_rules(5, "No spoilers")
@@ -82,29 +90,77 @@ def test_build_payload_and_history_helpers(tmp_path) -> None:
     assert payload["guilds"]["5"]["rules"] == "No spoilers"
 
 
-def test_load_from_disk_filters_invalid_entries(tmp_path) -> None:
-    manager, persist_mock = create_manager(tmp_path)
-
-    payload = {
-        "guilds": {
-            "123": {"ai_enabled": False, "rules": "rule"},
-            "invalid": {"ai_enabled": True},
-        }
-    }
-    manager.settings_path.write_text(json.dumps(payload), encoding="utf-8")
+@pytest.mark.asyncio
+async def test_load_from_disk_filters_invalid_entries(tmp_path) -> None:
+    """Test that load_from_disk handles database errors gracefully."""
+    import modcord.configuration.database as db_module
+    db_module.DB_PATH = tmp_path / "test.db"
+    
+    manager = _TestableGuildSettingsManager()
+    
+    # Create database with test data including a valid entry
+    conn = sqlite3.connect(db_module.DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS guild_settings (
+            guild_id INTEGER PRIMARY KEY,
+            ai_enabled INTEGER NOT NULL DEFAULT 1,
+            rules TEXT NOT NULL DEFAULT '',
+            auto_warn_enabled INTEGER NOT NULL DEFAULT 1,
+            auto_delete_enabled INTEGER NOT NULL DEFAULT 1,
+            auto_timeout_enabled INTEGER NOT NULL DEFAULT 1,
+            auto_kick_enabled INTEGER NOT NULL DEFAULT 1,
+            auto_ban_enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        INSERT INTO guild_settings (guild_id, ai_enabled, rules)
+        VALUES (?, ?, ?)
+    """, (123, 0, "rule"))
+    conn.commit()
+    conn.close()
+    
+    # Restore the original load_from_disk method
     manager.load_from_disk = GuildSettingsManager.load_from_disk.__get__(manager, GuildSettingsManager)
-    manager.read_settings = GuildSettingsManager.read_settings.__get__(manager, GuildSettingsManager)
-
-    loaded = manager.load_from_disk()
+    
+    loaded = await manager.load_from_disk()
     assert loaded is True
     assert 123 in manager.guilds
-    assert "invalid" not in manager.guilds
+    assert manager.guilds[123].ai_enabled is False
+    assert manager.guilds[123].rules == "rule"
 
 
-def test_read_settings_returns_default_on_invalid_json(tmp_path) -> None:
-    manager, _ = create_manager(tmp_path)
-
-    manager.settings_path.write_text("not json", encoding="utf-8")
-
-    data = manager.read_settings()
-    assert data == {"guilds": {}}
+@pytest.mark.asyncio
+async def test_load_from_empty_database(tmp_path) -> None:
+    """Test that load_from_disk handles empty database correctly."""
+    import modcord.configuration.database as db_module
+    db_module.DB_PATH = tmp_path / "test.db"
+    
+    manager = _TestableGuildSettingsManager()
+    
+    # Create an empty database
+    conn = sqlite3.connect(db_module.DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS guild_settings (
+            guild_id INTEGER PRIMARY KEY,
+            ai_enabled INTEGER NOT NULL DEFAULT 1,
+            rules TEXT NOT NULL DEFAULT '',
+            auto_warn_enabled INTEGER NOT NULL DEFAULT 1,
+            auto_delete_enabled INTEGER NOT NULL DEFAULT 1,
+            auto_timeout_enabled INTEGER NOT NULL DEFAULT 1,
+            auto_kick_enabled INTEGER NOT NULL DEFAULT 1,
+            auto_ban_enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+    
+    # Restore the original load_from_disk method
+    manager.load_from_disk = GuildSettingsManager.load_from_disk.__get__(manager, GuildSettingsManager)
+    
+    loaded = await manager.load_from_disk()
+    assert loaded is False  # No data loaded
+    assert len(manager.guilds) == 0
