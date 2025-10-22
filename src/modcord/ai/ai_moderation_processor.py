@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import traceback
 from typing import Any, Dict, List, Optional
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
@@ -60,6 +61,13 @@ class ModerationProcessor:
         3. Submits to AI model
         4. Parses and returns actions
         """
+        logger.debug(
+            "[MODERATION] Processing batch: channel=%s, messages=%d, history=%d",
+            batch.channel_id,
+            len(batch.messages),
+            len(batch.history),
+        )
+        
         # Get system prompt with rules
         merged_rules = self._resolve_server_rules(server_rules)
         system_prompt = await self.inference_processor.get_system_prompt(merged_rules)
@@ -70,14 +78,52 @@ class ModerationProcessor:
         # Format for vLLM with images
         llm_messages = await self._format_multimodal_messages(system_prompt, json_payload, images)
         
+        # Log the formatted user message text content only
+        if llm_messages and len(llm_messages) > 1:
+            user_msg = llm_messages[1]
+            if isinstance(user_msg.get("content"), list):
+                for item in user_msg["content"]:
+                    if item.get("type") == "text":
+                        text_content = item.get("text", "")
+                        logger.info(
+                            "[INPUT] %d chars, %d images",
+                            len(text_content),
+                            len(images)
+                        )
+                        break
+        
         # Submit to model
         response_text = await self._run_inference(llm_messages)
+        logger.info(
+            "[MODERATION RAW OUTPUT] Response length: %d chars\n%s",
+            len(response_text),
+            response_text[:2000],  # First 2000 chars to see full output if possible
+        )
         
         # Parse response
         parsed_actions = await moderation_parsing.parse_batch_actions(response_text, batch.channel_id)
+        logger.info(
+            "[MODERATION] Parsed actions: %d actions from response",
+            len(parsed_actions),
+        )
+        for idx, action in enumerate(parsed_actions):
+            logger.debug(
+                "[MODERATION] Action %d: user=%s, action=%s, reason=%s, msg_ids=%s",
+                idx,
+                action.user_id,
+                action.action.value if hasattr(action.action, 'value') else str(action.action),
+                action.reason[:50] if action.reason else None,
+                action.message_ids,
+            )
         
         # Simple reconciliation - just match user IDs
-        return self._reconcile_actions(parsed_actions, batch)
+        final_actions = self._reconcile_actions(parsed_actions, batch)
+        logger.info(
+            "[MODERATION] Final reconciled actions: %d actions after reconciliation",
+            len(final_actions),
+        )
+        
+        return final_actions
 
     def _batch_to_json(self, batch: ModerationBatch) -> tuple[Dict[str, Any], List[Any]]:
         """Convert ModerationBatch to JSON structure for the LLM.
@@ -140,18 +186,56 @@ class ModerationProcessor:
         """Submit vLLM-formatted messages to AI model and return raw response string."""
         # Check model availability
         if self._shutdown:
+            logger.warning("[INFERENCE] Processor is shutting down")
             return self._null_response("shutting down")
         
         ok, reason = await self._ensure_model_available()
         if not ok:
+            logger.warning("[INFERENCE] Model not available: %s", reason)
             return self._null_response(reason)
+        
+        # Log the full vLLM messages being submitted
+        logger.debug("[INFERENCE] Submitting %d messages to model", len(messages))
+        for idx, msg in enumerate(messages):
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                logger.debug(
+                    "[INFERENCE MESSAGE %d] role=%s, content_length=%d\n%s",
+                    idx,
+                    role,
+                    len(content),
+                    content,
+                )
+            elif isinstance(content, list):
+                logger.debug(
+                    "[INFERENCE MESSAGE %d] role=%s, content_items=%d",
+                    idx,
+                    role,
+                    len(content),
+                )
+                for item_idx, item in enumerate(content):
+                    item_type = item.get("type", "unknown")
+                    if item_type == "text":
+                        text_content = item.get("text", "")
+                        logger.debug(
+                            "[INFERENCE MESSAGE %d ITEM %d] type=text, length=%d\n%s",
+                            idx,
+                            item_idx,
+                            len(text_content),
+                            text_content[:500],
+                        )
+                    elif item_type == "image_pil":
+                        logger.debug("[INFERENCE MESSAGE %d ITEM %d] type=image_pil", idx, item_idx)
         
         # Generate response
         try:
+            logger.info("[INFERENCE] Starting model inference call...")
             result = await self.inference_processor.generate_chat(messages)
+            logger.info("[INFERENCE] Model inference completed, response length: %d chars", len(result or ""))
             return result.strip() if result else self._null_response("no response")
         except Exception as exc:
-            logger.error("Inference error: %s", exc)
+            logger.error("[INFERENCE] Inference error: %s\n%s", exc, traceback.format_exc())
             return self._null_response("inference error")
 
     # ======== Helpers: Engine ========
@@ -180,56 +264,35 @@ class ModerationProcessor:
         json_payload: Dict[str, Any], 
         images: List[Any]
     ) -> List[Dict[str, Any]]:
-        """Build vLLM-compatible messages with multimodal content.
+        """Build vLLM-compatible messages with text-only content.
         
+        Since we use TextPrompt for all requests to enable guided decoding,
+        images are converted to text descriptions. This ensures xgrammar
+        can enforce strict JSON schema compliance on all requests.
+
         Args:
             system_prompt: The system prompt text
             json_payload: JSON-serializable dict (no PIL images)
-            images: List of PIL Image objects
+            images: List of PIL Image objects (converted to text descriptions)
             
         Returns:
-            List of vLLM messages with proper content format
+            List of vLLM messages with text-only content
         """
-        # Build text content from JSON payload
-        text_parts = []
+        # Convert JSON payload to formatted text for the model
+        # The new schema expects channel_id and users array at top level
+        text_content = json.dumps(json_payload, indent=2)
         
-        # Add channel info
-        if "channel_id" in json_payload:
-            text_parts.append(f"Channel: {json_payload['channel_id']}")
+        logger.debug(
+            "[FORMAT_MESSAGES] Building user message from JSON payload "
+            "(users=%d, images=%d)",
+            len(json_payload.get("users", {})),
+            len(images)
+        )
         
-        # Process users and their messages
-        for user_id, user_data in json_payload.get("users", {}).items():
-            username = user_data.get("username", f"user_{user_id}")
-            text_parts.append(f"\n\nUser: {username} (ID: {user_id})")
-            text_parts.append(f"Message count: {user_data.get('message_count', 0)}")
-            
-            for msg_data in user_data.get("messages", []):
-                text_parts.append(f"\nMessage ID: {msg_data.get('message_id')}")
-                if msg_data.get("timestamp"):
-                    text_parts.append(f"Time: {msg_data['timestamp']}")
-                text_parts.append(f"Content: {msg_data.get('content', '')}")
-                
-                # Add image metadata (but not the actual images)
-                for img_idx, img_data in enumerate(msg_data.get("images", [])):
-                    filename = img_data.get("filename", "image")
-                    text_parts.append(
-                        f"[Image {img_idx + 1}: {filename} "
-                        f"from message {img_data.get('message_id')} "
-                        f"by user {img_data.get('user_id')}]"
-                    )
-        
-        # Build vLLM content format: text first, then images
-        # According to vLLM docs, content is a list of items
-        user_content = [{"type": "text", "text": "\n".join(text_parts)}]
-        
-        # Add PIL images in vLLM format
-        for pil_img in images:
-            user_content.append({"type": "image_pil", "image_pil": pil_img})
-        
-        # Return vLLM messages
+        # Return vLLM messages (text-only to enable guided decoding)
         return [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
+            {"role": "user", "content": text_content},
         ]
 
     def _resolve_server_rules(self, server_rules: str = "") -> str:

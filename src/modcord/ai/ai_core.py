@@ -8,11 +8,9 @@ import os
 import uuid
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Dict
-
 import modcord.configuration.app_configuration as cfg
 import modcord.util.moderation_parsing as moderation_parsing
 from modcord.util.logger import get_logger
-
 logger = get_logger("ai_core")
 os.environ.setdefault("TORCH_COMPILE_CACHE_DIR", "./torch_compile_cache")
 
@@ -90,18 +88,16 @@ class InferenceProcessor:
             except Exception as exc:
                 raise RuntimeError("xgrammar backend not available for guided decoding") from exc
 
-            try:
-                grammar_obj: Optional[Any] = Grammar.from_json_schema(schema, strict_mode=True)
-                grammar_str = str(grammar_obj)
-                self._guided_grammar = grammar_str
-            finally:
-                # Ensure any intermediate native handles can be cleaned up
-                grammar_obj = None
+            grammar_obj: Optional[Any] = Grammar.from_json_schema(schema, strict_mode=True)
+            grammar_str = str(grammar_obj)
+            self._guided_grammar = grammar_str
+
 
         params = GuidedDecodingParams(
             grammar=self._guided_grammar,
             disable_fallback=True,
         )
+
         self.guided_backend = "xgrammar"
         logger.info("[AI MODEL] Guided decoding configured with xgrammar backend (precompiled grammar)")
         return params
@@ -150,7 +146,7 @@ class InferenceProcessor:
 
             sampling_defaults = {
                 "dtype": "auto",
-                "max_new_tokens": 256,
+                "max_new_tokens": 256,  # Reasonable default to prevent infinite generation
                 "max_model_length": 2048,
                 "temperature": 1.0,
                 "top_p": 1.0,
@@ -204,10 +200,7 @@ class InferenceProcessor:
                 )
 
                 self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-                
-                # Build guided decoding params for JSON schema enforcement
-                guided_decoding = self._build_guided_decoding()
-                
+                                
                 self.sampling_params = SamplingParams(
                     temperature=sampling_parameters["temperature"],
                     max_tokens=sampling_parameters["max_new_tokens"],
@@ -216,7 +209,7 @@ class InferenceProcessor:
                     repetition_penalty=sampling_parameters["repetition_penalty"],
                     presence_penalty=sampling_parameters["presence_penalty"],
                     frequency_penalty=sampling_parameters["frequency_penalty"],
-                    guided_decoding=guided_decoding,
+                    guided_decoding=self._build_guided_decoding(),
                 )
                 
                 logger.info("[AI MODEL] Sampling params created with guided_decoding (xgrammar backend)")
@@ -277,10 +270,14 @@ class InferenceProcessor:
 
     async def generate_chat(self, messages: List[Dict[str, Any]]) -> str:
         """
-        Generates text output from chat messages with multimodal support.
+        Generates text output from chat messages with guided decoding.
+        
+        Uses text-only prompts to enable xgrammar guided decoding, which enforces
+        strict JSON schema compliance. All multimodal content (images) should be
+        converted to text descriptions before calling this method.
 
         Args:
-            messages: List of message dicts with role, content (text or multimodal list).
+            messages: List of message dicts with role and content (text only).
 
         Returns:
             Generated output string (JSON constrained by schema).
@@ -288,24 +285,76 @@ class InferenceProcessor:
         Raises:
             RuntimeError: If the model is not available or initialization failed.
         """
-        engine, params, _ = await self.get_model()
+        engine, params, system_prompt = await self.get_model()
         if not engine or not params:
             reason = self.state.init_error or "AI model unavailable"
             raise RuntimeError(reason)
 
+        logger.info("[GENERATE_CHAT] Starting generation with %d messages", len(messages))
+
+        # Load the tokenizer
+        from transformers import AutoTokenizer
+        model_id = cfg.app_config.ai_settings.get("model_id")
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_id,
+            trust_remote_code=True
+        )
+
+        # Use text-only prompt to enable guided decoding
+        # This ensures strict JSON schema enforcement by xgrammar
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        logger.info("[GENERATE_CHAT] Using text prompt (guided decoding enabled, xgrammar enforcing JSON schema)")
+
         request_id = f"moderation-chat-{uuid.uuid4().hex}"
-        final_output = None
+        max_tokens_allowed = params.max_tokens or 256
+        logger.info("[GENERATE_CHAT] Starting generation (request_id=%s, max_tokens=%d)", request_id, max_tokens_allowed)
         
-        # Use vLLM's chat interface which supports multimodal inputs
-        async for output in engine.generate(
-            prompt=messages,
-            sampling_params=params,
-            request_id=request_id,
-        ):
-            final_output = output
+        final_output = None
+        token_count = 0
+        chunk_count = 0
+        
+        # Pass prompt to engine.generate()
+        try:
+            async for output in engine.generate(
+                prompt=prompt,
+                sampling_params=params,
+                request_id=request_id,
+            ):
+                final_output = output
+                chunk_count += 1
+                
+                # Check if we have output
+                if final_output.outputs:
+                    current_text = final_output.outputs[0].text
+                    current_tokens = len(current_text.split()) if current_text else 0
+                    token_count = current_tokens
+                    
+                    # Log every 100 chunks to avoid spam
+                    if chunk_count % 100 == 0:
+                        logger.debug("[GENERATE_CHAT] Progress: chunk=%d, tokens≈%d", chunk_count, token_count)
+                    
+                    # Check if generation is complete
+                    finish_reason = final_output.outputs[0].finish_reason if final_output.outputs else None
+                    if finish_reason:
+                        logger.debug("[GENERATE_CHAT] Finished with reason: %s", finish_reason)
+                        break
+        except Exception as exc:
+            logger.error("[GENERATE_CHAT] Error during generation: %s", exc)
+            if final_output and final_output.outputs:
+                logger.info("[GENERATE_CHAT] Returning partial output due to error")
+            else:
+                raise
         
         if final_output and final_output.outputs:
-            return final_output.outputs[0].text.strip()
+            result_text = final_output.outputs[0].text.strip()
+            logger.info("[GENERATE_CHAT] Complete: %d chunks, %d chars", chunk_count, len(result_text))
+            return result_text
+        
+        logger.warning("[GENERATE_CHAT] No output received")
         return ""
 
     def get_model_state(self) -> ModelState:

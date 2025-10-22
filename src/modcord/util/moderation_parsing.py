@@ -58,12 +58,23 @@ moderation_schema = {
                     "user_id": {"type": "string"},
                     "action": {
                         "type": "string",
-                        "enum": ["null", "delete", "warn", "timeout", "kick", "ban"],
+                        "enum": ["null", "delete", "warn", "timeout", "kick", "ban"]
                     },
                     "reason": {"type": "string"},
-                    "message_ids_to_delete": {"type": "array", "items": {"type": "string"}},
-                    "timeout_duration": {"type": ["integer", "null"]},
-                    "ban_duration": {"type": ["integer", "null"]},
+                    "message_ids_to_delete": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "timeout_duration": {
+                        "type": "integer",
+                        "minimum": -1,
+                        "description": "Timeout duration in minutes. Use -1 for permanent timeout, 0 for not applicable/no timeout."
+                    },
+                    "ban_duration": {
+                        "type": "integer",
+                        "minimum": -1,
+                        "description": "Ban duration in minutes. Use -1 for permanent ban, 0 for not applicable/no ban."
+                    }
                 },
                 "required": [
                     "user_id",
@@ -71,16 +82,16 @@ moderation_schema = {
                     "reason",
                     "message_ids_to_delete",
                     "timeout_duration",
-                    "ban_duration",
+                    "ban_duration"
                 ],
-                "additionalProperties": False,
-            },
-            "minItems": 0,
-        },
+                "additionalProperties": False
+            }
+        }
     },
     "required": ["channel_id", "users"],
-    "additionalProperties": False,
+    "additionalProperties": False
 }
+
 """JSON schema guiding the structure of model-generated moderation responses."""
 
 
@@ -97,19 +108,29 @@ def _strip_code_fences(payload: str) -> str:
 def _extract_json_payload(raw: str) -> Any:
     """Return the JSON value embedded in ``raw`` or raise ``ValueError``."""
     cleaned = _strip_code_fences(raw.strip())
+    logger.debug("[EXTRACT_JSON] Looking for JSON in cleaned text (length: %d)", len(cleaned))
+    
     last_close = max(cleaned.rfind("}"), cleaned.rfind("]"))
     if last_close == -1:
+        logger.error("[EXTRACT_JSON] No JSON object/array found (no closing braces/brackets)")
         raise ValueError("no JSON object found")
 
+    logger.debug("[EXTRACT_JSON] Last closing bracket at position %d", last_close)
+    
     for start in range(last_close, -1, -1):
         if cleaned[start] not in "{[":
             continue
         snippet = cleaned[start : last_close + 1]
+        logger.debug("[EXTRACT_JSON] Trying to parse JSON from position %d (length: %d)", start, len(snippet))
         try:
-            return json.loads(snippet)
-        except json.JSONDecodeError:
+            result = json.loads(snippet)
+            logger.debug("[EXTRACT_JSON] Successfully parsed JSON")
+            return result
+        except json.JSONDecodeError as exc:
+            logger.debug("[EXTRACT_JSON] Failed to parse at position %d: %s", start, str(exc)[:100])
             continue
 
+    logger.error("[EXTRACT_JSON] Unable to decode JSON payload after trying all positions")
     raise ValueError("unable to decode JSON payload")
 
 
@@ -192,24 +213,30 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
         Ordered list of validated moderation actions. An empty list indicates
         schema validation failure or other parsing issues.
     """
+    logger.debug("[PARSE] Attempting to parse batch response (length: %d chars)", len(assistant_response))
+    logger.debug("[PARSE] Raw response:\n%s", assistant_response[:1000])
+    
     try:
         payload = _extract_json_payload(assistant_response)
-    except ValueError:
+    except ValueError as exc:
+        logger.error("[PARSE] Failed to extract JSON payload: %s", exc)
         return []
 
     if not isinstance(payload, dict):
+        logger.error("[PARSE] Extracted payload is not a dict, got %s", type(payload))
         return []
 
     try:
         _moderation_validator.validate(payload)
     except ValidationError as exc:
-        logger.warning("Batch response failed schema validation: %s", exc.message)
+        logger.error("[PARSE] Batch response failed schema validation: %s", exc.message)
+        logger.error("[PARSE] Invalid payload: %s", json.dumps(payload, indent=2)[:500])
         return []
 
     response_channel = str(payload.get("channel_id", "")).strip()
     if response_channel and response_channel != str(channel_id):
         logger.warning(
-            "Batch response channel mismatch: expected %s, got %s",
+            "[PARSE] Batch response channel mismatch: expected %s, got %s",
             channel_id,
             response_channel,
         )
@@ -217,7 +244,10 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
 
     entries = payload.get("users") or []
     if not isinstance(entries, list):
+        logger.error("[PARSE] 'users' field is not a list, got %s", type(entries))
         return []
+
+    logger.debug("[PARSE] Extracted %d user entries from payload", len(entries))
 
     def _coerce_int(value: Any) -> Optional[int]:
         if value in (None, ""):
@@ -236,6 +266,7 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
         user_id = str(item.get("user_id", "")).strip()
         action_value = str(item.get("action", "null")).lower()
         if not user_id or action_value not in VALID_ACTION_VALUES:
+            logger.debug("[PARSE] Skipping entry: user_id=%s, action=%s (invalid)", user_id, action_value)
             continue
 
         reason = _normalize_reason(item.get("reason", "Automated moderation action"))
@@ -250,7 +281,7 @@ async def parse_batch_actions(assistant_response: str, channel_id: int) -> List[
 
         if action_enum in {ActionType.KICK, ActionType.BAN, ActionType.TIMEOUT} and not message_ids:
             logger.debug(
-                "Downgrading %s action to warn for user %s due to missing message evidence",
+                "[PARSE] Downgrading %s action to warn for user %s due to missing message evidence",
                 action_enum.value,
                 user_id,
             )

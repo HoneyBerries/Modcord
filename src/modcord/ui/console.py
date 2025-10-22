@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+import os
 
 import discord
 from prompt_toolkit import print_formatted_text
@@ -13,8 +14,24 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.shortcuts import PromptSession
 
+
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.util.logger import get_logger
+
+# Box drawing helpers for aligned console output
+BOX_WIDTH = 45
+
+def box_line(char: str) -> str:
+    return char * BOX_WIDTH
+
+def box_title(title: str) -> list[str]:
+    pad = (BOX_WIDTH - 2 - len(title)) // 2
+    pad_extra = (BOX_WIDTH - 2 - len(title)) % 2
+    return [
+        f"╔{box_line('═')[1:-1]}╗",
+        f"║{' ' * pad}{title}{' ' * (BOX_WIDTH - 2 - len(title) - pad)}{' ' * pad_extra}║",
+        f"╚{box_line('═')[1:-1]}╝"
+    ]
 
 logger = get_logger("console")
 
@@ -118,10 +135,10 @@ async def cmd_help(control: ConsoleControl, args: list[str]) -> None:
 
 async def cmd_status(control: ConsoleControl, args: list[str]) -> None:
     """Display bot and AI status information."""
-    console_print("\n╔═══════════════════════════════════════════╗", "ansiblue")
-    console_print("║            Bot Status                     ║", "ansiblue")
-    console_print("╚═══════════════════════════════════════════╝", "ansiblue")
-    
+
+    for line in box_title("Bot Status"):
+        console_print(line, "ansiblue")
+
     # AI Status
     ai_status = "🟢 Available" if model_state.available else "🔴 Unavailable"
     ai_detail = model_state.init_error or "ready"
@@ -146,9 +163,10 @@ async def cmd_guilds(control: ConsoleControl, args: list[str]) -> None:
         console_print("No guilds found or bot not connected.", "ansiyellow")
         return
     
-    console_print(f"\n╔═══════════════════════════════════════════╗", "ansiblue")
-    console_print(f"║  Connected Guilds ({len(control.bot.guilds)})                        ║", "ansiblue")
-    console_print(f"╚═══════════════════════════════════════════╝", "ansiblue")
+
+    title = f"Connected Guilds ({len(control.bot.guilds)})"
+    for line in box_title(title):
+        console_print(line, "ansiblue")
     
     for guild in control.bot.guilds:
         console_print(f"  • {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
@@ -159,7 +177,7 @@ async def cmd_guilds(control: ConsoleControl, args: list[str]) -> None:
 async def cmd_clear(control: ConsoleControl, args: list[str]) -> None:
     """Clear the console screen."""
     # ANSI escape code to clear screen and move cursor to home
-    print("\033[2J\033[H", end="")
+    os.system('cls' if os.name == 'nt' else 'clear')
     console_print("Console cleared.", "ansigreen")
 
 

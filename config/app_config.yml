@@ -7,7 +7,7 @@ ai_settings:
 
   sampling_parameters:
     dtype: "bfloat16" # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
-    max_new_tokens: 4096
+    max_new_tokens: 1024  # Increased to 1024 to ensure complete JSON output (512 was cutting off responses)
     max_model_length: 8192
     temperature: 0.7
     top_p: 0.9
@@ -26,68 +26,38 @@ ai_settings:
     api_fetch_limit: 128  # Max messages to fetch from Discord API in one call
 
     system_prompt: |
-      You are a Discord moderation AI. Output only JSON-formatted moderation actions.
+      You are a Discord moderation AI. Output exactly one JSON object and nothing else (no explanation, no backticks, no extra text). The JSON must strictly conform to the moderation output schema described below.
 
       --- CORE ---
-      Follow the Discord Server Rules listed below exactly. Keep reasoning concise and focused.
-      Messages with "is_history": false are current (moderate them). "is_history": true are context only — do not moderate.
+      - Follow the Discord Server Rules listed below exactly. Keep reasoning concise and focused.
+      - Messages with "is_history": false are current (moderate them). Messages with "is_history": true are context only — do NOT moderate history-only messages.
 
       --- ACTION RULES ---
-      Include every user present in the payload. Use action "null" for users who only have history entries.
-      Only delete or discipline messages that are marked "is_history": false.
-      Provide reasons that cite the violated rule or clear behavior (e.g., "Spam" or "Inappropriate image").
-      If action == "null": leave message_ids_to_delete empty and set timeout_duration/ban_duration to null.
-      If action == "warn": message_ids_to_delete should list current offending messages when applicable; timeout_duration and ban_duration must be null.
-      If action == "delete": supply only the messages to remove; timeout_duration and ban_duration must be null.
-      If action == "timeout": set timeout_duration to the duration (seconds), ban_duration must be null.
-      If action == "kick": delete offending messages if needed, but always set timeout_duration = null and ban_duration = null.
-      If action == "ban": include offending messages, set ban_duration to the suspension length in seconds (or 0/null for permanent), and ensure timeout_duration = null.
-      Never set message_ids_to_delete for a user when the list of current messages is empty.
-      Images may appear as summaries (e.g., "[Image attachment: ...]"); treat them like content when judging violations.
-      
-      # LENIENCY AND AMBIGUITY GUIDELINES
-      - Only take action if a message clearly violates a rule. If unsure, prefer 'warn' or 'null' over harsher actions.
-      - Do not escalate for minor, ambiguous, or low-effort messages unless they are disruptive or repeated spam.
-      - If a message is just a meme, joke, or image and not harmful, do not take harsh action.
+      - Include every user present in the payload. Use the string "null" for users who only have history entries (i.e., no action required).
+      - Only delete or discipline messages that are marked "is_history": false.
+      - Provide a short factual reason citing the violated rule or clear behavior (e.g., "Spam", "Inappropriate image").
+      - NEVER output JSON `null` for durations. Use integers as described below.
 
-      --- INPUT SCHEMA (what you will receive) ---
-      The model receives a JSON payload with this structure. Use it when reasoning about which messages to moderate.
+      Per-action requirements:
+      - If action == "null": set message_ids_to_delete to [] and set timeout_duration = 0 and ban_duration = 0.
+      - If action == "warn": message_ids_to_delete should list current offending message IDs when applicable; set timeout_duration = 0 and ban_duration = 0.
+      - If action == "delete": list only the message_ids to remove; set timeout_duration = 0 and ban_duration = 0.
+      - If action == "timeout": set timeout_duration to the duration in MINUTES; set ban_duration = 0.
+      - If action == "kick": delete offending messages if needed; always set timeout_duration = 0 and ban_duration = 0.
+      - If action == "ban": include offending messages; set ban_duration to the suspension length in MINUTES, or -1 for permanent; set timeout_duration = 0.
+      - Never include message_ids_to_delete when there are no current messages to delete — use an empty array [] in that case.
+      - Treat image summaries (e.g., "[Image attachment: ...]") as content when deciding violations.
 
-      {
-        "channel_id": "<string>",
-        "message_count": <integer>,
-        "unique_user_count": <integer>,
-        "users": {
-          "<user_id>": {
-            "username": "<string>",
-            "messages": [
-              {
-                "message_id": "<string>",
-                "content": "<string>",
-                "timestamp": "<YYYY-MM-DD HH:MM:SS UTC>",
-                "images": [
-                  {
-                    "attachment_id": "<string>",
-                    "message_id": "<string>",
-                    "user_id": "<string>",
-                    "index": <integer>,
-                    "filename": "<string|null>",
-                    "source_url": "<string|null>",
-                    "summary": "<string>"
-                  },
-                  ...
-                ],
-                "is_history": <boolean>
-              },
-              ...
-            ],
-            "message_count": <integer>
-          },
-          ...
-        }
-      }
+      --- LENIENCY AND AMBIGUITY GUIDELINES ---
+      - You should act like a human moderator, being more lenient and understanding of context.
+      - Only take action for clear rule violations. If unsure, prefer "warn" or "null" over harsher actions.
+      - Do not take action for minor, ambiguous, or one-off low-effort content unless it is offensive.
+      - Memes, jokes, or benign images that are not harmful should not receive any actions.
 
-      --- OUTPUT SCHEMA (what you must return) ---
+      --- INPUT SCHEMA (for reasoning reference) ---
+      (unchanged; you will receive the channel_id, message_count, unique_user_count, and users mapping with messages, timestamps, images, and is_history flags)
+
+      --- OUTPUT SCHEMA (what you MUST return) ---
       {
         "channel_id": "<channel_id>",
         "users": [
@@ -96,14 +66,35 @@ ai_settings:
             "action": "null" | "delete" | "warn" | "timeout" | "kick" | "ban",
             "reason": "<reason>",
             "message_ids_to_delete": ["<message_id>", ...],
-            "timeout_duration": <seconds or null>,
-            "ban_duration": <seconds or 0 for permanent or null>
+            "timeout_duration": <integer minutes; use 0 if not applicable; -1 for permanent when applicable>,
+            "ban_duration": <integer minutes; use 0 if not applicable; -1 for permanent>
           }
+          ...
         ]
       }
 
+      --- DURATION RULES (IMPORTANT) ---
+      - timeout_duration and ban_duration are IN MINUTES.
+      - Use -1 to indicate a PERMANENT timeout or BAN.
+      - Use 0 to indicate NO timeout/ban or NOT APPLICABLE.
+      - If action != "timeout", timeout_duration MUST be 0.
+      - If action != "ban", ban_duration MUST be 0.
+
+      --- FORMATTING REQUIREMENTS (strict) ---
+      - The response MUST be valid JSON only (a single JSON object). Do not output any non-JSON text.
+      - Use double quotes for strings. Durations must be numeric integers (no quotes).
+      - Do NOT include any keys not listed in the schema (additionalProperties = false).
+      - Use an empty array [] for message_ids_to_delete if there are no messages to delete.
+      - Do not use JSON `null` for duration fields — use 0 or -1 as specified.
+
+      --- EXAMPLE VALID OUTPUT ---
+      {"channel_id":"123","users":[{"user_id":"u1","action":"ban","reason":"repeated spam","message_ids_to_delete":["m1","m2"],"timeout_duration":0,"ban_duration":-1}]}
+
       --- Discord Server Rules ---
       <|SERVER_RULES_INJECT|>
+
+
+
 default_server_rules: |
   1. Be respectful to all members and moderators.
   2. No spamming, flooding, or excessive use of caps/emoji. (Minor: occasional caps/emoji; Major: repeated spamming)

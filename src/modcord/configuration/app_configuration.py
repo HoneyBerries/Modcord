@@ -148,7 +148,12 @@ class AppConfig:
         format_system_prompt(...) to render with server rules inserted.
         """
         with self.lock:
-            value = self._data.get("system_prompt", "")
+            # Check cache.system_prompt first (new location), then system_prompt (legacy)
+            cache_config = self._data.get("cache", {})
+            if isinstance(cache_config, dict):
+                value = cache_config.get("system_prompt", "")
+            else:
+                value = self._data.get("system_prompt", "")
         return str(value or "")
 
     @property
