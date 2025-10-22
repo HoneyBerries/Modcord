@@ -1,0 +1,24 @@
+--index-url https://download.pytorch.org/whl/cu129
+--extra-index-url https://pypi.org/simple
+
+-e .
+
+torch
+torchvision
+transformers
+bitsandbytes
+accelerate
+Pillow
+py-cord
+python-dotenv
+pyyaml
+jsonschema
+aiosqlite
+vllm
+prompt_toolkit
+rich
+nuitka
+
+pytest
+pytest-cov
+pytest-asyncio

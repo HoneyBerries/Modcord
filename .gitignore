@@ -1,0 +1,122 @@
+
+# Project-specific ignores
+data/
+logs/
+
+*.log
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Environment files (catch common variants)
+.env
+.env.local
+.env.*.local
+
+# ignore commands.json
+config/commands.json
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code settings
+.vscode/
+
+.git_corrupt/
+
+# PyCharm / IntelliJ
+.idea/
+*.iml
+.pytest_cache/
+
+# Eclipse / NetBeans
+.project
+.classpath
+.settings/
+
+# Java / JVM build outputs and artifacts
+target/
+gradle/
+build/
+out/
+bin/
+docs/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+
+# Gradle / Maven
+.gradle/
+.mvn/
+build/
+dependency-reduced-pom.xml
+release.properties
+
+# macOS files
+.DS_Store
+
+# Windows files
+Thumbs.db
+
+# Python egg and build files
+*.egg
+*.egg-info/
+dist/
+build/
+*.manifest
+*.spec
+
+# Log files
+*.log
+
+# Environment variable/config files
+*.env
+
+# Model and data files
+*.pt
+*.pth
+*.h5
+*.ckpt
+
+# Cache and temp files
+*.tmp
+*.bak
+.cache/
+__pycache__/
+
+__pypackages__/
+
+# Test output
+htmlcov/
+.coverage
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+
+# Others
+*.sqlite3
+*.db
+*.sqlite
