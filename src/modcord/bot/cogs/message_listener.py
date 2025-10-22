@@ -14,7 +14,6 @@ from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
 from modcord.bot import rules_manager
 from modcord.util import discord_utils
-from modcord.util import image_cache
 
 logger = get_logger("message_listener_cog")
 

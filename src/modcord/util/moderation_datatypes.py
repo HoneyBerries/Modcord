@@ -12,36 +12,6 @@ from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_datatypes")
 
-
-def _clean_source_url(url: Optional[str]) -> Optional[str]:
-    """Return a shortened but still valid URL for model consumption."""
-
-    if not url:
-        return None
-
-    raw = str(url)
-
-    try:
-        parts = urlsplit(raw)
-        if not parts.scheme or not parts.netloc:
-            return raw
-
-        # Discord CDN links rely on query params for authorization, so keep them.
-        limited_query = parts.query
-        safe_parts = ParseResult(
-            scheme=parts.scheme,
-            netloc=parts.netloc,
-            path=parts.path,
-            params="",
-            query=limited_query,
-            fragment="",
-        )
-        sanitized = urlunsplit(safe_parts)
-        return sanitized
-    except Exception:  # pragma: no cover - defensive fallback
-        return raw
-
-
 def humanize_timestamp(value: str) -> str:
     """Return a human-readable timestamp (YYYY-MM-DD HH:MM:SS) in UTC."""
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -73,8 +43,8 @@ class ActionData:
         action: Moderation action to execute.
         reason: Human-readable explanation for auditing/logging.
         message_ids: Related message IDs to operate on (deleted, audited, etc.).
-        timeout_duration: Optional timeout duration in seconds (``None`` to use default).
-        ban_duration: Optional ban duration in seconds (``None``/``0`` -> permanent).
+        timeout_duration: Timeout duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
+        ban_duration: Ban duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
     """
 
     user_id: str
@@ -253,13 +223,21 @@ class WarnCommand(CommandAction):
 class TimeoutCommand(CommandAction):
     """Timeout action for manual commands."""
 
-    def __init__(self, reason: str = "No reason provided.", duration_seconds: int = 600):
-        """Initialize a timeout action."""
+    def __init__(self, reason: str = "No reason provided.", duration_minutes: int = 10):
+        """Initialize a timeout action.
+        
+        Parameters
+        ----------
+        reason:
+            Reason for the timeout.
+        duration_minutes:
+            Duration in minutes; -1 = permanent (capped to Discord's 28-day max), positive = duration, 0 = not applicable.
+        """
         super().__init__(
             user_id="0",  # Will be set by caller
             action=ActionType.TIMEOUT,
             reason=reason,
-            timeout_duration=duration_seconds,
+            timeout_duration=duration_minutes,
         )
 
     async def execute(
@@ -279,7 +257,11 @@ class TimeoutCommand(CommandAction):
 
         self.user_id = str(user.id)
         guild = ctx.guild
-        duration_seconds = self.timeout_duration or 600
+        duration_minutes = self.timeout_duration or 10
+        # Handle -1 (permanent) by capping to Discord's 28-day max
+        if duration_minutes == -1:
+            duration_minutes = 28 * 24 * 60
+        duration_seconds = duration_minutes * 60
         duration_label = format_duration(duration_seconds)
         until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
 
@@ -364,7 +346,7 @@ class BanCommand(CommandAction):
     """Ban action for manual commands."""
 
     def __init__(
-        self, reason: str = "No reason provided.", duration_seconds: Optional[int] = None
+        self, reason: str = "No reason provided.", duration_minutes: Optional[int] = None
     ):
         """Initialize a ban action.
         
@@ -372,14 +354,14 @@ class BanCommand(CommandAction):
         ----------
         reason:
             Reason for the ban.
-        duration_seconds:
-            Duration in seconds; None or 0 = permanent.
+        duration_minutes:
+            Duration in minutes; -1 = permanent, None or 0 = not applicable.
         """
         super().__init__(
             user_id="0",  # Will be set by caller
             action=ActionType.BAN,
             reason=reason,
-            ban_duration=duration_seconds if duration_seconds and duration_seconds > 0 else None,
+            ban_duration=duration_minutes,
         )
 
     async def execute(

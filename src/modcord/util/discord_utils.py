@@ -633,9 +633,18 @@ async def apply_action_decision(
     embed: discord.Embed | None = None
     success = True
     if action.action is ActionType.BAN:
-        duration_seconds = int(action.ban_duration or 0)
-        is_permanent = duration_seconds <= 0
-        duration_label = PERMANENT_DURATION if is_permanent else format_duration(duration_seconds)
+        # ban_duration is in minutes: 0 = not applicable, -1 = permanent, positive = temporary
+        duration_minutes = int(action.ban_duration or 0)
+        if duration_minutes == 0:
+            logger.debug("Ban duration is 0 (not applicable); skipping ban for user %s", action.user_id)
+            return True
+        is_permanent = duration_minutes == -1
+        if is_permanent:
+            duration_seconds = 0
+            duration_label = PERMANENT_DURATION
+        else:
+            duration_seconds = duration_minutes * 60
+            duration_label = format_duration(duration_seconds)
         try:
             await send_dm_to_user(author, build_dm_message(ActionType.BAN, guild.name, action.reason, duration_label))
         except Exception:
@@ -671,9 +680,15 @@ async def apply_action_decision(
             logger.error("Failed to kick user %s: %s", author.id, exc)
             return False
     elif action.action is ActionType.TIMEOUT:
-        duration_seconds = action.timeout_duration if action.timeout_duration is not None else 10 * 60
-        if duration_seconds <= 0:
-            duration_seconds = 10 * 60
+        # timeout_duration is in minutes: 0 = not applicable, -1 = permanent (capped to Discord's 28-day max), positive = temporary
+        duration_minutes = action.timeout_duration if action.timeout_duration is not None else 0
+        if duration_minutes == 0:
+            logger.debug("Timeout duration is 0 (not applicable); skipping timeout for user %s", action.user_id)
+            return True
+        # Discord max timeout is 28 days; treat -1 as that max
+        if duration_minutes == -1:
+            duration_minutes = 28 * 24 * 60  # 28 days in minutes
+        duration_seconds = duration_minutes * 60
         duration_label = format_duration(duration_seconds)
         until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
         try:
