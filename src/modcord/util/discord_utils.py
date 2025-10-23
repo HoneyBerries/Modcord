@@ -26,14 +26,14 @@ logger = get_logger("discord_utils")
 PERMANENT_DURATION = "Till the end of time"
 
 DURATIONS = {
-    "60 secs": 60,
-    "5 mins": 5 * 60,
-    "10 mins": 10 * 60,
-    "30 mins": 30 * 60,
-    "1 hour": 60 * 60,
-    "2 hours": 2 * 60 * 60,
-    "1 day": 24 * 60 * 60,
-    "1 week": 7 * 24 * 60 * 60,
+    "60 secs": 1,
+    "5 mins": 5,
+    "10 mins": 10,
+    "30 mins": 30,
+    "1 hour": 60,
+    "2 hours": 120,
+    "1 day": 24 * 60,
+    "1 week": 7 * 24 * 60,
     PERMANENT_DURATION: 0,
 }
 
@@ -41,12 +41,12 @@ DURATION_CHOICES = list(DURATIONS.keys())
 
 DELETE_MESSAGE_CHOICES = [
     discord.OptionChoice(name="Don't Delete Any", value=0),
-    discord.OptionChoice(name="Previous Hour", value=60 * 60),
-    discord.OptionChoice(name="Previous 6 Hours", value=6 * 60 * 60),
-    discord.OptionChoice(name="Previous 12 Hours", value=12 * 60 * 60),
-    discord.OptionChoice(name="Previous 24 Hours", value=24 * 60 * 60),
-    discord.OptionChoice(name="Previous 3 Days", value=3 * 24 * 60 * 60),
-    discord.OptionChoice(name="Previous 7 Days", value=7 * 24 * 60 * 60),
+    discord.OptionChoice(name="Previous Hour", value=60),
+    discord.OptionChoice(name="Previous 6 Hours", value=6 * 60),
+    discord.OptionChoice(name="Previous 12 Hours", value=12 * 60),
+    discord.OptionChoice(name="Previous 24 Hours", value=24 * 60),
+    discord.OptionChoice(name="Previous 3 Days", value=3 * 24 * 60),
+    discord.OptionChoice(name="Previous 7 Days", value=7 * 24 * 60),
 ]
 
 
@@ -212,8 +212,8 @@ def format_duration(seconds: int) -> str:
         return f"{days} day{'s' if days != 1 else ''}"
 
 
-def parse_duration_to_seconds(human_readable_duration: str) -> int:
-    """Convert a human-readable duration into its total seconds payload."""
+def parse_duration_to_minutes(human_readable_duration: str) -> int:
+    """Convert a human-readable duration into its total minutes payload."""
     return DURATIONS.get(human_readable_duration, 0)
 
 
@@ -273,8 +273,9 @@ async def create_punishment_embed(
     embed.add_field(name="Reason", value=reason, inline=False)
 
     if duration_str and duration_str != PERMANENT_DURATION:
-        duration_seconds = parse_duration_to_seconds(duration_str)
-        if duration_seconds > 0:
+        duration_minutes = parse_duration_to_minutes(duration_str)
+        if duration_minutes > 0:
+            duration_seconds = duration_minutes * 60
             expire_time = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
             embed.add_field(
                 name="Duration",
@@ -327,7 +328,7 @@ async def delete_recent_messages(guild, member, seconds) -> int:
     return deleted_count
 
 
-async def delete_messages_background(ctx: discord.ApplicationContext, user: discord.Member, delete_message_seconds: int):
+async def delete_messages_background(ctx: discord.ApplicationContext, user: discord.Member, delete_message_minutes: int):
     """Delete messages in the background and report the outcome to the invoker.
 
     Parameters
@@ -336,11 +337,12 @@ async def delete_messages_background(ctx: discord.ApplicationContext, user: disc
         Command context used for follow-up messaging.
     user:
         Guild member whose messages should be deleted.
-    delete_message_seconds:
-        Time window in seconds to inspect for deletions.
+    delete_message_minutes:
+        Time window in minutes to inspect for deletions.
     """
     try:
-        deleted = await delete_recent_messages(ctx.guild, user, delete_message_seconds)
+        seconds = delete_message_minutes * 60
+        deleted = await delete_recent_messages(ctx.guild, user, seconds)
         if deleted:
             await ctx.followup.send(f"🗑️ Deleted {deleted} recent messages from {user.mention}.", ephemeral=True)
         else:

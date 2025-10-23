@@ -271,7 +271,7 @@ class InferenceProcessor:
             reason = self.state.init_error or "AI model unavailable"
             raise RuntimeError(reason)
 
-        logger.info("[GENERATE_MULTI_CHAT] Starting batch generation with %d conversations", len(conversations))
+        logger.debug("[GENERATE_MULTI_CHAT] Starting batch generation with %d conversations", len(conversations))
 
         # Run the synchronous batch generation in a thread
         results = await asyncio.to_thread(
@@ -344,7 +344,7 @@ class InferenceProcessor:
                         logger.warning("[GENERATE_MULTI_CHAT] No output for conversation")
                         results.append("")
                 
-                logger.info("[GENERATE_MULTI_CHAT] Batch generation complete: %d results", len(results))
+                logger.debug("[GENERATE_MULTI_CHAT] Batch generation complete: %d results", len(results))
                 return results
             
             logger.warning("[GENERATE_MULTI_CHAT] No outputs received")

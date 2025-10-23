@@ -38,9 +38,9 @@ ai_settings:
     • If action == "null": leave message_ids_to_delete empty and set timeout_duration/ban_duration to null.
     • If action == "warn": message_ids_to_delete should list current offending messages when applicable; timeout_duration and ban_duration must be null.
     • If action == "delete": supply only the messages to remove; timeout_duration and ban_duration must be null.
-    • If action == "timeout": set timeout_duration to the duration (seconds), ban_duration must be null.
+    • If action == "timeout": set timeout_duration to the duration in minutes, ban_duration must be null.
     • If action == "kick": delete offending messages if needed, but always set timeout_duration = null and ban_duration = null.
-    • If action == "ban": include offending messages, set ban_duration to the suspension length in seconds (or 0/null for permanent), and ensure timeout_duration = null.
+    • If action == "ban": include offending messages, set ban_duration to the suspension length in minutes (-1 for permanent, or null if not applicable), and ensure timeout_duration = null.
     • Never set message_ids_to_delete for a user when the list of current messages is empty.
     • Images may appear as summaries (e.g., "[Image attachment: ...]"); treat them like content when judging violations.
 
@@ -90,8 +90,8 @@ ai_settings:
           "action": "null" | "delete" | "warn" | "timeout" | "kick" | "ban",
           "reason": "<reason>",
           "message_ids_to_delete": ["<message_id>", ...],
-          "timeout_duration": <seconds or null>,
-          "ban_duration": <seconds or 0 for permanent or null>
+          "timeout_duration": <minutes or null>,
+          "ban_duration": <minutes, -1 for permanent, or null>
         }
       ]
     }

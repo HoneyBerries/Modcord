@@ -436,9 +436,14 @@ class BanCommand(CommandAction):
 
         self.user_id = str(user.id)
         guild = ctx.guild
-        duration_seconds = self.ban_duration or 0
-        is_permanent = duration_seconds <= 0
-        duration_label = "Till the end of time" if is_permanent else format_duration(duration_seconds)
+        duration_minutes = self.ban_duration or 0
+        is_permanent = duration_minutes <= 0
+        if is_permanent:
+            duration_label = "Till the end of time"
+            duration_seconds = 0
+        else:
+            duration_seconds = duration_minutes * 60
+            duration_label = format_duration(duration_seconds)
 
         try:
             try:

@@ -150,7 +150,7 @@ class ModerationProcessor:
                 len(pil_images)
             )
 
-        logger.info(
+        logger.debug(
             "[INPUT] Submitting global batch with %d channels/conversations to LLM",
             len(conversations)
         )
@@ -169,7 +169,7 @@ class ModerationProcessor:
         actions_by_channel: Dict[int, List[ActionData]] = {}
         for (channel_id, _, dynamic_schema), response_text in zip(channel_mapping, responses):
             
-            logger.info(
+            logger.debug(
                 "[MODERATION RAW OUTPUT] Channel %d response length: %d chars\n%s",
                 channel_id,
                 len(response_text),
@@ -183,7 +183,7 @@ class ModerationProcessor:
                 dynamic_schema
             )
             actions_by_channel[channel_id] = actions
-            logger.info(
+            logger.debug(
                 "[MODERATION] Parsed %d actions for channel %d",
                 len(actions),
                 channel_id
@@ -327,12 +327,12 @@ class ModerationProcessor:
             return [self._null_response(reason or "unavailable") for _ in conversations]
         
         try:
-            logger.info("[INFERENCE] Starting multi-batch inference with %d conversations...", len(conversations))
+            logger.debug("[INFERENCE] Starting multi-batch inference with %d conversations...", len(conversations))
             results = await self.inference_processor.generate_multi_chat(
                 conversations,
                 grammar_strings
             )
-            logger.info(
+            logger.debug(
                 "[INFERENCE] Multi-batch inference completed, %d responses",
                 len(results)
             )
