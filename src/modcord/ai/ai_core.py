@@ -199,42 +199,6 @@ class InferenceProcessor:
             return f"{template_str}\n\nServer rules:\n{rules_str}"
         return template_str
 
-    async def generate_chat(
-        self,
-        messages: List[Dict[str, Any]],
-        guided_decoding_grammar: Optional[str] = None
-    ) -> str:
-        """
-        Generate text output from chat messages with optional guided decoding.
-        
-        Uses llm.chat() with multimodal support (text + PIL images).
-        Runs in a thread to avoid blocking the event loop.
-
-        Args:
-            messages: List of message dicts with role and content (text or multimodal list).
-            guided_decoding_grammar: Optional xgrammar grammar string for structured outputs.
-
-        Returns:
-            Generated output string.
-
-        Raises:
-            RuntimeError: If the model is not available.
-        """
-        if not self.llm or not self.sampling_params:
-            reason = self.state.init_error or "AI model unavailable"
-            raise RuntimeError(reason)
-
-        logger.info("[GENERATE_CHAT] Starting generation with %d messages", len(messages))
-
-        # Run the synchronous generation in a thread
-        result = await asyncio.to_thread(
-            self._generate_chat_sync,
-            messages,
-            guided_decoding_grammar
-        )
-        
-        return result
-
     async def generate_multi_chat(
         self,
         conversations: List[List[Dict[str, Any]]],
@@ -270,52 +234,6 @@ class InferenceProcessor:
         )
         
         return results
-
-    def _generate_chat_sync(
-        self,
-        messages: List[Dict[str, Any]],
-        guided_decoding_grammar: Optional[str]
-    ) -> str:
-        """Synchronous chat generation (runs in thread)."""
-        from vllm import SamplingParams
-        
-        # Create sampling params with optional guided decoding
-        sampling_params = self.sampling_params
-        if guided_decoding_grammar and self.sampling_params:
-            from vllm.sampling_params import GuidedDecodingParams
-            
-            guided_params = GuidedDecodingParams(
-                grammar=guided_decoding_grammar,
-                disable_fallback=True,
-            )
-            # Create new SamplingParams with guided decoding
-            sampling_params = SamplingParams(
-                temperature=self.sampling_params.temperature,
-                max_tokens=self.sampling_params.max_tokens,
-                top_p=self.sampling_params.top_p,
-                top_k=self.sampling_params.top_k,
-                guided_decoding=guided_params,
-            )
-            logger.debug("[GENERATE_CHAT] Using guided decoding with xgrammar")
-
-        try:
-            # Use llm.chat() for multimodal generation
-            if self.llm:
-                outputs = self.llm.chat(messages, sampling_params=sampling_params)
-                
-                # Extract the final output
-                if outputs and len(outputs) > 0:
-                    last_output = outputs[-1] if isinstance(outputs, list) else outputs
-                    if hasattr(last_output, 'outputs') and last_output.outputs:
-                        result_text = last_output.outputs[0].text.strip()
-                        logger.info("[GENERATE_CHAT] Generation complete: %d chars", len(result_text))
-                        return result_text
-            
-            logger.warning("[GENERATE_CHAT] No output received")
-            return ""
-        except Exception as exc:
-            logger.error("[GENERATE_CHAT] Error during generation: %s", exc)
-            raise
 
     def _generate_multi_chat_sync(
         self,

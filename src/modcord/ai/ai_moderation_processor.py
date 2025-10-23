@@ -154,22 +154,6 @@ class ModerationProcessor:
         
         return actions_by_channel
 
-    async def get_batch_moderation_actions(
-        self,
-        batch: ModerationChannelBatch,
-        server_rules: str = "",
-    ) -> List[ActionData]:
-        """Process a single batch of messages and return moderation actions.
-        
-        Legacy method for single batch processing. New code should use
-        get_multi_batch_moderation_actions for better performance.
-        """
-        result = await self.get_multi_batch_moderation_actions(
-            batches=[batch],
-            server_rules=server_rules
-        )
-        return result.get(batch.channel_id, [])
-
     def _batch_to_json_with_images(
         self,
         batch: ModerationChannelBatch,
@@ -307,37 +291,6 @@ class ModerationProcessor:
         except Exception as exc:
             logger.error("[INFERENCE] Multi-batch inference error: %s", exc, exc_info=True)
             return [self._null_response("inference error") for _ in conversations]
-
-    async def _run_inference(
-        self,
-        messages: List[Dict[str, Any]],
-        grammar_str: str
-    ) -> str:
-        """Submit vLLM-formatted messages to AI model and return raw response string."""
-        if self._shutdown:
-            logger.warning("[INFERENCE] Processor is shutting down")
-            return self._null_response("shutting down")
-        
-        if not self.inference_processor.is_model_available():
-            reason = self.inference_processor.get_model_init_error()
-            logger.warning("[INFERENCE] Model not available: %s", reason)
-            return self._null_response(reason or "unavailable")
-        
-        # Generate response with guided decoding
-        try:
-            logger.info("[INFERENCE] Starting model inference with guided decoding...")
-            result = await self.inference_processor.generate_chat(
-                messages,
-                guided_decoding_grammar=grammar_str
-            )
-            logger.info(
-                "[INFERENCE] Model inference completed, response length: %d chars",
-                len(result or "")
-            )
-            return result.strip() if result else self._null_response("no response")
-        except Exception as exc:
-            logger.error("[INFERENCE] Inference error: %s", exc, exc_info=True)
-            return self._null_response("inference error")
 
     async def _ensure_model_initialized(self) -> bool:
         """Ensure the model has been initialized at least once."""
