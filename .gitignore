@@ -96,6 +96,7 @@ build/
 *.bak
 .cache/
 __pycache__/
+torch_compile_cache/
 
 __pypackages__/
 
