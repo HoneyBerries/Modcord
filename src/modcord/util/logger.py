@@ -9,7 +9,7 @@ from prompt_toolkit import print_formatted_text
 from prompt_toolkit.formatted_text import ANSI
 
 # -------------------- Configuration --------------------
-LOGS_DIR: Path = Path(__file__).resolve().parents[3] / "logs"
+LOGS_DIR: Path = (Path(__file__).parents[3] / "logs").resolve()
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_FORMAT: str = "[%(asctime)s] [%(levelname)s] [%(name)s:%(funcName)s:%(lineno)d] %(message)s"

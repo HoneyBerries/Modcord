@@ -57,7 +57,7 @@ class DebugCog(commands.Cog):
                 color=discord.Color.green(),
             )
             await application_context.send_followup(embed=embed)
-            logger.info(f"Purged {len(deleted)} messages from {channel.name} in {guild.name}")
+            logger.debug(f"Purged {len(deleted)} messages from {channel.name} in {guild.name}")
         except Exception as e:
             logger.error(f"Error in purge command: {e}")
             await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
@@ -81,7 +81,7 @@ class DebugCog(commands.Cog):
             )
             embed.add_field(name="Rules Length", value=str(len(settings.rules)), inline=False)
             await application_context.send_followup(embed=embed)
-            logger.info(f"Rules cache refreshed for guild {guild.name}")
+            logger.debug(f"Rules cache refreshed for guild {guild.name}")
         except Exception as e:
             logger.error(f"Error in refresh_rules command: {e}")
             await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)

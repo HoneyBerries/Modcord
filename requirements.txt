@@ -8,6 +8,7 @@ torchvision
 transformers
 bitsandbytes
 accelerate
+Pillow
 py-cord
 python-dotenv
 pyyaml

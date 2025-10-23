@@ -31,6 +31,8 @@ config/commands.json
 # VS Code settings
 .vscode/
 
+.git_corrupt/
+
 # PyCharm / IntelliJ
 .idea/
 *.iml

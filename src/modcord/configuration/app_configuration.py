@@ -39,7 +39,7 @@ from modcord.util.logger import get_logger
 logger = get_logger("app_configuration")
 
 # Default path to the YAML configuration file (root-level config/config.yml)
-CONFIG_PATH = Path("config") / "app_config.yml"
+CONFIG_PATH = Path("config/app_config.yml").resolve()
 
 
 class AppConfig:
@@ -49,8 +49,8 @@ class AppConfig:
     access helpers, and resolves AI-specific settings through :class:`AISettings`.
     """
 
-    def __init__(self, config_path: Optional[Path | str] = None) -> None:
-        self.config_path = Path(config_path) if config_path else CONFIG_PATH
+    def __init__(self, config_path: Path) -> None:
+        self.config_path = config_path
         self.lock = RLock()
         self._data: Dict[str, Any] = {}
         self.reload()
@@ -134,7 +134,10 @@ class AppConfig:
         prompts without additional checks.
         """
         with self.lock:
-            value = self._data.get("default_server_rules", "")
+            if "server_rules" in self._data:
+                value = self._data.get("server_rules", "")
+            else:
+                value = self._data.get("default_server_rules", "")
         return str(value or "")
 
     @property
@@ -145,7 +148,12 @@ class AppConfig:
         format_system_prompt(...) to render with server rules inserted.
         """
         with self.lock:
-            value = self._data.get("system_prompt", "")
+            # Check ai_settings.system_prompt
+            ai_settings = self._data.get("ai_settings", {})
+            value = ""
+            if isinstance(ai_settings, dict):
+                value = ai_settings.get("system_prompt", "")
+
         return str(value or "")
 
     @property
@@ -211,6 +219,4 @@ class AISettings(Mapping):
 
 
 # Shared application-wide configuration instance
-app_config = AppConfig()
-
-__all__ = ["AppConfig", "AISettings", "CONFIG_PATH", "app_config"]
+app_config = AppConfig(CONFIG_PATH)

@@ -183,7 +183,7 @@ async def start_periodic_refresh_task(bot: discord.Client, interval_seconds: flo
 	try:
 		await run_periodic_refresh(bot, interval_seconds=interval_seconds)
 	except asyncio.CancelledError:
-		logger.debug("Rules refresh task cancelled")
+		logger.info("Rules refresh task cancelled")
 		raise
 	except Exception as exc:
 		logger.error("Error in rules refresh task: %s", exc)

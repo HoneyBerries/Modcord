@@ -34,10 +34,10 @@ from modcord.util.discord_utils import (
     PERMANENT_DURATION,
     DURATION_CHOICES,
     DELETE_MESSAGE_CHOICES,
-    parse_duration_to_seconds,
+    parse_duration_to_minutes,
     delete_messages_background,
 )
-from modcord.util.moderation_datatypes import (
+from modcord.moderation.moderation_datatypes import (
     CommandAction,
     WarnCommand,
     TimeoutCommand,
@@ -132,7 +132,7 @@ class ModerationActionCog(commands.Cog):
         ctx: discord.ApplicationContext,
         user: discord.Member,
         action: CommandAction,
-        delete_message_seconds: int = 0,
+        delete_message_minutes: int = 0,
     ) -> None:
         """Execute a command action and handle errors.
 
@@ -144,15 +144,15 @@ class ModerationActionCog(commands.Cog):
             Guild member the action applies to.
         action:
             CommandAction instance to execute.
-        delete_message_seconds:
-            Optional message deletion window.
+        delete_message_minutes:
+            Optional message deletion window, in minutes.
         """
         try:
             await action.execute(ctx, user, self.discord_bot_instance)
 
             # Delete messages in background if requested
-            if delete_message_seconds > 0:
-                asyncio.create_task(delete_messages_background(ctx, user, delete_message_seconds))
+            if delete_message_minutes > 0:
+                asyncio.create_task(delete_messages_background(ctx, user, delete_message_minutes))
 
         except Exception as e:
             logger.exception("Error executing moderation action: %s", e)
@@ -170,9 +170,9 @@ class ModerationActionCog(commands.Cog):
         ctx: discord.ApplicationContext,
         user: Option(discord.Member, "The user to warn.", required=True),  # type: ignore
         reason: Option(str, "Reason for the warning.", default="No reason provided."),  # type: ignore
-        delete_message_seconds: Option(
+        delete_message_minutes: Option(
             int,
-            "Delete messages from (choose time range)",
+            "Delete messages from (choose time range, in minutes)",
             choices=DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
@@ -190,7 +190,7 @@ class ModerationActionCog(commands.Cog):
 
         action = WarnCommand(reason=reason)
         await self.execute_command_action(
-            ctx, user, action, delete_message_seconds=delete_message_seconds
+            ctx, user, action, delete_message_minutes=delete_message_minutes
         )
 
     @commands.slash_command(name="timeout", description="Timeout a user for a specified duration.")
@@ -202,9 +202,9 @@ class ModerationActionCog(commands.Cog):
             str, "Duration of the timeout.", choices=DURATION_CHOICES, default="10 mins"
         ),  # type: ignore
         reason: Option(str, "Reason for the timeout.", default="No reason provided."),  # type: ignore
-        delete_message_seconds: Option(
+        delete_message_minutes: Option(
             int,
-            "Delete messages from (choose time range)",
+            "Delete messages from (choose time range, in minutes)",
             choices=DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
@@ -220,10 +220,10 @@ class ModerationActionCog(commands.Cog):
             await ctx.send_followup("You lack the required permissions to timeout this user.")
             return
 
-        timeout_seconds = parse_duration_to_seconds(duration)
-        action = TimeoutCommand(reason=reason, duration_seconds=timeout_seconds)
+        timeout_minutes = parse_duration_to_minutes(duration)
+        action = TimeoutCommand(reason=reason, duration_minutes=timeout_minutes)
         await self.execute_command_action(
-            ctx, user, action, delete_message_seconds=delete_message_seconds
+            ctx, user, action, delete_message_minutes=delete_message_minutes
         )
 
     @commands.slash_command(name="kick", description="Kick a user from the server.")
@@ -232,9 +232,9 @@ class ModerationActionCog(commands.Cog):
         ctx: discord.ApplicationContext,
         user: Option(discord.Member, "The user to kick.", required=True),  # type: ignore
         reason: Option(str, "Reason for the kick.", default="No reason provided."),  # type: ignore
-        delete_message_seconds: Option(
+        delete_message_minutes: Option(
             int,
-            "Delete messages from (choose time range)",
+            "Delete messages from (choose time range, in minutes)",
             choices=DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
@@ -252,7 +252,7 @@ class ModerationActionCog(commands.Cog):
 
         action = KickCommand(reason=reason)
         await self.execute_command_action(
-            ctx, user, action, delete_message_seconds=delete_message_seconds
+            ctx, user, action, delete_message_minutes=delete_message_minutes
         )
 
     @commands.slash_command(name="ban", description="Ban a user from the server.")
@@ -267,9 +267,9 @@ class ModerationActionCog(commands.Cog):
             default=PERMANENT_DURATION,
         ),  # type: ignore
         reason: Option(str, "Reason for the ban.", default="No reason provided."),  # type: ignore
-        delete_message_seconds: Option(
+        delete_message_minutes: Option(
             int,
-            "Delete messages from (choose time range)",
+            "Delete messages from (choose time range, in minutes)",
             choices=DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
@@ -285,10 +285,10 @@ class ModerationActionCog(commands.Cog):
             await ctx.send_followup("You lack the required permissions to ban this user.")
             return
 
-        ban_seconds = parse_duration_to_seconds(duration)
-        action = BanCommand(reason=reason, duration_seconds=ban_seconds)
+        ban_minutes = parse_duration_to_minutes(duration) if duration != PERMANENT_DURATION else None
+        action = BanCommand(reason=reason, duration_minutes=ban_minutes)
         await self.execute_command_action(
-            ctx, user, action, delete_message_seconds=delete_message_seconds
+            ctx, user, action, delete_message_minutes=delete_message_minutes
         )
 
 
