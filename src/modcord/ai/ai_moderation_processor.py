@@ -1,4 +1,16 @@
-"""High-level orchestration logic for AI-driven moderation workflows."""
+"""High-level orchestration logic for AI-driven moderation workflows.
+
+This module coordinates the entire moderation pipeline, including:
+- Converting channel batches into vLLM-compatible conversations.
+- Dynamically building JSON schemas and guided decoding grammars for each channel.
+- Submitting all conversations in a single batch to the AI model for inference.
+- Parsing responses and applying moderation actions per channel.
+
+Key Features:
+- Supports multimodal inputs (text + images).
+- Handles per-channel server rules dynamically.
+- Ensures efficient batch processing for high throughput.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +31,20 @@ logger = get_logger("ai_moderation_processor")
 
 
 class ModerationProcessor:
-    """Coordinate moderation prompts, inference, and response parsing."""
+    """
+    Coordinate moderation prompts, inference, and response parsing.
+
+    This class manages the lifecycle of the moderation engine, including:
+    - Initializing the AI model and ensuring availability.
+    - Converting channel batches into vLLM-compatible inputs.
+    - Dynamically generating JSON schemas and grammars for guided decoding.
+    - Submitting all conversations in a single batch to the AI model.
+    - Parsing responses and grouping actions by channel.
+
+    Attributes:
+        inference_processor (InferenceProcessor): The AI inference engine.
+        _shutdown (bool): Tracks whether the processor is shutting down.
+    """
 
     def __init__(self, engine: Optional[InferenceProcessor] = None) -> None:
         self.inference_processor = engine or inference_processor
@@ -47,41 +72,42 @@ class ModerationProcessor:
     async def get_multi_batch_moderation_actions(
         self,
         batches: List[ModerationChannelBatch],
-        server_rules: str = "",
+        server_rules_map: Optional[Dict[int, str]] = None,
     ) -> Dict[int, List[ActionData]]:
-        """Process multiple channel batches together in a single vLLM call.
-        
+        """
+        Process multiple channel batches together in a single vLLM call.
+
         This is the global batch processing entry point. It:
-        1. Converts all batches to vLLM conversations (one per channel)
-        2. Builds a list of conversations for batch processing
-        3. Submits all conversations to vLLM in one call
-        4. Parses responses and returns actions grouped by channel_id
-        
+        1. Converts all batches to vLLM conversations (one per channel).
+        2. Dynamically builds JSON schemas and guided decoding grammars for each channel.
+        3. Submits all conversations to vLLM in one call for efficient inference.
+        4. Parses responses and groups actions by channel.
+
         Args:
-            batches: List of ModerationChannelBatch objects from different channels
-            server_rules: Server rules to include in system prompt
-            
+            batches: List of ModerationChannelBatch objects from different channels.
+            server_rules_map: Optional mapping of channel_id -> server rules text.
+
         Returns:
-            Dictionary mapping channel_id to list of ActionData objects
+            Dictionary mapping channel_id to list of ActionData objects.
         """
         logger.debug(
             "[MODERATION] Processing global batch: %d channels",
             len(batches)
         )
-        
-        # Get system prompt with rules
-        merged_rules = self._resolve_server_rules(server_rules)
-        system_prompt = self.inference_processor.get_system_prompt(merged_rules)
+
+        if not batches:
+            return {}
         
         # Build conversations for each channel batch
         conversations = []
-        sampling_params_list = []
+        grammar_strings: List[str] = []
         channel_mapping = []  # Maps conversation index to channel_id and batch
-        
+        rules_lookup = server_rules_map or {}
+
         for batch in batches:
             # Convert batch to JSON payload with image IDs
             json_payload, pil_images, _ = self._batch_to_json_with_images(batch)
-            
+
             # Build user->message_ids map for non-history users
             user_message_map: Dict[str, List[str]] = {}
             for msg in batch.messages:
@@ -89,48 +115,59 @@ class ModerationProcessor:
                 if user_id not in user_message_map:
                     user_message_map[user_id] = []
                 user_message_map[user_id].append(str(msg.message_id))
-            
-            channel_id = str(batch.channel_id)
-            
+
+            channel_id_str = str(batch.channel_id)
+
             # Build dynamic schema for this batch
             dynamic_schema = moderation_parsing.build_dynamic_moderation_schema(
-                user_message_map, channel_id
+                user_message_map, channel_id_str
             )
-            
+
             # Compile grammar for guided decoding
             grammar = Grammar.from_json_schema(dynamic_schema, strict_mode=True)
             grammar_str = str(grammar)
-            
+
+            # Resolve and apply server rules per channel
+            channel_rules = rules_lookup.get(batch.channel_id, "")
+            merged_rules = self._resolve_server_rules(channel_rules)
+            system_prompt = self.inference_processor.get_system_prompt(merged_rules)
+
             # Format messages for vLLM
             llm_messages = self._format_multimodal_messages(
                 system_prompt,
                 json_payload,
                 pil_images
             )
-            
+
             conversations.append(llm_messages)
-            sampling_params_list.append(grammar_str)
+            grammar_strings.append(grammar_str)
             channel_mapping.append((batch.channel_id, batch, dynamic_schema))
-            
+
             logger.debug(
                 "[BATCH_PREP] Channel %d: %d users, %d images",
                 batch.channel_id,
                 len(user_message_map),
                 len(pil_images)
             )
-        
+
         logger.info(
-            "[INPUT] Submitting global batch with %d conversations to LLM",
+            "[INPUT] Submitting global batch with %d channels/conversations to LLM",
             len(conversations)
         )
         
         # Submit all conversations to vLLM in one call
-        responses = await self._run_multi_inference(conversations, sampling_params_list)
-        
+        responses = await self._run_multi_inference(conversations, grammar_strings)
+
+        if len(responses) != len(channel_mapping):
+            logger.warning(
+                "[MODERATION] Response count mismatch: %d responses for %d channels",
+                len(responses),
+                len(channel_mapping),
+            )
+
         # Parse responses and group actions by channel
         actions_by_channel: Dict[int, List[ActionData]] = {}
-        for idx, response_text in enumerate(responses):
-            channel_id, batch, dynamic_schema = channel_mapping[idx]
+        for (channel_id, _, dynamic_schema), response_text in zip(channel_mapping, responses):
             
             logger.info(
                 "[MODERATION RAW OUTPUT] Channel %d response length: %d chars\n%s",
@@ -152,16 +189,26 @@ class ModerationProcessor:
                 channel_id
             )
         
+        if len(channel_mapping) > len(responses):
+            for channel_id, _, _ in channel_mapping[len(responses):]:
+                logger.warning("[MODERATION] Missing response for channel %d", channel_id)
+                actions_by_channel.setdefault(channel_id, [])
+
         return actions_by_channel
 
     def _batch_to_json_with_images(
         self,
         batch: ModerationChannelBatch,
     ) -> tuple[Dict[str, Any], List[Any], Dict[str, int]]:
-        """Convert ModerationChannelBatch to JSON structure with image IDs.
-        
+        """
+        Convert ModerationChannelBatch to JSON structure with image IDs.
+
+        This method processes all messages and history in the batch, grouping them by user
+        and collecting associated image IDs. The resulting JSON payload is used as input
+        for the AI model.
+
         Returns:
-            Tuple of (json_payload, pil_images_list, image_id_map)
+            Tuple of (json_payload, pil_images_list, image_id_map).
         """
         all_messages = list(batch.messages) + list(batch.history)
         pil_images: List[Any] = []
@@ -216,21 +263,22 @@ class ModerationProcessor:
         json_payload: Dict[str, Any],
         pil_images: List[Any]
     ) -> List[Dict[str, Any]]:
-        """Build vLLM-compatible messages with multimodal content.
-        
+        """
+        Build vLLM-compatible messages with multimodal content.
+
         Args:
-            system_prompt: The system prompt text
-            json_payload: JSON dict with message data and image IDs
-            pil_images: List of PIL Image objects
-            
+            system_prompt: The system prompt text.
+            json_payload: JSON dict with message data and image IDs.
+            pil_images: List of PIL Image objects.
+
         Returns:
-            List of vLLM messages with multimodal content
+            List of vLLM messages with multimodal content.
         """
         # Build user message content as list with text + images
         user_content = [
             {
                 "type": "text",
-                "text": json.dumps(json_payload, indent=2)
+                "text": json.dumps(json_payload, separators=(",", ":"))
             }
         ]
         
@@ -257,16 +305,17 @@ class ModerationProcessor:
         conversations: List[List[Dict[str, Any]]],
         grammar_strings: List[str]
     ) -> List[str]:
-        """Submit multiple vLLM-formatted conversations to AI model and return responses.
-        
+        """
+        Submit multiple vLLM-formatted conversations to AI model and return responses.
+
         This method processes multiple conversations in a single vLLM call for efficiency.
-        
+
         Args:
-            conversations: List of conversation message lists (one per channel)
-            grammar_strings: List of grammar strings (one per conversation)
-            
+            conversations: List of conversation message lists (one per channel).
+            grammar_strings: List of grammar strings (one per conversation).
+
         Returns:
-            List of response strings (one per conversation)
+            List of response strings (one per conversation).
         """
         if self._shutdown:
             logger.warning("[INFERENCE] Processor is shutting down")

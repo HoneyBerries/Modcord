@@ -1,4 +1,16 @@
-"""Synchronous LLM core with async wrapper for non-blocking inference."""
+
+"""
+Synchronous LLM core with async wrappers for non-blocking, high-throughput inference.
+
+This module manages the lifecycle and usage of a vLLM-based language model for moderation and generation tasks.
+It provides:
+- Thread-safe, async model initialization and unloading
+- Batch inference with per-conversation guided decoding (xgrammar)
+- Dynamic system prompt injection with server rules
+- Resource cleanup and error tracking
+
+All blocking operations are wrapped in asyncio.to_thread() to avoid blocking the event loop.
+"""
 
 from __future__ import annotations
 
@@ -14,31 +26,43 @@ logger = get_logger("ai_core")
 os.environ.setdefault("TORCH_COMPILE_CACHE_DIR", "./torch_compile_cache")
 
 
+
 @dataclass
 class ModelState:
-    """Tracks the state of the AI model."""
+    """
+    Tracks the state of the AI model.
+
+    Attributes:
+        init_started (bool): Whether initialization has started.
+        available (bool): Whether the model is available for inference.
+        init_error (Optional[str]): Last initialization error, if any.
+    """
     init_started: bool = False
     available: bool = False
     init_error: Optional[str] = None
 
 
+
 class InferenceProcessor:
     """
-    Synchronous LLM with async wrappers for non-blocking inference.
+    Synchronous LLM with async wrappers for non-blocking, multi-channel inference.
 
-    Uses vLLM's synchronous LLM() class with llm.chat() for multimodal generation.
-    Wraps blocking calls in asyncio.to_thread() to prevent blocking the event loop.
+    - Uses vLLM's synchronous LLM() class with llm.chat() for multimodal, batch generation.
+    - All blocking calls are wrapped in asyncio.to_thread() to keep the event loop responsive.
+    - Supports per-conversation guided decoding (xgrammar) and dynamic system prompts.
 
     Attributes:
-        llm (Optional[Any]): The synchronous LLM instance.
+        llm (Optional[Any]): The synchronous LLM instance (vLLM).
         sampling_params (Optional[Any]): Base SamplingParams configuration.
         base_system_prompt (Optional[str]): The base system prompt template.
         state (ModelState): Tracks model state, availability, and errors.
-        init_lock (asyncio.Lock): Ensures thread-safe model initialization.
+        init_lock (asyncio.Lock): Ensures thread-safe model initialization and unloading.
     """
 
     def __init__(self) -> None:
-        """Initialize the InferenceProcessor with default state."""
+        """
+        Initialize the InferenceProcessor with default state and lock.
+        """
         self.llm: Optional[Any] = None
         self.sampling_params: Optional[Any] = None
         self.base_system_prompt: Optional[str] = None
@@ -46,15 +70,20 @@ class InferenceProcessor:
         self.init_lock = asyncio.Lock()
 
     def _set_init_error(self, msg: str) -> None:
-        """Set initialization error and mark unavailable."""
+        """
+        Set initialization error and mark model as unavailable.
+        """
         self.state.available = False
         self.state.init_error = msg
 
     async def init_model(self, model: Optional[str] = None) -> bool:
-        """Initialize the vLLM synchronous engine.
-        
-        Thread-safe initialization with lock to prevent concurrent init attempts.
-        Wraps blocking I/O in asyncio.to_thread() to avoid blocking event loop.
+        """
+        Initialize the vLLM synchronous engine (thread-safe, async).
+
+        - Loads configuration and checks if AI is enabled.
+        - Prepares sampling parameters and system prompt.
+        - Runs blocking model load in a thread to avoid blocking the event loop.
+        - Ensures only one initialization attempt at a time.
 
         Args:
             model: Optional model identifier override.
@@ -120,7 +149,17 @@ class InferenceProcessor:
         sampling_parameters: Dict[str, Any],
         vram_percentage: float
     ) -> bool:
-        """Synchronous model initialization (runs in thread)."""
+        """
+        Synchronous model initialization (runs in thread).
+
+        - Imports vLLM and torch libraries.
+        - Configures GPU and dtype.
+        - Instantiates the LLM and sampling parameters.
+        - Handles all exceptions and logs errors.
+
+        Returns:
+            True if model initialized successfully, False otherwise.
+        """
         try:
             import torch
             from vllm import LLM, SamplingParams
@@ -171,16 +210,23 @@ class InferenceProcessor:
             return False
 
     def is_model_available(self) -> bool:
-        """Check if the model is available for inference."""
+        """
+        Check if the model is available for inference.
+        """
         return self.state.available
 
     def get_model_init_error(self) -> Optional[str]:
-        """Retrieve the last initialization error, if any."""
+        """
+        Retrieve the last initialization error, if any.
+        """
         return self.state.init_error
 
     def get_system_prompt(self, server_rules: str = "") -> str:
         """
         Return the system prompt with server rules injected.
+
+        - If the template contains <|SERVER_RULES_INJECT|>, replaces it with the provided rules.
+        - Otherwise, appends rules at the end if present.
 
         Args:
             server_rules: Server rules to inject into the <|SERVER_RULES_INJECT|> placeholder.
@@ -205,10 +251,11 @@ class InferenceProcessor:
         grammar_strings: List[str]
     ) -> List[str]:
         """
-        Generate text outputs from multiple conversations in a single batch call.
-        
-        Uses llm.chat() with multimodal support for batch processing.
-        Runs in a thread to avoid blocking the event loop.
+        Generate text outputs from multiple conversations in a single batch call (async).
+
+        - Uses llm.chat() with multimodal support for batch processing.
+        - Each conversation can have its own guided decoding grammar (xgrammar).
+        - Runs in a thread to avoid blocking the event loop.
 
         Args:
             conversations: List of conversation message lists.
@@ -240,7 +287,20 @@ class InferenceProcessor:
         conversations: List[List[Dict[str, Any]]],
         grammar_strings: List[str]
     ) -> List[str]:
-        """Synchronous multi-conversation batch generation (runs in thread)."""
+        """
+        Synchronous multi-conversation batch generation (runs in thread).
+
+        - Builds a list of SamplingParams, each with its own guided decoding grammar.
+        - Calls llm.chat() for all conversations in a single batch.
+        - Extracts and returns the generated text for each conversation.
+
+        Args:
+            conversations: List of conversation message lists.
+            grammar_strings: List of xgrammar grammar strings (one per conversation).
+
+        Returns:
+            List of generated output strings (one per conversation).
+        """
         from vllm import SamplingParams
         from vllm.sampling_params import GuidedDecodingParams
         
@@ -294,14 +354,17 @@ class InferenceProcessor:
             raise
 
     def get_model_state(self) -> ModelState:
-        """Return the current model state."""
+        """
+        Return the current model state.
+        """
         return self.state
 
     async def unload_model(self) -> None:
         """
-        Unload the model and clean up resources.
-        
-        Clears GPU memory and resets all state attributes.
+        Unload the model and clean up resources (async).
+
+        - Resets all state attributes and clears GPU memory.
+        - Ensures thread-safe unloading with a lock.
         """
         async with self.init_lock:
             self.llm = None
@@ -316,7 +379,12 @@ class InferenceProcessor:
         logger.info("[AI MODEL] Model unloaded")
 
     def _cleanup_gpu(self) -> None:
-        """Synchronous GPU cleanup (runs in thread)."""
+        """
+        Synchronous GPU cleanup (runs in thread).
+
+        - Calls torch.cuda.empty_cache() if available.
+        - Runs Python garbage collection.
+        """
         try:
             import torch
             if torch.cuda.is_available():

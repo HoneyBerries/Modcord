@@ -1,4 +1,16 @@
-"""Per-channel message cache with TTL support."""
+"""
+Per-channel message cache with TTL (time-to-live) support.
+
+This module provides an in-memory caching mechanism for storing messages in a single Discord channel. The cache supports:
+- Automatic expiration of messages based on a configurable TTL.
+- Deduplication of messages by their unique IDs.
+- Efficient storage and retrieval of messages using a deque.
+
+Key Features:
+- Configurable maximum message capacity per channel.
+- Automatic removal of expired messages.
+- Thread-safe operations for adding, removing, and retrieving messages.
+"""
 
 from __future__ import annotations
 
@@ -13,18 +25,26 @@ logger = get_logger("channel_cache")
 
 
 class ChannelMessageCache:
-    """In-memory message cache for a single Discord channel with TTL support."""
+    """
+    In-memory message cache for a single Discord channel with TTL support.
+
+    This class provides a per-channel caching mechanism for storing recent messages. Messages are automatically removed
+    from the cache when they exceed the configured TTL or when the cache reaches its maximum capacity.
+
+    Attributes:
+        max_messages (int): Maximum number of messages to retain in the cache.
+        ttl_seconds (int): Time-to-live for cached messages, in seconds.
+        messages (Deque[tuple[ModerationMessage, datetime]]): Deque storing messages and their timestamps.
+        _message_ids (Set[str]): Set of message IDs for quick deduplication.
+    """
 
     def __init__(self, max_messages: int = 12, ttl_seconds: int = 3600):
         """
         Initialize the channel cache.
 
-        Parameters
-        ----------
-        max_messages:
-            Maximum messages to retain in cache per channel.
-        ttl_seconds:
-            Time-to-live for cached messages in seconds (default 1 hour).
+        Args:
+            max_messages (int): Maximum messages to retain in cache per channel.
+            ttl_seconds (int): Time-to-live for cached messages in seconds (default 1 hour).
         """
         self.max_messages = max_messages
         self.ttl_seconds = ttl_seconds
@@ -32,7 +52,12 @@ class ChannelMessageCache:
         self._message_ids: Set[str] = set()
 
     def add_message(self, message: ModerationMessage) -> None:
-        """Add a message to the cache and track its ID."""
+        """
+        Add a message to the cache and track its ID.
+
+        Args:
+            message (ModerationMessage): The message to add to the cache.
+        """
         message_id = str(message.message_id)
         if message_id in self._message_ids:
             return
@@ -51,17 +76,14 @@ class ChannelMessageCache:
                 self._message_ids.discard(old_msg_id)
 
     def remove_message(self, message_id: str) -> bool:
-        """Remove a message from the cache by ID.
-        
-        Parameters
-        ----------
-        message_id:
-            The message ID to remove.
-            
-        Returns
-        -------
-        bool
-            True if the message was found and removed, False otherwise.
+        """
+        Remove a message from the cache by ID.
+
+        Args:
+            message_id (str): The message ID to remove.
+
+        Returns:
+            bool: True if the message was found and removed, False otherwise.
         """
         message_id = str(message_id)
         if message_id not in self._message_ids:
@@ -87,7 +109,12 @@ class ChannelMessageCache:
         return found
 
     def get_valid_messages(self) -> list[ModerationMessage]:
-        """Return all messages still within TTL, removing expired ones."""
+        """
+        Return all messages still within TTL, removing expired ones.
+
+        Returns:
+            list[ModerationMessage]: List of valid (non-expired) messages.
+        """
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(seconds=self.ttl_seconds)
         
@@ -106,6 +133,8 @@ class ChannelMessageCache:
         return valid
 
     def clear(self) -> None:
-        """Clear all messages from the cache."""
+        """
+        Clear all messages from the cache.
+        """
         self.messages.clear()
         self._message_ids.clear()

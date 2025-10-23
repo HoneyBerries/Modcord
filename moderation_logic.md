@@ -18,7 +18,7 @@
 
 ## Channel Batching Layer
 - `GuildSettingsManager` orchestrates batched moderation using a **global batching approach**. Messages from each channel are queued independently, but all channels share a single global timer whose length comes from configuration (`moderation_batch_seconds`).
-- When the global timer fires, the manager gathers **all pending channel batches** and enriches each with contextual history via `message_history_cache.fetch_history_for_context`, which blends cached content with on-demand Discord API fetches if necessary.
+- When the global timer fires, the manager gathers **all pending channel batches** and enriches each with contextual history via `global_history_cache_manager.fetch_history_for_context`, which blends cached content with on-demand Discord API fetches if necessary.
 - The manager wraps each channel's messages in a `ModerationChannelBatch` structure and creates a list of all batches. This list is forwarded to the registered callback, which binds back into `moderation_helper.process_message_batches` with access to the cog instance.
 - **Key advantage**: All channel batches are processed together in a single vLLM inference call, maximizing GPU utilization and throughput compared to processing each channel individually.
 
@@ -47,7 +47,7 @@
 ## Configuration & Data Flow
 - `app_config` is a thread-safe reader around `config/app_config.yml`. It exposes default server rules, the moderation prompt template, AI settings, and batching/ cache tuning parameters.
 - `GuildSettingsManager` persists per-guild settings to `data/guild_settings.json`. Settings include whether AI is enabled and whether each automated action type is allowed. Writes happen asynchronously with atomic file replacement to avoid data corruption.
-- Channel history is stored in `MessageHistoryCache`, which supports TTL-based eviction and API fallback. The cache is reconfigured during startup if the YAML provides overrides for size, TTL, or fetch limits.
+- Channel history is stored in `GlobalHistoryCacheManager`, which supports TTL-based eviction and API fallback. The cache is reconfigured during startup if the YAML provides overrides for size, TTL, or fetch limits.
 - The rules manager scrapes likely rule channels and persists the aggregated text within guild settings, ensuring that updated rules automatically feed the AI prompt without redeploying the bot.
 
 ## Design Principles

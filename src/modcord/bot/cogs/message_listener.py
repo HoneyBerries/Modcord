@@ -12,6 +12,7 @@ from modcord.moderation.moderation_datatypes import ModerationImage, ModerationM
 from modcord.util.image_utils import download_image_to_pil, generate_image_hash_id
 
 from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.history.history_cache import global_history_cache_manager
 from modcord.util.logger import get_logger
 from modcord.bot import rules_manager
 from modcord.util import discord_utils
@@ -267,7 +268,7 @@ class MessageListenerCog(commands.Cog):
                 if embed_content:
                     # Create moderation message from bot's own action embed
                     history_entry = await self._create_moderation_message(message, embed_content)
-                    guild_settings_manager.add_message_to_history(message.channel.id, history_entry)
+                    global_history_cache_manager.add_message(message.channel.id, history_entry)
                     logger.debug(f"Stored bot's own moderation action as history context")
             return  # Don't process bot's own messages for moderation
         
@@ -288,7 +289,7 @@ class MessageListenerCog(commands.Cog):
 
         # Create and store message in history
         history_entry = await self._create_moderation_message(message, actual_content)
-        guild_settings_manager.add_message_to_history(message.channel.id, history_entry)
+        global_history_cache_manager.add_message(message.channel.id, history_entry)
 
         # Check if AI moderation is enabled for this guild (message.guild is guaranteed non-None here)
         if message.guild and not guild_settings_manager.is_ai_enabled(message.guild.id):
@@ -352,7 +353,7 @@ class MessageListenerCog(commands.Cog):
             return
         
         # Remove from history cache
-        guild_settings_manager.remove_message_from_history(message.channel.id, str(message.id))
+        global_history_cache_manager.remove_message(message.channel.id, str(message.id))
         logger.debug(f"Removed deleted message {message.id} from cache for channel {message.channel.id}")
 
 

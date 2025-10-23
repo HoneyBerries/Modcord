@@ -16,7 +16,7 @@ from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Seque
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
 from modcord.moderation.moderation_datatypes import ActionType, ModerationChannelBatch, ModerationMessage
-from modcord.history.history_cache import message_history_cache
+from modcord.history.history_cache import global_history_cache_manager
 from modcord.configuration.app_configuration import app_config
 from modcord.database.database import init_database, get_connection
 
@@ -53,7 +53,7 @@ class GuildSettingsManager:
     Responsibilities:
     - Persist per-guild settings (ai_enabled, rules, action toggles) to SQLite database
     - Cache server rules and per-channel chat history
-    - Provide a 15s channel message batching mechanism with an async callback
+    - Provide a config-driven global message batching window with an async callback
     """
 
     def __init__(self):
@@ -65,6 +65,7 @@ class GuildSettingsManager:
         self.channel_message_batches: DefaultDict[int, List[ModerationMessage]] = collections.defaultdict(list)
         self.global_batch_timer: Optional[asyncio.Task] = None
         self.batch_processing_callback: Optional[Callable[[List[ModerationChannelBatch]], Awaitable[None]]] = None
+        self._batch_lock = asyncio.Lock()
 
         # Persistence helpers
         self._persist_lock = asyncio.Lock()
@@ -119,27 +120,6 @@ class GuildSettingsManager:
 
         self._trigger_persist(guild_id)
 
-    def add_message_to_history(self, channel_id: int, message: ModerationMessage) -> None:
-        """Add a message to the dynamic message cache for Discord API fallback."""
-        message_history_cache.add_message(channel_id, message)
-
-    def remove_message_from_history(self, channel_id: int, message_id: str) -> bool:
-        """Remove a message from the dynamic message cache.
-        
-        Parameters
-        ----------
-        channel_id:
-            The Discord channel ID.
-        message_id:
-            The message ID to remove.
-            
-        Returns
-        -------
-        bool
-            True if the message was found and removed, False otherwise.
-        """
-        return message_history_cache.remove_message(channel_id, message_id)
-
     # --- Global message batching system ---
     def set_batch_processing_callback(self, callback: Callable[[List[ModerationChannelBatch]], Awaitable[None]]) -> None:
         """Set the async callback invoked when global batches are ready."""
@@ -148,18 +128,17 @@ class GuildSettingsManager:
 
     async def add_message_to_batch(self, channel_id: int, message: ModerationMessage) -> None:
         """Queue a message for global batch processing and start timer if needed."""
-        # Add message to channel's batch
-        self.channel_message_batches[channel_id].append(message)
-        logger.debug(
-            "Added message to batch for channel %s, current batch size: %d",
-            channel_id,
-            len(self.channel_message_batches[channel_id]),
-        )
+        async with self._batch_lock:
+            self.channel_message_batches[channel_id].append(message)
+            logger.debug(
+                "Added message to batch for channel %s, current batch size: %d",
+                channel_id,
+                len(self.channel_message_batches[channel_id]),
+            )
 
-        # If no global timer is running, start one
-        if self.global_batch_timer is None or self.global_batch_timer.done():
-            self.global_batch_timer = asyncio.create_task(self.global_batch_timer_task())
-            logger.debug("Started global batch timer")
+            if self.global_batch_timer is None or self.global_batch_timer.done():
+                self.global_batch_timer = asyncio.create_task(self.global_batch_timer_task())
+                logger.debug("Started global batch timer")
 
     async def global_batch_timer_task(self) -> None:
         """Global timer that processes all pending channel batches together."""
@@ -169,41 +148,37 @@ class GuildSettingsManager:
             logger.debug("Global batch timer started with %s seconds", moderation_batch_seconds)
             await asyncio.sleep(moderation_batch_seconds)
 
-            # Collect all pending channel batches
+            async with self._batch_lock:
+                pending_batches = {
+                    channel_id: list(messages)
+                    for channel_id, messages in self.channel_message_batches.items()
+                    if messages
+                }
+                # Reset container for next window
+                self.channel_message_batches = collections.defaultdict(list)
+
             channel_batches: List[ModerationChannelBatch] = []
-            channel_ids = list(self.channel_message_batches.keys())
-            
-            for channel_id in channel_ids:
-                messages = list(self.channel_message_batches[channel_id])
-                if messages:
-                    # Get history context for this channel
-                    history_context = await self._resolve_history_context(channel_id, messages)
-                    batch = ModerationChannelBatch(
+            for channel_id, messages in pending_batches.items():
+                history_context = await self._resolve_history_context(channel_id, messages)
+                channel_batches.append(
+                    ModerationChannelBatch(
                         channel_id=channel_id,
                         messages=messages,
-                        history=history_context
+                        history=history_context,
                     )
-                    channel_batches.append(batch)
-                    logger.debug(
-                        "Prepared batch for channel %s: %d messages, %d history",
-                        channel_id,
-                        len(messages),
-                        len(history_context)
-                    )
-                
-                # Clear this channel's batch
-                self.channel_message_batches[channel_id].clear()
-                try:
-                    del self.channel_message_batches[channel_id]
-                except KeyError:
-                    pass
+                )
+                logger.debug(
+                    "Prepared batch for channel %s: %d messages, %d history",
+                    channel_id,
+                    len(messages),
+                    len(history_context),
+                )
 
-            # Process all batches together if we have any
             if channel_batches and self.batch_processing_callback:
                 logger.info(
                     "Processing global batch: %d channels, %d total messages",
                     len(channel_batches),
-                    sum(len(b.messages) for b in channel_batches)
+                    sum(len(b.messages) for b in channel_batches),
                 )
                 try:
                     await self.batch_processing_callback(channel_batches)
@@ -216,6 +191,8 @@ class GuildSettingsManager:
             logger.info("Global batch timer cancelled")
         except Exception:
             logger.exception("Error in global batch timer")
+        finally:
+            self.global_batch_timer = None
 
     def cancel_all_batch_timers(self) -> None:
         """
@@ -226,6 +203,7 @@ class GuildSettingsManager:
         """
         if self.global_batch_timer and not self.global_batch_timer.done():
             self.global_batch_timer.cancel()
+        self.global_batch_timer = None
         logger.info("Requested cancellation of global batch timer")
 
     def _trigger_persist(self, guild_id: int) -> None:
@@ -249,11 +227,6 @@ class GuildSettingsManager:
 
         task.add_done_callback(_cleanup)
 
-    def schedule_persist(self, guild_id: int) -> bool:  # pragma: no cover - maintained for compatibility
-        """Backward-compatible wrapper that triggers a settings persist."""
-        self._trigger_persist(guild_id)
-        return True
-
     async def _resolve_history_context(
         self,
         channel_id: int,
@@ -271,7 +244,7 @@ class GuildSettingsManager:
         # Use a default or config-driven value for history context length, or make it a parameter if needed
         default_limit = 20  # You can make this configurable elsewhere if desired
         try:
-            history_messages = await message_history_cache.fetch_history_for_context(
+            history_messages = await global_history_cache_manager.fetch_history_for_context(
                 channel_id,
                 limit=default_limit,
                 exclude_message_ids=current_ids,
@@ -299,6 +272,7 @@ class GuildSettingsManager:
                 await self.global_batch_timer
             except asyncio.CancelledError:
                 pass
+        self.global_batch_timer = None
 
         self.channel_message_batches.clear()
 
