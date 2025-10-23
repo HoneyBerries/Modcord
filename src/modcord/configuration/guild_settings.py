@@ -175,7 +175,7 @@ class GuildSettingsManager:
                 )
 
             if channel_batches and self.batch_processing_callback:
-                logger.info(
+                logger.debug(
                     "Processing global batch: %d channels, %d total messages",
                     len(channel_batches),
                     sum(len(b.messages) for b in channel_batches),
