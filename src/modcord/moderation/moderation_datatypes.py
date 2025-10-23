@@ -118,7 +118,7 @@ class ModerationMessage:
 
 
 @dataclass(slots=True)
-class ModerationBatch:
+class ModerationChannelBatch:
     """Container for batched moderation messages plus optional historical context."""
 
     channel_id: int

@@ -19,7 +19,7 @@
 ## Channel Batching Layer
 - `GuildSettingsManager` orchestrates batched moderation. Each channel has an in-memory queue and an associated timer whose length comes from configuration (`moderation_batch_seconds`).
 - When the timer fires, the manager gathers the queued messages and enriches them with contextual history via `message_history_cache.fetch_history_for_context`, which blends cached content with on-demand Discord API fetches if necessary.
-- The manager wraps everything in a `ModerationBatch` structure and forwards it to the registered callback. The callback, set during startup, binds back into `moderation_helper.process_message_batch` with access to the cog instance.
+- The manager wraps everything in a `ModerationChannelBatch` structure and forwards it to the registered callback. The callback, set during startup, binds back into `moderation_helper.process_message_batch` with access to the cog instance.
 
 ## AI Prompt Composition & Inference
 - `ModerationProcessor.get_batch_moderation_actions` transforms a batch into a JSON payload that groups messages by user, tracks ordering, and records the precise message IDs produced in Discord.

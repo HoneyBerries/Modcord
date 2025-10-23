@@ -4,14 +4,14 @@ import discord
 
 from modcord.ai.ai_moderation_processor import model_state, moderation_processor
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.util.moderation_datatypes import ActionData, ActionType, ModerationBatch
+from modcord.moderation.moderation_datatypes import ActionData, ActionType, ModerationChannelBatch
 from modcord.util import discord_utils
 from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_helper")
 
 
-async def process_message_batch(self, batch: ModerationBatch) -> None:
+async def process_message_batch(self, batch: ModerationChannelBatch) -> None:
     """Process a batch of messages through the AI moderation pipeline."""
     if batch.is_empty():
         return
@@ -32,7 +32,7 @@ async def process_message_batch(self, batch: ModerationBatch) -> None:
         await apply_batch_action(self, action, batch)
 
 
-async def apply_batch_action(self, action: ActionData, batch: ModerationBatch) -> bool:
+async def apply_batch_action(self, action: ActionData, batch: ModerationChannelBatch) -> bool:
     """Execute a single moderation action produced by the AI."""
     if action.action is ActionType.NULL or not action.user_id:
         return False

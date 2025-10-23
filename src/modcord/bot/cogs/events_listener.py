@@ -13,7 +13,7 @@ from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.bot import rules_manager
 from modcord.util.logger import get_logger
-from modcord.util import moderation_helper
+from modcord.moderation import moderation_helper
 
 logger = get_logger("events_listener_cog")
 

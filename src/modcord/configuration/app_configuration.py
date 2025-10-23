@@ -148,12 +148,12 @@ class AppConfig:
         format_system_prompt(...) to render with server rules inserted.
         """
         with self.lock:
-            # Check cache.system_prompt first (new location), then system_prompt (legacy)
-            cache_config = self._data.get("cache", {})
-            if isinstance(cache_config, dict):
-                value = cache_config.get("system_prompt", "")
-            else:
-                value = self._data.get("system_prompt", "")
+            # Check ai_settings.system_prompt
+            ai_settings = self._data.get("ai_settings", {})
+            value = ""
+            if isinstance(ai_settings, dict):
+                value = ai_settings.get("system_prompt", "")
+
         return str(value or "")
 
     @property
@@ -220,5 +220,3 @@ class AISettings(Mapping):
 
 # Shared application-wide configuration instance
 app_config = AppConfig(CONFIG_PATH)
-
-__all__ = ["AppConfig", "AISettings", "CONFIG_PATH", "app_config"]

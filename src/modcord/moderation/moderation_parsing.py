@@ -7,12 +7,10 @@ import logging
 from typing import Any, Dict, List
 from jsonschema import ValidationError
 
-from modcord.util.moderation_datatypes import ActionData, ActionType
+from modcord.moderation.moderation_datatypes import ActionData, ActionType
 import jsonschema
 
 logger = logging.getLogger("moderation_parsing")
-
-VALID_ACTION_VALUES: set[str] = {action.value for action in ActionType}
 
 
 def build_dynamic_moderation_schema(
@@ -84,29 +82,11 @@ def build_dynamic_moderation_schema(
 
 
 def _extract_json_payload(raw: str) -> Any:
-    """Extract JSON object from raw text, handling code fences and extra text."""
-    cleaned = raw.strip()
-    
-    # Strip code fences
-    if "```" in cleaned:
-        cleaned = "\n".join(ln for ln in cleaned.splitlines() if not ln.strip().startswith("```"))
-    
-    # Find last JSON bracket to handle trailing text
-    last_close = max(cleaned.rfind("}"), cleaned.rfind("]"))
-    if last_close == -1:
-        raise ValueError("No JSON object found")
-    
-    # Try parsing from various start positions
-    for start in range(last_close, -1, -1):
-        if cleaned[start] not in "{[":
-            continue
-        snippet = cleaned[start : last_close + 1]
-        try:
-            return json.loads(snippet)
-        except json.JSONDecodeError:
-            continue
-    
-    raise ValueError("Unable to decode JSON payload")
+    """Extract JSON object from raw text using json.loads()."""
+    try:
+        return json.loads(raw.strip())
+    except json.JSONDecodeError as exc:
+        raise ValueError("Unable to decode JSON payload") from exc
 
 
 def parse_batch_actions(

@@ -39,7 +39,7 @@ from modcord.ai.ai_moderation_processor import (
     shutdown_engine,
 )
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.util.message_cache import message_history_cache, initialize_cache_from_config
+from modcord.history.history_cache import message_history_cache, initialize_cache_from_config
 from modcord.configuration.app_configuration import app_config
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
 from modcord.util.logger import get_logger, handle_exception

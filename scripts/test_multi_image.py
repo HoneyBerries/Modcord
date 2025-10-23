@@ -1,3 +1,4 @@
+import gc
 import os
 import json
 from io import BytesIO
@@ -11,7 +12,7 @@ from xgrammar.grammar import Grammar
 MODEL_ID = "/mnt/d/AI_MODELS/modcord_custom_models/qwen3-vl-4b-instruct-nf4"
 GPU_MEMORY_UTIL = 0.85
 DTYPE = "bfloat16"
-MAX_MODEL_LEN = 16384
+MAX_MODEL_LEN = 8192
 LIMIT_MM = {"image": 8, "video": 0}
 MAX_TOKENS = 4096
 TOP_P = 0.9
@@ -21,19 +22,17 @@ TEMPERATURE = 0.7
 # === IMAGE SOURCES (extend freely) ===
 IMAGE_A_URL = "https://honeyberries.net/assets/backgrounds/minecraft-server-background.webp"
 IMAGE_B_URL = "https://honeyberries.net/assets/backgrounds/discord-ai-agent-background.webp"
-IMAGE_C_URL = "https://honeyberries.net/assets/backgrounds/home-banner.webp"
-IMAGE_D_URL = "https://cdn.discordapp.com/attachments/1425535604594311179/1430606604964991027/image.png?ex=68fa63ba&is=68f9123a&hm=0507209141e777ec0f2b7cbc11f6697be3e1aa6b7cd3530d2a463ab60c5d8dbc&"
-IMAGE_E_URL = "https://cdn.discordapp.com/attachments/1429715710946578472/1430680820015956089/Untitled.png?ex=68faa8d8&is=68f95758&hm=4bb3821e103b5bb7d9fe805b466af54a7cbf6580c72361a079ec3151fe30f0fd&"
 
-# === AUTOMATIC IMAGE MAPPING ===
 IMAGE_URLS = {
     k: v for k, v in locals().items()
     if k.startswith("IMAGE_") and k.endswith("_URL")
 }
 
+
 def setup_env():
     os.environ.setdefault("TORCH_COMPILE_CACHE_DIR", "./torch_compile_cache")
     os.environ.setdefault("VLLM_TORCH_PROFILER_WITH_PROFILE_MEMORY", "")
+
 
 def download_rgb(url: str) -> Image.Image:
     print(f"[DOWNLOAD] {url}")
@@ -43,8 +42,9 @@ def download_rgb(url: str) -> Image.Image:
     print(f"[DOWNLOAD] got size={img.size}")
     return img
 
+
 def build_json_schema(image_keys):
-    """Builds a JSON schema dynamically for all images."""
+    """Builds a JSON schema dynamically for all images (optional)."""
     base_img_schema = {
         "type": "object",
         "properties": {
@@ -62,23 +62,51 @@ def build_json_schema(image_keys):
     }
     return schema
 
+
+def make_conversation_for_all_images(image_names):
+    """A conversation that requests a single JSON for all images."""
+    contents = [{"type": "text", "text":
+                 f"Analyze these {len(image_names)} images ({', '.join(image_names)}).\n"
+                 f"Return one JSON object with keys {list(image_names)}.\n"
+                 "Each must include: description, main_subject, colors, and purpose."
+                 }]
+    return contents
+
+
+def make_conversation_for_single_image(image_name):
+    """A conversation that requests analysis for a single image."""
+    contents = [{"type": "text", "text":
+                 f"Analyze this image ({image_name}).\n"
+                 f"Return one JSON object with key '{image_name}'.\n"
+                 "The object must include: description, main_subject, colors, and purpose."
+                 }]
+    return contents
+
+
 def main():
     setup_env()
 
-    # Download all images
+    # Download images
     images = {}
     for name, url in IMAGE_URLS.items():
-        images[name] = download_rgb(url)
+        try:
+            images[name] = download_rgb(url)
+        except Exception as e:
+            print(f"[WARN] failed to download {name} ({url}): {e}")
+
+    if not images:
+        print("[ERROR] No images downloaded — exiting.")
+        return
 
     print(f"[INIT] Loaded {len(images)} images.")
-    print("[INIT] Creating LLM for chat (xgrammar structured outputs enabled)…")
 
-    # === Build dynamic schema ===
+    # Optional: build xgrammar schema (uncomment to enforce)
     schema = build_json_schema(images.keys())
     grammar_obj = Grammar.from_json_schema(schema, strict_mode=True)
     structured_output_params = StructuredOutputsParams(grammar=str(grammar_obj))
+    # Note: to enable structured outputs, set sampling_params.structured_outputs=structured_output_params
 
-    # === Initialize LLM ===
+    # Initialize LLM
     llm = LLM(
         model=MODEL_ID,
         dtype=DTYPE,
@@ -90,56 +118,103 @@ def main():
         skip_mm_profiling=True,
     )
 
-    sampling_params = SamplingParams(
-        max_tokens=MAX_TOKENS,
-        top_p=TOP_P,
-        top_k=TOP_K,
-        temperature=TEMPERATURE,
-        #structured_outputs=structured_output_params,  # uncomment if schema enforcement desired
-    )
+    # Build conversations (batches)
+    conversations = []      # each element is a list of messages (one conversation)
+    conv_names = []         # readable names to map batch index -> description
+    conv_images = []        # which images were attached to each conversation (list of image keys)
 
-    # === Construct multimodal messages dynamically ===
-    contents = [{"type": "text", "text":
-        f"Analyze these {len(images)} images ({', '.join(images.keys())}).\n"
-        f"Return one JSON object with keys {list(images.keys())}.\n"
-        f"Each must include: description, main_subject, colors, and purpose."
-    }]
+    # Batch 0: one conversation for ALL images
+    all_contents = make_conversation_for_all_images(list(images.keys()))
+    # system + user messages
+    messages_all = [
+        {"role": "system", "content":
+            "You are a helpful assistant. When asked for JSON, output valid JSON only — "
+            "no commentary, no code fences, no text before or after. Follow the schema exactly."
+         },
+        {"role": "user", "content": all_contents},
+    ]
+    # attach images after the user message
     for name, img in images.items():
-        contents.append({"type": "image_pil", "image_pil": img})
+        messages_all[1]["content"].append({"type": "image_pil", "image_pil": img})
 
-    messages = [
-        {
-            "role": "system",
-            "content": (
+    conversations.append(messages_all)
+    conv_names.append("ALL_IMAGES")
+    conv_images.append(list(images.keys()))
+
+    # Batches 1..N: one conversation per image
+    for name, img in images.items():
+        contents = make_conversation_for_single_image(name)
+        messages = [
+            {"role": "system", "content":
                 "You are a helpful assistant. When asked for JSON, output valid JSON only — "
                 "no commentary, no code fences, no text before or after. Follow the schema exactly."
-            )
-        },
-        {"role": "user", "content": contents},
-    ]
+             },
+            {"role": "user", "content": contents},
+        ]
+        # attach only that image
+        messages[1]["content"].append({"type": "image_pil", "image_pil": img})
 
-    print("[CALL] Calling llm.chat(...) with guided decoding (xgrammar backend)")
-    last = None
+        conversations.append(messages)
+        conv_names.append(f"IMAGE_{name}")
+        conv_images.append([name])
+
+    # sampling params — one per conversation (same settings here, but you can vary per batch)
+    sampling_params_list = []
+    for _ in conversations:
+        sp = SamplingParams(
+            max_tokens=MAX_TOKENS,
+            top_p=TOP_P,
+            top_k=TOP_K,
+            temperature=TEMPERATURE,
+            # Uncomment to enforce schema via xgrammar:
+            # structured_outputs=structured_output_params,
+        )
+        sampling_params_list.append(sp)
+
+    print("[CALL] Calling llm.chat(...) with batched conversations (one call).")
+    all_batches = []
     try:
-        for out in llm.chat(messages, sampling_params=sampling_params):
-            last = out
+        # vLLM supports passing a list of conversations to `chat` to process as a batch.
+        # return_last_only=False to retain multi-output responses if present.
+        for batch_out in llm.chat(
+            messages=conversations,
+            sampling_params=sampling_params_list,
+            use_tqdm=True,
+        ):
+            # each iteration yields a RequestOutput for one batch element
+            all_batches.append(batch_out)
+
     except Exception as e:
-        print("[ERROR] chat failed:", repr(e))
+        print("[ERROR] llm.chat failed:", repr(e))
         raise
 
-    if not last or not getattr(last, "outputs", None):
-        print("[WARN] no output received")
+    if not all_batches:
+        print("[WARN] no batch outputs received")
         return
 
-    raw = last.outputs[0].text.strip()
-    print("\n[MODEL RAW OUTPUT]\n", raw)
+    # Process & print every batch output
+    for batch_idx, batch in enumerate(all_batches):
+        conv_name = conv_names[batch_idx] if batch_idx < len(conv_names) else f"BATCH_{batch_idx}"
+        images_in_batch = conv_images[batch_idx] if batch_idx < len(conv_images) else []
+        print(f"\n=== BATCH {batch_idx} — {conv_name} — images: {images_in_batch} ===")
 
-    try:
-        parsed = json.loads(raw)
-        print("\n[PARSED JSON]\n", json.dumps(parsed, indent=2))
-    except Exception as e:
-        print("[ERROR] failed to parse JSON:", e)
-        print("\n[RAW OUTPUT FOLLOWS]\n", raw)
+        if not getattr(batch, "outputs", None):
+            print(f"[BATCH {batch_idx}] has no outputs")
+            continue
+
+        for out_idx, output in enumerate(batch.outputs):
+            raw = output.text.strip()
+            print(f"\n[BATCH {batch_idx} OUTPUT {out_idx}] RAW OUTPUT:\n{raw}\n")
+            # Attempt to parse JSON (most likely what you want)
+            try:
+                parsed = json.loads(raw)
+                print(f"[BATCH {batch_idx} OUTPUT {out_idx}] PARSED JSON:\n{json.dumps(parsed, indent=2)}")
+            except Exception as e:
+                print(f"[BATCH {batch_idx} OUTPUT {out_idx}] failed to parse JSON:", e)
+
+    del llm
+    gc.collect()
+    print("\n[FIN] Done.")
 
 
 if __name__ == "__main__":

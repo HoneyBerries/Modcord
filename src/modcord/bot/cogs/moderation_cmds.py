@@ -37,7 +37,7 @@ from modcord.util.discord_utils import (
     parse_duration_to_seconds,
     delete_messages_background,
 )
-from modcord.util.moderation_datatypes import (
+from modcord.moderation.moderation_datatypes import (
     CommandAction,
     WarnCommand,
     TimeoutCommand,

@@ -1,38 +1,25 @@
-"""Dynamic message history cache with Discord API fallback.
-
-This module provides a message cache that:
-1. Stores recent messages in memory per-channel (bounded deque)
-2. On demand, fetches older messages from Discord API if cache is insufficient
-3. Dynamically fetches as many messages as needed for context
-4. Provides cache TTL and size limits
-
-The cache is designed to handle bot restarts gracefully by fetching historical
-context directly from Discord when needed, rather than relying solely on
-messages seen at runtime.
-"""
+"""Message history cache with Discord API fallback for missing messages."""
 
 from __future__ import annotations
 
-import asyncio
-from collections import defaultdict, deque
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Deque, Set
+from typing import Optional
 
 import discord
 
 from modcord.util.logger import get_logger
-from modcord.util.moderation_datatypes import ModerationImage, ModerationMessage
+from modcord.moderation.moderation_datatypes import ModerationImage, ModerationMessage
+from modcord.history.channel_cache import ChannelMessageCache
 from modcord.util.image_utils import generate_image_hash_id
 
-logger = get_logger("message_cache")
-
+logger = get_logger("history_cache")
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 
 
 def _is_image_attachment(attachment: discord.Attachment) -> bool:
     """Return True when the attachment can be treated as an image."""
-
     content_type = (attachment.content_type or "").lower()
     if content_type.startswith("image/"):
         return True
@@ -45,93 +32,59 @@ def _is_image_attachment(attachment: discord.Attachment) -> bool:
 
 
 def _build_moderation_images(message: discord.Message) -> list[ModerationImage]:
-    """Convert Discord attachments to ModerationImage structures.
-    
-    Note: PIL images are NOT downloaded here. Images are created with hash IDs only.
-    Download should happen separately in the bot cog.
-    """
-
+    """Convert Discord attachments to ModerationImage structures."""
     images: list[ModerationImage] = []
 
     for attachment in message.attachments:
         if not _is_image_attachment(attachment):
             continue
 
-        # Generate hash ID from URL
         image_id = generate_image_hash_id(attachment.url)
-        
         images.append(
             ModerationImage(
                 image_id=image_id,
-                pil_image=None,  # Not downloaded in cache layer
+                pil_image=None,
             )
         )
 
     return images
 
 
-class ChannelMessageCache:
-    """In-memory message cache for a single Discord channel with TTL support."""
-
-    def __init__(self, max_messages: int = 500, ttl_seconds: int = 3600):
-        """
-        Initialize the channel cache.
-
-        Parameters
-        ----------
-        max_messages:
-            Maximum messages to retain in cache per channel.
-        ttl_seconds:
-            Time-to-live for cached messages in seconds (default 1 hour).
-        """
-        self.max_messages = max_messages
-        self.ttl_seconds = ttl_seconds
-        self.messages: Deque[tuple[ModerationMessage, datetime]] = deque(maxlen=max_messages)
-        self._message_ids: Set[str] = set()
-
-    def add_message(self, message: ModerationMessage) -> None:
-        """Add a message to the cache and track its ID."""
-        message_id = str(message.message_id)
-        if message_id in self._message_ids:
-            return  # Duplicate, skip
+def _extract_embed_content(message: discord.Message) -> str:
+    """Extract and format content from message embeds."""
+    if not message.embeds:
+        return ""
+    
+    embed_parts = []
+    for embed in message.embeds:
+        parts = []
         
-        now = datetime.now(timezone.utc)
-        self.messages.append((message, now))
-        self._message_ids.add(message_id)
+        if embed.title:
+            parts.append(f"[Embed Title: {embed.title}]")
         
-        # If cache is full, the oldest message is auto-dropped by deque.maxlen
-        # Clean up its ID from the tracking set
-        if len(self.messages) >= self.max_messages:
-            logger.debug("Channel cache at max capacity (%d messages)", self.max_messages)
-
-    def get_valid_messages(self) -> list[ModerationMessage]:
-        """Return all messages still within TTL, removing expired ones."""
-        now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(seconds=self.ttl_seconds)
+        if embed.description:
+            parts.append(f"[Embed Description: {embed.description}]")
         
-        valid = []
-        expired_ids = set()
+        if embed.fields:
+            for field in embed.fields:
+                if field.name or field.value:
+                    parts.append(f"[Embed Field - {field.name}: {field.value}]")
         
-        for msg, timestamp in self.messages:
-            if timestamp >= cutoff:
-                valid.append(msg)
-            else:
-                expired_ids.add(str(msg.message_id))
+        if embed.footer and embed.footer.text:
+            parts.append(f"[Embed Footer: {embed.footer.text}]")
         
-        # Clean up expired IDs
-        self._message_ids -= expired_ids
+        if embed.author and embed.author.name:
+            parts.append(f"[Embed Author: {embed.author.name}]")
         
-        return valid
-
-    def clear(self) -> None:
-        """Clear all messages from the cache."""
-        self.messages.clear()
-        self._message_ids.clear()
+        if parts:
+            embed_parts.append(" ".join(parts))
+    
+    return "\n".join(embed_parts) if embed_parts else ""
 
 
 class MessageHistoryCache:
     """
-    Dynamic message history cache with Discord API fallback.
+    Message history cache with Discord API fallback.
     
     Stores recent messages per-channel and fetches from Discord API when
     historical context is needed but not yet cached.
@@ -139,7 +92,7 @@ class MessageHistoryCache:
 
     def __init__(
         self,
-        max_messages_per_channel: int = 500,
+        max_messages_per_channel: int = 24,
         cache_ttl_seconds: int = 3600,
         api_fetch_limit: int = 100,
     ):
@@ -164,7 +117,7 @@ class MessageHistoryCache:
             lambda: ChannelMessageCache(max_messages_per_channel, cache_ttl_seconds)
         )
         
-        # Track bot instance for API calls
+        # Bot instance for API calls
         self.bot: Optional[discord.Client] = None
         
         logger.info(
@@ -181,6 +134,14 @@ class MessageHistoryCache:
         """Add a message to the channel's cache."""
         cache = self.channel_caches[channel_id]
         cache.add_message(message)
+
+    def remove_message(self, channel_id: int, message_id: str) -> bool:
+        """Remove a message from the channel's cache."""
+        if channel_id not in self.channel_caches:
+            return False
+        
+        cache = self.channel_caches[channel_id]
+        return cache.remove_message(message_id)
 
     def get_cached_messages(self, channel_id: int) -> list[ModerationMessage]:
         """Get valid (non-expired) cached messages for a channel."""
@@ -212,22 +173,22 @@ class MessageHistoryCache:
         Returns
         -------
         list[ModerationMessage]
-            Up to `limit` historical messages, most recent first (oldest to newest order).
+            Up to `limit` historical messages.
         """
         if limit <= 0:
             return []
 
         exclude_ids = exclude_message_ids or set()
 
-        # 1. Get cached messages (already filtered by TTL)
+        # 1. Get cached messages
         cached = self.get_cached_messages(channel_id)
         cached_valid = [m for m in cached if str(m.message_id) not in exclude_ids]
 
         # 2. If cached messages are sufficient, return them
         if len(cached_valid) >= limit:
-            return cached_valid[-limit:]  # Return newest `limit` messages
+            return cached_valid[-limit:]
 
-        # 3. If insufficient, try to fetch from Discord API
+        # 3. If insufficient, fetch from Discord API
         api_messages = []
         if self.bot:
             try:
@@ -258,23 +219,7 @@ class MessageHistoryCache:
         limit: int,
         exclude_ids: set[str],
     ) -> list[ModerationMessage]:
-        """
-        Fetch messages from Discord API for a channel.
-
-        Parameters
-        ----------
-        channel_id:
-            The Discord channel ID.
-        limit:
-            Max messages to fetch.
-        exclude_ids:
-            Message IDs to exclude from results.
-
-        Returns
-        -------
-        list[ModerationMessage]
-            Converted Discord messages, excluding specified IDs.
-        """
+        """Fetch messages from Discord API for a channel."""
         if not self.bot or limit <= 0:
             return []
 
@@ -284,7 +229,6 @@ class MessageHistoryCache:
                 logger.debug("Channel %s not found or not a text channel", channel_id)
                 return []
 
-            # Fetch messages; we may fetch more than `limit` to skip excluded ones
             fetch_count = min(limit * 2, self.api_fetch_limit)
             messages = []
 
@@ -297,7 +241,7 @@ class MessageHistoryCache:
                 if str(discord_msg.id) in exclude_ids:
                     continue
                 
-                # Skip ignored authors (bots, admins)
+                # Skip bot messages (those are captured via on_message)
                 if discord_msg.author.bot:
                     continue
                 
@@ -308,9 +252,18 @@ class MessageHistoryCache:
                     continue
 
                 content = (discord_msg.clean_content or "").strip()
+                embed_content = _extract_embed_content(discord_msg)
+                
+                # Combine text and embed content
+                if embed_content:
+                    if content:
+                        content = f"{content}\n{embed_content}"
+                    else:
+                        content = embed_content
+                
                 images = _build_moderation_images(discord_msg)
 
-                # Skip messages that have neither text nor image attachments
+                # Skip messages that have neither text/embed content nor image attachments
                 if not content and not images:
                     continue
 
@@ -366,33 +319,31 @@ class MessageHistoryCache:
         logger.info("Cleared all message caches")
 
 
-# Global message history cache instance
-# Instantiated with default values; will be reconfigured if cache config is available
+# Global instance
 message_history_cache = MessageHistoryCache()
 
 
 def initialize_cache_from_config(app_config) -> None:
-    """
-    Initialize message cache with settings from app_config.
-    
-    Call this after app_config is loaded to apply user-configured cache settings.
-    """
+    """Initialize message cache with settings from app_config."""
     global message_history_cache
     try:
-        if not app_config or not hasattr(app_config, "ai_settings"):
+        if not app_config:
             return
         
-        ai_settings = app_config.ai_settings
-        cache_cfg = ai_settings.get("cache", {}) if isinstance(ai_settings, dict) else {}
+        cfg_data = app_config.data if hasattr(app_config, "data") else {}
+        history_cfg = cfg_data.get("history_fetching", {})
         
-        if not cache_cfg:
+        if not history_cfg and hasattr(app_config, "ai_settings"):
+            ai_settings = app_config.ai_settings
+            history_cfg = ai_settings.get("cache", {}) if isinstance(ai_settings, dict) else {}
+        
+        if not history_cfg:
             return
         
-        max_msgs = int(cache_cfg.get("max_messages_per_channel", 500))
-        ttl_secs = int(cache_cfg.get("cache_ttl_seconds", 3600))
-        api_limit = int(cache_cfg.get("api_fetch_limit", 100))
+        max_msgs = int(history_cfg.get("max_historical_messages_per_channel", history_cfg.get("max_messages_per_channel", 0)))
+        ttl_secs = int(history_cfg.get("history_ttl_seconds", history_cfg.get("cache_ttl_seconds", 3600)))
+        api_limit = int(history_cfg.get("api_fetch_limit", 100))
         
-        # Recreate with config values
         message_history_cache = MessageHistoryCache(
             max_messages_per_channel=max_msgs,
             cache_ttl_seconds=ttl_secs,

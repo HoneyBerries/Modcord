@@ -15,8 +15,8 @@ import asyncio
 from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence, Set
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
-from modcord.util.moderation_datatypes import ActionType, ModerationBatch, ModerationMessage
-from modcord.util.message_cache import message_history_cache
+from modcord.moderation.moderation_datatypes import ActionType, ModerationChannelBatch, ModerationMessage
+from modcord.history.history_cache import message_history_cache
 from modcord.configuration.app_configuration import app_config
 from modcord.database.database import init_database, get_connection
 
@@ -67,7 +67,7 @@ class GuildSettingsManager:
         # Channel-based message batching system (15-second intervals)
         self.channel_message_batches: DefaultDict[int, List[ModerationMessage]] = collections.defaultdict(list)
         self.channel_batch_timers: Dict[int, asyncio.Task] = {}  # channel_id -> timer task
-        self.batch_processing_callback: Optional[Callable[[ModerationBatch], Awaitable[None]]] = None
+        self.batch_processing_callback: Optional[Callable[[ModerationChannelBatch], Awaitable[None]]] = None
 
         # Persistence helpers
         self._persist_lock = asyncio.Lock()
@@ -126,11 +126,25 @@ class GuildSettingsManager:
         """Add a message to the dynamic message cache for Discord API fallback."""
         message_history_cache.add_message(channel_id, message)
 
-
-    # get_chat_history is now obsolete; use message_history_cache.get_cached_messages if needed
+    def remove_message_from_history(self, channel_id: int, message_id: str) -> bool:
+        """Remove a message from the dynamic message cache.
+        
+        Parameters
+        ----------
+        channel_id:
+            The Discord channel ID.
+        message_id:
+            The message ID to remove.
+            
+        Returns
+        -------
+        bool
+            True if the message was found and removed, False otherwise.
+        """
+        return message_history_cache.remove_message(channel_id, message_id)
 
     # --- Channel-based message batching for 15-second intervals ---
-    def set_batch_processing_callback(self, callback: Callable[[ModerationBatch], Awaitable[None]]) -> None:
+    def set_batch_processing_callback(self, callback: Callable[[ModerationChannelBatch], Awaitable[None]]) -> None:
         """Set the async callback invoked when a channel batch is ready."""
         self.batch_processing_callback = callback
         logger.info("Batch processing callback set")
@@ -180,7 +194,7 @@ class GuildSettingsManager:
                         len(history_context),
                         channel_id,
                     )
-                batch = ModerationBatch(channel_id=channel_id, messages=messages, history=history_context)
+                batch = ModerationChannelBatch(channel_id=channel_id, messages=messages, history=history_context)
                 try:
                     await self.batch_processing_callback(batch)
                 except Exception:

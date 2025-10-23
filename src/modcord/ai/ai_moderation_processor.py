@@ -6,14 +6,12 @@ import json
 from typing import Any, Dict, List, Optional
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
-from modcord.util.moderation_datatypes import (
+from modcord.moderation.moderation_datatypes import (
     ActionData,
-    ActionType,
-    ModerationBatch,
-    ModerationImage,
+    ModerationChannelBatch,
     humanize_timestamp,
 )
-import modcord.util.moderation_parsing as moderation_parsing
+import modcord.moderation.moderation_parsing as moderation_parsing
 from modcord.configuration.app_configuration import app_config
 from xgrammar.grammar import Grammar
 
@@ -48,7 +46,7 @@ class ModerationProcessor:
     # ======== Main Business Logic ========
     async def get_batch_moderation_actions(
         self,
-        batch: ModerationBatch,
+        batch: ModerationChannelBatch,
         server_rules: str = "",
     ) -> List[ActionData]:
         """Process a batch of messages and return moderation actions.
@@ -131,9 +129,9 @@ class ModerationProcessor:
 
     def _batch_to_json_with_images(
         self,
-        batch: ModerationBatch,
+        batch: ModerationChannelBatch,
     ) -> tuple[Dict[str, Any], List[Any], Dict[str, int]]:
-        """Convert ModerationBatch to JSON structure with image IDs.
+        """Convert ModerationChannelBatch to JSON structure with image IDs.
         
         Returns:
             Tuple of (json_payload, pil_images_list, image_id_map)
