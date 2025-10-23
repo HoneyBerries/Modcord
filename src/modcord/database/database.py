@@ -83,17 +83,3 @@ def get_connection() -> aiosqlite.Connection:
     """
     # Return connection object that will be used with async context manager
     return aiosqlite.connect(DB_PATH)
-
-
-def get_connection_sync() -> aiosqlite.Connection:
-    """
-    Get a synchronous database connection (for testing or initialization).
-    
-    Returns:
-        sqlite3.Connection: Synchronous database connection
-    """
-    import sqlite3
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    return conn # type: ignore
