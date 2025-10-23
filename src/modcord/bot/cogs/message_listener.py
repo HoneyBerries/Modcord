@@ -9,6 +9,7 @@ import discord
 from discord.ext import commands
 
 from modcord.util.moderation_datatypes import ModerationImage, ModerationMessage
+from modcord.util.image_utils import download_image_to_pil, generate_image_hash_id
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
@@ -48,44 +49,54 @@ class MessageListenerCog(commands.Cog):
         filename = (attachment.filename or "").lower()
         return filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
 
-    def _build_moderation_images(self, message: discord.Message) -> list[ModerationImage]:
-        """Transform Discord attachments into ModerationImage entries."""
+    def _build_moderation_images(self, message: discord.Message) -> list[tuple[str, ModerationImage]]:
+        """Transform Discord attachments into (url, ModerationImage) tuples for download."""
 
-        images: list[ModerationImage] = []
-        image_index = 0
-        author_id = str(message.author.id) if message.author else ""
+        images: list[tuple[str, ModerationImage]] = []
 
         for attachment in message.attachments:
             if not self._is_image_attachment(attachment):
                 continue
 
-            attachment_id = str(attachment.id or f"{message.id}:{image_index}")
-            images.append(
-                ModerationImage(
-                    attachment_id=attachment_id,
-                    message_id=str(message.id),
-                    user_id=author_id,
-                    index=image_index,
-                    filename=attachment.filename,
-                    source_url=attachment.url,
-                    pil_image=None,  # Will be downloaded in async method
-                )
+            # Generate hash ID from URL
+            image_id = generate_image_hash_id(attachment.url)
+            
+            # Create ModerationImage with just ID (PIL image will be added after download)
+            mod_image = ModerationImage(
+                image_id=image_id,
+                pil_image=None,  # Will be set after download
             )
-            image_index += 1
+            
+            images.append((attachment.url, mod_image))
 
         return images
 
-    async def _download_images_for_moderation_images(self, images: list[ModerationImage]) -> None:
-        """Download PIL images for all ModerationImage objects."""
-        for img in images:
-            if img.source_url:
-                pil_image = await image_cache.download_image_to_pil(
-                    img.source_url, suggested_name=img.filename
-                )
-                if pil_image:
-                    img.pil_image = pil_image
-                else:
-                    logger.warning(f"Failed to download image from {img.source_url}")
+    async def _download_images_for_moderation_images(
+        self,
+        image_tuples: list[tuple[str, ModerationImage]]
+    ) -> list[ModerationImage]:
+        """Download PIL images for all ModerationImage objects.
+        
+        Args:
+            image_tuples: List of (url, ModerationImage) tuples
+            
+        Returns:
+            List of ModerationImage objects with pil_image set (only successful downloads)
+        """
+        import asyncio
+        
+        successful_images = []
+        
+        for url, img in image_tuples:
+            # Run download in thread to avoid blocking
+            pil_image = await asyncio.to_thread(download_image_to_pil, url)
+            if pil_image:
+                img.pil_image = pil_image
+                successful_images.append(img)
+            else:
+                logger.warning(f"Failed to download image from {url}")
+        
+        return successful_images
 
     async def _create_moderation_message(
         self, 
@@ -114,9 +125,9 @@ class MessageListenerCog(commands.Cog):
             datetime.timezone.utc
         ).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         
-        # Build images and download PIL images immediately
-        images = self._build_moderation_images(message)
-        await self._download_images_for_moderation_images(images)
+        # Build image tuples and download PIL images immediately
+        image_tuples = self._build_moderation_images(message)
+        images = await self._download_images_for_moderation_images(image_tuples)
         
         return ModerationMessage(
             message_id=str(message.id),

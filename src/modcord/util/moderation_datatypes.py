@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Sequence
-from urllib.parse import urlsplit, urlunsplit, ParseResult
+from typing import Any, Iterable, List, Optional, Sequence
 import discord
 from modcord.util.logger import get_logger
 
@@ -97,14 +96,9 @@ class ActionData:
 
 @dataclass(slots=True)
 class ModerationImage:
-    """Structured representation of an image attachment for moderation."""
+    """Simplified image representation with SHA256 hash ID and PIL image."""
 
-    attachment_id: str
-    message_id: str
-    user_id: str
-    index: int
-    filename: Optional[str] = None
-    source_url: Optional[str] = None
+    image_id: str  # First 8 chars of SHA256 hash
     pil_image: Optional[Any] = None  # PIL.Image.Image object
 
 

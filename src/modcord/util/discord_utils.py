@@ -589,6 +589,7 @@ async def apply_action_decision(
     if discord_message is None:
         logger.warning("No Discord message object for moderation pivot %s; skipping action", pivot.message_id)
         return False
+    
     guild = discord_message.guild
     author = discord_message.author
     if guild is None or not isinstance(author, discord.Member):

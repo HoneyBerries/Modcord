@@ -33,8 +33,8 @@ import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.ai.ai_moderation_processor import model_state
-from modcord.ai.ai_lifecycle import (
+from modcord.ai.ai_moderation_processor import (
+    model_state,
     initialize_engine,
     shutdown_engine,
 )

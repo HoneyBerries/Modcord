@@ -22,6 +22,7 @@ import discord
 
 from modcord.util.logger import get_logger
 from modcord.util.moderation_datatypes import ModerationImage, ModerationMessage
+from modcord.util.image_utils import generate_image_hash_id
 
 logger = get_logger("message_cache")
 
@@ -44,27 +45,27 @@ def _is_image_attachment(attachment: discord.Attachment) -> bool:
 
 
 def _build_moderation_images(message: discord.Message) -> list[ModerationImage]:
-    """Convert Discord attachments to ModerationImage structures."""
+    """Convert Discord attachments to ModerationImage structures.
+    
+    Note: PIL images are NOT downloaded here. Images are created with hash IDs only.
+    Download should happen separately in the bot cog.
+    """
 
     images: list[ModerationImage] = []
-    image_index = 0
-    author_id = str(message.author.id) if message.author else ""
 
     for attachment in message.attachments:
         if not _is_image_attachment(attachment):
             continue
 
+        # Generate hash ID from URL
+        image_id = generate_image_hash_id(attachment.url)
+        
         images.append(
             ModerationImage(
-                attachment_id=str(attachment.id or f"{message.id}:{image_index}"),
-                message_id=str(message.id),
-                user_id=author_id,
-                index=image_index,
-                filename=attachment.filename,
-                source_url=attachment.url,
+                image_id=image_id,
+                pil_image=None,  # Not downloaded in cache layer
             )
         )
-        image_index += 1
 
     return images
 
