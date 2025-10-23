@@ -1,4 +1,15 @@
-"""Utility types for moderation actions and message payloads."""
+"""
+Utility types for moderation actions and message payloads.
+
+This module defines the data structures and enumerations used for moderation actions, message payloads, and batch processing. These types are used throughout the moderation pipeline to normalize and serialize data for AI processing and Discord API interactions.
+
+Key Features:
+- `ActionType`: Enum for supported moderation actions (e.g., BAN, WARN, DELETE).
+- `ActionData`: Represents a moderation action with metadata (e.g., user ID, reason, message IDs).
+- `ModerationMessage`: Normalized representation of a Discord message, including text and images.
+- `ModerationChannelBatch`: Container for batched messages and historical context per channel.
+- Command action classes (e.g., `WarnCommand`, `TimeoutCommand`) for manual moderation commands.
+"""
 
 from __future__ import annotations
 
@@ -12,10 +23,16 @@ from modcord.util.logger import get_logger
 logger = get_logger("moderation_datatypes")
 
 def humanize_timestamp(value: str) -> str:
-    """Return a human-readable timestamp (YYYY-MM-DD HH:MM:SS) in UTC."""
+    """Return a human-readable timestamp (YYYY-MM-DD HH:MM:SS) in UTC.
+
+    Args:
+        value (str): ISO 8601 timestamp string.
+
+    Returns:
+        str: Human-readable UTC timestamp.
+    """
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     dt = dt.astimezone(timezone.utc)
-    
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 class ActionType(Enum):
@@ -32,18 +49,17 @@ class ActionType(Enum):
     def __str__(self) -> str:
         return self.value
 
-
 @dataclass(slots=True)
 class ActionData:
     """Normalized moderation action payload.
 
     Attributes:
-        user_id: Snowflake of target user, stored as string for JSON parity.
-        action: Moderation action to execute.
-        reason: Human-readable explanation for auditing/logging.
-        message_ids: Related message IDs to operate on (deleted, audited, etc.).
-        timeout_duration: Timeout duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
-        ban_duration: Ban duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
+        user_id (str): Snowflake of target user, stored as string for JSON parity.
+        action (ActionType): Moderation action to execute.
+        reason (str): Human-readable explanation for auditing/logging.
+        message_ids (List[str]): Related message IDs to operate on (deleted, audited, etc.).
+        timeout_duration (Optional[int]): Timeout duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
+        ban_duration (Optional[int]): Ban duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
     """
 
     user_id: str
@@ -56,12 +72,9 @@ class ActionData:
     def add_message_ids(self, *message_ids: str) -> None:
         """Append one or more message identifiers to the action payload.
 
-        Parameters
-        ----------
-        *message_ids:
-            Discord message identifiers associated with the moderation action.
+        Args:
+            *message_ids: Discord message identifiers associated with the moderation action.
         """
-
         for raw_mid in message_ids:
             mid = str(raw_mid).strip()
             if not mid:
@@ -72,18 +85,18 @@ class ActionData:
     def replace_message_ids(self, message_ids: Iterable[str]) -> None:
         """Replace the tracked message identifiers with the provided iterable.
 
-        Parameters
-        ----------
-        message_ids:
-            Iterable of message identifiers that should overwrite the current list.
+        Args:
+            message_ids (Iterable[str]): Iterable of message identifiers that should overwrite the current list.
         """
-
         self.message_ids.clear()
         self.add_message_ids(*message_ids)
 
     def to_wire_dict(self) -> dict:
-        """Return a JSON-serializable dictionary representing this action."""
+        """Return a JSON-serializable dictionary representing this action.
 
+        Returns:
+            dict: JSON-serializable representation of the action.
+        """
         return {
             "user_id": self.user_id,
             "action": self.action.value,
@@ -93,18 +106,33 @@ class ActionData:
             "ban_duration": self.ban_duration,
         }
 
-
 @dataclass(slots=True)
 class ModerationImage:
-    """Simplified image representation with SHA256 hash ID and PIL image."""
+    """Simplified image representation with SHA256 hash ID and PIL image.
 
-    image_id: str  # First 8 chars of SHA256 hash
-    pil_image: Optional[Any] = None  # PIL.Image.Image object
+    Attributes:
+        image_id (str): First 8 characters of the SHA256 hash.
+        pil_image (Optional[Any]): PIL.Image.Image object representing the image.
+    """
 
+    image_id: str
+    pil_image: Optional[Any] = None
 
 @dataclass(slots=True)
 class ModerationMessage:
-    """Normalized message data used to provide context to the moderation engine."""
+    """Normalized message data used to provide context to the moderation engine.
+
+    Attributes:
+        message_id (str): Unique identifier for the message.
+        user_id (str): Snowflake of the user who sent the message.
+        username (str): Username of the message sender.
+        content (str): Text content of the message.
+        timestamp (str): ISO 8601 timestamp of when the message was sent.
+        guild_id (Optional[int]): ID of the guild where the message was sent.
+        channel_id (Optional[int]): ID of the channel where the message was sent.
+        images (List[ModerationImage]): List of images attached to the message.
+        discord_message (Optional[discord.Message]): Reference to the original Discord message object.
+    """
 
     message_id: str
     user_id: str
@@ -116,38 +144,66 @@ class ModerationMessage:
     images: List[ModerationImage] = field(default_factory=list)
     discord_message: "discord.Message | None" = None
 
-
 @dataclass(slots=True)
 class ModerationChannelBatch:
-    """Container for batched moderation messages plus optional historical context."""
+    """Container for batched moderation messages plus optional historical context.
+
+    Attributes:
+        channel_id (int): ID of the channel the batch belongs to.
+        messages (List[ModerationMessage]): List of messages in the batch.
+        history (List[ModerationMessage]): Historical messages for context.
+    """
 
     channel_id: int
     messages: List[ModerationMessage] = field(default_factory=list)
     history: List[ModerationMessage] = field(default_factory=list)
 
     def add_message(self, message: ModerationMessage) -> None:
+        """Add a message to the batch.
+
+        Args:
+            message (ModerationMessage): The message to add.
+        """
         self.messages.append(message)
 
     def extend(self, messages: Sequence[ModerationMessage]) -> None:
+        """Extend the batch with a sequence of messages.
+
+        Args:
+            messages (Sequence[ModerationMessage]): Messages to add to the batch.
+        """
         self.messages.extend(messages)
 
     def set_history(self, history: Sequence[ModerationMessage]) -> None:
+        """Set the historical context for the batch.
+
+        Args:
+            history (Sequence[ModerationMessage]): Historical messages to set.
+        """
         self.history = list(history)
 
     def is_empty(self) -> bool:
-        return not self.messages
+        """Check if the batch is empty.
 
+        Returns:
+            bool: True if the batch has no messages, False otherwise.
+        """
+        return not self.messages
 
 # ============================================================
 # Command Action Classes - extend ActionData for manual commands
 # ============================================================
-
 
 class CommandAction(ActionData):
     """Base class for manual moderation command actions.
     
     Extends ActionData with an execute method for direct execution
     without requiring a Discord message pivot.
+    
+    Attributes:
+        user_id (str): Snowflake of the target user.
+        action (ActionType): Moderation action to execute.
+        reason (str): Reason for the action.
     """
 
     async def execute(
@@ -158,23 +214,22 @@ class CommandAction(ActionData):
     ) -> None:
         """Execute the moderation action.
 
-        Parameters
-        ----------
-        ctx:
-            Slash command context.
-        user:
-            Guild member to apply the action to.
-        bot_instance:
-            Discord bot instance for scheduling tasks.
+        Args:
+            ctx (discord.ApplicationContext): Slash command context.
+            user (discord.Member): Guild member to apply the action to.
+            bot_instance (discord.Bot): Discord bot instance for scheduling tasks.
         """
         raise NotImplementedError("Subclasses must implement execute()")
-
 
 class WarnCommand(CommandAction):
     """Warn action for manual commands."""
 
     def __init__(self, reason: str = "No reason provided."):
-        """Initialize a warn action."""
+        """Initialize a warn action.
+
+        Args:
+            reason (str): Reason for the warning.
+        """
         super().__init__(
             user_id="0",  # Will be set by caller
             action=ActionType.WARN,
@@ -187,7 +242,13 @@ class WarnCommand(CommandAction):
         user: discord.Member,
         bot_instance: discord.Bot,
     ) -> None:
-        """Execute warn action by creating embed and DM."""
+        """Execute warn action by creating embed and DM.
+
+        Args:
+            ctx (discord.ApplicationContext): Slash command context.
+            user (discord.Member): Guild member to warn.
+            bot_instance (discord.Bot): Discord bot instance.
+        """
         from modcord.util.discord_utils import (
             send_dm_to_user,
             build_dm_message,
@@ -365,7 +426,6 @@ class BanCommand(CommandAction):
         bot_instance: discord.Bot,
     ) -> None:
         """Execute ban action."""
-        import datetime
         from modcord.util.discord_utils import (
             send_dm_to_user,
             build_dm_message,

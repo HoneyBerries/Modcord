@@ -17,20 +17,26 @@
 - The same listener queues messages for moderation by passing them to the manager’s batching layer. Guild-level feature toggles are consulted before queuing so that moderators can disable AI assistance per server.
 
 ## Channel Batching Layer
-- `GuildSettingsManager` orchestrates batched moderation. Each channel has an in-memory queue and an associated timer whose length comes from configuration (`moderation_batch_seconds`).
-- When the timer fires, the manager gathers the queued messages and enriches them with contextual history via `message_history_cache.fetch_history_for_context`, which blends cached content with on-demand Discord API fetches if necessary.
-- The manager wraps everything in a `ModerationChannelBatch` structure and forwards it to the registered callback. The callback, set during startup, binds back into `moderation_helper.process_message_batch` with access to the cog instance.
+- `GuildSettingsManager` orchestrates batched moderation using a **global batching approach**. Messages from each channel are queued independently, but all channels share a single global timer whose length comes from configuration (`moderation_batch_seconds`).
+- When the global timer fires, the manager gathers **all pending channel batches** and enriches each with contextual history via `global_history_cache_manager.fetch_history_for_context`, which blends cached content with on-demand Discord API fetches if necessary.
+- The manager wraps each channel's messages in a `ModerationChannelBatch` structure and creates a list of all batches. This list is forwarded to the registered callback, which binds back into `moderation_helper.process_message_batches` with access to the cog instance.
+- **Key advantage**: All channel batches are processed together in a single vLLM inference call, maximizing GPU utilization and throughput compared to processing each channel individually.
 
 ## AI Prompt Composition & Inference
-- `ModerationProcessor.get_batch_moderation_actions` transforms a batch into a JSON payload that groups messages by user, tracks ordering, and records the precise message IDs produced in Discord.
+- `ModerationProcessor.get_multi_batch_moderation_actions` transforms **multiple channel batches** into vLLM-ready conversations in a single operation. Each batch becomes one conversation in the list:
+  - Messages are grouped by user with ordering and message IDs preserved
+  - A dynamic JSON schema is built per-channel to constrain AI outputs to valid user IDs and message IDs for that channel
+  - Each conversation has its own guided decoding grammar compiled from the channel-specific schema
 - Before inference, the processor resolves server rules. Per-guild overrides take precedence over default rules declared in the YAML config. Rules text is obtained either from cached guild settings or via the rules manager, which periodically scrapes rule-like channels.
-- The processor requests a system prompt from `InferenceProcessor`, which injects rule text into the configured template. Messages are then serialized using the model tokenizer’s chat template to align with vLLM expectations.
-- Guided decoding is enabled through xgrammar. A JSON schema (shared with the parser) is compiled once and applied to every generation, ensuring that probabilities collapse onto valid moderation payloads even if the model attempts free-form responses.
+- The processor requests a system prompt from `InferenceProcessor`, which injects rule text into the configured template. Each conversation is formatted with the same system prompt but different message payloads and schemas.
+- **Global batch processing**: All conversations are submitted to vLLM in a single `llm.chat()` call with a list of conversations and sampling parameters. vLLM processes them as a batch, maximizing GPU efficiency.
+- Guided decoding is enabled through xgrammar. Each conversation's JSON schema is compiled once and applied to its generation, ensuring that probabilities collapse onto valid moderation payloads even if the model attempts free-form responses.
 
 ## Response Parsing & Normalization
-- Model output is validated in `moderation_parsing`. Code fences and surrounding text are stripped, the payload is decoded, and the JSON schema is enforced. Channel mismatches, missing fields, or invalid actions result in an empty action set to prevent undefined behavior.
+- Model outputs from each conversation are validated in `moderation_parsing`. Code fences and surrounding text are stripped, payloads are decoded, and JSON schemas are enforced. Channel mismatches, missing fields, or invalid actions result in empty action sets to prevent undefined behavior.
 - Parsed actions are normalized into `ActionData` structures. `ModerationProcessor` reconciles AI-provided message IDs against the actual Discord batch so that downstream enforcement is guaranteed to refer to real messages. Missing or mismatched IDs fall back to the most recent known messages for the user to avoid incorrect deletes.
-- A final list of `ActionData` objects is returned to the helper layer. Actions marked as `NULL` are filtered out before Discord-facing work begins.
+- Actions from all channels are grouped by channel_id and returned as a dictionary. Each channel's action list is then processed independently to apply moderation actions in the correct context.
+- Actions marked as `NULL` are filtered out before Discord-facing work begins.
 
 ## Enforcement & Discord Integration
 - `moderation_helper.apply_batch_action` cross-checks each action against guild policy toggles (warn/delete/timeout/kick/ban). It also ensures the message still exists, the author is a moderatable member, and that the target isn’t a privileged user or the guild owner.
@@ -41,7 +47,7 @@
 ## Configuration & Data Flow
 - `app_config` is a thread-safe reader around `config/app_config.yml`. It exposes default server rules, the moderation prompt template, AI settings, and batching/ cache tuning parameters.
 - `GuildSettingsManager` persists per-guild settings to `data/guild_settings.json`. Settings include whether AI is enabled and whether each automated action type is allowed. Writes happen asynchronously with atomic file replacement to avoid data corruption.
-- Channel history is stored in `MessageHistoryCache`, which supports TTL-based eviction and API fallback. The cache is reconfigured during startup if the YAML provides overrides for size, TTL, or fetch limits.
+- Channel history is stored in `GlobalHistoryCacheManager`, which supports TTL-based eviction and API fallback. The cache is reconfigured during startup if the YAML provides overrides for size, TTL, or fetch limits.
 - The rules manager scrapes likely rule channels and persists the aggregated text within guild settings, ensuring that updated rules automatically feed the AI prompt without redeploying the bot.
 
 ## Design Principles

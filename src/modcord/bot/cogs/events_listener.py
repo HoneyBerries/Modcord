@@ -57,10 +57,10 @@ class EventsListenerCog(commands.Cog):
         logger.info("Starting server rules cache refresh task...")
         asyncio.create_task(rules_manager.start_periodic_refresh_task(self.bot))
 
-        # Set up batch processing callback for channel-based batching
+        # Set up batch processing callback for global batching
         logger.info("Setting up batch processing callback...")
         guild_settings_manager.set_batch_processing_callback(
-            lambda batch: moderation_helper.process_message_batch(self, batch)
+            lambda batches: moderation_helper.process_message_batches(self, batches)
         )
 
         commands = await self.bot.http.get_global_commands(self.bot.user.id)

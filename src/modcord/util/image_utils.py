@@ -28,22 +28,35 @@ def generate_image_hash_id(image_url: str) -> str:
 
 def download_image_to_pil(url: str, timeout: int = 2) -> Optional[Image.Image]:
     """
-    Download an image from a URL and convert it to a PIL Image (RGB mode).
-    
-    Args:
-        url: The URL of the image to download
-        timeout: Request timeout in seconds
-        
-    Returns:
-        PIL Image object in RGB mode, or None if download/conversion fails
+    Downloads an image from a given URL and returns it as a resized PIL Image in RGB mode.
+        url (str): The URL of the image to download.
+        timeout (int, optional): Timeout for the HTTP request in seconds. Defaults to 2.
+        Optional[Image.Image]: The downloaded image as a PIL Image object in RGB mode, resized so the longest side is 512 pixels.
+        Returns None if the download or conversion fails.
+    Raises:
+        None. All exceptions are caught and logged internally.
     """
+    
     try:
         logger.debug(f"[DOWNLOAD] Downloading image from {url}")
         response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         
         img = Image.open(BytesIO(response.content)).convert("RGB")
-        logger.debug(f"[DOWNLOAD] Successfully downloaded image, size={img.size}")
+
+        # Resize image for efficiency
+        max_side = 512
+        w, h = img.size
+
+        if w > h:
+            new_w = max_side
+            new_h = int(h * max_side / w)
+        else:
+            new_h = max_side
+            new_w = int(w * max_side / h)
+
+        img = img.resize((new_w, new_h))
+        logger.debug(f"[DOWNLOAD] Successfully downloaded image, resized={img.size}")
         return img
     except requests.RequestException as exc:
         logger.error(f"[DOWNLOAD] Request failed for {url}: {exc}")
