@@ -61,13 +61,10 @@ class GuildSettingsManager:
         # Persisted guild settings registry (guild_id -> GuildSettings)
         self.guilds: Dict[int, GuildSettings] = {}
 
-        # Per-channel chat history for AI context
-    # self.chat_history is now obsolete; use message_history_cache instead
-
-        # Channel-based message batching system (15-second intervals)
+        # Global message batching system
         self.channel_message_batches: DefaultDict[int, List[ModerationMessage]] = collections.defaultdict(list)
-        self.channel_batch_timers: Dict[int, asyncio.Task] = {}  # channel_id -> timer task
-        self.batch_processing_callback: Optional[Callable[[ModerationChannelBatch], Awaitable[None]]] = None
+        self.global_batch_timer: Optional[asyncio.Task] = None
+        self.batch_processing_callback: Optional[Callable[[List[ModerationChannelBatch]], Awaitable[None]]] = None
 
         # Persistence helpers
         self._persist_lock = asyncio.Lock()
@@ -143,84 +140,93 @@ class GuildSettingsManager:
         """
         return message_history_cache.remove_message(channel_id, message_id)
 
-    # --- Channel-based message batching for 15-second intervals ---
-    def set_batch_processing_callback(self, callback: Callable[[ModerationChannelBatch], Awaitable[None]]) -> None:
-        """Set the async callback invoked when a channel batch is ready."""
+    # --- Global message batching system ---
+    def set_batch_processing_callback(self, callback: Callable[[List[ModerationChannelBatch]], Awaitable[None]]) -> None:
+        """Set the async callback invoked when global batches are ready."""
         self.batch_processing_callback = callback
         logger.info("Batch processing callback set")
 
     async def add_message_to_batch(self, channel_id: int, message: ModerationMessage) -> None:
-        """Queue a message for the channel's 15s batch and start the timer if needed."""
-        # Add message to current batch
+        """Queue a message for global batch processing and start timer if needed."""
+        # Add message to channel's batch
         self.channel_message_batches[channel_id].append(message)
         logger.debug(
-            "Added message to batch for channel %s, message group size: %d",
+            "Added message to batch for channel %s, current batch size: %d",
             channel_id,
             len(self.channel_message_batches[channel_id]),
         )
 
-        # If this is the first message in the batch, start the timer
-        if channel_id not in self.channel_batch_timers:
-            self.channel_batch_timers[channel_id] = asyncio.create_task(self.batch_timer(channel_id))
-            logger.debug("Started 15-second batch timer for channel %s", channel_id)
+        # If no global timer is running, start one
+        if self.global_batch_timer is None or self.global_batch_timer.done():
+            self.global_batch_timer = asyncio.create_task(self.global_batch_timer_task())
+            logger.debug("Started global batch timer")
 
-    async def batch_timer(self, channel_id: int) -> None:
-        """Await the batching window, then invoke the batch callback with messages."""
+    async def global_batch_timer_task(self) -> None:
+        """Global timer that processes all pending channel batches together."""
         try:
             ai_settings = app_config.ai_settings if app_config else {}
             moderation_batch_seconds = float(ai_settings.get("moderation_batch_seconds", 10.0))
-            logger.debug("Using moderation_batch_seconds=%s seconds for channel %s", moderation_batch_seconds, channel_id)
+            logger.debug("Global batch timer started with %s seconds", moderation_batch_seconds)
             await asyncio.sleep(moderation_batch_seconds)
 
-            # Get the current batch and clear it
-            messages = list(self.channel_message_batches[channel_id])
-            self.channel_message_batches[channel_id].clear()
-            try:
-                del self.channel_message_batches[channel_id]
-            except KeyError:
-                pass
-
-            # Remove the timer reference
-            if channel_id in self.channel_batch_timers:
-                del self.channel_batch_timers[channel_id]
-
-            # Process the batch if we have messages and a callback
-            if messages and self.batch_processing_callback:
-                logger.debug("Processing batch for channel %s with %d messages", channel_id, len(messages))
-                history_context = await self._resolve_history_context(channel_id, messages)
-                if history_context:
-                    logger.debug(
-                        "Including %d prior messages as context for channel %s",
-                        len(history_context),
-                        channel_id,
+            # Collect all pending channel batches
+            channel_batches: List[ModerationChannelBatch] = []
+            channel_ids = list(self.channel_message_batches.keys())
+            
+            for channel_id in channel_ids:
+                messages = list(self.channel_message_batches[channel_id])
+                if messages:
+                    # Get history context for this channel
+                    history_context = await self._resolve_history_context(channel_id, messages)
+                    batch = ModerationChannelBatch(
+                        channel_id=channel_id,
+                        messages=messages,
+                        history=history_context
                     )
-                batch = ModerationChannelBatch(channel_id=channel_id, messages=messages, history=history_context)
+                    channel_batches.append(batch)
+                    logger.debug(
+                        "Prepared batch for channel %s: %d messages, %d history",
+                        channel_id,
+                        len(messages),
+                        len(history_context)
+                    )
+                
+                # Clear this channel's batch
+                self.channel_message_batches[channel_id].clear()
                 try:
-                    await self.batch_processing_callback(batch)
+                    del self.channel_message_batches[channel_id]
+                except KeyError:
+                    pass
+
+            # Process all batches together if we have any
+            if channel_batches and self.batch_processing_callback:
+                logger.info(
+                    "Processing global batch: %d channels, %d total messages",
+                    len(channel_batches),
+                    sum(len(b.messages) for b in channel_batches)
+                )
+                try:
+                    await self.batch_processing_callback(channel_batches)
                 except Exception:
-                    logger.exception("Exception while processing batch for channel %s", channel_id)
+                    logger.exception("Exception while processing global batch")
             else:
-                logger.warning("No messages or callback for channel %s", channel_id)
+                logger.debug("No batches or callback to process")
 
         except asyncio.CancelledError:
-            logger.info("Batch timer cancelled for channel %s", channel_id)
-            if channel_id in self.channel_batch_timers:
-                del self.channel_batch_timers[channel_id]
+            logger.info("Global batch timer cancelled")
         except Exception:
-            logger.exception("Error in batch timer for channel %s", channel_id)
-            if channel_id in self.channel_batch_timers:
-                del self.channel_batch_timers[channel_id]
+            logger.exception("Error in global batch timer")
 
     def cancel_all_batch_timers(self) -> None:
         """
-        Cancel and clear all active batch timers (use during shutdown).
+        Cancel the global batch timer (use during shutdown).
 
         This is synchronous and will request cancellation; call shutdown() to
-        await the tasks and ensure cleanup.
+        await the task and ensure cleanup.
         """
-        for channel_id, timer_task in list(self.channel_batch_timers.items()):
-            timer_task.cancel()
-        logger.info("Requested cancellation of all batch timers")
+        if self.global_batch_timer and not self.global_batch_timer.done():
+            self.global_batch_timer.cancel()
+        logger.info("Requested cancellation of global batch timer")
 
     def _trigger_persist(self, guild_id: int) -> None:
         """Schedule a best-effort persist of a single guild's settings to database."""
@@ -286,13 +292,13 @@ class GuildSettingsManager:
             return []
 
     async def shutdown(self) -> None:
-        """Gracefully cancel and await all outstanding batch timers (await on shutdown)."""
-        timers = list(self.channel_batch_timers.values())
-        self.channel_batch_timers.clear()
-        for task in timers:
-            task.cancel()
-        if timers:
-            await asyncio.gather(*timers, return_exceptions=True)
+        """Gracefully cancel and await the global batch timer (await on shutdown)."""
+        if self.global_batch_timer and not self.global_batch_timer.done():
+            self.global_batch_timer.cancel()
+            try:
+                await self.global_batch_timer
+            except asyncio.CancelledError:
+                pass
 
         self.channel_message_batches.clear()
 
@@ -301,7 +307,7 @@ class GuildSettingsManager:
             await asyncio.gather(*pending, return_exceptions=True)
         self._active_persists.clear()
 
-        logger.info("Shutdown complete: batch timers cleared")
+        logger.info("Shutdown complete: batch timer cleared")
         logger.info("--------------------------------------------------------------------------------")
 
     # --- AI moderation enable/disable ---

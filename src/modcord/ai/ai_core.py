@@ -235,6 +235,42 @@ class InferenceProcessor:
         
         return result
 
+    async def generate_multi_chat(
+        self,
+        conversations: List[List[Dict[str, Any]]],
+        grammar_strings: List[str]
+    ) -> List[str]:
+        """
+        Generate text outputs from multiple conversations in a single batch call.
+        
+        Uses llm.chat() with multimodal support for batch processing.
+        Runs in a thread to avoid blocking the event loop.
+
+        Args:
+            conversations: List of conversation message lists.
+            grammar_strings: List of xgrammar grammar strings (one per conversation).
+
+        Returns:
+            List of generated output strings (one per conversation).
+
+        Raises:
+            RuntimeError: If the model is not available.
+        """
+        if not self.llm or not self.sampling_params:
+            reason = self.state.init_error or "AI model unavailable"
+            raise RuntimeError(reason)
+
+        logger.info("[GENERATE_MULTI_CHAT] Starting batch generation with %d conversations", len(conversations))
+
+        # Run the synchronous batch generation in a thread
+        results = await asyncio.to_thread(
+            self._generate_multi_chat_sync,
+            conversations,
+            grammar_strings
+        )
+        
+        return results
+
     def _generate_chat_sync(
         self,
         messages: List[Dict[str, Any]],
@@ -279,6 +315,64 @@ class InferenceProcessor:
             return ""
         except Exception as exc:
             logger.error("[GENERATE_CHAT] Error during generation: %s", exc)
+            raise
+
+    def _generate_multi_chat_sync(
+        self,
+        conversations: List[List[Dict[str, Any]]],
+        grammar_strings: List[str]
+    ) -> List[str]:
+        """Synchronous multi-conversation batch generation (runs in thread)."""
+        from vllm import SamplingParams
+        from vllm.sampling_params import GuidedDecodingParams
+        
+        # Build sampling params list (one per conversation)
+        sampling_params_list = []
+        for grammar_str in grammar_strings:
+            if grammar_str and self.sampling_params:
+                guided_params = GuidedDecodingParams(
+                    grammar=grammar_str,
+                    disable_fallback=True,
+                )
+                sp = SamplingParams(
+                    temperature=self.sampling_params.temperature,
+                    max_tokens=self.sampling_params.max_tokens,
+                    top_p=self.sampling_params.top_p,
+                    top_k=self.sampling_params.top_k,
+                    guided_decoding=guided_params,
+                )
+            else:
+                sp = self.sampling_params
+            sampling_params_list.append(sp)
+        
+        logger.debug("[GENERATE_MULTI_CHAT] Using guided decoding for %d conversations", len(conversations))
+
+        try:
+            # Use llm.chat() with list of conversations for batch processing
+            if self.llm:
+                all_outputs = self.llm.chat(
+                    messages=conversations,
+                    sampling_params=sampling_params_list,
+                    use_tqdm=False,
+                )
+                
+                # Extract outputs for each conversation
+                results = []
+                for batch_output in all_outputs:
+                    if hasattr(batch_output, 'outputs') and batch_output.outputs:
+                        result_text = batch_output.outputs[0].text.strip()
+                        results.append(result_text)
+                    else:
+                        logger.warning("[GENERATE_MULTI_CHAT] No output for conversation")
+                        results.append("")
+                
+                logger.info("[GENERATE_MULTI_CHAT] Batch generation complete: %d results", len(results))
+                return results
+            
+            logger.warning("[GENERATE_MULTI_CHAT] No outputs received")
+            return ["" for _ in conversations]
+        except Exception as exc:
+            logger.error("[GENERATE_MULTI_CHAT] Error during batch generation: %s", exc)
             raise
 
     def get_model_state(self) -> ModelState:

@@ -1,6 +1,7 @@
 """Moderation helper functions used by the event listener."""
 
 import discord
+from typing import List, Dict
 
 from modcord.ai.ai_moderation_processor import model_state, moderation_processor
 from modcord.configuration.guild_settings import guild_settings_manager
@@ -11,12 +12,19 @@ from modcord.util.logger import get_logger
 logger = get_logger("moderation_helper")
 
 
-async def process_message_batch(self, batch: ModerationChannelBatch) -> None:
-    """Process a batch of messages through the AI moderation pipeline."""
-    if batch.is_empty():
+async def process_message_batches(self, batches: List[ModerationChannelBatch]) -> None:
+    """Process multiple channel batches through the AI moderation pipeline globally."""
+    if not batches:
         return
 
-    guild_id = batch.messages[0].guild_id
+    # Filter out empty batches
+    non_empty_batches = [b for b in batches if not b.is_empty()]
+    if not non_empty_batches:
+        return
+
+    # Check if AI is enabled for the first batch's guild (assuming all from same context)
+    first_message = non_empty_batches[0].messages[0]
+    guild_id = first_message.guild_id
     if guild_id and not guild_settings_manager.is_ai_enabled(guild_id):
         return
 
@@ -24,12 +32,23 @@ async def process_message_batch(self, batch: ModerationChannelBatch) -> None:
         logger.debug(f"AI model unavailable: {model_state.init_error or 'not initialized'}")
         return
 
+    # Process batches and collect actions per channel
     server_rules = guild_settings_manager.get_server_rules(guild_id) if guild_id else ""
-    actions = await moderation_processor.get_batch_moderation_actions(batch=batch, server_rules=server_rules)
-    actionable_actions = [a for a in actions if a.action is not ActionType.NULL]
+    all_actions = await moderation_processor.get_multi_batch_moderation_actions(
+        batches=non_empty_batches,
+        server_rules=server_rules
+    )
 
-    for action in actionable_actions:
-        await apply_batch_action(self, action, batch)
+    # Apply actions grouped by channel
+    for channel_id, actions in all_actions.items():
+        # Find the corresponding batch
+        channel_batch = next((b for b in non_empty_batches if b.channel_id == channel_id), None)
+        if not channel_batch:
+            continue
+
+        actionable_actions = [a for a in actions if a.action is not ActionType.NULL]
+        for action in actionable_actions:
+            await apply_batch_action(self, action, channel_batch)
 
 
 async def apply_batch_action(self, action: ActionData, batch: ModerationChannelBatch) -> bool:

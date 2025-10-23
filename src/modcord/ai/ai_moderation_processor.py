@@ -44,88 +44,131 @@ class ModerationProcessor:
         return True
 
     # ======== Main Business Logic ========
-    async def get_batch_moderation_actions(
+    async def get_multi_batch_moderation_actions(
         self,
-        batch: ModerationChannelBatch,
+        batches: List[ModerationChannelBatch],
         server_rules: str = "",
-    ) -> List[ActionData]:
-        """Process a batch of messages and return moderation actions.
+    ) -> Dict[int, List[ActionData]]:
+        """Process multiple channel batches together in a single vLLM call.
         
-        This is the main entry point for batch moderation. It:
-        1. Converts batch to JSON format with image IDs
-        2. Collects PIL images separately
-        3. Formats for vLLM with multimodal content
-        4. Generates dynamic schema based on non-history user IDs and their message IDs
-        5. Submits to AI model with guided decoding (xgrammar)
-        6. Parses response and returns actions
+        This is the global batch processing entry point. It:
+        1. Converts all batches to vLLM conversations (one per channel)
+        2. Builds a list of conversations for batch processing
+        3. Submits all conversations to vLLM in one call
+        4. Parses responses and returns actions grouped by channel_id
         
-        The dynamic schema constrains AI outputs to:
-        - Only non-history users (users who sent messages in this batch)
-        - Only message IDs belonging to each specific user
-        - Valid channel ID and action types
-        This prevents hallucination and cross-user message deletion.
+        Args:
+            batches: List of ModerationChannelBatch objects from different channels
+            server_rules: Server rules to include in system prompt
+            
+        Returns:
+            Dictionary mapping channel_id to list of ActionData objects
         """
         logger.debug(
-            "[MODERATION] Processing batch: channel=%s, messages=%d, history=%d",
-            batch.channel_id,
-            len(batch.messages),
-            len(batch.history),
+            "[MODERATION] Processing global batch: %d channels",
+            len(batches)
         )
         
         # Get system prompt with rules
         merged_rules = self._resolve_server_rules(server_rules)
         system_prompt = self.inference_processor.get_system_prompt(merged_rules)
         
-        # Convert batch to JSON payload with image IDs, collect images
-        json_payload, pil_images, _ = self._batch_to_json_with_images(batch)
+        # Build conversations for each channel batch
+        conversations = []
+        sampling_params_list = []
+        channel_mapping = []  # Maps conversation index to channel_id and batch
         
-        # Build user->message_ids map for non-history users only
-        user_message_map: Dict[str, List[str]] = {}
-        for msg in batch.messages:
-            user_id = str(msg.user_id)
-            if user_id not in user_message_map:
-                user_message_map[user_id] = []
-            user_message_map[user_id].append(str(msg.message_id))
-        
-        channel_id = str(batch.channel_id)
-        
-        # Build dynamic schema with per-user message ID constraints
-        dynamic_schema = moderation_parsing.build_dynamic_moderation_schema(user_message_map, channel_id)
-        
-        # Compile grammar for guided decoding
-        grammar = Grammar.from_json_schema(dynamic_schema, strict_mode=True)
-        grammar_str = str(grammar)
-        
-        # Format for vLLM with images
-        llm_messages = self._format_multimodal_messages(
-            system_prompt,
-            json_payload,
-            pil_images
-        )
+        for batch in batches:
+            # Convert batch to JSON payload with image IDs
+            json_payload, pil_images, _ = self._batch_to_json_with_images(batch)
+            
+            # Build user->message_ids map for non-history users
+            user_message_map: Dict[str, List[str]] = {}
+            for msg in batch.messages:
+                user_id = str(msg.user_id)
+                if user_id not in user_message_map:
+                    user_message_map[user_id] = []
+                user_message_map[user_id].append(str(msg.message_id))
+            
+            channel_id = str(batch.channel_id)
+            
+            # Build dynamic schema for this batch
+            dynamic_schema = moderation_parsing.build_dynamic_moderation_schema(
+                user_message_map, channel_id
+            )
+            
+            # Compile grammar for guided decoding
+            grammar = Grammar.from_json_schema(dynamic_schema, strict_mode=True)
+            grammar_str = str(grammar)
+            
+            # Format messages for vLLM
+            llm_messages = self._format_multimodal_messages(
+                system_prompt,
+                json_payload,
+                pil_images
+            )
+            
+            conversations.append(llm_messages)
+            sampling_params_list.append(grammar_str)
+            channel_mapping.append((batch.channel_id, batch, dynamic_schema))
+            
+            logger.debug(
+                "[BATCH_PREP] Channel %d: %d users, %d images",
+                batch.channel_id,
+                len(user_message_map),
+                len(pil_images)
+            )
         
         logger.info(
-            "[INPUT] Submitting batch with %d non-history users, %d images to LLM",
-            len(user_message_map),
-            len(pil_images)
+            "[INPUT] Submitting global batch with %d conversations to LLM",
+            len(conversations)
         )
         
-        # Submit to model with guided decoding
-        response_text = await self._run_inference(llm_messages, grammar_str)
-        logger.info(
-            "[MODERATION RAW OUTPUT] Response length: %d chars\n%s",
-            len(response_text),
-            response_text[:2000],
-        )
+        # Submit all conversations to vLLM in one call
+        responses = await self._run_multi_inference(conversations, sampling_params_list)
         
-        # Parse response into actions (schema validation guarantees correctness)
-        actions = moderation_parsing.parse_batch_actions(
-            response_text,
-            batch.channel_id,
-            dynamic_schema
-        )
-        logger.info("[MODERATION] Parsed %d actions from response", len(actions))
+        # Parse responses and group actions by channel
+        actions_by_channel: Dict[int, List[ActionData]] = {}
+        for idx, response_text in enumerate(responses):
+            channel_id, batch, dynamic_schema = channel_mapping[idx]
+            
+            logger.info(
+                "[MODERATION RAW OUTPUT] Channel %d response length: %d chars\n%s",
+                channel_id,
+                len(response_text),
+                response_text[:2000],
+            )
+            
+            # Parse response into actions
+            actions = moderation_parsing.parse_batch_actions(
+                response_text,
+                channel_id,
+                dynamic_schema
+            )
+            actions_by_channel[channel_id] = actions
+            logger.info(
+                "[MODERATION] Parsed %d actions for channel %d",
+                len(actions),
+                channel_id
+            )
         
-        return actions
+        return actions_by_channel
+
+    async def get_batch_moderation_actions(
+        self,
+        batch: ModerationChannelBatch,
+        server_rules: str = "",
+    ) -> List[ActionData]:
+        """Process a single batch of messages and return moderation actions.
+        
+        Legacy method for single batch processing. New code should use
+        get_multi_batch_moderation_actions for better performance.
+        """
+        result = await self.get_multi_batch_moderation_actions(
+            batches=[batch],
+            server_rules=server_rules
+        )
+        return result.get(batch.channel_id, [])
 
     def _batch_to_json_with_images(
         self,
@@ -224,6 +267,46 @@ class ModerationProcessor:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
+
+    async def _run_multi_inference(
+        self,
+        conversations: List[List[Dict[str, Any]]],
+        grammar_strings: List[str]
+    ) -> List[str]:
+        """Submit multiple vLLM-formatted conversations to AI model and return responses.
+        
+        This method processes multiple conversations in a single vLLM call for efficiency.
+        
+        Args:
+            conversations: List of conversation message lists (one per channel)
+            grammar_strings: List of grammar strings (one per conversation)
+            
+        Returns:
+            List of response strings (one per conversation)
+        """
+        if self._shutdown:
+            logger.warning("[INFERENCE] Processor is shutting down")
+            return [self._null_response("shutting down") for _ in conversations]
+        
+        if not self.inference_processor.is_model_available():
+            reason = self.inference_processor.get_model_init_error()
+            logger.warning("[INFERENCE] Model not available: %s", reason)
+            return [self._null_response(reason or "unavailable") for _ in conversations]
+        
+        try:
+            logger.info("[INFERENCE] Starting multi-batch inference with %d conversations...", len(conversations))
+            results = await self.inference_processor.generate_multi_chat(
+                conversations,
+                grammar_strings
+            )
+            logger.info(
+                "[INFERENCE] Multi-batch inference completed, %d responses",
+                len(results)
+            )
+            return [r.strip() if r else self._null_response("no response") for r in results]
+        except Exception as exc:
+            logger.error("[INFERENCE] Multi-batch inference error: %s", exc, exc_info=True)
+            return [self._null_response("inference error") for _ in conversations]
 
     async def _run_inference(
         self,
