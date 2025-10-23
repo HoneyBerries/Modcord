@@ -33,13 +33,14 @@ import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.ai.ai_moderation_processor import model_state
-from modcord.ai.ai_lifecycle import (
+from modcord.ai.ai_moderation_processor import (
+    model_state,
     initialize_engine,
     shutdown_engine,
 )
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.util.message_cache import message_history_cache, initialize_cache_from_config
+from modcord.history.history_cache import global_history_cache_manager, initialize_cache_from_config
+from modcord.configuration.app_configuration import app_config
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
 from modcord.util.logger import get_logger, handle_exception
 
@@ -109,7 +110,7 @@ def create_bot() -> discord.Bot:
     bot = discord.Bot(intents=build_intents())
     load_cogs(bot)
     # Wire the bot into the message cache for Discord API fallback
-    message_history_cache.set_bot(bot)
+    global_history_cache_manager.set_bot(bot)
     return bot
 
 
@@ -122,7 +123,6 @@ async def initialize_ai_model() -> None:
         Propagated when the underlying initializer encounters an unexpected failure.
     """
     try:
-        from modcord.configuration.app_configuration import app_config
         # Configure message cache from app_config
         initialize_cache_from_config(app_config)
         
@@ -131,30 +131,37 @@ async def initialize_ai_model() -> None:
         if detail and not available:
             logger.critical("AI model failed to initialize: %s", detail)
     except Exception as exc:
-        logger.critical("Unexpected error during AI initialization: %s", exc, exc_info=True)
+        logger.critical("Unexpected error during AI initialization: %s", exc)
         raise
 
 
-async def start_bot(bot: discord.Bot, token: str) -> None:
-    """Start the Discord bot and handle lifecycle logging around the connection.
+async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
+    """Run the Discord bot inside the console session and return an exit code.
 
-    Parameters
-    ----------
-    bot:
-        Discord client to start.
-    token:
-        Authentication token used to connect to Discord.
+    This consolidates starting the bot, listening for console-driven control
+    (restart/stop), and ensuring a graceful shutdown of subsystems.
     """
-    logger.info("Attempting to connect to Discord…")
+    logger.info("Attempting to run Discord bot with console control…")
+    control.set_bot(bot)
+    exit_code = 0
+
     try:
-        await bot.start(token)
-    except asyncio.CancelledError:
-        logger.info("Discord bot start cancelled; shutting down")
+        async with console_session(control):
+            try:
+                await bot.start(token)
+            except asyncio.CancelledError:
+                logger.info("Discord bot start cancelled; shutting down")
+            except Exception as exc:
+                logger.critical("Discord bot runtime error: %s", exc)
+                exit_code = 1
     finally:
-        logger.info("Discord bot start routine finished.")
+        control.set_bot(None)
+        await shutdown_runtime(bot)
+
+    return exit_code
 
 
-async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
+async def shutdown_runtime(bot: discord.Bot) -> None:
     """Gracefully stop the Discord bot, AI engine, and guild settings manager.
 
     Parameters
@@ -163,7 +170,6 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
         Optional bot instance to close before shutting down subsystems.
     """
     await close_bot_instance(bot, log_close=True)
-
     await bot.http.close() # type: ignore
 
     try:
@@ -179,25 +185,7 @@ async def shutdown_runtime(bot: discord.Bot | None = None) -> None:
     logger.info("Shutdown complete.")
 
 
-async def run_bot_session(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
-    """Run the bot alongside the console, returning an exit code."""
-    control.set_bot(bot)
-    exit_code = 0
-
-    try:
-        async with console_session(control):
-            try:
-                await start_bot(bot, token)
-            except asyncio.CancelledError:
-                logger.info("Bot start cancelled; proceeding to shutdown")
-            except Exception as exc:
-                logger.critical("Discord bot runtime error: %s", exc, exc_info=True)
-                exit_code = 1
-    finally:
-        control.set_bot(None)
-        await shutdown_runtime(bot)
-
-    return exit_code
+# (run_bot consolidated above)
 
 
 async def async_main() -> int:
@@ -210,10 +198,18 @@ async def async_main() -> int:
     """
     token = load_environment()
 
+    # Initialize database and load guild settings
+    try:
+        logger.info("Initializing database and loading guild settings...")
+        await guild_settings_manager.async_init()
+    except Exception as exc:
+        logger.critical("Failed to initialize database: %s", exc)
+        return 1
+
     try:
         bot = create_bot()
     except Exception as exc:
-        logger.critical("Failed to initialize Discord bot: %s", exc, exc_info=True)
+        logger.critical("Failed to initialize Discord bot: %s", exc)
         return 1
 
     try:
@@ -231,7 +227,7 @@ async def async_main() -> int:
         )
 
     control = ConsoleControl()
-    exit_code = await run_bot_session(bot, token, control)
+    exit_code = await run_bot(bot, token, control)
 
     if control.is_restart_requested():
         logger.info("Restart requested, returning exit code 42 to trigger restart")
@@ -276,7 +272,7 @@ def main() -> int:
             logger.warning("SystemExit.code is not an int (%r); defaulting to 1", code)
             return 1
     except Exception as exc:
-        logger.critical("An unexpected error occurred while running the bot: %s", exc, exc_info=True)
+        logger.critical("An unexpected error occurred while running the bot: %s", exc)
         return 1
 
 

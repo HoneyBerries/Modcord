@@ -172,7 +172,7 @@ class UnbanScheduler:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.error(f"Failed to auto-unban user {task_payload.user_id}: {exc}", exc_info=True)
+                logger.error(f"Failed to auto-unban user {task_payload.user_id}: {exc}")
 
     async def execute(self, payload: ScheduledUnban) -> None:
         """Perform the actual unban and optional notification.

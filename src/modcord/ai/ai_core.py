@@ -1,153 +1,127 @@
-"""Async moderation model core backed by vLLM."""
+
+"""
+Synchronous LLM core with async wrappers for non-blocking, high-throughput inference.
+
+This module manages the lifecycle and usage of a vLLM-based language model for moderation and generation tasks.
+It provides:
+- Thread-safe, async model initialization and unloading
+- Batch inference with per-conversation guided decoding (xgrammar)
+- Dynamic system prompt injection with server rules
+- Resource cleanup and error tracking
+
+All blocking operations are wrapped in asyncio.to_thread() to avoid blocking the event loop.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import gc
 import os
-import uuid
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
-
+from typing import Any, List, Optional, Dict
 import modcord.configuration.app_configuration as cfg
-import modcord.util.moderation_parsing as moderation_parsing
 from modcord.util.logger import get_logger
 
 logger = get_logger("ai_core")
 os.environ.setdefault("TORCH_COMPILE_CACHE_DIR", "./torch_compile_cache")
 
 
+
 @dataclass
 class ModelState:
+    """
+    Tracks the state of the AI model.
+
+    Attributes:
+        init_started (bool): Whether initialization has started.
+        available (bool): Whether the model is available for inference.
+        init_error (Optional[str]): Last initialization error, if any.
+    """
     init_started: bool = False
     available: bool = False
     init_error: Optional[str] = None
 
 
+
 class InferenceProcessor:
     """
-    Asynchronous moderation model core backed by vLLM with guided decoding.
+    Synchronous LLM with async wrappers for non-blocking, multi-channel inference.
 
-    Manages the lifecycle and inference operations of an AI model for moderation tasks.
-    Uses xgrammar-based guided decoding to enforce JSON schema compliance while allowing
-    free-form reasoning before structured output.
-
-    Core Responsibilities:
-        - Handles initialization, configuration, and unloading of the vLLM async engine
-        - Manages concurrency for model initialization using an asyncio lock
-        - Loads model configuration and sampling parameters from application settings
-        - Configures guided decoding with xgrammar backend for JSON schema enforcement
-        - Provides methods to check model availability and retrieve initialization errors
-        - Formats and returns system prompts with server rules injection
-        - Generates text outputs asynchronously using the loaded model
-        - Cleans up resources and GPU memory upon model unload
+    - Uses vLLM's synchronous LLM() class with llm.chat() for multimodal, batch generation.
+    - All blocking calls are wrapped in asyncio.to_thread() to keep the event loop responsive.
+    - Supports per-conversation guided decoding (xgrammar) and dynamic system prompts.
 
     Attributes:
-        engine (Optional[Any]): The AsyncLLMEngine instance.
-        sampling_params (Optional[Any]): SamplingParams with guided decoding configuration.
+        llm (Optional[Any]): The synchronous LLM instance (vLLM).
+        sampling_params (Optional[Any]): Base SamplingParams configuration.
         base_system_prompt (Optional[str]): The base system prompt template.
         state (ModelState): Tracks model state, availability, and errors.
-        init_lock (asyncio.Lock): Ensures thread-safe model initialization.
-        warmup_completed (bool): Indicates if the model warmup is complete.
-        guided_backend (Optional[str]): The guided decoding backend name (xgrammar).
-        _guided_grammar (Optional[str]): Cached compiled grammar string for reuse.
+        init_lock (asyncio.Lock): Ensures thread-safe model initialization and unloading.
     """
 
     def __init__(self) -> None:
         """
-        Initializes the InferenceProcessor with default state and guided decoding support.
+        Initialize the InferenceProcessor with default state and lock.
         """
-        self.engine: Optional[Any] = None
+        self.llm: Optional[Any] = None
         self.sampling_params: Optional[Any] = None
         self.base_system_prompt: Optional[str] = None
         self.state = ModelState()
         self.init_lock = asyncio.Lock()
-        self.warmup_completed = False
-        self.guided_backend: Optional[str] = None
-        self._guided_grammar: Optional[str] = None
 
-    def _build_guided_decoding(self) -> Any:
+    def _set_init_error(self, msg: str) -> None:
         """
-        Constructs guided decoding configuration for JSON schema enforcement.
-        
-        Uses xgrammar backend to compile the moderation schema into a grammar that
-        constrains model generation. The compiled grammar is cached for reuse across
-        inference calls. Supports models with or without reasoning capabilities.
-
-        Returns:
-            GuidedDecodingParams: Configured with compiled grammar and fallback disabled.
-
-        Raises:
-            RuntimeError: If xgrammar backend is not available.
+        Set initialization error and mark model as unavailable.
         """
-        from vllm.sampling_params import GuidedDecodingParams
-        
-        schema = moderation_parsing.moderation_schema
+        self.state.available = False
+        self.state.init_error = msg
 
-        if self._guided_grammar is None:
-            try:
-                from xgrammar import Grammar  # type: ignore
-            except Exception as exc:
-                raise RuntimeError("xgrammar backend not available for guided decoding") from exc
-
-            try:
-                grammar_obj: Optional[Any] = Grammar.from_json_schema(schema, strict_mode=True)
-                grammar_str = str(grammar_obj)
-                self._guided_grammar = grammar_str
-            finally:
-                # Ensure any intermediate native handles can be cleaned up
-                grammar_obj = None
-
-        params = GuidedDecodingParams(
-            grammar=self._guided_grammar,
-            disable_fallback=True,
-        )
-        self.guided_backend = "xgrammar"
-        logger.info("[AI MODEL] Guided decoding configured with xgrammar backend (precompiled grammar)")
-        return params
-
-
-    async def init_model(self, model: Optional[str] = None) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
+    async def init_model(self, model: Optional[str] = None) -> bool:
         """
-        Initializes the vLLM async engine with guided decoding support.
+        Initialize the vLLM synchronous engine (thread-safe, async).
+
+        - Loads configuration and checks if AI is enabled.
+        - Prepares sampling parameters and system prompt.
+        - Runs blocking model load in a thread to avoid blocking the event loop.
+        - Ensures only one initialization attempt at a time.
 
         Args:
             model: Optional model identifier override.
 
         Returns:
-            Tuple of (engine, sampling_params, system_prompt). Returns None for engine/params
-            if initialization fails, with error details in self.state.init_error.
+            True if initialization succeeded, False otherwise.
         """
         async with self.init_lock:
-            if self.state.available and self.engine and self.sampling_params:
-                return self.engine, self.sampling_params, self.base_system_prompt
-
+            # Already initialized
+            if self.state.available and self.llm and self.sampling_params:
+                return True
+            
+            # Previously failed - don't retry
             if self.state.init_started and self.state.init_error and not self.state.available:
-                return self.engine, self.sampling_params, self.base_system_prompt
-
+                return False
+            
             self.state.init_started = True
-
+            
+            # Load configuration
             base_config = cfg.app_config.reload()
             if not base_config:
-                self.base_system_prompt = None
-                self.state.available = False
-                self.state.init_error = "missing configuration"
-                return None, None, None
-
-            self.base_system_prompt = cfg.app_config.system_prompt_template
+                self._set_init_error("missing configuration")
+                return False
+            
+            # Check if AI is enabled
             ai_config = cfg.app_config.ai_settings or {}
-
             if not ai_config.get("enabled", False):
-                self.state.available = False
-                self.state.init_error = "AI disabled in config"
-                return None, None, self.base_system_prompt
-
+                self._set_init_error("AI disabled in config")
+                return False
+            
+            # Get model ID
             model_id = model or ai_config.get("model_id")
             if not model_id:
-                self.state.available = False
-                self.state.init_error = "missing model id"
-                return None, None, self.base_system_prompt
-
+                self._set_init_error("missing model id")
+                return False
+            
+            # Prepare sampling parameters
+            self.base_system_prompt = cfg.app_config.system_prompt_template
             sampling_defaults = {
                 "dtype": "auto",
                 "max_new_tokens": 256,
@@ -155,103 +129,104 @@ class InferenceProcessor:
                 "temperature": 1.0,
                 "top_p": 1.0,
                 "top_k": -1,
-                "repetition_penalty": 1.0,
-                "presence_penalty": 0.0,
-                "frequency_penalty": 0.0,
             }
-            sampling_parameters = {**sampling_defaults, **(ai_config.get("sampling_parameters") or {})}
+            sampling_params = {**sampling_defaults, **(ai_config.get("sampling_parameters") or {})}
             vram_percentage = float(ai_config.get("vram_percentage", 0.5))
+            
+            # Initialize in thread pool
+            result = await asyncio.to_thread(
+                self._init_model_sync,
+                model_id,
+                sampling_params,
+                vram_percentage
+            )
+            
+            return result
 
-            try:
-                import torch
-                from vllm import SamplingParams
-                from vllm.engine.async_llm_engine import AsyncLLMEngine
-                from vllm.engine.arg_utils import AsyncEngineArgs
-            except ImportError as exc:
-                self.state.available = False
-                self.state.init_error = f"AI libraries not available: {exc}"
-                logger.error("[AI MODEL] vLLM imports failed: %s", exc)
-                return None, None, self.base_system_prompt
-
-            cuda_available = torch.cuda.is_available()
-            tensor_parallel = torch.cuda.device_count() if cuda_available else 1
-
-            chosen_dtype = sampling_parameters.get("dtype", "auto")
-            if not cuda_available:
-                if str(chosen_dtype).lower() in {"half", "float16", "bfloat16", "bf16"}:
-                    logger.info(
-                        "[AI MODEL] Forcing dtype to 'float32' due to GPU being unavailable"
-                    )
-                    chosen_dtype = "float32"
-
-            gpu_mem_util = vram_percentage if cuda_available else 0.0
-
-            try:
-                # Configure multimodal limits to disable video cache
-                limit_mm_per_prompt = {"image": 8, "video": 0}
-                
-                engine_args = AsyncEngineArgs(
-                    model=model_id,
-                    dtype=chosen_dtype,
-                    gpu_memory_utilization=gpu_mem_util,
-                    max_model_len=sampling_parameters["max_model_length"],
-                    tensor_parallel_size=tensor_parallel,
-                    trust_remote_code=True,
-                    guided_decoding_backend="xgrammar",
-                    guided_decoding_disable_fallback=True,
-                    limit_mm_per_prompt=limit_mm_per_prompt,
-                    skip_mm_profiling=True
-                )
-
-                self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-                
-                # Build guided decoding params for JSON schema enforcement
-                guided_decoding = self._build_guided_decoding()
-                
-                self.sampling_params = SamplingParams(
-                    temperature=sampling_parameters["temperature"],
-                    max_tokens=sampling_parameters["max_new_tokens"],
-                    top_p=sampling_parameters["top_p"],
-                    top_k=sampling_parameters["top_k"],
-                    repetition_penalty=sampling_parameters["repetition_penalty"],
-                    presence_penalty=sampling_parameters["presence_penalty"],
-                    frequency_penalty=sampling_parameters["frequency_penalty"],
-                    guided_decoding=guided_decoding,
-                )
-                logger.info("[AI MODEL] Sampling params created with guided_decoding (xgrammar backend)")
-            except Exception as exc:
-                self.state.available = False
-                self.state.init_error = f"Initialization failed: {exc}"
-                logger.error("[AI MODEL] AsyncLLMEngine initialization failed: %s", exc)
-                return None, None, self.base_system_prompt
-
-            self.state.available = True
-            self.state.init_error = None
-            logger.info("[AI MODEL] Model '%s' initialized", model_id)
-            return self.engine, self.sampling_params, self.base_system_prompt
-
-    async def get_model(self) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
+    def _init_model_sync(
+        self,
+        model_id: str,
+        sampling_parameters: Dict[str, Any],
+        vram_percentage: float
+    ) -> bool:
         """
-        Ensures the model is initialized and returns engine handles.
+        Synchronous model initialization (runs in thread).
+
+        - Imports vLLM and torch libraries.
+        - Configures GPU and dtype.
+        - Instantiates the LLM and sampling parameters.
+        - Handles all exceptions and logs errors.
 
         Returns:
-            Tuple of (engine, sampling_params, system_prompt).
+            True if model initialized successfully, False otherwise.
         """
-        if not self.state.init_started:
-            await self.init_model()
-        return self.engine, self.sampling_params, self.base_system_prompt
+        try:
+            import torch
+            from vllm import LLM, SamplingParams
+        except ImportError as exc:
+            self._set_init_error(f"AI libraries not available: {exc}")
+            logger.error("[AI MODEL] vLLM imports failed: %s", exc)
+            return False
+        
+        # Configure GPU usage
+        cuda_available = torch.cuda.is_available()
+        tensor_parallel = torch.cuda.device_count() if cuda_available else 1
+        
+        chosen_dtype = sampling_parameters.get("dtype", "auto")
+        if not cuda_available and str(chosen_dtype).lower() in {"half", "float16", "bfloat16", "bf16"}:
+            logger.info("[AI MODEL] Forcing dtype to 'float32' (GPU unavailable)")
+            chosen_dtype = "float32"
+        
+        gpu_mem_util = vram_percentage if cuda_available else 0.0
+        
+        try:
+            # Initialize LLM with multimodal limits
+            self.llm = LLM(
+                model=model_id,
+                dtype=chosen_dtype,
+                gpu_memory_utilization=gpu_mem_util,
+                max_model_len=sampling_parameters["max_model_length"],
+                tensor_parallel_size=tensor_parallel,
+                trust_remote_code=True,
+                limit_mm_per_prompt={"image": 8, "video": 0},
+                skip_mm_profiling=True,
+            )
+            
+            # Initialize sampling parameters
+            self.sampling_params = SamplingParams(
+                temperature=sampling_parameters["temperature"],
+                max_tokens=sampling_parameters["max_new_tokens"],
+                top_p=sampling_parameters["top_p"],
+                top_k=sampling_parameters["top_k"],
+            )
+            
+            self.state.available = True
+            self.state.init_error = None
+            logger.info("[AI MODEL] Model '%s' initialized successfully", model_id)
+            return True
+        except Exception as exc:
+            self._set_init_error(f"Initialization failed: {exc}")
+            logger.error("[AI MODEL] LLM initialization failed: %s", exc)
+            return False
 
-    async def is_model_available(self) -> bool:
-        """Checks if the model is available for inference."""
+    def is_model_available(self) -> bool:
+        """
+        Check if the model is available for inference.
+        """
         return self.state.available
 
-    async def get_model_init_error(self) -> Optional[str]:
-        """Retrieves the last initialization error, if any."""
+    def get_model_init_error(self) -> Optional[str]:
+        """
+        Retrieve the last initialization error, if any.
+        """
         return self.state.init_error
 
-    async def get_system_prompt(self, server_rules: str = "") -> str:
+    def get_system_prompt(self, server_rules: str = "") -> str:
         """
-        Returns the system prompt with server rules injected.
+        Return the system prompt with server rules injected.
+
+        - If the template contains <|SERVER_RULES_INJECT|>, replaces it with the provided rules.
+        - Otherwise, appends rules at the end if present.
 
         Args:
             server_rules: Server rules to inject into the <|SERVER_RULES_INJECT|> placeholder.
@@ -259,81 +234,159 @@ class InferenceProcessor:
         Returns:
             Formatted system prompt string with rules inserted.
         """
-        await self.get_model()
         template = self.base_system_prompt or cfg.app_config.system_prompt_template
         template_str = str(template or "")
         rules_str = str(server_rules or "")
         
-        # Simple string replacement - supports <|SERVER_RULES_INJECT|> placeholder format
         if "<|SERVER_RULES_INJECT|>" in template_str:
             return template_str.replace("<|SERVER_RULES_INJECT|>", rules_str)
         
-        # Fallback: append rules if no placeholder found
         if rules_str:
             return f"{template_str}\n\nServer rules:\n{rules_str}"
         return template_str
 
-    async def generate_text(self, prompts: List[str]) -> List[str]:
+    async def generate_multi_chat(
+        self,
+        conversations: List[List[Dict[str, Any]]],
+        grammar_strings: List[str]
+    ) -> List[str]:
         """
-        Generates text outputs asynchronously using the model with guided decoding.
+        Generate text outputs from multiple conversations in a single batch call (async).
+
+        - Uses llm.chat() with multimodal support for batch processing.
+        - Each conversation can have its own guided decoding grammar (xgrammar).
+        - Runs in a thread to avoid blocking the event loop.
 
         Args:
-            prompts: List of input prompt strings.
+            conversations: List of conversation message lists.
+            grammar_strings: List of xgrammar grammar strings (one per conversation).
 
         Returns:
-            List of generated output strings (JSON constrained by schema).
+            List of generated output strings (one per conversation).
 
         Raises:
-            RuntimeError: If the model is not available or initialization failed.
+            RuntimeError: If the model is not available.
         """
-        engine, params, _ = await self.get_model()
-        if not engine or not params:
+        if not self.llm or not self.sampling_params:
             reason = self.state.init_error or "AI model unavailable"
             raise RuntimeError(reason)
 
-        async def run_single(prompt: str) -> str:
-            request_id = f"moderation-{uuid.uuid4().hex}"
-            final_output = None
-            async for output in engine.generate(
-                prompt=prompt,
-                sampling_params=params,
-                request_id=request_id,
-            ):
-                final_output = output
-            if final_output and final_output.outputs:
-                return final_output.outputs[0].text.strip()
-            return ""
+        logger.debug("[GENERATE_MULTI_CHAT] Starting batch generation with %d conversations", len(conversations))
 
-        return await asyncio.gather(*(run_single(prompt) for prompt in prompts))
+        # Run the synchronous batch generation in a thread
+        results = await asyncio.to_thread(
+            self._generate_multi_chat_sync,
+            conversations,
+            grammar_strings
+        )
+        
+        return results
+
+    def _generate_multi_chat_sync(
+        self,
+        conversations: List[List[Dict[str, Any]]],
+        grammar_strings: List[str]
+    ) -> List[str]:
+        """
+        Synchronous multi-conversation batch generation (runs in thread).
+
+        - Builds a list of SamplingParams, each with its own guided decoding grammar.
+        - Calls llm.chat() for all conversations in a single batch.
+        - Extracts and returns the generated text for each conversation.
+
+        Args:
+            conversations: List of conversation message lists.
+            grammar_strings: List of xgrammar grammar strings (one per conversation).
+
+        Returns:
+            List of generated output strings (one per conversation).
+        """
+        from vllm import SamplingParams
+        from vllm.sampling_params import GuidedDecodingParams
+        
+        # Build sampling params list (one per conversation)
+        sampling_params_list = []
+        for grammar_str in grammar_strings:
+            if grammar_str and self.sampling_params:
+                guided_params = GuidedDecodingParams(
+                    grammar=grammar_str,
+                    disable_fallback=True,
+                )
+                sp = SamplingParams(
+                    temperature=self.sampling_params.temperature,
+                    max_tokens=self.sampling_params.max_tokens,
+                    top_p=self.sampling_params.top_p,
+                    top_k=self.sampling_params.top_k,
+                    guided_decoding=guided_params,
+                )
+            else:
+                sp = self.sampling_params
+            sampling_params_list.append(sp)
+        
+        logger.debug("[GENERATE_MULTI_CHAT] Using guided decoding for %d conversations", len(conversations))
+
+        try:
+            # Use llm.chat() with list of conversations for batch processing
+            if self.llm:
+                all_outputs = self.llm.chat(
+                    messages=conversations,
+                    sampling_params=sampling_params_list,
+                    use_tqdm=False,
+                )
+                
+                # Extract outputs for each conversation
+                results = []
+                for batch_output in all_outputs:
+                    if hasattr(batch_output, 'outputs') and batch_output.outputs:
+                        result_text = batch_output.outputs[0].text.strip()
+                        results.append(result_text)
+                    else:
+                        logger.warning("[GENERATE_MULTI_CHAT] No output for conversation")
+                        results.append("")
+                
+                logger.debug("[GENERATE_MULTI_CHAT] Batch generation complete: %d results", len(results))
+                return results
+            
+            logger.warning("[GENERATE_MULTI_CHAT] No outputs received")
+            return ["" for _ in conversations]
+        except Exception as exc:
+            logger.error("[GENERATE_MULTI_CHAT] Error during batch generation: %s", exc)
+            raise
 
     def get_model_state(self) -> ModelState:
-        """Returns the current model state."""
+        """
+        Return the current model state.
+        """
         return self.state
 
     async def unload_model(self) -> None:
         """
-        Unloads the model and cleans up resources.
-        
-        Shuts down the engine, clears GPU memory, and resets all state attributes.
+        Unload the model and clean up resources (async).
+
+        - Resets all state attributes and clears GPU memory.
+        - Ensures thread-safe unloading with a lock.
         """
         async with self.init_lock:
-            engine = self.engine
-            self.engine = None
+            self.llm = None
             self.sampling_params = None
             self.state.available = False
             self.state.init_started = False
             self.state.init_error = None
-            self.warmup_completed = False
 
-        if engine and hasattr(engine, "shutdown"):
-            try:
-                await engine.shutdown()
-            except Exception as exc:
-                logger.warning("[AI MODEL] Shutdown raised: %s", exc)
+        # Run cleanup in thread
+        await asyncio.to_thread(self._cleanup_gpu)
+        
+        logger.info("[AI MODEL] Model unloaded")
 
+    def _cleanup_gpu(self) -> None:
+        """
+        Synchronous GPU cleanup (runs in thread).
+
+        - Calls torch.cuda.empty_cache() if available.
+        - Runs Python garbage collection.
+        """
         try:
             import torch
-
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         except ImportError:
@@ -342,7 +395,6 @@ class InferenceProcessor:
             logger.debug("[AI MODEL] CUDA cache cleanup failed: %s", exc)
 
         gc.collect()
-        logger.info("[AI MODEL] Model unloaded")
 
 
 inference_processor = InferenceProcessor()

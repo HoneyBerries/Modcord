@@ -24,9 +24,7 @@ Permissions
   ephemerally to the invoking user.
 """
 
-from typing import Optional
 import asyncio
-
 import discord
 from discord import Option
 from discord.ext import commands
@@ -36,11 +34,10 @@ from modcord.util.discord_utils import (
     PERMANENT_DURATION,
     DURATION_CHOICES,
     DELETE_MESSAGE_CHOICES,
-    parse_duration_to_seconds,
+    parse_duration_to_minutes,
     delete_messages_background,
 )
-from modcord.util.moderation_datatypes import (
-    ActionType,
+from modcord.moderation.moderation_datatypes import (
     CommandAction,
     WarnCommand,
     TimeoutCommand,
@@ -98,30 +95,33 @@ class ModerationActionCog(commands.Cog):
         """
         # Check invoking user's permission
         if not has_permissions(application_context, **{required_permission_name: True}):
-            await application_context.respond(
-                "You do not have permission to use this command.", ephemeral=True
+            await application_context.defer(ephemeral=True)
+            await application_context.send_followup(
+                "You do not have permission to use this command."
             )
             return False
 
         # Check if target is a member of this server
         if not isinstance(target_user, discord.Member):
-            await application_context.respond(
-                "The specified user is not a member of this server.", ephemeral=True
+            await application_context.defer(ephemeral=True)
+            await application_context.send_followup(
+                "The specified user is not a member of this server."
             )
             return False
 
         # Prevent self-moderation
         if target_user.id == application_context.user.id:
-            await application_context.respond(
-                "You cannot perform moderation actions on yourself.", ephemeral=True
+            await application_context.defer(ephemeral=True)
+            await application_context.send_followup(
+                "You cannot perform moderation actions on yourself."
             )
             return False
 
         # Protect administrators from moderation via these commands
         if target_user.guild_permissions.administrator:
-            await application_context.respond(
-                "You cannot perform moderation actions against administrators.",
-                ephemeral=True,
+            await application_context.defer(ephemeral=True)
+            await application_context.send_followup(
+                "You cannot perform moderation actions against administrators."
             )
             return False
 
@@ -132,7 +132,7 @@ class ModerationActionCog(commands.Cog):
         ctx: discord.ApplicationContext,
         user: discord.Member,
         action: CommandAction,
-        delete_message_seconds: int = 0,
+        delete_message_minutes: int = 0,
     ) -> None:
         """Execute a command action and handle errors.
 
@@ -144,29 +144,25 @@ class ModerationActionCog(commands.Cog):
             Guild member the action applies to.
         action:
             CommandAction instance to execute.
-        delete_message_seconds:
-            Optional message deletion window.
+        delete_message_minutes:
+            Optional message deletion window, in minutes.
         """
         try:
             await action.execute(ctx, user, self.discord_bot_instance)
-            
+
             # Delete messages in background if requested
-            if delete_message_seconds > 0:
-                asyncio.create_task(delete_messages_background(ctx, user, delete_message_seconds))
-                
+            if delete_message_minutes > 0:
+                asyncio.create_task(delete_messages_background(ctx, user, delete_message_minutes))
+
         except Exception as e:
             logger.exception("Error executing moderation action: %s", e)
             try:
-                await ctx.respond(
-                    "An error occurred while processing the command.", ephemeral=True
+                await ctx.defer(ephemeral=True)
+                await ctx.send_followup(
+                    "An error occurred while processing the command."
                 )
             except Exception:
-                try:
-                    await ctx.followup.send(
-                        "An error occurred while processing the command.", ephemeral=True
-                    )
-                except Exception:
-                    logger.error("Failed to send error response to user.")
+                logger.error("Failed to send error response to user.")
 
     @commands.slash_command(name="warn", description="Warns a user for a specified reason.")
     async def warn(
@@ -174,9 +170,9 @@ class ModerationActionCog(commands.Cog):
         ctx: discord.ApplicationContext,
         user: Option(discord.Member, "The user to warn.", required=True),  # type: ignore
         reason: Option(str, "Reason for the warning.", default="No reason provided."),  # type: ignore
-        delete_message_seconds: Option(
+        delete_message_minutes: Option(
             int,
-            "Delete messages from (choose time range)",
+            "Delete messages from (choose time range, in minutes)",
             choices=DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
@@ -186,14 +182,15 @@ class ModerationActionCog(commands.Cog):
         Warnings do not remove the user from the guild but create an audit
         trail via embeds and optional message deletion.
         """
-        await ctx.defer()
+        await ctx.defer(ephemeral=True)
 
         if not await self.check_moderation_permissions(ctx, user, "manage_messages"):
+            await ctx.send_followup("You lack the required permissions to warn this user.")
             return
 
         action = WarnCommand(reason=reason)
         await self.execute_command_action(
-            ctx, user, action, delete_message_seconds=delete_message_seconds
+            ctx, user, action, delete_message_minutes=delete_message_minutes
         )
 
     @commands.slash_command(name="timeout", description="Timeout a user for a specified duration.")
@@ -205,9 +202,9 @@ class ModerationActionCog(commands.Cog):
             str, "Duration of the timeout.", choices=DURATION_CHOICES, default="10 mins"
         ),  # type: ignore
         reason: Option(str, "Reason for the timeout.", default="No reason provided."),  # type: ignore
-        delete_message_seconds: Option(
+        delete_message_minutes: Option(
             int,
-            "Delete messages from (choose time range)",
+            "Delete messages from (choose time range, in minutes)",
             choices=DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
@@ -217,15 +214,16 @@ class ModerationActionCog(commands.Cog):
         The user cannot send messages, reactions, or join voice channels
         for the specified duration.
         """
-        await ctx.defer()
+        await ctx.defer(ephemeral=True)
 
         if not await self.check_moderation_permissions(ctx, user, "moderate_members"):
+            await ctx.send_followup("You lack the required permissions to timeout this user.")
             return
 
-        timeout_seconds = parse_duration_to_seconds(duration)
-        action = TimeoutCommand(reason=reason, duration_seconds=timeout_seconds)
+        timeout_minutes = parse_duration_to_minutes(duration)
+        action = TimeoutCommand(reason=reason, duration_minutes=timeout_minutes)
         await self.execute_command_action(
-            ctx, user, action, delete_message_seconds=delete_message_seconds
+            ctx, user, action, delete_message_minutes=delete_message_minutes
         )
 
     @commands.slash_command(name="kick", description="Kick a user from the server.")
@@ -234,9 +232,9 @@ class ModerationActionCog(commands.Cog):
         ctx: discord.ApplicationContext,
         user: Option(discord.Member, "The user to kick.", required=True),  # type: ignore
         reason: Option(str, "Reason for the kick.", default="No reason provided."),  # type: ignore
-        delete_message_seconds: Option(
+        delete_message_minutes: Option(
             int,
-            "Delete messages from (choose time range)",
+            "Delete messages from (choose time range, in minutes)",
             choices=DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
@@ -246,14 +244,15 @@ class ModerationActionCog(commands.Cog):
         Kicked users are removed from the server but can rejoin if they have
         an invite.
         """
-        await ctx.defer()
+        await ctx.defer(ephemeral=True)
 
         if not await self.check_moderation_permissions(ctx, user, "kick_members"):
+            await ctx.send_followup("You lack the required permissions to kick this user.")
             return
 
         action = KickCommand(reason=reason)
         await self.execute_command_action(
-            ctx, user, action, delete_message_seconds=delete_message_seconds
+            ctx, user, action, delete_message_minutes=delete_message_minutes
         )
 
     @commands.slash_command(name="ban", description="Ban a user from the server.")
@@ -268,31 +267,28 @@ class ModerationActionCog(commands.Cog):
             default=PERMANENT_DURATION,
         ),  # type: ignore
         reason: Option(str, "Reason for the ban.", default="No reason provided."),  # type: ignore
-        delete_message_seconds: Option(
+        delete_message_minutes: Option(
             int,
-            "Delete messages from (choose time range)",
+            "Delete messages from (choose time range, in minutes)",
             choices=DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
     ) -> None:
-        """Ban a member from the guild, optionally temporarily.
+        """Ban a user from the guild.
 
-        If a non-permanent duration is provided, an unban is scheduled.
+        Banned users are removed from the server and cannot rejoin unless
+        unbanned.
         """
-        await ctx.defer()
+        await ctx.defer(ephemeral=True)
 
         if not await self.check_moderation_permissions(ctx, user, "ban_members"):
+            await ctx.send_followup("You lack the required permissions to ban this user.")
             return
 
-        ban_seconds = 0
-        if duration != PERMANENT_DURATION:
-            ban_seconds = parse_duration_to_seconds(duration)
-
-        action = BanCommand(
-            reason=reason, duration_seconds=ban_seconds if ban_seconds > 0 else None
-        )
+        ban_minutes = parse_duration_to_minutes(duration) if duration != PERMANENT_DURATION else None
+        action = BanCommand(reason=reason, duration_minutes=ban_minutes)
         await self.execute_command_action(
-            ctx, user, action, delete_message_seconds=delete_message_seconds
+            ctx, user, action, delete_message_minutes=delete_message_minutes
         )
 
 

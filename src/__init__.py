@@ -12,8 +12,8 @@ from importlib import metadata as importlib_metadata
 
 try:
     __version__ = importlib_metadata.version("modcord")
-except Exception:  # pragma: no cover - fallback when not installed
-    __version__ = "0.0.0"
+except Exception:
+    __version__ = "1.0.0"
 
 
 def get_version() -> str:

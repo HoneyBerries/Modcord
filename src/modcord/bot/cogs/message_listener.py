@@ -8,8 +8,11 @@ import datetime
 import discord
 from discord.ext import commands
 
+from modcord.moderation.moderation_datatypes import ModerationImage, ModerationMessage
+from modcord.util.image_utils import download_image_to_pil, generate_image_hash_id
+
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.util.moderation_datatypes import ModerationMessage
+from modcord.history.history_cache import global_history_cache_manager
 from modcord.util.logger import get_logger
 from modcord.bot import rules_manager
 from modcord.util import discord_utils
@@ -33,7 +36,118 @@ class MessageListenerCog(commands.Cog):
         self.discord_bot_instance = discord_bot_instance
         logger.info("Message listener cog loaded")
 
-    def _create_moderation_message(
+    @staticmethod
+    def _is_image_attachment(attachment: discord.Attachment) -> bool:
+        """Return True if the Discord attachment should be treated as an image."""
+
+        content_type = (attachment.content_type or "").lower()
+        if content_type.startswith("image/"):
+            return True
+
+        if attachment.width is not None and attachment.height is not None:
+            return True
+
+        filename = (attachment.filename or "").lower()
+        return filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+
+    @staticmethod
+    def _extract_embed_content(message: discord.Message) -> str:
+        """Extract and format content from message embeds.
+        
+        Parameters
+        ----------
+        message:
+            The Discord message containing embeds.
+            
+        Returns
+        -------
+        str
+            Formatted string representation of all embed content.
+        """
+        if not message.embeds:
+            return ""
+        
+        embed_parts = []
+        for idx, embed in enumerate(message.embeds):
+            parts = []
+            
+            # Add embed title
+            if embed.title:
+                parts.append(f"[Embed Title: {embed.title}]")
+            
+            # Add embed description
+            if embed.description:
+                parts.append(f"[Embed Description: {embed.description}]")
+            
+            # Add embed fields
+            if embed.fields:
+                for field in embed.fields:
+                    if field.name or field.value:
+                        parts.append(f"[Embed Field - {field.name}: {field.value}]")
+            
+            # Add embed footer
+            if embed.footer and embed.footer.text:
+                parts.append(f"[Embed Footer: {embed.footer.text}]")
+            
+            # Add embed author
+            if embed.author and embed.author.name:
+                parts.append(f"[Embed Author: {embed.author.name}]")
+            
+            if parts:
+                embed_parts.append(" ".join(parts))
+        
+        return "\n".join(embed_parts) if embed_parts else ""
+
+    def _build_moderation_images(self, message: discord.Message) -> list[tuple[str, ModerationImage]]:
+        """Transform Discord attachments into (url, ModerationImage) tuples for download."""
+
+        images: list[tuple[str, ModerationImage]] = []
+
+        for attachment in message.attachments:
+            if not self._is_image_attachment(attachment):
+                continue
+
+            # Generate hash ID from URL
+            image_id = generate_image_hash_id(attachment.url)
+            
+            # Create ModerationImage with just ID (PIL image will be added after download)
+            mod_image = ModerationImage(
+                image_id=image_id,
+                pil_image=None,  # Will be set after download
+            )
+            
+            images.append((attachment.url, mod_image))
+
+        return images
+
+    async def _download_images_for_moderation_images(
+        self,
+        image_tuples: list[tuple[str, ModerationImage]]
+    ) -> list[ModerationImage]:
+        """Download PIL images for all ModerationImage objects.
+        
+        Args:
+            image_tuples: List of (url, ModerationImage) tuples
+            
+        Returns:
+            List of ModerationImage objects with pil_image set (only successful downloads)
+        """
+        import asyncio
+        
+        successful_images = []
+        
+        for url, img in image_tuples:
+            # Run download in thread to avoid blocking
+            pil_image = await asyncio.to_thread(download_image_to_pil, url)
+            if pil_image:
+                img.pil_image = pil_image
+                successful_images.append(img)
+            else:
+                logger.warning(f"Failed to download image from {url}")
+        
+        return successful_images
+
+    async def _create_moderation_message(
         self, 
         message: discord.Message, 
         content: str,
@@ -60,6 +174,10 @@ class MessageListenerCog(commands.Cog):
             datetime.timezone.utc
         ).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         
+        # Build image tuples and download PIL images immediately
+        image_tuples = self._build_moderation_images(message)
+        images = await self._download_images_for_moderation_images(image_tuples)
+        
         return ModerationMessage(
             message_id=str(message.id),
             user_id=str(message.author.id),
@@ -67,8 +185,8 @@ class MessageListenerCog(commands.Cog):
             content=content,
             timestamp=timestamp_iso,
             guild_id=message.guild.id if message.guild else None,
-            channel_id=message.channel.id if hasattr(message.channel, "id") else None,
-            image_summary=None,
+            channel_id=message.channel.id,
+            images=images,
             discord_message=message if include_discord_message else None,
         )
 
@@ -96,12 +214,30 @@ class MessageListenerCog(commands.Cog):
             logger.debug(f"Ignoring message from {message.author} (bot)")
             return False, None
 
-        # Skip empty messages
+        # Extract text content
         actual_content = message.clean_content.strip()
-        if not actual_content:
+        
+        # Extract embed content
+        embed_content = self._extract_embed_content(message)
+        
+        # Check for image attachments
+        has_image_attachments = any(
+            self._is_image_attachment(attachment) for attachment in message.attachments
+        )
+
+        # Combine text and embed content
+        combined_content = actual_content
+        if embed_content:
+            if combined_content:
+                combined_content = f"{combined_content}\n{embed_content}"
+            else:
+                combined_content = embed_content
+
+        # Skip messages that lack text content, embeds, and image attachments
+        if not combined_content and not has_image_attachments:
             return False, None
 
-        return True, actual_content
+        return True, combined_content if combined_content else ""
 
     @commands.Cog.listener(name='on_message')
     async def on_message(self, message: discord.Message):
@@ -109,29 +245,51 @@ class MessageListenerCog(commands.Cog):
         Handle new messages: store in history and queue for AI moderation.
 
         This handler:
-        1. Filters out DMs, bots, admins, and empty messages
-        2. Refreshes rules cache if posted in a rules channel
-        3. Stores message in channel history
-        4. Queues message for batch AI moderation (if enabled)
+        1. Filters out DMs, other bots, admins, and empty messages
+        2. Stores bot's own moderation messages as history context (for AI to see its past actions)
+        3. Refreshes rules cache if posted in a rules channel
+        4. Stores user messages in channel history
+        5. Queues user messages for batch AI moderation (if enabled)
 
         Parameters
         ----------
         message:
             The Discord message that was created.
         """
+        # Ignore DMs
+        if message.guild is None:
+            return
+        
+        # Special handling for bot's own messages (moderation action embeds)
+        if message.author.id == self.bot.user.id:
+            # Only store if it has embeds (moderation actions)
+            if message.embeds:
+                embed_content = self._extract_embed_content(message)
+                if embed_content:
+                    # Create moderation message from bot's own action embed
+                    history_entry = await self._create_moderation_message(message, embed_content)
+                    global_history_cache_manager.add_message(message.channel.id, history_entry)
+                    logger.debug(f"Stored bot's own moderation action as history context")
+            return  # Don't process bot's own messages for moderation
+        
+        # Continue with normal user message processing
         should_process, actual_content = await self._should_process_message(message)
         if not should_process or actual_content is None:
             return
 
-        logger.debug(f"Received message from {message.author}: {message.content[:50]}")
+        log_preview = actual_content if actual_content else "[no text]"
+        if any(self._is_image_attachment(att) for att in message.attachments):
+            log_preview = f"{log_preview} [images]"
+
+        logger.debug(f"Received message from {message.author}: {log_preview[:80]}")
 
         # Refresh rules cache if this was posted in a rules channel
         if isinstance(message.channel, discord.abc.GuildChannel):
             await rules_manager.refresh_rules_if_channel(message.channel)
 
         # Create and store message in history
-        history_entry = self._create_moderation_message(message, actual_content)
-        guild_settings_manager.add_message_to_history(message.channel.id, history_entry)
+        history_entry = await self._create_moderation_message(message, actual_content)
+        global_history_cache_manager.add_message(message.channel.id, history_entry)
 
         # Check if AI moderation is enabled for this guild (message.guild is guaranteed non-None here)
         if message.guild and not guild_settings_manager.is_ai_enabled(message.guild.id):
@@ -140,7 +298,7 @@ class MessageListenerCog(commands.Cog):
 
         # Add message to the batching system for AI moderation
         try:
-            batch_message = self._create_moderation_message(
+            batch_message = await self._create_moderation_message(
                 message, 
                 actual_content, 
                 include_discord_message=True
@@ -148,7 +306,7 @@ class MessageListenerCog(commands.Cog):
             await guild_settings_manager.add_message_to_batch(message.channel.id, batch_message)
             logger.debug(f"Added message to batch for channel {message.channel.id}")
         except Exception as e:
-            logger.error(f"Error adding message to batch: {e}", exc_info=True)
+            logger.error(f"Error adding message to batch: {e}")
 
     @commands.Cog.listener(name='on_message_edit')
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -176,6 +334,27 @@ class MessageListenerCog(commands.Cog):
         # Refresh rules cache if this edit occurred in a rules channel
         if isinstance(after.channel, discord.abc.GuildChannel):
             await rules_manager.refresh_rules_if_channel(after.channel)
+
+    @commands.Cog.listener(name='on_message_delete')
+    async def on_message_delete(self, message: discord.Message):
+        """
+        Handle message deletions: remove from history cache.
+
+        This handler removes deleted messages from the internal cache
+        to prevent stale references and outdated context.
+
+        Parameters
+        ----------
+        message:
+            The message that was deleted.
+        """
+        # Only process guild messages
+        if message.guild is None:
+            return
+        
+        # Remove from history cache
+        global_history_cache_manager.remove_message(message.channel.id, str(message.id))
+        logger.debug(f"Removed deleted message {message.id} from cache for channel {message.channel.id}")
 
 
 def setup(discord_bot_instance):

@@ -5,6 +5,7 @@ Message-related events are handled by the MessageListenerCog.
 """
 
 import asyncio
+import json
 import discord
 from discord.ext import commands
 
@@ -12,7 +13,7 @@ from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.bot import rules_manager
 from modcord.util.logger import get_logger
-from modcord.util import moderation_helper
+from modcord.moderation import moderation_helper
 
 logger = get_logger("events_listener_cog")
 
@@ -42,6 +43,7 @@ class EventsListenerCog(commands.Cog):
         1. Updates the bot's Discord presence based on AI model state
         2. Starts the periodic rules cache refresh task
         3. Registers the batch processing callback
+        4. Puts all registered commands into a file called commands.json for reference
         """
         if self.bot.user:
             await self._update_presence()
@@ -55,11 +57,15 @@ class EventsListenerCog(commands.Cog):
         logger.info("Starting server rules cache refresh task...")
         asyncio.create_task(rules_manager.start_periodic_refresh_task(self.bot))
 
-        # Set up batch processing callback for channel-based batching
+        # Set up batch processing callback for global batching
         logger.info("Setting up batch processing callback...")
         guild_settings_manager.set_batch_processing_callback(
-            lambda batch: moderation_helper.process_message_batch(self, batch)
+            lambda batches: moderation_helper.process_message_batches(self, batches)
         )
+
+        commands = await self.bot.http.get_global_commands(self.bot.user.id)
+        with open("config/commands.json", "w") as f:
+            f.write(json.dumps(commands, indent=4))
 
     async def _update_presence(self) -> None:
         """
@@ -86,37 +92,7 @@ class EventsListenerCog(commands.Cog):
             )
         )
 
-    @commands.Cog.listener(name='on_application_command_error')
-    async def on_application_command_error(self, application_context: discord.ApplicationContext, error: Exception):
-        """
-        Handle errors from application commands with logging and user feedback.
-
-        Parameters
-        ----------
-        application_context:
-            The command invocation context.
-        error:
-            The exception raised during command execution.
-        """
-        # Ignore commands that don't exist
-        if isinstance(error, commands.CommandNotFound):
-            return
-
-        # Log the error with full traceback
-        command_name = getattr(application_context.command, 'name', '<unknown>')
-        logger.error(f"Error in command '{command_name}': {error}", exc_info=True)
-
-        # Send a user-friendly error message
-        error_message = "A :bug: showed up while running this command."
-        try:
-            await application_context.respond(error_message, ephemeral=True)
-        except Exception:
-            try:
-                await application_context.followup.send(error_message, ephemeral=True)
-            except Exception:
-                pass
-
-
+        
 def setup(discord_bot_instance):
     """
     Register the EventsListenerCog with the bot.

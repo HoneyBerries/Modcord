@@ -8,10 +8,12 @@ torchvision
 transformers
 bitsandbytes
 accelerate
+Pillow
 py-cord
 python-dotenv
 pyyaml
 jsonschema
+aiosqlite
 vllm
 prompt_toolkit
 rich

@@ -4,7 +4,7 @@ from typing import Optional
 import discord
 
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.util.moderation_datatypes import ActionType
+from modcord.moderation.moderation_datatypes import ActionType
 
 
 ACTION_UI_ORDER: tuple[ActionType, ...] = (

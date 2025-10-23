@@ -8,114 +8,115 @@ import discord
 from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.bot import rules_manager
 from modcord.util.logger import get_logger
 
-logger = get_logger("debug_cog")
-
+logger = get_logger("debug_commands")
 
 class DebugCog(commands.Cog):
-    """
-    Cog containing debugging and administrative commands.
-    """
+    """Cog for debug commands."""
 
-    def __init__(self, discord_bot_instance):
-        """Store the Discord bot reference and log cog initialization."""
-        self.discord_bot_instance = discord_bot_instance
-        logger.info("Debug cog loaded")
+    debug = discord.SlashCommandGroup("debug", "Debug commands for bot administration")
 
-    @commands.slash_command(
-        name="test",
-        description="Checks if the bot is online and its round trip time."
-    )
-    async def test(self, application_context: discord.ApplicationContext):
-        """
-        A simple health-check command to verify bot status and round trip time.
+    def __init__(self, bot: discord.Bot):
+        self.bot = bot
 
-        Parameters
-        ----------
-        application_context:
-            Slash command invocation context supplied by Py-Cord.
-        """
-        latency_milliseconds = self.discord_bot_instance.latency * 1000
-        await application_context.respond(
-            f":white_check_mark: I am online and working!\n"
-            f"**Round Trip Time**: {latency_milliseconds:.2f} ms.",
-            ephemeral=True
-        )
-
-
-    @commands.slash_command(name="refresh_rules", description="Manually refresh the server rules cache.")
-    async def refresh_rules(self, application_context: discord.ApplicationContext):
-        """Force a refresh of the cached server rules for the current guild.
-
-        Parameters
-        ----------
-        application_context:
-            Slash command invocation context used to infer the target guild.
-        """
+    @debug.command(name="test", description="Test command to verify the bot is responsive")
+    async def test(self, application_context: discord.ApplicationContext) -> None:
+        """Test command to verify the bot is responsive."""
         try:
+            await application_context.defer(ephemeral=True)
+            embed = discord.Embed(
+                title="✅ Bot Test Successful",
+                description="The bot is responsive and working correctly.",
+                color=discord.Color.green(),
+            )
+            embed.add_field(name="Guild", value=application_context.guild.name, inline=False)
+            embed.add_field(name="User", value=application_context.user.mention, inline=False)
+            await application_context.send_followup(embed=embed)
+            logger.debug(f"Test command executed by {application_context.user} in {application_context.guild.name}")
+        except Exception as e:
+            logger.error(f"Error in test command: {e}")
+            await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
+
+    @debug.command(name="purge", description="Delete all messages in the current channel")
+    async def purge(self, application_context: discord.ApplicationContext) -> None:
+        """Delete all messages in the current channel."""
+        try:
+            await application_context.defer(ephemeral=True)
             guild = application_context.guild
-            if guild is None:
-                raise RuntimeError("/refresh_rules can only be used inside a guild context")
-            rules_text = await rules_manager.refresh_guild_rules(guild, settings=guild_settings_manager)
-            
-            if rules_text:
+            channel = application_context.channel
+
+            if not guild or not channel:
+                await application_context.send_followup(content="❌ This command must be used in a guild channel.", ephemeral=True)
+                return
+
+            deleted = await channel.purge(limit=None)
+            embed = discord.Embed(
+                title="✅ Channel Purged",
+                description=f"Deleted {len(deleted)} messages from {channel.mention}",
+                color=discord.Color.green(),
+            )
+            await application_context.send_followup(embed=embed)
+            logger.debug(f"Purged {len(deleted)} messages from {channel.name} in {guild.name}")
+        except Exception as e:
+            logger.error(f"Error in purge command: {e}")
+            await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
+
+    @debug.command(name="refresh_rules", description="Manually refresh the server rules cache")
+    async def refresh_rules(self, application_context: discord.ApplicationContext) -> None:
+        """Manually refresh the server rules cache from the database."""
+        try:
+            await application_context.defer(ephemeral=True)
+            guild = application_context.guild
+
+            if not guild:
+                await application_context.send_followup(content="❌ This command must be used in a guild.", ephemeral=True)
+                return
+
+            settings = guild_settings_manager.get_guild_settings(guild.id)
+            embed = discord.Embed(
+                title="✅ Rules Cache Refreshed",
+                description=f"Rules for {guild.name} have been refreshed from the database.",
+                color=discord.Color.green(),
+            )
+            embed.add_field(name="Rules Length", value=str(len(settings.rules)), inline=False)
+            await application_context.send_followup(embed=embed)
+            logger.debug(f"Rules cache refreshed for guild {guild.name}")
+        except Exception as e:
+            logger.error(f"Error in refresh_rules command: {e}")
+            await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
+
+    @debug.command(name="show_rules", description="Display the current server rules")
+    async def show_rules(self, application_context: discord.ApplicationContext) -> None:
+        """Display the current server rules cached in memory."""
+        try:
+            await application_context.defer(ephemeral=True)
+            guild = application_context.guild
+
+            if not guild:
+                await application_context.send_followup(content="❌ This command must be used in a guild.", ephemeral=True)
+                return
+
+            rules = guild_settings_manager.get_server_rules(guild.id)
+            if not rules:
                 embed = discord.Embed(
-                    title="✅ Rules Cache Refreshed",
-                    description=f"Successfully updated rules cache with {len(rules_text)} characters from rules channel.",
-                    color=discord.Color.green(),
-                    timestamp=datetime.datetime.now(datetime.timezone.utc)
-                )
-                embed.add_field(
-                    name="Rules Preview", 
-                    value=rules_text[:500] + ("..." if len(rules_text) > 500 else ""), 
-                    inline=False
+                    title="📋 Server Rules",
+                    description="No rules have been set for this server.",
+                    color=discord.Color.orange(),
                 )
             else:
                 embed = discord.Embed(
-                    title="⚠️ No Rules Found",
-                    description="No rules channel found or no content in rules channel.",
-                    color=discord.Color.yellow(),
-                    timestamp=datetime.datetime.now(datetime.timezone.utc)
+                    title="📋 Server Rules",
+                    description=rules,
+                    color=discord.Color.blue(),
                 )
-            
-            await application_context.respond(embed=embed, ephemeral=True)
-            
+            await application_context.send_followup(embed=embed, ephemeral=True)
+            logger.debug(f"Displayed rules for guild {guild.name}")
         except Exception as e:
-            logger.error(f"Failed to refresh rules for {application_context.guild.name}: {e}", exc_info=True)
-            await application_context.respond("An error occurred while refreshing rules.", ephemeral=True)
-
-    @commands.slash_command(name="show_rules", description="Display the current cached server rules.")
-    async def show_rules(self, application_context: discord.ApplicationContext):
-        """Display the cached server rules to the requester as an ephemeral message.
-
-        Parameters
-        ----------
-        application_context:
-            Slash command invocation context used to send the response.
-        """
-        rules_text = guild_settings_manager.get_server_rules(application_context.guild.id)
-        
-        if rules_text:
-            embed = discord.Embed(
-                title="📋 Server Rules",
-                description=rules_text[:4000],  # Discord embed description limit
-                color=discord.Color.blue(),
-                timestamp=datetime.datetime.now(datetime.timezone.utc)
-            )
-            embed.set_footer(text=f"Rules for {application_context.guild.name}")
-            await application_context.respond(embed=embed)
-        else:
-            embed = discord.Embed(
-                title="❌ No Rules Available",
-                description="No server rules are currently cached. Try `/refresh_rules` first.",
-                color=discord.Color.red(),
-                timestamp=datetime.datetime.now(datetime.timezone.utc)
-            )
-            await application_context.respond(embed=embed, ephemeral=True)
+            logger.error(f"Error in show_rules command: {e}")
+            await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
 
 
-def setup(discord_bot_instance):
-    """Register the debug cog on the provided Discord bot instance."""
-    discord_bot_instance.add_cog(DebugCog(discord_bot_instance))
+def setup(bot: discord.Bot) -> None:
+    """Register the debug cog and command group with the bot."""
+    bot.add_cog(DebugCog(bot))

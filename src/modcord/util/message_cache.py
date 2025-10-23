@@ -21,9 +21,52 @@ from typing import Optional, Deque, Set
 import discord
 
 from modcord.util.logger import get_logger
-from modcord.util.moderation_datatypes import ModerationMessage
+from modcord.util.moderation_datatypes import ModerationImage, ModerationMessage
 
 logger = get_logger("message_cache")
+
+
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+
+
+def _is_image_attachment(attachment: discord.Attachment) -> bool:
+    """Return True when the attachment can be treated as an image."""
+
+    content_type = (attachment.content_type or "").lower()
+    if content_type.startswith("image/"):
+        return True
+
+    if attachment.width is not None and attachment.height is not None:
+        return True
+
+    filename = (attachment.filename or "").lower()
+    return filename.endswith(IMAGE_EXTENSIONS)
+
+
+def _build_moderation_images(message: discord.Message) -> list[ModerationImage]:
+    """Convert Discord attachments to ModerationImage structures."""
+
+    images: list[ModerationImage] = []
+    image_index = 0
+    author_id = str(message.author.id) if message.author else ""
+
+    for attachment in message.attachments:
+        if not _is_image_attachment(attachment):
+            continue
+
+        images.append(
+            ModerationImage(
+                attachment_id=str(attachment.id or f"{message.id}:{image_index}"),
+                message_id=str(message.id),
+                user_id=author_id,
+                index=image_index,
+                filename=attachment.filename,
+                source_url=attachment.url,
+            )
+        )
+        image_index += 1
+
+    return images
 
 
 class ChannelMessageCache:
@@ -244,6 +287,11 @@ class MessageHistoryCache:
             fetch_count = min(limit * 2, self.api_fetch_limit)
             messages = []
 
+            now_utc = datetime.now(timezone.utc)
+            max_age_cutoff: Optional[datetime] = None
+            if self.cache_ttl_seconds > 0:
+                max_age_cutoff = now_utc - timedelta(seconds=self.cache_ttl_seconds)
+
             async for discord_msg in channel.history(limit=fetch_count):
                 if str(discord_msg.id) in exclude_ids:
                     continue
@@ -252,9 +300,17 @@ class MessageHistoryCache:
                 if discord_msg.author.bot:
                     continue
                 
-                # Skip empty messages
-                content = discord_msg.clean_content.strip()
-                if not content:
+                created_at = discord_msg.created_at
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                if max_age_cutoff and created_at < max_age_cutoff:
+                    continue
+
+                content = (discord_msg.clean_content or "").strip()
+                images = _build_moderation_images(discord_msg)
+
+                # Skip messages that have neither text nor image attachments
+                if not content and not images:
                     continue
 
                 mod_msg = ModerationMessage(
@@ -262,13 +318,13 @@ class MessageHistoryCache:
                     user_id=str(discord_msg.author.id),
                     username=str(discord_msg.author),
                     content=content,
-                    timestamp=discord_msg.created_at.astimezone(timezone.utc)
+                    timestamp=created_at.astimezone(timezone.utc)
                     .replace(microsecond=0)
                     .isoformat()
                     .replace("+00:00", "Z"),
                     guild_id=discord_msg.guild.id if discord_msg.guild else None,
                     channel_id=channel_id,
-                    image_summary=None,
+                    images=images,
                     discord_message=None,
                 )
                 messages.append(mod_msg)

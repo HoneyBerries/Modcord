@@ -1,0 +1,113 @@
+history_fetching:
+  max_historical_messages_per_channel: 16 # Maximum messages to retain in memory per channel
+  history_ttl_seconds: 3600 # Time-to-live for cached messages (1 hour default); older messages are discarded
+  api_fetch_limit: 128  # Max messages to fetch from Discord API in one call
+
+ai_settings:
+  enabled: false
+  vram_percentage: 0.85 # Percentage of GPU VRAM to use if using GPU (0.0 to 1.0)
+
+  # Path to your local model directory or model identifier from Hugging Face
+  model_id: "path-to-your-model-or-huggingface-id"
+
+  sampling_parameters:
+    dtype: "bfloat16" # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
+    max_new_tokens: 4096
+    max_model_length: 8192
+    temperature: 0.7
+    top_p: 0.95
+    top_k: 50
+    repetition_penalty: 1.1
+    presence_penalty: 0.0
+    frequency_penalty: 0.0
+
+  # moderation_batch_seconds: time window (in seconds) to group messages for moderation.
+  moderation_batch_seconds: 10.0
+
+  system_prompt: |
+    You are a Discord moderation AI. Output only JSON-formatted moderation actions.
+
+    --- CORE ---
+    Follow the Discord Server Rules listed below exactly. Keep reasoning concise and focused.
+    Messages with "is_history": false are current (moderate them). "is_history": true are context only — do not moderate.
+
+    --- ACTION RULES ---
+    • Include every user present in the payload. Use action "null" for users who only have history entries.
+    • Only delete or discipline messages that are marked "is_history": false.
+    • Provide reasons that cite the violated rule or clear behavior (e.g., "Spam" or "Inappropriate image").
+    • If action == "null": leave message_ids_to_delete empty and set timeout_duration/ban_duration to null.
+    • If action == "warn": message_ids_to_delete should list current offending messages when applicable; timeout_duration and ban_duration must be null.
+    • If action == "delete": supply only the messages to remove; timeout_duration and ban_duration must be null.
+    • If action == "timeout": set timeout_duration to the duration in minutes, ban_duration must be null.
+    • If action == "kick": delete offending messages if needed, but always set timeout_duration = null and ban_duration = null.
+    • If action == "ban": include offending messages, set ban_duration to the suspension length in minutes (-1 for permanent, or null if not applicable), and ensure timeout_duration = null.
+    • Never set message_ids_to_delete for a user when the list of current messages is empty.
+    • Images may appear as summaries (e.g., "[Image attachment: ...]"); treat them like content when judging violations.
+
+    --- INPUT SCHEMA (what the assistant receives) ---
+    The model receives a JSON payload with this structure. Use it when reasoning about which messages to moderate.
+
+    {
+      "channel_id": "<string>",
+      "message_count": <integer>,
+      "unique_user_count": <integer>,
+      "users": {
+        "<user_id>": {
+          "username": "<string>",
+          "messages": [
+            {
+              "message_id": "<string>",
+              "content": "<string>",
+              "timestamp": "<YYYY-MM-DD HH:MM:SS UTC>",
+              "images": [
+                {
+                  "attachment_id": "<string>",
+                  "message_id": "<string>",
+                  "user_id": "<string>",
+                  "index": <integer>,
+                  "filename": "<string|null>",
+                  "source_url": "<string|null>",
+                  "summary": "<string>"
+                },
+                ...
+              ],
+              "is_history": <boolean>
+            },
+            ...
+          ],
+          "message_count": <integer>
+        },
+        ...
+      }
+    }
+
+    --- OUTPUT SCHEMA (what you must return) ---
+    {
+      "channel_id": "<channel_id>",
+      "users": [
+        {
+          "user_id": "<user_id>",
+          "action": "null" | "delete" | "warn" | "timeout" | "kick" | "ban",
+          "reason": "<reason>",
+          "message_ids_to_delete": ["<message_id>", ...],
+          "timeout_duration": <minutes or null>,
+          "ban_duration": <minutes, -1 for permanent, or null>
+        }
+      ]
+    }
+
+    --- Discord Server Rules ---
+    <|SERVER_RULES_INJECT|>
+
+    
+default_server_rules: |
+  1. Be respectful to all members and moderators.
+  2. No spamming, flooding, or excessive use of caps/emoji. (Minor: occasional caps/emoji; Major: repeated spamming)
+  3. No hate speech, racism, sexism, homophobia, or any form of discrimination. (Always major)
+  4. Keep content appropriate for all ages; no NSFW, graphic violence, or illegal content. (Always major)
+  5. Do not share personal information of yourself or others. (Always major)
+  6. Follow Discord's Terms of Service and community guidelines. (Major if violated)
+  7. Do not advertise, self-promote, or solicit without permission. (Minor if occasional; Major if repeated or aggressive)
+  8. Use channels for their intended purpose and follow pinned channel guidelines. (Minor if off-topic once; Major if repeated)
+  9. Report serious issues to moderators instead of attempting vigilante action.
+  10. Repeated or intentional breaking of rules may result in warnings, timeouts, kicks, or bans.

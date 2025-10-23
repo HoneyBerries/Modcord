@@ -1,0 +1,510 @@
+[
+    {
+        "id": "1426307901705683120",
+        "application_id": "1258947859617808456",
+        "version": "1426307901798223945",
+        "default_member_permissions": null,
+        "type": 1,
+        "name": "settings",
+        "name_localizations": null,
+        "description": "Open an interactive panel to configure Modcord for this server.",
+        "description_localizations": null,
+        "dm_permission": true,
+        "contexts": [
+            0,
+            1,
+            2
+        ],
+        "integration_types": [
+            0
+        ],
+        "nsfw": false
+    },
+    {
+        "id": "1426307901705683122",
+        "application_id": "1258947859617808456",
+        "version": "1426307901798223947",
+        "default_member_permissions": null,
+        "type": 1,
+        "name": "warn",
+        "name_localizations": null,
+        "description": "Warns a user for a specified reason.",
+        "description_localizations": null,
+        "dm_permission": true,
+        "contexts": [
+            0,
+            1,
+            2
+        ],
+        "integration_types": [
+            0
+        ],
+        "options": [
+            {
+                "type": 6,
+                "name": "user",
+                "name_localizations": null,
+                "description": "The user to warn.",
+                "description_localizations": null,
+                "required": true
+            },
+            {
+                "type": 3,
+                "name": "reason",
+                "name_localizations": null,
+                "description": "Reason for the warning.",
+                "description_localizations": null
+            },
+            {
+                "type": 4,
+                "name": "delete_message_seconds",
+                "name_localizations": null,
+                "description": "Delete messages from (choose time range)",
+                "description_localizations": null,
+                "choices": [
+                    {
+                        "name": "Don't Delete Any",
+                        "name_localizations": null,
+                        "value": 0
+                    },
+                    {
+                        "name": "Previous Hour",
+                        "name_localizations": null,
+                        "value": 3600
+                    },
+                    {
+                        "name": "Previous 6 Hours",
+                        "name_localizations": null,
+                        "value": 21600
+                    },
+                    {
+                        "name": "Previous 12 Hours",
+                        "name_localizations": null,
+                        "value": 43200
+                    },
+                    {
+                        "name": "Previous 24 Hours",
+                        "name_localizations": null,
+                        "value": 86400
+                    },
+                    {
+                        "name": "Previous 3 Days",
+                        "name_localizations": null,
+                        "value": 259200
+                    },
+                    {
+                        "name": "Previous 7 Days",
+                        "name_localizations": null,
+                        "value": 604800
+                    }
+                ]
+            }
+        ],
+        "nsfw": false
+    },
+    {
+        "id": "1426307901705683123",
+        "application_id": "1258947859617808456",
+        "version": "1426307901798223948",
+        "default_member_permissions": null,
+        "type": 1,
+        "name": "timeout",
+        "name_localizations": null,
+        "description": "Timeout a user for a specified duration.",
+        "description_localizations": null,
+        "dm_permission": true,
+        "contexts": [
+            0,
+            1,
+            2
+        ],
+        "integration_types": [
+            0
+        ],
+        "options": [
+            {
+                "type": 6,
+                "name": "user",
+                "name_localizations": null,
+                "description": "The user to timeout.",
+                "description_localizations": null,
+                "required": true
+            },
+            {
+                "type": 3,
+                "name": "duration",
+                "name_localizations": null,
+                "description": "Duration of the timeout.",
+                "description_localizations": null,
+                "choices": [
+                    {
+                        "name": "60 secs",
+                        "name_localizations": null,
+                        "value": "60 secs"
+                    },
+                    {
+                        "name": "5 mins",
+                        "name_localizations": null,
+                        "value": "5 mins"
+                    },
+                    {
+                        "name": "10 mins",
+                        "name_localizations": null,
+                        "value": "10 mins"
+                    },
+                    {
+                        "name": "30 mins",
+                        "name_localizations": null,
+                        "value": "30 mins"
+                    },
+                    {
+                        "name": "1 hour",
+                        "name_localizations": null,
+                        "value": "1 hour"
+                    },
+                    {
+                        "name": "2 hours",
+                        "name_localizations": null,
+                        "value": "2 hours"
+                    },
+                    {
+                        "name": "1 day",
+                        "name_localizations": null,
+                        "value": "1 day"
+                    },
+                    {
+                        "name": "1 week",
+                        "name_localizations": null,
+                        "value": "1 week"
+                    },
+                    {
+                        "name": "Till the end of time",
+                        "name_localizations": null,
+                        "value": "Till the end of time"
+                    }
+                ]
+            },
+            {
+                "type": 3,
+                "name": "reason",
+                "name_localizations": null,
+                "description": "Reason for the timeout.",
+                "description_localizations": null
+            },
+            {
+                "type": 4,
+                "name": "delete_message_seconds",
+                "name_localizations": null,
+                "description": "Delete messages from (choose time range)",
+                "description_localizations": null,
+                "choices": [
+                    {
+                        "name": "Don't Delete Any",
+                        "name_localizations": null,
+                        "value": 0
+                    },
+                    {
+                        "name": "Previous Hour",
+                        "name_localizations": null,
+                        "value": 3600
+                    },
+                    {
+                        "name": "Previous 6 Hours",
+                        "name_localizations": null,
+                        "value": 21600
+                    },
+                    {
+                        "name": "Previous 12 Hours",
+                        "name_localizations": null,
+                        "value": 43200
+                    },
+                    {
+                        "name": "Previous 24 Hours",
+                        "name_localizations": null,
+                        "value": 86400
+                    },
+                    {
+                        "name": "Previous 3 Days",
+                        "name_localizations": null,
+                        "value": 259200
+                    },
+                    {
+                        "name": "Previous 7 Days",
+                        "name_localizations": null,
+                        "value": 604800
+                    }
+                ]
+            }
+        ],
+        "nsfw": false
+    },
+    {
+        "id": "1426307901705683124",
+        "application_id": "1258947859617808456",
+        "version": "1426307901798223949",
+        "default_member_permissions": null,
+        "type": 1,
+        "name": "kick",
+        "name_localizations": null,
+        "description": "Kick a user from the server.",
+        "description_localizations": null,
+        "dm_permission": true,
+        "contexts": [
+            0,
+            1,
+            2
+        ],
+        "integration_types": [
+            0
+        ],
+        "options": [
+            {
+                "type": 6,
+                "name": "user",
+                "name_localizations": null,
+                "description": "The user to kick.",
+                "description_localizations": null,
+                "required": true
+            },
+            {
+                "type": 3,
+                "name": "reason",
+                "name_localizations": null,
+                "description": "Reason for the kick.",
+                "description_localizations": null
+            },
+            {
+                "type": 4,
+                "name": "delete_message_seconds",
+                "name_localizations": null,
+                "description": "Delete messages from (choose time range)",
+                "description_localizations": null,
+                "choices": [
+                    {
+                        "name": "Don't Delete Any",
+                        "name_localizations": null,
+                        "value": 0
+                    },
+                    {
+                        "name": "Previous Hour",
+                        "name_localizations": null,
+                        "value": 3600
+                    },
+                    {
+                        "name": "Previous 6 Hours",
+                        "name_localizations": null,
+                        "value": 21600
+                    },
+                    {
+                        "name": "Previous 12 Hours",
+                        "name_localizations": null,
+                        "value": 43200
+                    },
+                    {
+                        "name": "Previous 24 Hours",
+                        "name_localizations": null,
+                        "value": 86400
+                    },
+                    {
+                        "name": "Previous 3 Days",
+                        "name_localizations": null,
+                        "value": 259200
+                    },
+                    {
+                        "name": "Previous 7 Days",
+                        "name_localizations": null,
+                        "value": 604800
+                    }
+                ]
+            }
+        ],
+        "nsfw": false
+    },
+    {
+        "id": "1426307901705683125",
+        "application_id": "1258947859617808456",
+        "version": "1426307901798223950",
+        "default_member_permissions": null,
+        "type": 1,
+        "name": "ban",
+        "name_localizations": null,
+        "description": "Ban a user from the server.",
+        "description_localizations": null,
+        "dm_permission": true,
+        "contexts": [
+            0,
+            1,
+            2
+        ],
+        "integration_types": [
+            0
+        ],
+        "options": [
+            {
+                "type": 6,
+                "name": "user",
+                "name_localizations": null,
+                "description": "The user to ban.",
+                "description_localizations": null,
+                "required": true
+            },
+            {
+                "type": 3,
+                "name": "duration",
+                "name_localizations": null,
+                "description": "Duration of the ban.",
+                "description_localizations": null,
+                "choices": [
+                    {
+                        "name": "60 secs",
+                        "name_localizations": null,
+                        "value": "60 secs"
+                    },
+                    {
+                        "name": "5 mins",
+                        "name_localizations": null,
+                        "value": "5 mins"
+                    },
+                    {
+                        "name": "10 mins",
+                        "name_localizations": null,
+                        "value": "10 mins"
+                    },
+                    {
+                        "name": "30 mins",
+                        "name_localizations": null,
+                        "value": "30 mins"
+                    },
+                    {
+                        "name": "1 hour",
+                        "name_localizations": null,
+                        "value": "1 hour"
+                    },
+                    {
+                        "name": "2 hours",
+                        "name_localizations": null,
+                        "value": "2 hours"
+                    },
+                    {
+                        "name": "1 day",
+                        "name_localizations": null,
+                        "value": "1 day"
+                    },
+                    {
+                        "name": "1 week",
+                        "name_localizations": null,
+                        "value": "1 week"
+                    },
+                    {
+                        "name": "Till the end of time",
+                        "name_localizations": null,
+                        "value": "Till the end of time"
+                    }
+                ]
+            },
+            {
+                "type": 3,
+                "name": "reason",
+                "name_localizations": null,
+                "description": "Reason for the ban.",
+                "description_localizations": null
+            },
+            {
+                "type": 4,
+                "name": "delete_message_seconds",
+                "name_localizations": null,
+                "description": "Delete messages from (choose time range)",
+                "description_localizations": null,
+                "choices": [
+                    {
+                        "name": "Don't Delete Any",
+                        "name_localizations": null,
+                        "value": 0
+                    },
+                    {
+                        "name": "Previous Hour",
+                        "name_localizations": null,
+                        "value": 3600
+                    },
+                    {
+                        "name": "Previous 6 Hours",
+                        "name_localizations": null,
+                        "value": 21600
+                    },
+                    {
+                        "name": "Previous 12 Hours",
+                        "name_localizations": null,
+                        "value": 43200
+                    },
+                    {
+                        "name": "Previous 24 Hours",
+                        "name_localizations": null,
+                        "value": 86400
+                    },
+                    {
+                        "name": "Previous 3 Days",
+                        "name_localizations": null,
+                        "value": 259200
+                    },
+                    {
+                        "name": "Previous 7 Days",
+                        "name_localizations": null,
+                        "value": 604800
+                    }
+                ]
+            }
+        ],
+        "nsfw": false
+    },
+    {
+        "id": "1429948899585687598",
+        "application_id": "1258947859617808456",
+        "version": "1429948900047065230",
+        "default_member_permissions": null,
+        "type": 1,
+        "name": "debug",
+        "name_localizations": null,
+        "description": "Debug commands for bot administration",
+        "description_localizations": null,
+        "dm_permission": true,
+        "contexts": [
+            0,
+            1,
+            2
+        ],
+        "integration_types": [
+            0
+        ],
+        "options": [
+            {
+                "type": 1,
+                "name": "test",
+                "name_localizations": null,
+                "description": "Test command to verify the bot is responsive",
+                "description_localizations": null
+            },
+            {
+                "type": 1,
+                "name": "purge",
+                "name_localizations": null,
+                "description": "Delete all messages in the current channel",
+                "description_localizations": null
+            },
+            {
+                "type": 1,
+                "name": "refresh_rules",
+                "name_localizations": null,
+                "description": "Manually refresh the server rules cache",
+                "description_localizations": null
+            },
+            {
+                "type": 1,
+                "name": "show_rules",
+                "name_localizations": null,
+                "description": "Display the current server rules",
+                "description_localizations": null
+            }
+        ],
+        "nsfw": false
+    }
+]
