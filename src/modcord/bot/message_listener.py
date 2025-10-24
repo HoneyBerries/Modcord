@@ -8,7 +8,7 @@ import datetime
 import discord
 from discord.ext import commands
 
-from modcord.moderation.moderation_datatypes import ModerationImage, ModerationMessage
+from modcord.moderation.moderation_datatypes import ModerationImage, ModerationMessage, ModerationUser
 from modcord.util.image_utils import download_image_to_pil, generate_image_hash_id
 
 from modcord.configuration.guild_settings import guild_settings_manager
@@ -181,7 +181,6 @@ class MessageListenerCog(commands.Cog):
         return ModerationMessage(
             message_id=str(message.id),
             user_id=str(message.author.id),
-            username=str(message.author),
             content=content,
             timestamp=timestamp_iso,
             guild_id=message.guild.id if message.guild else None,

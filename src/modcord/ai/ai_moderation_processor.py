@@ -113,11 +113,9 @@ class ModerationProcessor:
 
             # Build user->message_ids map for non-history users
             user_message_map: Dict[str, List[str]] = {}
-            for msg in batch.messages:
-                user_id = str(msg.user_id)
-                if user_id not in user_message_map:
-                    user_message_map[user_id] = []
-                user_message_map[user_id].append(str(msg.message_id))
+            for user in batch.users:
+                user_id = str(user.user_id)
+                user_message_map[user_id] = [str(msg.message_id) for msg in user.messages]
 
             channel_id_str = str(batch.channel_id)
 
@@ -210,56 +208,62 @@ class ModerationProcessor:
         """
         Convert ModerationChannelBatch to JSON structure with image IDs.
 
-        This method processes all messages and history in the batch, grouping them by user
-        and collecting associated image IDs. The resulting JSON payload is used as input
-        for the AI model.
+        This method processes all users and their messages in the batch, collecting
+        associated image IDs. The resulting JSON payload is used as input for the AI model.
 
         Returns:
             Tuple of (json_payload, pil_images_list, image_id_map).
         """
-        all_messages = list(batch.messages) + list(batch.history)
         pil_images: List[Any] = []
         image_id_map: Dict[str, int] = {}
-        users_dict: Dict[str, Dict[str, Any]] = {}
+        users_list = []
         
-        # Collect messages and images, group by user
-        for msg in all_messages:
-            user_id = str(msg.user_id)
+        # Process all users (current batch + history)
+        all_users = list(batch.users) + list(batch.history_users)
+        
+        total_messages = 0
+        for user in all_users:
+            user_messages = []
             
-            # Initialize user dict if first message from this user
-            if user_id not in users_dict:
-                users_dict[user_id] = {
-                    "username": msg.username,
-                    "messages": [],
-                    "message_count": 0,
+            # Process each message for this user
+            for msg in user.messages:
+                # Collect image IDs for this message
+                msg_image_ids = []
+                for img in msg.images:
+                    if img.pil_image and img.image_id:
+                        if img.image_id not in image_id_map:
+                            image_id_map[img.image_id] = len(pil_images)
+                            pil_images.append(img.pil_image)
+                        msg_image_ids.append(img.image_id)
+                
+                msg_dict = {
+                    "message_id": str(msg.message_id),
+                    "timestamp": humanize_timestamp(msg.timestamp) if msg.timestamp else None,
+                    "content": msg.content or ("[Images only]" if msg_image_ids else ""),
+                    "image_ids": msg_image_ids,
+                    "is_history": user in batch.history_users,
                 }
+                
+                user_messages.append(msg_dict)
+                total_messages += 1
             
-            # Collect image IDs for this message
-            msg_image_ids = []
-            for img in msg.images:
-                if img.pil_image and img.image_id:
-                    if img.image_id not in image_id_map:
-                        image_id_map[img.image_id] = len(pil_images)
-                        pil_images.append(img.pil_image)
-                    msg_image_ids.append(img.image_id)
-            
-            msg_dict = {
-                "message_id": str(msg.message_id),
-                "timestamp": humanize_timestamp(msg.timestamp) if msg.timestamp else None,
-                "content": msg.content or ("[Images only]" if msg_image_ids else ""),
-                "image_ids": msg_image_ids,
-                "is_history": msg in batch.history,
+            # Create user dict with all their messages
+            user_dict = {
+                "user_id": str(user.user_id),
+                "username": user.username,
+                "roles": user.roles,
+                "join_date": user.join_date,
+                "message_count": len(user_messages),
+                "messages": user_messages,
             }
-            
-            users_dict[user_id]["messages"].append(msg_dict)
-            users_dict[user_id]["message_count"] = len(users_dict[user_id]["messages"])
+            users_list.append(user_dict)
         
         payload = {
             "channel_id": str(batch.channel_id),
-            "message_count": len(all_messages),
-            "unique_user_count": len(users_dict),
+            "message_count": total_messages,
+            "unique_user_count": len(all_users),
             "total_images": len(pil_images),
-            "users": users_dict,
+            "users": users_list,
         }
         
         return payload, pil_images, image_id_map

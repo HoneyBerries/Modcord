@@ -12,10 +12,11 @@ Database schema:
 
 import collections
 import asyncio
+import discord
 from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence, Set
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
-from modcord.moderation.moderation_datatypes import ActionType, ModerationChannelBatch, ModerationMessage
+from modcord.moderation.moderation_datatypes import ActionType, ModerationChannelBatch, ModerationMessage, ModerationUser
 from modcord.history.history_cache import global_history_cache_manager
 from modcord.configuration.app_configuration import app_config
 from modcord.database.database import init_database, get_connection
@@ -69,6 +70,9 @@ class GuildSettingsManager:
         self.global_batch_timer: Optional[asyncio.Task] = None
         self.batch_processing_callback: Optional[Callable[[List[ModerationChannelBatch]], Awaitable[None]]] = None
         self._batch_lock = asyncio.Lock()
+        
+        # Bot instance for fetching member information
+        self.bot_instance = None
 
         # Persistence helpers
         self._persist_lock = asyncio.Lock()
@@ -147,10 +151,86 @@ class GuildSettingsManager:
         self._trigger_persist_channel_guidelines(guild_id, channel_id)
 
     # --- Global message batching system ---
+    def set_bot_instance(self, bot_instance) -> None:
+        """Set the bot instance for fetching member information."""
+        self.bot_instance = bot_instance
+        logger.info("Bot instance set for guild settings manager")
+    
     def set_batch_processing_callback(self, callback: Callable[[List[ModerationChannelBatch]], Awaitable[None]]) -> None:
         """Set the async callback invoked when global batches are ready."""
         self.batch_processing_callback = callback
         logger.info("Batch processing callback set")
+
+    async def _group_messages_by_user(
+        self, 
+        messages: List[ModerationMessage],
+        bot_instance
+    ) -> List[ModerationUser]:
+        """Group messages by user_id and create ModerationUser objects with role information.
+        
+        Parameters
+        ----------
+        messages:
+            List of messages to group by user.
+        bot_instance:
+            Discord bot instance to fetch member information for roles and join_date.
+            
+        Returns
+        -------
+        List[ModerationUser]
+            List of users with their messages, ordered by first message appearance.
+        """
+        import datetime
+        
+        # Group messages by user_id
+        user_messages: Dict[str, List[ModerationMessage]] = collections.defaultdict(list)
+        first_appearance: Dict[str, int] = {}
+        
+        for idx, msg in enumerate(messages):
+            user_id = str(msg.user_id)
+            if user_id not in first_appearance:
+                first_appearance[user_id] = idx
+            user_messages[user_id].append(msg)
+        
+        # Create ModerationUser objects
+        moderation_users: List[ModerationUser] = []
+        
+        for user_id, user_msgs in user_messages.items():
+            # Get user information from first message with discord_message reference
+            discord_msg = next((m.discord_message for m in user_msgs if m.discord_message), None)
+            
+            username = "Unknown User"
+            roles: List[str] = []
+            join_date: Optional[str] = None
+            
+            if discord_msg and discord_msg.guild and discord_msg.author:
+                username = str(discord_msg.author)
+                
+                # Get member to access roles and join date
+                if isinstance(discord_msg.author, discord.Member):
+                    member = discord_msg.author
+                    # Extract role names (excluding @everyone)
+                    roles = [role.name for role in member.roles if role.name != "@everyone"]
+                    
+                    # Get join date
+                    if member.joined_at:
+                        join_date = member.joined_at.astimezone(
+                            datetime.timezone.utc
+                        ).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+            
+            mod_user = ModerationUser(
+                user_id=user_id,
+                username=username,
+                roles=roles,
+                join_date=join_date,
+                messages=user_msgs,
+            )
+            moderation_users.append(mod_user)
+        
+        # Sort users by first appearance
+        moderation_users.sort(key=lambda u: first_appearance[u.user_id])
+        
+        return moderation_users
 
     async def add_message_to_batch(self, channel_id: int, message: ModerationMessage) -> None:
         """Queue a message for global batch processing and start timer if needed."""
@@ -185,26 +265,40 @@ class GuildSettingsManager:
 
             channel_batches: List[ModerationChannelBatch] = []
             for channel_id, messages in pending_batches.items():
-                history_context = await self._resolve_history_context(channel_id, messages)
+                # Group messages by user
+                users = await self._group_messages_by_user(messages, self.bot_instance)
+                
+                # Get history context and group by user as well
+                history_messages = await self._resolve_history_context(channel_id, messages)
+                history_users = await self._group_messages_by_user(history_messages, self.bot_instance) if history_messages else []
+                
                 channel_batches.append(
                     ModerationChannelBatch(
                         channel_id=channel_id,
-                        messages=messages,
-                        history=history_context,
+                        users=users,
+                        history_users=history_users,
                     )
                 )
+                
+                total_messages = sum(len(user.messages) for user in users)
+                total_history = sum(len(user.messages) for user in history_users)
                 logger.debug(
-                    "Prepared batch for channel %s: %d messages, %d history",
+                    "Prepared batch for channel %s: %d users (%d messages), %d history users (%d messages)",
                     channel_id,
-                    len(messages),
-                    len(history_context),
+                    len(users),
+                    total_messages,
+                    len(history_users),
+                    total_history,
                 )
 
             if channel_batches and self.batch_processing_callback:
+                total_users = sum(len(b.users) for b in channel_batches)
+                total_msgs = sum(sum(len(u.messages) for u in b.users) for b in channel_batches)
                 logger.debug(
-                    "Processing global batch: %d channels, %d total messages",
+                    "Processing global batch: %d channels, %d total users, %d total messages",
                     len(channel_batches),
-                    sum(len(b.messages) for b in channel_batches),
+                    total_users,
+                    total_msgs,
                 )
                 try:
                     await self.batch_processing_callback(channel_batches)

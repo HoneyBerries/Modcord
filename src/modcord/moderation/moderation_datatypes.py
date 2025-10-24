@@ -65,9 +65,9 @@ class ActionData:
     user_id: str
     action: ActionType
     reason: str
+    timeout_duration: int
+    ban_duration: int
     message_ids: List[str] = field(default_factory=list)
-    timeout_duration: Optional[int] = None
-    ban_duration: Optional[int] = None
 
     def add_message_ids(self, *message_ids: str) -> None:
         """Append one or more message identifiers to the action payload.
@@ -121,11 +121,13 @@ class ModerationImage:
 @dataclass(slots=True)
 class ModerationMessage:
     """Normalized message data used to provide context to the moderation engine.
+    
+    Note: username is now stored at the ModerationUser level. This class only
+    contains message-specific data, with user_id kept for reference purposes.
 
     Attributes:
         message_id (str): Unique identifier for the message.
-        user_id (str): Snowflake of the user who sent the message.
-        username (str): Username of the message sender.
+        user_id (str): Reference to the user who sent this message.
         content (str): Text content of the message.
         timestamp (str): ISO 8601 timestamp of when the message was sent.
         guild_id (Optional[int]): ID of the guild where the message was sent.
@@ -136,7 +138,6 @@ class ModerationMessage:
 
     message_id: str
     user_id: str
-    username: str
     content: str
     timestamp: str
     guild_id: Optional[int]
@@ -145,50 +146,121 @@ class ModerationMessage:
     discord_message: "discord.Message | None" = None
 
 @dataclass(slots=True)
-class ModerationChannelBatch:
-    """Container for batched moderation messages plus optional historical context.
-
+class ModerationUser:
+    """Represents a user in the moderation system with their messages and metadata.
+    
+    This class aggregates user information including their Discord roles and all
+    messages they've sent. Messages are associated with users rather than containing
+    duplicate user information.
+    
     Attributes:
-        channel_id (int): ID of the channel the batch belongs to.
-        messages (List[ModerationMessage]): List of messages in the batch.
-        history (List[ModerationMessage]): Historical messages for context.
+        user_id (str): Discord user snowflake ID.
+        username (str): Discord username.
+        roles (List[str]): List of role names the user has in the guild.
+        join_date (Optional[str]): ISO 8601 timestamp of when the user joined the guild.
+        messages (List[ModerationMessage]): List of messages sent by this user.
     """
 
-    channel_id: int
+    user_id: str
+    username: str
+    roles: List[str] = field(default_factory=list)
+    join_date: Optional[str] = None
     messages: List[ModerationMessage] = field(default_factory=list)
-    history: List[ModerationMessage] = field(default_factory=list)
 
-    def add_message(self, message: ModerationMessage) -> None:
-        """Add a message to the batch.
+    def add_message(self: ModerationUser, message: ModerationMessage) -> None:
+        """Add a message to this user's message list.
 
         Args:
             message (ModerationMessage): The message to add.
         """
         self.messages.append(message)
 
-    def extend(self, messages: Sequence[ModerationMessage]) -> None:
-        """Extend the batch with a sequence of messages.
-
-        Args:
-            messages (Sequence[ModerationMessage]): Messages to add to the batch.
-        """
-        self.messages.extend(messages)
-
-    def set_history(self, history: Sequence[ModerationMessage]) -> None:
-        """Set the historical context for the batch.
-
-        Args:
-            history (Sequence[ModerationMessage]): Historical messages to set.
-        """
-        self.history = list(history)
-
-    def is_empty(self) -> bool:
-        """Check if the batch is empty.
+    def to_model_payload(self: ModerationUser) -> dict[str, Any]:
+        """Convert to the dictionary structure expected by the AI model.
+        
+        Returns a JSON payload with user metadata and all their messages.
 
         Returns:
-            bool: True if the batch has no messages, False otherwise.
+            dict: JSON-serializable representation of the user.
         """
-        return not self.messages
+        join_date_value = None
+        if self.join_date:
+            join_date_value = humanize_timestamp(self.join_date)
+
+        return {
+            "user_id": self.user_id,
+            "username": self.username,
+            "roles": self.roles,
+            "join_date": join_date_value,
+            "message_count": len(self.messages),
+            "messages": [{"message_id": msg.message_id, "content": msg.content, "timestamp": humanize_timestamp(msg.timestamp)} for msg in self.messages],
+        }
+
+@dataclass(slots=True)
+class ModerationChannelBatch:
+    """Container for batched moderation data organized by users.
+    
+    This structure groups messages by user, allowing the AI model to reason
+    about user behavior and context more effectively. Historical messages
+    are also organized by user for consistency.
+
+    Attributes:
+        channel_id (int): ID of the channel the batch belongs to.
+        users (List[ModerationUser]): List of users with their messages in the batch.
+        history_users (List[ModerationUser]): Historical users for context.
+    """
+
+    channel_id: int
+    users: List[ModerationUser] = field(default_factory=list)
+    history_users: List[ModerationUser] = field(default_factory=list)
+
+    def add_user(self, user: ModerationUser) -> None:
+        """Add a user with their messages to the batch.
+
+        Args:
+            user (ModerationUser): The user to add.
+        """
+        self.users.append(user)
+
+    def extend_users(self, users: Sequence[ModerationUser]) -> None:
+        """Extend the batch with a sequence of users.
+
+        Args:
+            users (Sequence[ModerationUser]): Users to add to the batch.
+        """
+        self.users.extend(users)
+
+    def set_history(self, history_users: Sequence[ModerationUser]) -> None:
+        """Set the historical context users for the batch.
+
+        Args:
+            history_users (Sequence[ModerationUser]): Historical users to set.
+        """
+        self.history_users = list(history_users)
+
+    def is_empty(self) -> bool:
+        """Check if the batch has no users or all users have no messages.
+
+        Returns:
+            bool: True if the batch is empty, False otherwise.
+        """
+        return not self.users or all(not user.messages for user in self.users)
+
+    def to_model_payload(self) -> List[dict]:
+        """Convert batch users to the payload structure expected by the AI model.
+
+        Returns:
+            List[dict]: List of user payloads.
+        """
+        return [user.to_model_payload() for user in self.users]
+
+    def history_to_model_payload(self) -> List[dict]:
+        """Convert historical users to the payload structure expected by the AI model.
+
+        Returns:
+            List[dict]: List of historical user payloads.
+        """
+        return [user.to_model_payload() for user in self.history_users]
 
 # ============================================================
 # Command Action Classes - extend ActionData for manual commands
@@ -234,6 +306,8 @@ class WarnCommand(CommandAction):
             user_id="0",  # Will be set by caller
             action=ActionType.WARN,
             reason=reason,
+            timeout_duration=0,
+            ban_duration=0,
         )
 
     async def execute(
@@ -293,6 +367,7 @@ class TimeoutCommand(CommandAction):
             action=ActionType.TIMEOUT,
             reason=reason,
             timeout_duration=duration_minutes,
+            ban_duration=0,
         )
 
     async def execute(
@@ -356,6 +431,8 @@ class KickCommand(CommandAction):
             user_id="0",  # Will be set by caller
             action=ActionType.KICK,
             reason=reason,
+            timeout_duration=0,
+            ban_duration=0,
         )
 
     async def execute(
@@ -401,22 +478,23 @@ class BanCommand(CommandAction):
     """Ban action for manual commands."""
 
     def __init__(
-        self, reason: str = "No reason provided.", duration_minutes: Optional[int] = None
+        self, duration_minutes: int, reason: str = "No reason provided."
     ):
         """Initialize a ban action.
         
         Parameters
         ----------
-        reason:
-            Reason for the ban.
         duration_minutes:
             Duration in minutes; -1 = permanent, None or 0 = not applicable.
+        reason:
+            Reason for the ban.
         """
         super().__init__(
             user_id="0",  # Will be set by caller
             action=ActionType.BAN,
             reason=reason,
-            ban_duration=duration_minutes,
+            timeout_duration=0,
+            ban_duration=duration_minutes
         )
 
     async def execute(

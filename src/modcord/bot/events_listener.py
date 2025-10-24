@@ -62,6 +62,7 @@ class EventsListenerCog(commands.Cog):
 
         # Set up batch processing callback for global batching
         logger.info("Setting up batch processing callback...")
+        guild_settings_manager.set_bot_instance(self.bot)
         guild_settings_manager.set_batch_processing_callback(
             lambda batches: moderation_helper.process_message_batches(self, batches)
         )

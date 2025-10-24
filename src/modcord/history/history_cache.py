@@ -331,7 +331,6 @@ class GlobalHistoryCacheManager:
                 mod_msg = ModerationMessage(
                     message_id=str(discord_msg.id),
                     user_id=str(discord_msg.author.id),
-                    username=str(discord_msg.author),
                     content=content,
                     timestamp=created_at.astimezone(timezone.utc)
                     .replace(microsecond=0)

@@ -55,11 +55,16 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
 
 
     for batch in batches:
-        # Skip empty batches or those with no messages
-        if batch.is_empty() or not batch.messages:
+        # Skip empty batches
+        if batch.is_empty():
             continue
 
-        first_message = batch.messages[0]
+        # Get guild_id from first user's first message
+        first_user = batch.users[0] if batch.users else None
+        if not first_user or not first_user.messages:
+            continue
+            
+        first_message = first_user.messages[0]
         guild_id = first_message.guild_id
         # Skip channels where AI moderation is disabled
         if guild_id and not guild_settings_manager.is_ai_enabled(guild_id):
@@ -99,8 +104,9 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
             await apply_batch_action(self, action, batch)
 
         # Store all processed messages in channel history for future context
-        for message in batch.messages:
-            global_history_cache_manager.add_message(batch.channel_id, message)
+        for user in batch.users:
+            for message in user.messages:
+                global_history_cache_manager.add_message(batch.channel_id, message)
 
 
 async def apply_batch_action(self, action: ActionData, batch: ModerationChannelBatch) -> bool:
@@ -121,10 +127,14 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
     if action.action is ActionType.NULL or not action.user_id:
         return False
 
+    # Find the user in the batch
+    target_user = next((u for u in batch.users if u.user_id == action.user_id), None)
+    if not target_user or not target_user.messages:
+        logger.warning(f"No messages found for user {action.user_id}")
+        return False
 
     # Find the most recent Discord message for the user in this batch
-    user_messages = [m for m in batch.messages if m.user_id == action.user_id]
-    pivot = next((m for m in reversed(user_messages) if m.discord_message), None)
+    pivot = next((m for m in reversed(target_user.messages) if m.discord_message), None)
     if not pivot or not pivot.discord_message:
         logger.warning(f"No Discord message for user {action.user_id}")
         return False
@@ -146,7 +156,11 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
         return False
 
     # Build a lookup for all Discord messages in this batch (by message_id)
-    msg_lookup = {str(m.message_id).strip(): m.discord_message for m in batch.messages if m.discord_message}
+    msg_lookup = {}
+    for user in batch.users:
+        for m in user.messages:
+            if m.discord_message:
+                msg_lookup[str(m.message_id).strip()] = m.discord_message
 
 
     try:
