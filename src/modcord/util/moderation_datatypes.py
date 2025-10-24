@@ -475,7 +475,7 @@ class BanCommand(CommandAction):
             create_punishment_embed,
             format_duration,
         )
-        from modcord.bot.unban_scheduler import schedule_unban
+        from modcord.scheduler.unban_scheduler import schedule_unban
 
         self.user_id = str(user.id)
         guild = ctx.guild

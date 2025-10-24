@@ -61,6 +61,9 @@ class GuildSettingsManager:
         # Persisted guild settings registry (guild_id -> GuildSettings)
         self.guilds: Dict[int, GuildSettings] = {}
 
+        # Channel-specific guidelines cache (guild_id -> channel_id -> guidelines_text)
+        self.channel_guidelines: DefaultDict[int, Dict[int, str]] = collections.defaultdict(dict)
+
         # Global message batching system
         self.channel_message_batches: DefaultDict[int, List[ModerationMessage]] = collections.defaultdict(list)
         self.global_batch_timer: Optional[asyncio.Task] = None
@@ -119,6 +122,29 @@ class GuildSettingsManager:
         logger.debug(f"Updated rules cache for guild {guild_id} (len={len(rules)})")
 
         self._trigger_persist(guild_id)
+
+    def get_channel_guidelines(self, guild_id: int, channel_id: int) -> str:
+        """Return cached channel-specific guidelines or an empty string."""
+        return self.channel_guidelines.get(guild_id, {}).get(channel_id, "")
+
+    def set_channel_guidelines(self, guild_id: int, channel_id: int, guidelines: str) -> None:
+        """
+        Cache and persist channel-specific guidelines.
+
+        Persistence is scheduled in a non-blocking manner.
+        """
+        if guidelines is None:
+            guidelines = ""
+
+        if guild_id not in self.channel_guidelines:
+            self.channel_guidelines[guild_id] = {}
+        
+        self.channel_guidelines[guild_id][channel_id] = guidelines
+        logger.debug(
+            f"Updated channel guidelines cache for guild {guild_id}, channel {channel_id} (len={len(guidelines)})"
+        )
+
+        self._trigger_persist_channel_guidelines(guild_id, channel_id)
 
     # --- Global message batching system ---
     def set_batch_processing_callback(self, callback: Callable[[List[ModerationChannelBatch]], Awaitable[None]]) -> None:
@@ -224,6 +250,39 @@ class GuildSettingsManager:
                     logger.error("Failed to persist guild %s to database", guild_id)
             except Exception:
                 logger.exception("Error while persisting guild %s to database", guild_id)
+
+        task.add_done_callback(_cleanup)
+
+    def _trigger_persist_channel_guidelines(self, guild_id: int, channel_id: int) -> None:
+        """Schedule a best-effort persist of channel guidelines to database."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning(
+                "Cannot persist channel guidelines for guild %s, channel %s: no running event loop",
+                guild_id,
+                channel_id
+            )
+            return
+
+        task = loop.create_task(self._persist_channel_guidelines_async(guild_id, channel_id))
+        self._active_persists.add(task)
+
+        def _cleanup(completed: asyncio.Task) -> None:
+            self._active_persists.discard(completed)
+            try:
+                if not completed.result():
+                    logger.error(
+                        "Failed to persist channel guidelines for guild %s, channel %s",
+                        guild_id,
+                        channel_id
+                    )
+            except Exception:
+                logger.exception(
+                    "Error while persisting channel guidelines for guild %s, channel %s",
+                    guild_id,
+                    channel_id
+                )
 
         task.add_done_callback(_cleanup)
 
@@ -379,10 +438,55 @@ class GuildSettingsManager:
                 logger.exception("Failed to persist guild %s to database", guild_id)
                 return False
 
+    async def _persist_channel_guidelines_async(self, guild_id: int, channel_id: int) -> bool:
+        """
+        Persist channel-specific guidelines to the database asynchronously.
+
+        Args:
+            guild_id: The guild ID
+            channel_id: The channel ID
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        guidelines = self.channel_guidelines.get(guild_id, {}).get(channel_id)
+        if guidelines is None:
+            logger.warning(
+                "Cannot persist channel guidelines for guild %s, channel %s: not in cache",
+                guild_id,
+                channel_id
+            )
+            return False
+
+        async with self._persist_lock:
+            try:
+                async with get_connection() as db:
+                    await db.execute("""
+                        INSERT INTO channel_guidelines (guild_id, channel_id, guidelines)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(guild_id, channel_id) DO UPDATE SET
+                            guidelines = excluded.guidelines
+                    """, (guild_id, channel_id, guidelines))
+                    await db.commit()
+                    logger.debug(
+                        "Persisted channel guidelines for guild %s, channel %s to database",
+                        guild_id,
+                        channel_id
+                    )
+                    return True
+            except Exception:
+                logger.exception(
+                    "Failed to persist channel guidelines for guild %s, channel %s to database",
+                    guild_id,
+                    channel_id
+                )
+                return False
+
     async def load_from_disk(self) -> bool:
         """Load persisted guild settings from database into memory."""
         try:
             async with get_connection() as db:
+                # Load guild settings
                 async with db.execute("SELECT * FROM guild_settings") as cursor:
                     rows = await cursor.fetchall()
                     
@@ -400,10 +504,26 @@ class GuildSettingsManager:
                         auto_ban_enabled=bool(row[7]),
                     )
                 
+                # Load channel guidelines
+                async with db.execute("SELECT guild_id, channel_id, guidelines FROM channel_guidelines") as cursor:
+                    guidelines_rows = await cursor.fetchall()
+                
+                self.channel_guidelines.clear()
+                for row in guidelines_rows:
+                    guild_id = row[0]
+                    channel_id = row[1]
+                    guidelines = row[2]
+                    
+                    if guild_id not in self.channel_guidelines:
+                        self.channel_guidelines[guild_id] = {}
+                    self.channel_guidelines[guild_id][channel_id] = guidelines
+                
                 if rows:
                     logger.info("Loaded %d guild settings from database", len(list(rows)))
-                    return True
-                return False
+                if guidelines_rows:
+                    logger.info("Loaded %d channel guidelines from database", len(list(guidelines_rows)))
+                
+                return bool(rows or guidelines_rows)
         except Exception:
             logger.exception("Failed to load guild settings from database")
             return False

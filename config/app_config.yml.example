@@ -99,6 +99,9 @@ ai_settings:
     --- Discord Server Rules ---
     <|SERVER_RULES_INJECT|>
 
+    --- Channel-Specific Guidelines ---
+    <|CHANNEL_GUIDELINES_INJECT|>
+
     
 default_server_rules: |
   1. Be respectful to all members and moderators.
@@ -111,3 +114,5 @@ default_server_rules: |
   8. Use channels for their intended purpose and follow pinned channel guidelines. (Minor if off-topic once; Major if repeated)
   9. Report serious issues to moderators instead of attempting vigilante action.
   10. Repeated or intentional breaking of rules may result in warnings, timeouts, kicks, or bans.
+
+default_channel_guidelines: ""

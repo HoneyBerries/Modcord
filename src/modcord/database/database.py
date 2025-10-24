@@ -43,8 +43,27 @@ async def init_database() -> None:
             )
         """)
         
+        # Create channel_guidelines table for per-channel moderation guidelines
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS channel_guidelines (
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                guidelines TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, channel_id),
+                FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
+            )
+        """)
+        
+        # Create index for faster lookups by guild_id
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_channel_guidelines_guild 
+            ON channel_guidelines(guild_id)
+        """)
+        
         # Create index on guild_id for faster lookups (already indexed as PRIMARY KEY)
-        # Create trigger to update updated_at timestamp
+        # Create triggers to update updated_at timestamp
         await db.execute("""
             CREATE TRIGGER IF NOT EXISTS update_guild_settings_timestamp
             AFTER UPDATE ON guild_settings
@@ -52,6 +71,16 @@ async def init_database() -> None:
             BEGIN
                 UPDATE guild_settings SET updated_at = CURRENT_TIMESTAMP
                 WHERE guild_id = NEW.guild_id;
+            END
+        """)
+        
+        await db.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_channel_guidelines_timestamp
+            AFTER UPDATE ON channel_guidelines
+            FOR EACH ROW
+            BEGIN
+                UPDATE channel_guidelines SET updated_at = CURRENT_TIMESTAMP
+                WHERE guild_id = NEW.guild_id AND channel_id = NEW.channel_id;
             END
         """)
         

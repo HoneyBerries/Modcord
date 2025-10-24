@@ -10,12 +10,14 @@ import discord
 from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.configuration.app_configuration import app_config
 from modcord.ai.ai_moderation_processor import model_state
-from modcord.bot import rules_manager
+from modcord.rules_cache.rules_cache_manager import rules_cache_manager
 from modcord.util.logger import get_logger
 from modcord.moderation import moderation_helper
 
 logger = get_logger("events_listener_cog")
+
 
 
 class EventsListenerCog(commands.Cog):
@@ -53,9 +55,10 @@ class EventsListenerCog(commands.Cog):
 
         logger.info("--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--")
 
-        # Start the rules cache refresh task
-        logger.info("Starting server rules cache refresh task...")
-        asyncio.create_task(rules_manager.start_periodic_refresh_task(self.bot))
+        # Start the rules and guidelines cache refresh task
+        logger.info("Starting server rules and channel guidelines cache refresh task...")
+        interval_seconds = float(app_config.get("rules_cache_refresh", {}).get("interval_seconds", 600.0))
+        asyncio.create_task(rules_cache_manager.start_periodic_task(self.bot, interval_seconds))
 
         # Set up batch processing callback for global batching
         logger.info("Setting up batch processing callback...")

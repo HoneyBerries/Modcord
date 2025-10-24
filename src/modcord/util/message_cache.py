@@ -380,24 +380,25 @@ def initialize_cache_from_config(app_config) -> None:
     try:
         if not app_config or not hasattr(app_config, "ai_settings"):
             return
-        
+
         ai_settings = app_config.ai_settings
-        cache_cfg = ai_settings.get("cache", {}) if isinstance(ai_settings, dict) else {}
-        
+        # AISettings provides .get(...) — prefer that over dict checks.
+        cache_cfg = ai_settings.get("cache", {})
+
         if not cache_cfg:
             return
-        
+
         max_msgs = int(cache_cfg.get("max_messages_per_channel", 500))
         ttl_secs = int(cache_cfg.get("cache_ttl_seconds", 3600))
         api_limit = int(cache_cfg.get("api_fetch_limit", 100))
-        
+
         # Recreate with config values
         message_history_cache = MessageHistoryCache(
             max_messages_per_channel=max_msgs,
             cache_ttl_seconds=ttl_secs,
             api_fetch_limit=api_limit,
         )
-        
+
         logger.info(
             "Message cache configured from app_config: "
             "max_msgs=%d, ttl=%ds, api_limit=%d",

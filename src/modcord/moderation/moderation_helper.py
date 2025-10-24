@@ -51,6 +51,7 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
     # Collect valid batches and build a map of channel_id -> server rules (for per-channel schema)
     valid_batches: List[ModerationChannelBatch] = []
     server_rules_map: Dict[int, str] = {}
+    channel_guidelines_map: Dict[int, str] = {}
 
 
     for batch in batches:
@@ -68,6 +69,11 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
         # Fetch per-channel server rules (used to build dynamic JSON schema/grammar)
         rules_text = guild_settings_manager.get_server_rules(guild_id) if guild_id else ""
         server_rules_map[batch.channel_id] = rules_text
+        
+        # Fetch per-channel guidelines
+        guidelines_text = guild_settings_manager.get_channel_guidelines(guild_id, batch.channel_id) if guild_id else ""
+        channel_guidelines_map[batch.channel_id] = guidelines_text
+        
         valid_batches.append(batch)
 
     if not valid_batches:
@@ -79,6 +85,7 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
     actions_by_channel = await moderation_processor.get_multi_batch_moderation_actions(
         batches=valid_batches,
         server_rules_map=server_rules_map,
+        channel_guidelines_map=channel_guidelines_map,
     )
 
 

@@ -404,7 +404,9 @@ def initialize_cache_from_config(app_config) -> None:
         
         if not history_cfg and hasattr(app_config, "ai_settings"):
             ai_settings = app_config.ai_settings
-            history_cfg = ai_settings.get("cache", {}) if isinstance(ai_settings, dict) else {}
+            # AISettings exposes a .get(...) helper; use it rather than
+            # relying on dict-type compatibility.
+            history_cfg = ai_settings.get("cache", {})
         
         if not history_cfg:
             return

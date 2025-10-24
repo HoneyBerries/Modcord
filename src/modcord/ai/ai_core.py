@@ -221,28 +221,38 @@ class InferenceProcessor:
         """
         return self.state.init_error
 
-    def get_system_prompt(self, server_rules: str = "") -> str:
+    def get_system_prompt(self, server_rules: str = "", channel_guidelines: str = "") -> str:
         """
-        Return the system prompt with server rules injected.
+        Return the system prompt with server rules and channel guidelines injected.
 
         - If the template contains <|SERVER_RULES_INJECT|>, replaces it with the provided rules.
-        - Otherwise, appends rules at the end if present.
+        - If the template contains <|CHANNEL_GUIDELINES_INJECT|>, replaces it with the provided guidelines.
+        - Otherwise, appends rules and guidelines at the end if present.
 
         Args:
             server_rules: Server rules to inject into the <|SERVER_RULES_INJECT|> placeholder.
+            channel_guidelines: Channel-specific guidelines to inject into the <|CHANNEL_GUIDELINES_INJECT|> placeholder.
 
         Returns:
-            Formatted system prompt string with rules inserted.
+            Formatted system prompt string with rules and guidelines inserted.
         """
         template = self.base_system_prompt or cfg.app_config.system_prompt_template
         template_str = str(template or "")
         rules_str = str(server_rules or "")
+        guidelines_str = str(channel_guidelines or "")
         
+        # Inject server rules
         if "<|SERVER_RULES_INJECT|>" in template_str:
-            return template_str.replace("<|SERVER_RULES_INJECT|>", rules_str)
+            template_str = template_str.replace("<|SERVER_RULES_INJECT|>", rules_str)
+        elif rules_str:
+            template_str = f"{template_str}\n\nServer rules:\n{rules_str}"
         
-        if rules_str:
-            return f"{template_str}\n\nServer rules:\n{rules_str}"
+        # Inject channel guidelines
+        if "<|CHANNEL_GUIDELINES_INJECT|>" in template_str:
+            template_str = template_str.replace("<|CHANNEL_GUIDELINES_INJECT|>", guidelines_str)
+        elif guidelines_str:
+            template_str = f"{template_str}\n\nChannel-specific guidelines:\n{guidelines_str}"
+        
         return template_str
 
     async def generate_multi_chat(

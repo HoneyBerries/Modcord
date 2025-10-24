@@ -94,7 +94,7 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
     discord_bot_instance:
         Py-Cord bot object that should receive the Modcord cogs.
     """
-    from modcord.bot.cogs import debug_cmds, guild_settings_cmds, moderation_cmds, events_listener, message_listener
+    from modcord.bot import debug_cmds, guild_settings_cmds, moderation_cmds, events_listener, message_listener
 
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
@@ -254,7 +254,7 @@ def main() -> int:
             # This ensures the interactive console continues working after restart
             os.execv(sys.executable, [sys.executable] + sys.argv)
             # execv never returns; the following is unreachable but satisfies type checkers
-            return 0  # pragma: no cover
+            return 0
 
         return exit_code
     except KeyboardInterrupt:

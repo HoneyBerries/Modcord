@@ -358,7 +358,7 @@ async def delete_messages_background(ctx: discord.ApplicationContext, user: disc
 # only Discord-specific low-level utilities and the shared duration constants.
 
 
-from modcord.bot.unban_scheduler import (
+from modcord.scheduler.unban_scheduler import (
     schedule_unban,
 )
 

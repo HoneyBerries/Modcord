@@ -73,9 +73,10 @@ class ModerationProcessor:
         self,
         batches: List[ModerationChannelBatch],
         server_rules_map: Optional[Dict[int, str]] = None,
+        channel_guidelines_map: Optional[Dict[int, str]] = None,
     ) -> Dict[int, List[ActionData]]:
         """
-        Process multiple channel batches together in a single vLLM call.
+        Process multiple channel batches in a single global inference call.
 
         This is the global batch processing entry point. It:
         1. Converts all batches to vLLM conversations (one per channel).
@@ -86,6 +87,7 @@ class ModerationProcessor:
         Args:
             batches: List of ModerationChannelBatch objects from different channels.
             server_rules_map: Optional mapping of channel_id -> server rules text.
+            channel_guidelines_map: Optional mapping of channel_id -> channel-specific guidelines text.
 
         Returns:
             Dictionary mapping channel_id to list of ActionData objects.
@@ -103,6 +105,7 @@ class ModerationProcessor:
         grammar_strings: List[str] = []
         channel_mapping = []  # Maps conversation index to channel_id and batch
         rules_lookup = server_rules_map or {}
+        guidelines_lookup = channel_guidelines_map or {}
 
         for batch in batches:
             # Convert batch to JSON payload with image IDs
@@ -127,10 +130,14 @@ class ModerationProcessor:
             grammar = Grammar.from_json_schema(dynamic_schema, strict_mode=True)
             grammar_str = str(grammar)
 
-            # Resolve and apply server rules per channel
+            # Resolve and apply server rules and channel guidelines per channel
             channel_rules = rules_lookup.get(batch.channel_id, "")
             merged_rules = self._resolve_server_rules(channel_rules)
-            system_prompt = self.inference_processor.get_system_prompt(merged_rules)
+            
+            channel_guidelines = guidelines_lookup.get(batch.channel_id, "")
+            merged_guidelines = self._resolve_channel_guidelines(channel_guidelines)
+            
+            system_prompt = self.inference_processor.get_system_prompt(merged_rules, merged_guidelines)
 
             # Format messages for vLLM
             llm_messages = self._format_multimodal_messages(
@@ -357,6 +364,19 @@ class ModerationProcessor:
             len(guild_rules),
             len(base_rules),
             "guild" if guild_rules else "base"
+        )
+        return resolved
+
+    def _resolve_channel_guidelines(self, channel_guidelines: str = "") -> str:
+        """Pick channel-specific guidelines when provided, otherwise fall back to global defaults."""
+        base_guidelines = (app_config.channel_guidelines or "").strip()
+        channel_specific = (channel_guidelines or "").strip()
+        resolved = channel_specific or base_guidelines
+        logger.debug(
+            "Resolved channel guidelines: channel_specific_len=%d, base_guidelines_len=%d, using=%s",
+            len(channel_specific),
+            len(base_guidelines),
+            "channel_specific" if channel_specific else "base"
         )
         return resolved
 

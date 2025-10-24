@@ -14,7 +14,7 @@ from modcord.util.image_utils import download_image_to_pil, generate_image_hash_
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.history.history_cache import global_history_cache_manager
 from modcord.util.logger import get_logger
-from modcord.bot import rules_manager
+from modcord.rules_cache.rules_cache_manager import refresh_rules_if_channel
 from modcord.util import discord_utils
 
 logger = get_logger("message_listener_cog")
@@ -285,7 +285,7 @@ class MessageListenerCog(commands.Cog):
 
         # Refresh rules cache if this was posted in a rules channel
         if isinstance(message.channel, discord.abc.GuildChannel):
-            await rules_manager.refresh_rules_if_channel(message.channel)
+            await refresh_rules_if_channel(message.channel)
 
         # Create and store message in history
         history_entry = await self._create_moderation_message(message, actual_content)
@@ -333,7 +333,7 @@ class MessageListenerCog(commands.Cog):
 
         # Refresh rules cache if this edit occurred in a rules channel
         if isinstance(after.channel, discord.abc.GuildChannel):
-            await rules_manager.refresh_rules_if_channel(after.channel)
+            await refresh_rules_if_channel(after.channel)
 
     @commands.Cog.listener(name='on_message_delete')
     async def on_message_delete(self, message: discord.Message):
