@@ -286,9 +286,17 @@ class GuildSettingsManager:
                 history_messages = await self._resolve_history_context(channel_id, messages)
                 history_users = await self._group_messages_by_user(history_messages, self.bot_instance) if history_messages else []
                 
+                # Fetch channel name from Discord
+                channel_name = "Unknown Channel"
+                if self.bot_instance:
+                    channel_obj = self.bot_instance.get_channel(channel_id)
+                    if channel_obj:
+                        channel_name = channel_obj.name
+                
                 channel_batches.append(
                     ModerationChannelBatch(
                         channel_id=channel_id,
+                        channel_name=channel_name,
                         users=users,
                         history_users=history_users,
                     )
