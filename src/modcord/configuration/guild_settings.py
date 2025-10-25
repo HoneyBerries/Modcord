@@ -1,10 +1,9 @@
 """
-Bot settings: persistent per-guild flags and runtime batching.
+Persistent per-guild configuration storage for the moderation bot.
 
 Responsibilities:
 - Persist per-guild settings (ai_enabled, rules, and action toggles) to SQLite database
-- Cache server rules and per-channel chat history
-- Provide a 15s channel message batching mechanism with an async callback
+- Cache server rules and per-channel guideline overrides in memory
 
 Database schema:
 - guild_settings table with columns: guild_id, ai_enabled, rules, auto_*_enabled flags
@@ -12,21 +11,18 @@ Database schema:
 
 import collections
 import asyncio
-import discord
-from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence, Set
+from typing import Dict, DefaultDict, List, Set
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
-from modcord.moderation.moderation_datatypes import ActionType, ModerationChannelBatch, ModerationMessage, ModerationUser
-from modcord.history.history_cache import global_history_cache_manager
-from modcord.configuration.app_configuration import app_config
-from modcord.database.database import init_database, get_connection, get_past_actions
+from modcord.moderation.moderation_datatypes import ActionType
+from modcord.database.database import init_database, get_connection
 
 logger = get_logger("guild_settings_manager")
 
 
 @dataclass(slots=True)
 class GuildSettings:
-    """Persistent per-guild configuration along with transient batching state."""
+    """Persistent per-guild configuration values."""
 
     guild_id: int
     ai_enabled: bool = True
@@ -49,38 +45,26 @@ ACTION_FLAG_FIELDS: dict[ActionType, str] = {
 
 class GuildSettingsManager:
     """
-    Manager for persistent per-guild settings and transient state.
+    Manager for persistent per-guild settings and in-memory guideline overrides.
 
     Responsibilities:
     - Persist per-guild settings (ai_enabled, rules, action toggles) to SQLite database
-    - Cache server rules and per-channel chat history
-    - Provide a config-driven global message batching window with an async callback
+    - Cache server rules and per-channel guideline overrides for quick access
     """
 
     def __init__(self):
-        """Instantiate caches, batching queues, and persistence helpers."""
+        """Instantiate caches and persistence helpers."""
         # Persisted guild settings registry (guild_id -> GuildSettings)
         self.guilds: Dict[int, GuildSettings] = {}
 
         # Channel-specific guidelines cache (guild_id -> channel_id -> guidelines_text)
         self.channel_guidelines: DefaultDict[int, Dict[int, str]] = collections.defaultdict(dict)
 
-        # Global message batching system
-        self.channel_message_batches: DefaultDict[int, List[ModerationMessage]] = collections.defaultdict(list)
-        self.global_batch_timer: Optional[asyncio.Task] = None
-        self.batch_processing_callback: Optional[Callable[[List[ModerationChannelBatch]], Awaitable[None]]] = None
-        self._batch_lock = asyncio.Lock()
-        
-        # Bot instance for fetching member information
-        self.bot_instance = None
-
         # Persistence helpers
         self._persist_lock = asyncio.Lock()
         self._active_persists: Set[asyncio.Task] = set()
         self._db_initialized = False
 
-        # Initialize database and load settings asynchronously
-        # This will be called from an async context during bot startup
         logger.info("Guild settings manager initialized")
 
     async def async_init(self) -> None:
@@ -150,204 +134,6 @@ class GuildSettingsManager:
 
         self._trigger_persist_channel_guidelines(guild_id, channel_id)
 
-    # --- Global message batching system ---
-    def set_bot_instance(self, bot_instance) -> None:
-        """Set the bot instance for fetching member information."""
-        self.bot_instance = bot_instance
-        logger.info("Bot instance set for guild settings manager")
-    
-    def set_batch_processing_callback(self, callback: Callable[[List[ModerationChannelBatch]], Awaitable[None]]) -> None:
-        """Set the async callback invoked when global batches are ready."""
-        self.batch_processing_callback = callback
-        logger.info("Batch processing callback set")
-
-    async def _group_messages_by_user(
-        self, 
-        messages: List[ModerationMessage],
-        bot_instance
-    ) -> List[ModerationUser]:
-        """Group messages by user_id and create ModerationUser objects with role information.
-        
-        Parameters
-        ----------
-        messages:
-            List of messages to group by user.
-        bot_instance:
-            Discord bot instance to fetch member information for roles and join_date.
-            
-        Returns
-        -------
-        List[ModerationUser]
-            List of users with their messages, ordered by first message appearance.
-        """
-        import datetime
-        
-        # Group messages by user_id
-        user_messages: Dict[str, List[ModerationMessage]] = collections.defaultdict(list)
-        first_appearance: Dict[str, int] = {}
-        
-        for idx, msg in enumerate(messages):
-            user_id = str(msg.user_id)
-            if user_id not in first_appearance:
-                first_appearance[user_id] = idx
-            user_messages[user_id].append(msg)
-        
-        # Create ModerationUser objects
-        moderation_users: List[ModerationUser] = []
-        
-        # Get the lookback time from config
-        lookback_minutes = app_config.ai_settings.get("past_actions_lookback_minutes", 10080)
-        
-        for user_id, user_msgs in user_messages.items():
-            # Get user information from first message with discord_message reference
-            discord_msg = next((m.discord_message for m in user_msgs if m.discord_message), None)
-            
-            username = "Unknown User"
-            roles: List[str] = []
-            join_date: Optional[str] = None
-            guild_id: Optional[int] = None
-            
-            if discord_msg and discord_msg.guild and discord_msg.author:
-                username = str(discord_msg.author)
-                guild_id = discord_msg.guild.id
-                
-                # Get member to access roles and join date
-                if isinstance(discord_msg.author, discord.Member):
-                    member = discord_msg.author
-                    # Extract role names (excluding @everyone)
-                    roles = [role.name for role in member.roles if role.name != "@everyone"]
-                    
-                    # Get join date
-                    if member.joined_at:
-                        join_date = member.joined_at.astimezone(
-                            datetime.timezone.utc
-                        ).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-            
-            # Query past actions if we have guild_id
-            past_actions: List[dict] = []
-            if guild_id:
-                try:
-                    past_actions = await get_past_actions(guild_id, user_id, lookback_minutes)
-                except Exception as exc:
-                    logger.warning("Failed to query past actions for user %s in guild %s: %s", user_id, guild_id, exc)
-            
-            mod_user = ModerationUser(
-                user_id=user_id,
-                username=username,
-                roles=roles,
-                join_date=join_date,
-                messages=user_msgs,
-                past_actions=past_actions,
-            )
-            moderation_users.append(mod_user)
-        
-        # Sort users by first appearance
-        moderation_users.sort(key=lambda u: first_appearance[u.user_id])
-        
-        return moderation_users
-
-    async def add_message_to_batch(self, channel_id: int, message: ModerationMessage) -> None:
-        """Queue a message for global batch processing and start timer if needed."""
-        async with self._batch_lock:
-            self.channel_message_batches[channel_id].append(message)
-            logger.debug(
-                "Added message to batch for channel %s, current batch size: %d",
-                channel_id,
-                len(self.channel_message_batches[channel_id]),
-            )
-
-            if self.global_batch_timer is None or self.global_batch_timer.done():
-                self.global_batch_timer = asyncio.create_task(self.global_batch_timer_task())
-                logger.debug("Started global batch timer")
-
-    async def global_batch_timer_task(self) -> None:
-        """Global timer that processes all pending channel batches together."""
-        try:
-            ai_settings = app_config.ai_settings if app_config else {}
-            moderation_batch_seconds = float(ai_settings.get("moderation_batch_seconds", 10.0))
-            logger.debug("Global batch timer started with %s seconds", moderation_batch_seconds)
-            await asyncio.sleep(moderation_batch_seconds)
-
-            async with self._batch_lock:
-                pending_batches = {
-                    channel_id: list(messages)
-                    for channel_id, messages in self.channel_message_batches.items()
-                    if messages
-                }
-                # Reset container for next window
-                self.channel_message_batches = collections.defaultdict(list)
-
-            channel_batches: List[ModerationChannelBatch] = []
-            for channel_id, messages in pending_batches.items():
-                # Group messages by user
-                users = await self._group_messages_by_user(messages, self.bot_instance)
-                
-                # Get history context and group by user as well
-                history_messages = await self._resolve_history_context(channel_id, messages)
-                history_users = await self._group_messages_by_user(history_messages, self.bot_instance) if history_messages else []
-                
-                # Fetch channel name from Discord
-                channel_name = "Unknown Channel"
-                if self.bot_instance:
-                    channel_obj = self.bot_instance.get_channel(channel_id)
-                    if channel_obj:
-                        channel_name = channel_obj.name
-                
-                channel_batches.append(
-                    ModerationChannelBatch(
-                        channel_id=channel_id,
-                        channel_name=channel_name,
-                        users=users,
-                        history_users=history_users,
-                    )
-                )
-                
-                total_messages = sum(len(user.messages) for user in users)
-                total_history = sum(len(user.messages) for user in history_users)
-                logger.debug(
-                    "Prepared batch for channel %s: %d users (%d messages), %d history users (%d messages)",
-                    channel_id,
-                    len(users),
-                    total_messages,
-                    len(history_users),
-                    total_history,
-                )
-
-            if channel_batches and self.batch_processing_callback:
-                total_users = sum(len(b.users) for b in channel_batches)
-                total_msgs = sum(sum(len(u.messages) for u in b.users) for b in channel_batches)
-                logger.debug(
-                    "Processing global batch: %d channels, %d total users, %d total messages",
-                    len(channel_batches),
-                    total_users,
-                    total_msgs,
-                )
-                try:
-                    await self.batch_processing_callback(channel_batches)
-                except Exception:
-                    logger.exception("Exception while processing global batch")
-            else:
-                logger.debug("No batches or callback to process")
-
-        except asyncio.CancelledError:
-            logger.info("Global batch timer cancelled")
-        except Exception:
-            logger.exception("Error in global batch timer")
-        finally:
-            self.global_batch_timer = None
-
-    def cancel_all_batch_timers(self) -> None:
-        """
-        Cancel the global batch timer (use during shutdown).
-
-        This is synchronous and will request cancellation; call shutdown() to
-        await the task and ensure cleanup.
-        """
-        if self.global_batch_timer and not self.global_batch_timer.done():
-            self.global_batch_timer.cancel()
-        self.global_batch_timer = None
-        logger.info("Requested cancellation of global batch timer")
-
     def _trigger_persist(self, guild_id: int) -> None:
         """Schedule a best-effort persist of a single guild's settings to database."""
         try:
@@ -402,61 +188,14 @@ class GuildSettingsManager:
 
         task.add_done_callback(_cleanup)
 
-    async def _resolve_history_context(
-        self,
-        channel_id: int,
-        current_batch: Sequence[ModerationMessage],
-    ) -> List[ModerationMessage]:
-        """Select prior channel messages to provide as model context.
-        
-        Uses the message cache and Discord API fallback to fetch historical
-        context, ensuring availability even if the bot was offline when
-        messages were posted.
-        """
-        # Build set of message IDs to exclude (current batch)
-        current_ids = {str(msg.message_id) for msg in current_batch}
-
-        # Use a default or config-driven value for history context length, or make it a parameter if needed
-        default_limit = 20  # You can make this configurable elsewhere if desired
-        try:
-            history_messages = await global_history_cache_manager.fetch_history_for_context(
-                channel_id,
-                limit=default_limit,
-                exclude_message_ids=current_ids,
-            )
-            if history_messages:
-                logger.debug(
-                    "Resolved %d history messages for channel %s from cache/API",
-                    len(history_messages),
-                    channel_id,
-                )
-            return history_messages
-        except Exception as exc:
-            logger.warning(
-                "Error fetching history context for channel %s: %s",
-                channel_id,
-                exc,
-            )
-            return []
-
     async def shutdown(self) -> None:
-        """Gracefully cancel and await the global batch timer (await on shutdown)."""
-        if self.global_batch_timer and not self.global_batch_timer.done():
-            self.global_batch_timer.cancel()
-            try:
-                await self.global_batch_timer
-            except asyncio.CancelledError:
-                pass
-        self.global_batch_timer = None
-
-        self.channel_message_batches.clear()
-
+        """Await any pending persistence tasks during shutdown."""
         pending = list(self._active_persists)
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._active_persists.clear()
 
-        logger.info("Shutdown complete: batch timer cleared")
+        logger.info("Shutdown complete: pending persistence tasks cleared")
         logger.info("--------------------------------------------------------------------------------")
 
     # --- AI moderation enable/disable ---

@@ -154,16 +154,16 @@ def parse_batch_actions(
         raw_msg_ids = item.get("message_ids_to_delete") or []
         message_ids = [str(mid).strip() for mid in raw_msg_ids if mid] if isinstance(raw_msg_ids, list) else []
         
-        # Extract durations (may be None or -1)
+        # Extract durations (may be 0 or -1)
         try:
-            timeout_dur = int(item["timeout_duration"]) if item.get("timeout_duration") not in (None, "") else None
+            timeout_dur = int(item["timeout_duration"]) if item.get("timeout_duration") not in (None, "") else 0
         except (ValueError, TypeError):
-            timeout_dur = None
+            timeout_dur = 0
         
         try:
-            ban_dur = int(item["ban_duration"]) if item.get("ban_duration") not in (None, "") else None
+            ban_dur = int(item["ban_duration"]) if item.get("ban_duration") not in (None, "") else 0
         except (ValueError, TypeError):
-            ban_dur = None
+            ban_dur = 0
         
         # Extract reason
         reason = str(item.get("reason", "")).strip()

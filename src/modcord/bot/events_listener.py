@@ -9,12 +9,12 @@ import json
 import discord
 from discord.ext import commands
 
-from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.configuration.app_configuration import app_config
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.rules_cache.rules_cache_manager import rules_cache_manager
 from modcord.util.logger import get_logger
 from modcord.moderation import moderation_helper
+from modcord.moderation.message_batch_manager import message_batch_manager
 
 logger = get_logger("events_listener_cog")
 
@@ -62,8 +62,8 @@ class EventsListenerCog(commands.Cog):
 
         # Set up batch processing callback for global batching
         logger.info("Setting up batch processing callback...")
-        guild_settings_manager.set_bot_instance(self.bot)
-        guild_settings_manager.set_batch_processing_callback(
+        message_batch_manager.set_bot_instance(self.bot)
+        message_batch_manager.set_batch_processing_callback(
             lambda batches: moderation_helper.process_message_batches(self, batches)
         )
 

@@ -12,7 +12,7 @@ from modcord.moderation.moderation_datatypes import ModerationImage, ModerationM
 from modcord.util.image_utils import download_image_to_pil, generate_image_hash_id
 
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.history.history_cache import global_history_cache_manager
+from modcord.moderation.message_batch_manager import message_batch_manager
 from modcord.util.logger import get_logger
 from modcord.rules_cache.rules_cache_manager import rules_cache_manager
 from modcord.util import discord_utils
@@ -241,14 +241,12 @@ class MessageListenerCog(commands.Cog):
     @commands.Cog.listener(name='on_message')
     async def on_message(self, message: discord.Message):
         """
-        Handle new messages: store in history and queue for AI moderation.
+        Handle new messages and queue them for moderation analysis.
 
         This handler:
         1. Filters out DMs, other bots, admins, and empty messages
-        2. Stores bot's own moderation messages as history context (for AI to see its past actions)
-        3. Refreshes rules cache if posted in a rules channel
-        4. Stores user messages in channel history
-        5. Queues user messages for batch AI moderation (if enabled)
+        2. Refreshes rules cache if posted in a rules channel
+        3. Queues user messages for batch AI moderation (if enabled)
 
         Parameters
         ----------
@@ -278,10 +276,6 @@ class MessageListenerCog(commands.Cog):
         if isinstance(message.channel, discord.abc.GuildChannel):
             await rules_cache_manager.refresh_if_rules_channel(message.channel)
 
-        # Create and store message in history
-        history_entry = await self._create_moderation_message(message, actual_content)
-        global_history_cache_manager.add_message(message.channel.id, history_entry)
-
         # Check if AI moderation is enabled for this guild (message.guild is guaranteed non-None here)
         if message.guild and not guild_settings_manager.is_ai_enabled(message.guild.id):
             logger.debug(f"AI moderation disabled for guild {message.guild.name}")
@@ -294,7 +288,7 @@ class MessageListenerCog(commands.Cog):
                 actual_content, 
                 include_discord_message=True
             )
-            await guild_settings_manager.add_message_to_batch(message.channel.id, batch_message)
+            await message_batch_manager.add_message_to_batch(message.channel.id, batch_message)
             logger.debug(f"Added message to batch for channel {message.channel.id}")
         except Exception as e:
             logger.error(f"Error adding message to batch: {e}")
@@ -302,10 +296,7 @@ class MessageListenerCog(commands.Cog):
     @commands.Cog.listener(name='on_message_edit')
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         """
-        Handle message edits: refresh rules cache if needed.
-
-        This handler checks if the edited message is in a rules channel
-        and triggers a rules cache refresh if necessary.
+        Handle message edits by refreshing rules (if needed) and updating batches.
 
         Parameters
         ----------
@@ -326,13 +317,37 @@ class MessageListenerCog(commands.Cog):
         if isinstance(after.channel, discord.abc.GuildChannel):
             await rules_cache_manager.refresh_if_rules_channel(after.channel)
 
+        # Re-evaluate whether message should be part of moderation batches
+        should_process, cleaned_content = await self._should_process_message(after)
+
+        if not should_process:
+            await message_batch_manager.remove_message_from_batch(after.channel.id, str(after.id))
+            logger.debug(
+                "Edited message %s in channel %s no longer qualifies for moderation batch",
+                after.id,
+                after.channel.id,
+            )
+            return
+
+        try:
+            updated_entry = await self._create_moderation_message(
+                after,
+                cleaned_content or "",
+                include_discord_message=True,
+            )
+            await message_batch_manager.update_message_in_batch(after.channel.id, updated_entry)
+            logger.debug(
+                "Updated moderated payload for edited message %s in channel %s",
+                after.id,
+                after.channel.id,
+            )
+        except Exception as exc:
+            logger.error("Failed to update edited message %s: %s", after.id, exc)
+
     @commands.Cog.listener(name='on_message_delete')
     async def on_message_delete(self, message: discord.Message):
         """
-        Handle message deletions: remove from history cache.
-
-        This handler removes deleted messages from the internal cache
-        to prevent stale references and outdated context.
+        Handle message deletions by pruning pending moderation payloads.
 
         Parameters
         ----------
@@ -343,9 +358,13 @@ class MessageListenerCog(commands.Cog):
         if message.guild is None:
             return
         
-        # Remove from history cache
-        global_history_cache_manager.remove_message(message.channel.id, str(message.id))
-        logger.debug(f"Removed deleted message {message.id} from cache for channel {message.channel.id}")
+        # Remove any pending moderation payload for the deleted message
+        await message_batch_manager.remove_message_from_batch(message.channel.id, str(message.id))
+        logger.debug(
+            "Removed deleted message %s from moderation batch for channel %s",
+            message.id,
+            message.channel.id,
+        )
 
 
 def setup(discord_bot_instance):

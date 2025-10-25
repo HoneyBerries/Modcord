@@ -6,7 +6,7 @@ This module orchestrates batching and processing of messages from multiple Disco
 Features:
 - Groups messages per channel, processes all channels together in a global batch for throughput
 - Dynamically builds and applies per-channel guided decoding schemas (JSON schema/grammar)
-- Applies moderation actions and updates message history per channel
+- Applies moderation actions back to Discord contexts
 """
 
 from typing import Dict, List
@@ -15,7 +15,6 @@ import discord
 
 from modcord.ai.ai_moderation_processor import moderation_processor, model_state
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.history.history_cache import global_history_cache_manager
 from modcord.moderation.moderation_datatypes import ActionData, ActionType, ModerationChannelBatch
 from modcord.util import discord_utils
 from modcord.util.logger import get_logger
@@ -63,9 +62,6 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
         for action in actions:
             if action.action is not ActionType.NULL:
                 await apply_batch_action(self, action, batch)
-        for user in batch.users:
-            for message in user.messages:
-                global_history_cache_manager.add_message(batch.channel_id, message)
 
 
 async def apply_batch_action(self, action: ActionData, batch: ModerationChannelBatch) -> bool:
