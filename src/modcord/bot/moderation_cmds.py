@@ -285,7 +285,7 @@ class ModerationActionCog(commands.Cog):
             await ctx.send_followup("You lack the required permissions to ban this user.")
             return
 
-        ban_minutes = parse_duration_to_minutes(duration) if duration != PERMANENT_DURATION else None
+        ban_minutes = parse_duration_to_minutes(duration) if duration != PERMANENT_DURATION else 0
         action = BanCommand(reason=reason, duration_minutes=ban_minutes)
         await self.execute_command_action(
             ctx, user, action, delete_message_minutes=delete_message_minutes

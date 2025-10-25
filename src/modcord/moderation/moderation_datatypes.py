@@ -159,6 +159,7 @@ class ModerationUser:
         roles (List[str]): List of role names the user has in the guild.
         join_date (Optional[str]): ISO 8601 timestamp of when the user joined the guild.
         messages (List[ModerationMessage]): List of messages sent by this user.
+        past_actions (List[dict]): List of past moderation actions taken on this user within the configured lookback window.
     """
 
     user_id: str
@@ -166,6 +167,7 @@ class ModerationUser:
     roles: List[str] = field(default_factory=list)
     join_date: Optional[str] = None
     messages: List[ModerationMessage] = field(default_factory=list)
+    past_actions: List[dict] = field(default_factory=list)
 
     def add_message(self: ModerationUser, message: ModerationMessage) -> None:
         """Add a message to this user's message list.
@@ -194,6 +196,7 @@ class ModerationUser:
             "join_date": join_date_value,
             "message_count": len(self.messages),
             "messages": [{"message_id": msg.message_id, "content": msg.content, "timestamp": humanize_timestamp(msg.timestamp)} for msg in self.messages],
+            "past_actions": self.past_actions,
         }
 
 @dataclass(slots=True)
@@ -211,6 +214,7 @@ class ModerationChannelBatch:
     """
 
     channel_id: int
+    channel_name: str
     users: List[ModerationUser] = field(default_factory=list)
     history_users: List[ModerationUser] = field(default_factory=list)
 

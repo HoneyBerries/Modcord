@@ -259,17 +259,9 @@ class MessageListenerCog(commands.Cog):
         if message.guild is None:
             return
         
-        # Special handling for bot's own messages (moderation action embeds)
+        # Ignore bot's own messages
         if message.author.id == self.bot.user.id:
-            # Only store if it has embeds (moderation actions)
-            if message.embeds:
-                embed_content = self._extract_embed_content(message)
-                if embed_content:
-                    # Create moderation message from bot's own action embed
-                    history_entry = await self._create_moderation_message(message, embed_content)
-                    global_history_cache_manager.add_message(message.channel.id, history_entry)
-                    logger.debug(f"Stored bot's own moderation action as history context")
-            return  # Don't process bot's own messages for moderation
+            return
         
         # Continue with normal user message processing
         should_process, actual_content = await self._should_process_message(message)

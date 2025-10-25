@@ -19,7 +19,7 @@ from modcord.util.logger import get_logger
 from modcord.moderation.moderation_datatypes import ActionType, ModerationChannelBatch, ModerationMessage, ModerationUser
 from modcord.history.history_cache import global_history_cache_manager
 from modcord.configuration.app_configuration import app_config
-from modcord.database.database import init_database, get_connection
+from modcord.database.database import init_database, get_connection, get_past_actions
 
 logger = get_logger("guild_settings_manager")
 
@@ -195,6 +195,9 @@ class GuildSettingsManager:
         # Create ModerationUser objects
         moderation_users: List[ModerationUser] = []
         
+        # Get the lookback time from config
+        lookback_minutes = app_config.ai_settings.get("past_actions_lookback_minutes", 10080)
+        
         for user_id, user_msgs in user_messages.items():
             # Get user information from first message with discord_message reference
             discord_msg = next((m.discord_message for m in user_msgs if m.discord_message), None)
@@ -202,9 +205,11 @@ class GuildSettingsManager:
             username = "Unknown User"
             roles: List[str] = []
             join_date: Optional[str] = None
+            guild_id: Optional[int] = None
             
             if discord_msg and discord_msg.guild and discord_msg.author:
                 username = str(discord_msg.author)
+                guild_id = discord_msg.guild.id
                 
                 # Get member to access roles and join date
                 if isinstance(discord_msg.author, discord.Member):
@@ -218,12 +223,21 @@ class GuildSettingsManager:
                             datetime.timezone.utc
                         ).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
             
+            # Query past actions if we have guild_id
+            past_actions: List[dict] = []
+            if guild_id:
+                try:
+                    past_actions = await get_past_actions(guild_id, user_id, lookback_minutes)
+                except Exception as exc:
+                    logger.warning("Failed to query past actions for user %s in guild %s: %s", user_id, guild_id, exc)
+            
             mod_user = ModerationUser(
                 user_id=user_id,
                 username=username,
                 roles=roles,
                 join_date=join_date,
                 messages=user_msgs,
+                past_actions=past_actions,
             )
             moderation_users.append(mod_user)
         

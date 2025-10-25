@@ -260,6 +260,7 @@ class ModerationProcessor:
         
         payload = {
             "channel_id": str(batch.channel_id),
+            "channel_name": batch.channel_name,
             "message_count": total_messages,
             "unique_user_count": len(all_users),
             "total_images": len(pil_images),
@@ -338,6 +339,9 @@ class ModerationProcessor:
             return [self._null_response(reason or "unavailable") for _ in conversations]
         
         try:
+            # DEBUG: Log the full input going into the LLM
+            logger.debug("[LLM INPUT] Conversations: %s", conversations)
+            logger.debug("[LLM INPUT] Grammar strings: %s", grammar_strings)
             logger.debug("[INFERENCE] Starting multi-batch inference with %d conversations...", len(conversations))
             results = await self.inference_processor.generate_multi_chat(
                 conversations,
