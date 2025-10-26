@@ -25,12 +25,13 @@ def box_line(char: str) -> str:
     return char * BOX_WIDTH
 
 def box_title(title: str) -> list[str]:
-    pad = (BOX_WIDTH - 2 - len(title)) // 2
-    pad_extra = (BOX_WIDTH - 2 - len(title)) % 2
+    inner_width = BOX_WIDTH - 2
+    pad_left = (inner_width - len(title)) // 2
+    pad_right = inner_width - len(title) - pad_left
     return [
-        f"╔{box_line('═')[1:-1]}╗",
-        f"║{' ' * pad}{title}{' ' * (BOX_WIDTH - 2 - len(title) - pad)}{' ' * pad_extra}║",
-        f"╚{box_line('═')[1:-1]}╝"
+        f"╔{'═' * inner_width}╗",
+        f"║{' ' * pad_left}{title}{' ' * pad_right}║",
+        f"╚{'═' * inner_width}╝"
     ]
 
 logger = get_logger("console")
