@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import discord
 
@@ -34,8 +34,8 @@ class RulesCacheManager:
 
     def __init__(self):
         """Initialize the rules cache manager."""
-        self._refresh_task: Optional[asyncio.Task] = None
-        self._bot: Optional[discord.Client] = None
+        self._refresh_task: asyncio.Task | None = None
+        self._bot: discord.Bot | None = None
         logger.info("Rules cache manager initialized")
 
     @staticmethod
@@ -194,7 +194,7 @@ class RulesCacheManager:
                     exc
                 )
 
-    async def refresh_all_guilds(self, bot: discord.Client) -> None:
+    async def refresh_all_guilds(self, bot: discord.Bot) -> None:
         """Refresh cached rules and guidelines for all guilds the bot is in."""
         logger.debug("Refreshing rules/guidelines cache for %d guilds", len(bot.guilds))
         for guild in bot.guilds:
@@ -207,7 +207,7 @@ class RulesCacheManager:
 
     async def run_periodic_refresh(
         self,
-        bot: discord.Client,
+        bot: discord.Bot,
         *,
         interval_seconds: float = 600.0,
     ) -> None:
@@ -259,7 +259,7 @@ class RulesCacheManager:
         except Exception as exc:
             logger.error("Failed to refresh rules from channel %s: %s", channel.name, exc)
 
-    async def start_periodic_task(self, bot: discord.Client, interval_seconds: Optional[float] = None) -> None:
+    async def start_periodic_task(self, bot: discord.Bot, interval_seconds: float | None = None) -> None:
         """Start the periodic rules/guidelines refresh background task.
 
         Parameters

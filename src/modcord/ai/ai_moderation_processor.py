@@ -15,7 +15,7 @@ Key Features:
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
 from modcord.moderation.moderation_datatypes import (
@@ -46,12 +46,12 @@ class ModerationProcessor:
         _shutdown (bool): Tracks whether the processor is shutting down.
     """
 
-    def __init__(self, engine: Optional[InferenceProcessor] = None) -> None:
+    def __init__(self, engine: InferenceProcessor | None = None) -> None:
         self.inference_processor = engine or inference_processor
         self._shutdown = False
 
     # ======== Engine Lifecycle ========
-    async def init_model(self, model: Optional[str] = None) -> bool:
+    async def init_model(self, model: str | None = None) -> bool:
         """Initialize the inference engine and report availability."""
         self._shutdown = False
         result = await self.inference_processor.init_model(model)
@@ -72,8 +72,8 @@ class ModerationProcessor:
     async def get_multi_batch_moderation_actions(
         self,
         batches: List[ModerationChannelBatch],
-        server_rules_map: Optional[Dict[int, str]] = None,
-        channel_guidelines_map: Optional[Dict[int, str]] = None,
+        server_rules_map: Dict[int, str] | None = None,
+        channel_guidelines_map: Dict[int, str] | None = None,
     ) -> Dict[int, List[ActionData]]:
         """
         Process multiple channel batches in a single global inference call.
@@ -412,7 +412,7 @@ model_state = inference_processor.state
 
 
 # Direct API functions (eliminates ai_lifecycle abstraction layer)
-async def initialize_engine(model: Optional[str] = None) -> tuple[bool, Optional[str]]:
+async def initialize_engine(model: str | None = None) -> tuple[bool, str | None]:
     """Initialize the moderation engine. Returns (success, error_message)."""
     logger.info("[ENGINE] Initializing moderation engine...")
     await moderation_processor.init_model(model)
@@ -420,7 +420,7 @@ async def initialize_engine(model: Optional[str] = None) -> tuple[bool, Optional
     return model_state.available, model_state.init_error
 
 
-async def restart_engine(model: Optional[str] = None) -> tuple[bool, Optional[str]]:
+async def restart_engine(model: str | None = None) -> tuple[bool, str | None]:
     """Restart the moderation engine. Returns (success, error_message)."""
     logger.info("[ENGINE] Restarting moderation engine...")
     try:

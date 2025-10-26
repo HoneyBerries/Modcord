@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, Sequence
 import discord
 from modcord.util.logger import get_logger
 
@@ -58,8 +58,8 @@ class ActionData:
         action (ActionType): Moderation action to execute.
         reason (str): Human-readable explanation for auditing/logging.
         message_ids (List[str]): Related message IDs to operate on (deleted, audited, etc.).
-        timeout_duration (Optional[int]): Timeout duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
-        ban_duration (Optional[int]): Ban duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
+        timeout_duration (int): Timeout duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
+        ban_duration (int): Ban duration in minutes (0 = not applicable, -1 = permanent, positive = duration).
     """
 
     user_id: str
@@ -112,11 +112,11 @@ class ModerationImage:
 
     Attributes:
         image_id (str): First 8 characters of the SHA256 hash.
-        pil_image (Optional[Any]): PIL.Image.Image object representing the image.
+        pil_image (Any | None): PIL.Image.Image object representing the image.
     """
 
     image_id: str
-    pil_image: Optional[Any] = None
+    pil_image: Any | None = None
 
 @dataclass(slots=True)
 class ModerationMessage:
@@ -130,18 +130,18 @@ class ModerationMessage:
         user_id (str): Reference to the user who sent this message.
         content (str): Text content of the message.
         timestamp (str): ISO 8601 timestamp of when the message was sent.
-        guild_id (Optional[int]): ID of the guild where the message was sent.
-        channel_id (Optional[int]): ID of the channel where the message was sent.
+        guild_id (int | None): ID of the guild where the message was sent.
+        channel_id (int | None): ID of the channel where the message was sent.
         images (List[ModerationImage]): List of images attached to the message.
-        discord_message (Optional[discord.Message]): Reference to the original Discord message object.
+        discord_message (discord.Message | None): Reference to the original Discord message object.
     """
 
     message_id: str
     user_id: str
     content: str
     timestamp: str
-    guild_id: Optional[int]
-    channel_id: Optional[int]
+    guild_id: int | None
+    channel_id: int | None
     images: List[ModerationImage] = field(default_factory=list)
     discord_message: "discord.Message | None" = None
 
@@ -157,7 +157,7 @@ class ModerationUser:
         user_id (str): Discord user snowflake ID.
         username (str): Discord username.
         roles (List[str]): List of role names the user has in the guild.
-        join_date (Optional[str]): ISO 8601 timestamp of when the user joined the guild.
+        join_date (str | None): ISO 8601 timestamp of when the user joined the guild.
         messages (List[ModerationMessage]): List of messages sent by this user.
         past_actions (List[dict]): List of past moderation actions taken on this user within the configured lookback window.
     """
@@ -165,7 +165,7 @@ class ModerationUser:
     user_id: str
     username: str
     roles: List[str] = field(default_factory=list)
-    join_date: Optional[str] = None
+    join_date: str | None = None
     messages: List[ModerationMessage] = field(default_factory=list)
     past_actions: List[dict] = field(default_factory=list)
 

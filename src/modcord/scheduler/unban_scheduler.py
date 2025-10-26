@@ -10,7 +10,7 @@ import asyncio
 import datetime
 import heapq
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 import discord
 
@@ -23,8 +23,8 @@ logger = get_logger("unban_scheduler")
 class ScheduledUnban:
     guild: discord.Guild
     user_id: int
-    channel: Optional[discord.abc.Messageable]
-    bot: Optional[discord.Client]
+    channel: discord.abc.Messageable | None
+    bot: discord.Bot | None
     reason: str = "Ban duration expired."
 
 
@@ -49,9 +49,9 @@ class UnbanScheduler:
         self,
         guild: discord.Guild,
         user_id: int,
-        channel: Optional[discord.abc.Messageable],
+        channel: discord.abc.Messageable | None,
         duration_seconds: float,
-        bot: Optional[discord.Client],
+        bot: discord.Bot | None,
         *,
         reason: str = "Ban duration expired."
     ) -> None:
@@ -217,9 +217,9 @@ UNBAN_SCHEDULER = UnbanScheduler()
 async def schedule_unban(
     guild: discord.Guild,
     user_id: int,
-    channel: Optional[discord.abc.Messageable],
+    channel: discord.abc.Messageable | None,
     duration_seconds: float,
-    bot: Optional[discord.Client],
+    bot: discord.Bot | None,
     *,
     reason: str = "Ban duration expired."
 ) -> None:

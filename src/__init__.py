@@ -6,7 +6,6 @@ package is installed; when running from a source tree the version falls back
 to a placeholder.
 """
 from __future__ import annotations
-
 from importlib import metadata as importlib_metadata
 
 
@@ -23,6 +22,3 @@ def get_version() -> str:
     the fallback version when running from source.
     """
     return __version__
-
-
-__all__ = ["get_version", "__version__"]

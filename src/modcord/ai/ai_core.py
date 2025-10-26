@@ -18,7 +18,7 @@ import asyncio
 import gc
 import os
 from dataclasses import dataclass
-from typing import Any, List, Optional, Dict
+from typing import Any, List, Dict
 import modcord.configuration.app_configuration as cfg
 from modcord.util.logger import get_logger
 
@@ -35,11 +35,11 @@ class ModelState:
     Attributes:
         init_started (bool): Indicates if initialization has started.
         available (bool): True if the model is available for inference.
-        init_error (Optional[str]): Last initialization error message, if any.
+        init_error (str | None): Last initialization error message, if any.
     """
     init_started: bool = False
     available: bool = False
-    init_error: Optional[str] = None
+    init_error: str | None = None
 
 
 
@@ -54,9 +54,9 @@ class InferenceProcessor:
     - Resource cleanup and error handling
 
     Attributes:
-        llm (Optional[Any]): The vLLM model instance.
-        sampling_params (Optional[Any]): Default sampling parameters for generation.
-        base_system_prompt (Optional[str]): System prompt template for injection.
+        llm (Any | None): The vLLM model instance.
+        sampling_params (Any | None): Default sampling parameters for generation.
+        base_system_prompt (str | None): System prompt template for injection.
         state (ModelState): Tracks model state and errors.
         init_lock (asyncio.Lock): Ensures thread-safe operations.
     """
@@ -65,9 +65,9 @@ class InferenceProcessor:
         """
         Initialize the InferenceProcessor with default state and thread lock.
         """
-        self.llm: Optional[Any] = None
-        self.sampling_params: Optional[Any] = None
-        self.base_system_prompt: Optional[str] = None
+        self.llm: Any | None = None
+        self.sampling_params: Any | None = None
+        self.base_system_prompt: str | None = None
         self.state = ModelState()
         self.init_lock = asyncio.Lock()
 
@@ -81,14 +81,14 @@ class InferenceProcessor:
         self.state.available = False
         self.state.init_error = msg
 
-    async def init_model(self, model: Optional[str] = None) -> bool:
+    async def init_model(self, model: str | None = None) -> bool:
         """
         Asynchronously initialize the vLLM model engine in a thread-safe manner.
 
         Loads configuration, checks if AI is enabled, prepares sampling parameters, and runs blocking model load in a thread. Ensures only one initialization attempt at a time.
 
         Args:
-            model (Optional[str]): Optional model identifier override.
+            model (str | None): Optional model identifier override.
 
         Returns:
             bool: True if initialization succeeded, False otherwise.
@@ -222,12 +222,12 @@ class InferenceProcessor:
         """
         return self.state.available
 
-    def get_model_init_error(self) -> Optional[str]:
+    def get_model_init_error(self) -> str | None:
         """
         Get the last initialization error message, if any.
 
         Returns:
-            Optional[str]: Error message or None.
+            str | None: Error message or None.
         """
         return self.state.init_error
 

@@ -18,25 +18,21 @@ from __future__ import annotations
 import asyncio
 import datetime
 from collections import defaultdict
-from typing import Awaitable, Callable, DefaultDict, Dict, List, Optional, Sequence, Set
+from typing import Awaitable, Callable, DefaultDict, Dict, List, Sequence, Set
 
 import discord
 
 from modcord.configuration.app_configuration import app_config
 from modcord.database.database import get_past_actions
+from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
 from modcord.moderation.moderation_datatypes import (
     ModerationChannelBatch,
-    ModerationImage,
     ModerationMessage,
     ModerationUser,
 )
-from modcord.util.image_utils import generate_image_hash_id
 from modcord.util.logger import get_logger
 
 logger = get_logger("message_batch_manager")
-
-# Discord attachment types considered images for moderation context
-IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 
 
 class MessageBatchManager:
@@ -57,26 +53,28 @@ class MessageBatchManager:
     def __init__(self) -> None:
         self._channel_message_batches: DefaultDict[int, List[ModerationMessage]] = defaultdict(list)
         self._batch_lock = asyncio.Lock()
-        self._global_batch_timer: Optional[asyncio.Task] = None
-        self._batch_processing_callback: Optional[
-            Callable[[List[ModerationChannelBatch]], Awaitable[None]]
-        ] = None
-        self._bot_instance: Optional[discord.Client] = None
+        self._global_batch_timer: asyncio.Task | None = None
+        self._batch_processing_callback: (
+            Callable[[List[ModerationChannelBatch]], Awaitable[None]] | None
+        ) = None
+        self._bot_instance: discord.Bot | None = None
+        self._history_fetcher: DiscordHistoryFetcher | None = self._bot_instance
 
     # ------------------------------------------------------------------
     # Public configuration hooks
     # ------------------------------------------------------------------
-    def set_bot_instance(self, bot_instance: discord.Client) -> None:
+    def set_bot_instance(self, bot_instance: discord.Bot) -> None:
         """
         Set the Discord bot instance for API access and channel lookups.
 
         Args:
-            bot_instance (discord.Client): The Discord bot instance to use for Discord API calls and channel lookups.
+            bot_instance (discord.Bot): The Discord bot instance to use for Discord API calls and channel lookups.
 
         Returns:
             None
         """
         self._bot_instance = bot_instance
+        self._history_fetcher = DiscordHistoryFetcher(bot_instance)
         logger.info("Bot instance set for MessageBatchManager")
 
     def set_batch_processing_callback(
@@ -207,8 +205,16 @@ class MessageBatchManager:
         channel_batches: List[ModerationChannelBatch] = []
         for channel_id, messages in pending_batches.items():
             users = await self._group_messages_by_user(messages)
-            history_users = []  # If you want to log history users, fetch from _fetch_history_context
-            # Example: history_users = await self._fetch_history_context(channel_id, messages)
+            
+            # Fetch fresh history from Discord
+            history_messages: List[ModerationMessage] = []
+            if self._history_fetcher:
+                exclude_ids = {str(msg.message_id) for msg in messages}
+                history_messages = await self._history_fetcher.fetch_history_context(
+                    channel_id, exclude_ids
+                )
+            
+            history_users = await self._group_messages_by_user(history_messages) if history_messages else []
 
             logger.debug(
                 "Prepared batch for channel %s: %d current users, %d history users",
@@ -267,8 +273,8 @@ class MessageBatchManager:
 
             username = "Unknown User"
             roles: List[str] = []
-            join_date: Optional[str] = None
-            guild_id: Optional[int] = None
+            join_date: str | None = None
+            guild_id: int | None = None
 
             if discord_msg and discord_msg.guild and discord_msg.author:
                 username = str(discord_msg.author)
@@ -310,127 +316,6 @@ class MessageBatchManager:
 
         grouped_users.sort(key=lambda user: first_seen[user.user_id])
         return grouped_users
-
-    async def _fetch_history_context(
-        self,
-        channel_id: int,
-        current_batch: Sequence[ModerationMessage],
-    ) -> List[ModerationMessage]:
-        bot = self._bot_instance
-        if not bot:
-            return []
-
-        channel = bot.get_channel(channel_id)
-        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
-            return []
-
-        exclude_ids: Set[str] = {str(msg.message_id) for msg in current_batch}
-        history_limit = 20
-        try:
-            history_limit = int(app_config.ai_settings.get("history_context_messages", 20))
-        except Exception:
-            pass
-
-        fetch_count = min(history_limit * 2, 100)
-        results: List[ModerationMessage] = []
-        try:
-            async for discord_msg in channel.history(limit=fetch_count):
-                if str(discord_msg.id) in exclude_ids:
-                    continue
-                if discord_msg.author.bot:
-                    continue
-
-                mod_msg = self._convert_discord_message(discord_msg)
-                if mod_msg:
-                    results.append(mod_msg)
-                if len(results) >= history_limit:
-                    break
-        except discord.Forbidden:
-            logger.warning("Missing permissions to read history for channel %s", channel_id)
-        except discord.NotFound:
-            logger.warning("Channel %s not found while fetching history", channel_id)
-        except Exception as exc:
-            logger.error(
-                "Unexpected error fetching history for channel %s: %s",
-                channel_id,
-                exc,
-            )
-
-        return results
-
-    def _convert_discord_message(self, message: discord.Message) -> Optional[ModerationMessage]:
-        content = (message.clean_content or "").strip()
-        embed_content = self._extract_embed_content(message)
-        if embed_content:
-            content = f"{content}\n{embed_content}" if content else embed_content
-
-        images = self._build_moderation_images(message)
-
-        if not content and not images:
-            return None
-
-        created_at = message.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=datetime.timezone.utc)
-
-        return ModerationMessage(
-            message_id=str(message.id),
-            user_id=str(message.author.id),
-            content=content,
-            timestamp=created_at.astimezone(datetime.timezone.utc)
-            .replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z"),
-            guild_id=message.guild.id if message.guild else None,
-            channel_id=message.channel.id if message.channel else None,
-            images=images,
-            discord_message=None,
-        )
-
-    @staticmethod
-    def _extract_embed_content(message: discord.Message) -> str:
-        if not message.embeds:
-            return ""
-
-        parts: List[str] = []
-        for embed in message.embeds:
-            if embed.title:
-                parts.append(f"[Embed Title: {embed.title}]")
-            if embed.description:
-                parts.append(f"[Embed Description: {embed.description}]")
-            if embed.fields:
-                for field in embed.fields:
-                    if field.name or field.value:
-                        parts.append(f"[Embed Field - {field.name}: {field.value}]")
-            if embed.footer and embed.footer.text:
-                parts.append(f"[Embed Footer: {embed.footer.text}]")
-            if embed.author and embed.author.name:
-                parts.append(f"[Embed Author: {embed.author.name}]")
-
-        return "\n".join(parts)
-
-    def _build_moderation_images(self, message: discord.Message) -> List[ModerationImage]:
-        images: List[ModerationImage] = []
-        for attachment in message.attachments:
-            if not self._is_image_attachment(attachment):
-                continue
-            images.append(
-                ModerationImage(
-                    image_id=generate_image_hash_id(attachment.url),
-                    pil_image=None,
-                )
-            )
-        return images
-
-    @staticmethod
-    def _is_image_attachment(attachment: discord.Attachment) -> bool:
-        content_type = (attachment.content_type or "").lower()
-        if content_type.startswith("image/"):
-            return True
-        if attachment.width is not None and attachment.height is not None:
-            return True
-        filename = (attachment.filename or "").lower()
-        return filename.endswith(IMAGE_EXTENSIONS)
 
     # ------------------------------------------------------------------
     # Shutdown helpers

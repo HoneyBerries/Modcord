@@ -220,8 +220,8 @@ async def create_punishment_embed(
     user: discord.User | discord.Member,
     reason: str,
     duration_str: str | None = None,
-    issuer: discord.User | discord.Member | discord.ClientUser | None = None,
-    bot_user: discord.ClientUser | None = None
+    issuer: discord.User | discord.Member | discord.BotUser | None = None,
+    bot_user: discord.BotUser | None = None
 ) -> discord.Embed:
     """
     Build a standardized embed summarizing a moderation action for logging or notification.
@@ -231,8 +231,8 @@ async def create_punishment_embed(
         user (discord.User | discord.Member): The affected user.
         reason (str): Reason for the action.
         duration_str (str | None): Optional duration label.
-        issuer (discord.User | discord.Member | discord.ClientUser | None): Moderator responsible for the action.
-        bot_user (discord.ClientUser | None): Bot user for footer labeling.
+        issuer (discord.User | discord.Member | discord.BotUser | None): Moderator responsible for the action.
+        bot_user (discord.BotUser | None): Bot user for footer labeling.
 
     Returns:
         discord.Embed: The constructed embed object.
@@ -496,8 +496,8 @@ def has_permissions(application_context: discord.ApplicationContext, **required_
 async def apply_action_decision(
     action: ActionData,
     pivot: ModerationMessage,
-    bot_user: discord.ClientUser,
-    bot_client: discord.Client,
+    bot_user: discord.BotUser,
+    bot_client: discord.Bot,
     *,
     message_lookup: Mapping[str, discord.Message] | None = None,
 ) -> bool:
@@ -507,8 +507,8 @@ async def apply_action_decision(
     Args:
         action (ActionData): The moderation action to apply.
         pivot (ModerationMessage): The message that triggered moderation.
-        bot_user (discord.ClientUser): The bot's user object.
-        bot_client (discord.Client): The bot client instance.
+        bot_user (discord.BotUser): The bot's user object.
+        bot_client (discord.Bot): The bot client instance.
         message_lookup (Mapping[str, discord.Message] | None): Optional cache of messages for deletion.
 
     Returns:

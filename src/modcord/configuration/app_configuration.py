@@ -171,7 +171,7 @@ class AISettings:
     should use the explicit helpers.
     """
 
-    def __init__(self, data: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, data: Dict[str, Any] | None = None) -> None:
         self.data: Dict[str, Any] = data or {}
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -196,7 +196,7 @@ class AISettings:
         return float(self.data.get("vram_percentage", 0.5))
 
     @property
-    def model_id(self) -> Optional[str]:
+    def model_id(self) -> str | None:
         val = self.data.get("model_id")
         return str(val) if val else None
 
