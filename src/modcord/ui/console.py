@@ -101,10 +101,12 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
         return
 
     try:
+        # Set bot status to offline before closing
+        await bot.change_presence(status=discord.Status.offline)
         await bot.close()
         if log_close:
             logger.info("Discord bot connection closed.")
-    except Exception as exc:  # pragma: no cover - defensive logging
+    except Exception as exc:
         logger.exception("Error while closing Discord bot: %s", exc)
 
 
