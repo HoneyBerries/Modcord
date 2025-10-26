@@ -341,7 +341,6 @@ class ModerationProcessor:
         try:
             # DEBUG: Log the full input going into the LLM
             logger.debug("[LLM INPUT] Conversations: %s", conversations)
-            logger.debug("[LLM INPUT] Grammar strings: %s", grammar_strings)
             logger.debug("[INFERENCE] Starting multi-batch inference with %d conversations...", len(conversations))
             results = await self.inference_processor.generate_multi_chat(
                 conversations,
