@@ -1,0 +1,12 @@
+--- venv/lib/python3.12/site-packages/vllm/platforms/interface.py.orig	2025-10-27 20:04:10.746794222 -0700
++++ venv/lib/python3.12/site-packages/vllm/platforms/interface.py	2025-10-27 20:27:20.770906532 -0700
+@@ -31,7 +31,8 @@
+ 
+ def in_wsl() -> bool:
+     # Reference: https://github.com/microsoft/WSL/issues/4071
+-    return "microsoft" in " ".join(platform.uname()).lower()
++    uname_str = " ".join(platform.uname()).lower()
++    return "microsoft" in uname_str and "wsl2" not in uname_str
+ 
+ 
+ class PlatformEnum(enum.Enum):
