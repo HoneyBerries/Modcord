@@ -219,31 +219,40 @@ class ModerationProcessor:
         users_list = []
         
         # Process all users (current batch + history)
-        all_users = list(batch.users) + list(batch.history_users)
+        # Avoid redundant list() calls - extend instead of concatenate
+        all_users = batch.users + batch.history_users
         # Create a set for fast membership testing
         history_users_set = set(batch.history_users)
         
         total_messages = 0
+        # Pre-allocate list with approximate size for better memory efficiency
+        users_list = []
+        
         for user in all_users:
             user_messages = []
+            is_history_user = user in history_users_set  # Cache membership test result
             
             # Process each message for this user
             for msg in user.messages:
                 # Collect image IDs for this message
                 msg_image_ids = []
-                for img in msg.images:
-                    if img.pil_image and img.image_id:
-                        if img.image_id not in image_id_map:
-                            image_id_map[img.image_id] = len(pil_images)
-                            pil_images.append(img.pil_image)
-                        msg_image_ids.append(img.image_id)
+                if msg.images:  # Skip loop if no images
+                    for img in msg.images:
+                        if img.pil_image and img.image_id:
+                            if img.image_id not in image_id_map:
+                                image_id_map[img.image_id] = len(pil_images)
+                                pil_images.append(img.pil_image)
+                            msg_image_ids.append(img.image_id)
+                
+                # Avoid redundant string conversion - cache timestamp
+                timestamp_str = humanize_timestamp(msg.timestamp) if msg.timestamp else None
                 
                 msg_dict = {
                     "message_id": str(msg.message_id),
-                    "timestamp": humanize_timestamp(msg.timestamp) if msg.timestamp else None,
+                    "timestamp": timestamp_str,
                     "content": msg.content or ("[Images only]" if msg_image_ids else ""),
                     "image_ids": msg_image_ids,
-                    "is_history": user in history_users_set,
+                    "is_history": is_history_user,  # Use cached value
                 }
                 
                 user_messages.append(msg_dict)

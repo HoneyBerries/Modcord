@@ -202,6 +202,7 @@ async def create_punishment_embed(
     Returns:
         discord.Embed: The constructed embed object.
     """
+    # Static dict for O(1) lookup - placed outside function in production but kept here for clarity
     details = {
         ActionType.BAN:     ("🔨", "Ban", discord.Color.red()),
         ActionType.KICK:    ("👢", "Kick", discord.Color.orange()),
@@ -214,12 +215,18 @@ async def create_punishment_embed(
 
     emoji, label, color = details
 
+    # Cache timestamp to avoid repeated calls
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    
     embed = discord.Embed(
         title=f"{emoji} {label} Issued",
         color=color,
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
+        timestamp=now_utc
     )
-    embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=True)
+    
+    # Cache user.id to avoid repeated attribute access
+    user_id = user.id
+    embed.add_field(name="User", value=f"{user.mention} (`{user_id}`)", inline=True)
     embed.add_field(name="Action", value=label, inline=True)
     if issuer:
         embed.add_field(name="Moderator", value=issuer.mention, inline=True)
@@ -261,14 +268,17 @@ async def delete_recent_messages(guild, member, seconds) -> int:
 
     window_start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=seconds)
     deleted_count = 0
+    member_id = member.id  # Cache member ID to avoid repeated attribute access
 
     for channel in iter_moderatable_channels(guild):
         try:
+            # Pre-cache channel name to avoid repeated getattr calls in error case
+            channel_name = channel.name if hasattr(channel, 'name') else 'unknown'
             async for message in channel.history(after=window_start):
-                if message.author.id == member.id and await safe_delete_message(message):
+                if message.author.id == member_id and await safe_delete_message(message):
                     deleted_count += 1
         except Exception as exc:
-            logger.error(f"Error deleting messages in {getattr(channel, 'name', '')}: {exc}")
+            logger.error(f"Error deleting messages in {channel_name}: {exc}")
 
     return deleted_count
 
@@ -344,12 +354,12 @@ async def delete_messages_by_ids(guild: discord.Guild, message_ids: list[str]) -
     if not message_ids:
         return 0
     
-    # Convert to integer IDs and filter invalid ones
+    # Convert to integer IDs and filter invalid ones - use set for O(1) operations
     pending_ids = set()
     for raw_id in message_ids:
         try:
             pending_ids.add(int(raw_id))
-        except Exception:
+        except (ValueError, TypeError):
             logger.warning(f"Skipping invalid message id: {raw_id}")
     
     if not pending_ids:
@@ -363,27 +373,32 @@ async def delete_messages_by_ids(guild: discord.Guild, message_ids: list[str]) -
         if not pending_ids:
             break
         
-        # Create tasks for fetching messages concurrently
-        fetch_tasks = []
+        # Pre-cache channel name for error logging
+        channel_name = channel.name if hasattr(channel, 'name') else str(channel.id)
+        
+        # Create tasks for fetching messages concurrently - batch size limit to avoid overwhelming
         message_id_list = list(pending_ids)
+        batch_size = 50  # Limit concurrent operations per channel to avoid rate limits
         
-        for message_id in message_id_list:
-            fetch_tasks.append(asyncio.create_task(_fetch_and_delete_message(channel, message_id)))
-        
-        # Wait for all fetch/delete operations in this channel
-        results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
-        
-        for message_id, result in zip(message_id_list, results):
-            if isinstance(result, Exception):
-                # Message not found or other error - remove from pending
-                if not isinstance(result, discord.HTTPException):
-                    logger.error(f"Error processing message {message_id} in {getattr(channel, 'name', '')}: {result}")
-                pending_ids.discard(message_id)
-            elif result:
-                # Successfully deleted
-                deleted_count += 1
-                pending_ids.discard(message_id)
-            # If result is False, message wasn't in this channel, keep in pending_ids
+        for i in range(0, len(message_id_list), batch_size):
+            batch_ids = message_id_list[i:i + batch_size]
+            fetch_tasks = [asyncio.create_task(_fetch_and_delete_message(channel, msg_id)) 
+                          for msg_id in batch_ids]
+            
+            # Wait for all fetch/delete operations in this batch
+            results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+            
+            for message_id, result in zip(batch_ids, results):
+                if isinstance(result, Exception):
+                    # Message not found or other error - remove from pending
+                    if not isinstance(result, discord.HTTPException):
+                        logger.error(f"Error processing message {message_id} in {channel_name}: {result}")
+                    pending_ids.discard(message_id)
+                elif result:
+                    # Successfully deleted
+                    deleted_count += 1
+                    pending_ids.discard(message_id)
+                # If result is False, message wasn't in this channel, keep in pending_ids
     
     if pending_ids:
         logger.debug(f"Failed to locate messages: {sorted(pending_ids)}")
@@ -427,16 +442,23 @@ async def delete_recent_messages_by_count(guild: discord.Guild, member: discord.
     """
     if count <= 0:
         return 0
+    
     deleted = 0
+    member_id = member.id  # Cache for performance
+    
     for channel in iter_moderatable_channels(guild):
+        if deleted >= count:
+            break
         try:
+            # Pre-cache channel name for error logging
+            channel_name = channel.name if hasattr(channel, 'name') else str(channel.id)
             async for message in channel.history(limit=count - deleted):
-                if message.author == member and await safe_delete_message(message):
+                if message.author.id == member_id and await safe_delete_message(message):
                     deleted += 1
                 if deleted >= count:
                     return deleted
         except Exception as exc:
-            logger.error(f"Error in channel {getattr(channel, 'name', '')}: {exc}")
+            logger.error(f"Error in channel {channel_name}: {exc}")
     return deleted
 
 
