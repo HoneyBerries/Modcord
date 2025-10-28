@@ -69,30 +69,47 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
     Apply a moderation action to a user in the batch, ensuring permissions and context.
     """
     logger.debug(
-        "[APPLY_ACTION] Attempting to apply action %s for user %s",
+        "[APPLY_ACTION] Attempting to apply action %s for user %s in channel %s",
         action.action.value,
-        action.user_id
+        action.user_id,
+        batch.channel_id
     )
     
     if action.action is ActionType.NULL or not action.user_id:
         logger.debug("[APPLY_ACTION] Skipping: action is NULL or no user_id")
         return False
 
-    target_user = next((u for u in batch.users if u.user_id == action.user_id), None)
+    # Normalize user_id for comparison
+    target_user_id = str(action.user_id).strip()
+    target_user = next((u for u in batch.users if str(u.user_id).strip() == target_user_id), None)
     if not target_user or not target_user.messages:
         logger.warning(
-            "[APPLY_ACTION] Cannot apply action: target user %s not found in batch or has no messages",
-            action.user_id
+            "[APPLY_ACTION] Cannot apply action: target user %s not found in batch or has no messages. Batch has %d users: %s",
+            action.user_id,
+            len(batch.users),
+            [str(u.user_id).strip() for u in batch.users]
         )
         return False
+
+    logger.debug(
+        "[APPLY_ACTION] Found target user %s with %d messages",
+        target_user_id,
+        len(target_user.messages)
+    )
 
     pivot = next((m for m in reversed(target_user.messages) if m.discord_message), None)
     if not pivot or not pivot.discord_message:
         logger.warning(
-            "[APPLY_ACTION] Cannot apply action: no discord_message reference found for user %s",
-            action.user_id
+            "[APPLY_ACTION] Cannot apply action: no discord_message reference found for user %s (has %d messages, none with discord_message)",
+            action.user_id,
+            len(target_user.messages)
         )
         return False
+
+    logger.debug(
+        "[APPLY_ACTION] Found pivot message %s with discord_message reference",
+        pivot.message_id
+    )
 
     guild_id = pivot.guild_id
     if guild_id and not guild_settings_manager.is_action_allowed(guild_id, action.action):
@@ -108,7 +125,9 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
     author = msg.author
     if not guild or not isinstance(author, discord.Member):
         logger.warning(
-            "[APPLY_ACTION] Cannot apply action: no guild or author is not a member"
+            "[APPLY_ACTION] Cannot apply action: no guild or author is not a member (guild=%s, author type=%s)",
+            guild,
+            type(author).__name__
         )
         return False
     if guild.owner_id == author.id or discord_utils.has_elevated_permissions(author):
@@ -123,9 +142,10 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
 
     try:
         logger.debug(
-            "[APPLY_ACTION] Executing action %s for user %s (reason: %s)",
+            "[APPLY_ACTION] Executing action %s for user %s in guild %s (reason: %s)",
             action.action.value,
             action.user_id,
+            guild_id,
             action.reason[:50] if action.reason else "N/A"
         )
         result = await discord_utils.apply_action_decision(
