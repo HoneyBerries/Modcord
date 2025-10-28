@@ -139,42 +139,7 @@ def has_elevated_permissions(member: Union[discord.User, discord.Member]) -> boo
     )
 
 
-def build_dm_message(
-    action: ActionType,
-    guild_name: str,
-    reason: str,
-    duration_str: str | None = None,
-) -> str:
-    """
-    Construct a DM message for a user based on the moderation action taken.
-
-    Args:
-        action (ActionType): The moderation action performed.
-        guild_name (str): The name of the guild where the action occurred.
-        reason (str): The reason for the action.
-        duration_str (str | None): Optional duration for temporary actions.
-
-    Returns:
-        str: The DM message content.
-    """
-    if action == ActionType.BAN:
-        if duration_str and duration_str != PERMANENT_DURATION:
-            duration_fragment = f"for {duration_str}"
-        else:
-            duration_fragment = "permanently"
-        return f"You have been banned from {guild_name} {duration_fragment}.\n**Reason**: {reason}"
-
-    if action == ActionType.KICK:
-        return f"You have been kicked from {guild_name}.\n**Reason**: {reason}"
-
-    if action == ActionType.TIMEOUT:
-        duration_label = duration_str or PERMANENT_DURATION
-        return f"You have been timed out in {guild_name} for {duration_label}.\n**Reason**: {reason}"
-
-    if action == ActionType.WARN:
-        return f"You have received a warning in {guild_name}.\n**Reason**: {reason}"
-
-    return ""
+# Note: build_dm_message removed - we now send embeds to DMs instead of text messages
 
 
 def format_duration(seconds: int) -> str:
@@ -475,116 +440,56 @@ async def delete_recent_messages_by_count(guild: discord.Guild, member: discord.
     return deleted
 
 
-async def send_dm_to_user(target_user: discord.Member, message_content: str) -> bool:
-    """
-    Attempt to send a direct message to a user, handling common errors.
-
-    Args:
-        target_user (discord.Member): The member to DM.
-        message_content (str): The message content.
-
-    Returns:
-        bool: True if the DM was sent successfully, False otherwise.
-    """
-    try:
-        await target_user.send(message_content)
-        return True
-    except discord.Forbidden:
-        logger.warning(f"Could not DM {target_user.display_name}: They may have DMs disabled.")
-    except Exception as e:
-        logger.error(f"Failed to send DM to {target_user.display_name}: {e}")
-    return False
-
-
-async def send_dm_with_suppression(
-    user: discord.Member,
+async def execute_moderation_notification(
     action_type: ActionType,
-    guild_name: str,
+    user: discord.Member,
+    guild: discord.Guild,
     reason: str,
-    duration_str: str | None = None
+    channel: discord.TextChannel | discord.Thread | None = None,
+    duration_str: str | None = None,
+    bot_user: discord.ClientUser | None = None,
 ) -> None:
     """
-    Send a DM to a user, suppressing errors with a debug log.
+    Unified notification handler for moderation actions.
     
-    This is a common pattern used throughout moderation actions where
-    DM failures should not stop the moderation action from proceeding.
+    Sends DM to user and posts embed to channel in one consolidated operation.
+    All errors are suppressed to ensure notifications don't block actions.
 
     Args:
-        user (discord.Member): The member to DM.
-        action_type (ActionType): The moderation action type.
-        guild_name (str): The guild name.
-        reason (str): The reason for the action.
-        duration_str (str | None): Optional duration label.
-    """
-    try:
-        dm_message = build_dm_message(action_type, guild_name, reason, duration_str)
-        await send_dm_to_user(user, dm_message)
-    except Exception:
-        logger.debug(f"Failed to DM user for {action_type.value}, continuing.")
-
-
-async def create_and_send_embed(
-    channel: discord.TextChannel | discord.Thread,
-    action_type: ActionType,
-    user: discord.Member,
-    reason: str,
-    duration_str: str | None = None,
-    issuer: discord.User | discord.Member | discord.ClientUser | None = None,
-    bot_user: discord.ClientUser | None = None
-) -> bool:
-    """
-    Create a punishment embed and send it to a channel.
-    
-    This helper combines the common pattern of creating an embed and
-    posting it to a channel with error handling.
-
-    Args:
-        channel (discord.TextChannel | discord.Thread): The channel to post to.
         action_type (ActionType): The moderation action type.
         user (discord.Member): The affected user.
+        guild (discord.Guild): The guild where action occurred.
         reason (str): The reason for the action.
+        channel (discord.TextChannel | discord.Thread | None): Channel to post embed to.
         duration_str (str | None): Optional duration label.
-        issuer (discord.User | discord.Member | discord.ClientUser | None): Moderator responsible for the action.
-        bot_user (discord.ClientUser | None): Bot user for footer labeling.
+        bot_user (discord.ClientUser | None): Bot user for footer/issuer.
+    """
+    # Create the embed once for both DM and channel
+    embed = await create_punishment_embed(
+        action_type, user, reason, duration_str, issuer=bot_user, bot_user=bot_user
+    )
     
-    Returns:
-        bool: True if the embed was sent successfully, False otherwise.
-    """
+    if not embed:
+        logger.error(f"Failed to create embed for {action_type.value}")
+        return
+    
+    # Send DM with embed (suppressing errors)
     try:
-        embed = await create_punishment_embed(
-            action_type, user, reason, duration_str, issuer=issuer, bot_user=bot_user
-        )
-        if embed and isinstance(channel, (discord.TextChannel, discord.Thread)):
-            await channel.send(embed=embed)
-            return True
+        await user.send(embed=embed)
+    except discord.Forbidden:
+        logger.debug(f"Could not DM {user.display_name} for {action_type.value}: DMs disabled")
     except Exception as exc:
-        logger.error(f"Failed to send moderation embed: {exc}")
-    return False
+        logger.debug(f"Failed to DM user for {action_type.value}: {exc}")
+    
+    # Send embed to channel (suppressing errors)
+    if channel and isinstance(channel, (discord.TextChannel, discord.Thread)):
+        try:
+            await channel.send(embed=embed)
+        except Exception as exc:
+            logger.error(f"Failed to send moderation embed to channel: {exc}")
 
 
-async def send_dm_and_embed(
-    ctx: discord.ApplicationContext,
-    user: discord.Member,
-    action_type: ActionType,
-    reason: str,
-    duration_str: str | None = None
-):
-    """
-    Send a DM and a moderation embed to notify both the affected user and moderators about an action.
-
-    Args:
-        ctx (discord.ApplicationContext): The command context for follow-up messaging.
-        user (discord.Member): The member receiving the DM.
-        action_type (ActionType): The moderation action type.
-        reason (str): The reason for the action.
-        duration_str (str | None): Optional duration label.
-    """
-    dm_message = build_dm_message(action_type, ctx.guild.name, reason, duration_str)
-    if not dm_message:
-        dm_message = f"You have been {action_type.value}ed in {ctx.guild.name}.\n**Reason**: {reason}"
-    await send_dm_to_user(user, dm_message)
-    embed = await create_punishment_embed(action_type, user, reason, duration_str, bot_user=ctx.bot.user)
-    await ctx.followup.send(embed=embed)
+# Note: Old send_dm_and_embed function removed - use execute_moderation_notification instead
 
 
 def has_permissions(application_context: discord.ApplicationContext, **required_permissions) -> bool:
@@ -665,11 +570,10 @@ async def apply_action_decision(
     if action.action is ActionType.DELETE:
         return True
 
-    embed = None
     success = True
 
     # Execute the specified moderation action
-    # Note: DM sending and embed creation are handled within each case
+    # Notifications (DM + channel embed) are handled by execute_moderation_notification
 
     match action.action:
         case ActionType.BAN:
@@ -685,14 +589,15 @@ async def apply_action_decision(
                 duration_seconds = duration_minutes * 60
                 duration_label = format_duration(duration_seconds)
             
-            await send_dm_with_suppression(author, ActionType.BAN, guild.name, action.reason, duration_label)
-            
             try:
                 await guild.ban(author, reason=f"AI Mod: {action.reason}")
-                embed = await create_punishment_embed(ActionType.BAN, author, action.reason, duration_label, issuer=bot_user, bot_user=bot_user)
+                await execute_moderation_notification(
+                    ActionType.BAN, author, guild, action.reason, channel, duration_label, bot_user
+                )
             except Exception as exc:
                 logger.error("Failed to ban user %s: %s", author.id, exc)
                 return False
+                
             if not is_permanent:
                 try:
                     await schedule_unban(
@@ -709,11 +614,11 @@ async def apply_action_decision(
 
 
         case ActionType.KICK:
-            await send_dm_with_suppression(author, ActionType.KICK, guild.name, action.reason)
-            
             try:
                 await guild.kick(author, reason=f"AI Mod: {action.reason}")
-                embed = await create_punishment_embed(ActionType.KICK, author, action.reason, issuer=bot_user, bot_user=bot_user)
+                await execute_moderation_notification(
+                    ActionType.KICK, author, guild, action.reason, channel, None, bot_user
+                )
             except Exception as exc:
                 logger.error("Failed to kick user %s: %s", author.id, exc)
                 return False
@@ -732,18 +637,19 @@ async def apply_action_decision(
             
             try:
                 await author.timeout(until, reason=f"AI Mod: {action.reason}")
-                await send_dm_with_suppression(author, ActionType.TIMEOUT, guild.name, action.reason, duration_label)
-                embed = await create_punishment_embed(ActionType.TIMEOUT, author, action.reason, duration_label, issuer=bot_user, bot_user=bot_user)
+                await execute_moderation_notification(
+                    ActionType.TIMEOUT, author, guild, action.reason, channel, duration_label, bot_user
+                )
             except Exception as exc:
                 logger.error("Failed to timeout user %s: %s", author.id, exc)
                 return False
             
 
         case ActionType.WARN:
-            await send_dm_with_suppression(author, ActionType.WARN, guild.name, action.reason)
-            
             try:
-                embed = await create_punishment_embed(ActionType.WARN, author, action.reason, issuer=bot_user, bot_user=bot_user)
+                await execute_moderation_notification(
+                    ActionType.WARN, author, guild, action.reason, channel, None, bot_user
+                )
             except Exception as exc:
                 logger.error("Failed to process warn for user %s: %s", author.id, exc)
                 return False
@@ -751,20 +657,14 @@ async def apply_action_decision(
 
         case ActionType.UNBAN:
             try:
-                embed = await create_punishment_embed(ActionType.UNBAN, author, action.reason, issuer=bot_user, bot_user=bot_user)
+                await execute_moderation_notification(
+                    ActionType.UNBAN, author, guild, action.reason, channel, None, bot_user
+                )
             except Exception as exc:
                 logger.error("Failed to create unban embed for user %s: %s", author.id, exc)
                 return False
         case _:
             pass
-
-    if embed and isinstance(channel, (discord.TextChannel, discord.Thread)):
-        try:
-            await channel.send(embed=embed)
-        except discord.Forbidden:
-            logger.warning("Missing permission to post embed in %s", getattr(channel, "name", channel))
-        except Exception as exc:
-            logger.error("Failed to send moderation embed: %s", exc)
 
     # Log the action to the database if successful
     if success and action.action != ActionType.NULL:

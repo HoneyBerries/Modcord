@@ -327,19 +327,13 @@ class WarnCommand(CommandAction):
             user (discord.Member): Guild member to warn.
             bot_instance (discord.Bot): Discord bot instance.
         """
-        from modcord.util.discord_utils import (
-            send_dm_with_suppression,
-            create_and_send_embed,
-        )
+        from modcord.util.discord_utils import execute_moderation_notification
 
         self.user_id = str(user.id)
-        guild = ctx.guild
 
         try:
-            await send_dm_with_suppression(user, ActionType.WARN, guild.name, self.reason)
-            await create_and_send_embed(
-                ctx.channel, ActionType.WARN, user, self.reason,
-                issuer=bot_instance.user, bot_user=bot_instance.user
+            await execute_moderation_notification(
+                ActionType.WARN, user, ctx.guild, self.reason, ctx.channel, None, bot_instance.user
             )
         except Exception as exc:
             logger.error("Failed to process warn for user %s: %s", user.id, exc)
@@ -375,13 +369,11 @@ class TimeoutCommand(CommandAction):
         """Execute timeout action."""
         import datetime
         from modcord.util.discord_utils import (
-            send_dm_with_suppression,
-            create_and_send_embed,
+            execute_moderation_notification,
             format_duration,
         )
 
         self.user_id = str(user.id)
-        guild = ctx.guild
         duration_minutes = self.timeout_duration or 10
         # Handle -1 (permanent) by capping to Discord's 28-day max
         if duration_minutes == -1:
@@ -392,10 +384,8 @@ class TimeoutCommand(CommandAction):
 
         try:
             await user.timeout(until, reason=f"Manual Mod: {self.reason}")
-            await send_dm_with_suppression(user, ActionType.TIMEOUT, guild.name, self.reason, duration_label)
-            await create_and_send_embed(
-                ctx.channel, ActionType.TIMEOUT, user, self.reason, duration_label,
-                issuer=bot_instance.user, bot_user=bot_instance.user
+            await execute_moderation_notification(
+                ActionType.TIMEOUT, user, ctx.guild, self.reason, ctx.channel, duration_label, bot_instance.user
             )
         except Exception as exc:
             logger.error("Failed to timeout user %s: %s", user.id, exc)
@@ -422,20 +412,14 @@ class KickCommand(CommandAction):
         bot_instance: discord.Bot,
     ) -> None:
         """Execute kick action."""
-        from modcord.util.discord_utils import (
-            send_dm_with_suppression,
-            create_and_send_embed,
-        )
+        from modcord.util.discord_utils import execute_moderation_notification
 
         self.user_id = str(user.id)
-        guild = ctx.guild
 
         try:
-            await send_dm_with_suppression(user, ActionType.KICK, guild.name, self.reason)
-            await guild.kick(user, reason=f"Manual Mod: {self.reason}")
-            await create_and_send_embed(
-                ctx.channel, ActionType.KICK, user, self.reason,
-                issuer=bot_instance.user, bot_user=bot_instance.user
+            await ctx.guild.kick(user, reason=f"Manual Mod: {self.reason}")
+            await execute_moderation_notification(
+                ActionType.KICK, user, ctx.guild, self.reason, ctx.channel, None, bot_instance.user
             )
         except Exception as exc:
             logger.error("Failed to kick user %s: %s", user.id, exc)
@@ -473,14 +457,12 @@ class BanCommand(CommandAction):
     ) -> None:
         """Execute ban action."""
         from modcord.util.discord_utils import (
-            send_dm_with_suppression,
-            create_and_send_embed,
+            execute_moderation_notification,
             format_duration,
         )
         from modcord.scheduler.unban_scheduler import schedule_unban
 
         self.user_id = str(user.id)
-        guild = ctx.guild
         duration_minutes = self.ban_duration or 0
         is_permanent = duration_minutes <= 0
         if is_permanent:
@@ -491,18 +473,16 @@ class BanCommand(CommandAction):
             duration_label = format_duration(duration_seconds)
 
         try:
-            await send_dm_with_suppression(user, ActionType.BAN, guild.name, self.reason, duration_label)
-            await guild.ban(user, reason=f"Manual Mod: {self.reason}")
-            await create_and_send_embed(
-                ctx.channel, ActionType.BAN, user, self.reason, duration_label,
-                issuer=bot_instance.user, bot_user=bot_instance.user
+            await ctx.guild.ban(user, reason=f"Manual Mod: {self.reason}")
+            await execute_moderation_notification(
+                ActionType.BAN, user, ctx.guild, self.reason, ctx.channel, duration_label, bot_instance.user
             )
             
             # Schedule unban if not permanent
             if not is_permanent:
                 try:
                     await schedule_unban(
-                        guild=guild,
+                        guild=ctx.guild,
                         user_id=user.id,
                         channel=ctx.channel if isinstance(ctx.channel, (discord.TextChannel, discord.Thread)) else None,
                         duration_seconds=duration_seconds,
