@@ -65,7 +65,7 @@ Follow these steps to get Modcord running on your local machine for development 
 
 - **AI-Powered Moderation**: Uses a local or hosted Large Language Model to analyze messages and suggest moderation actions.
 - **Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`) and other management commands.
-- **Contextual Analysis**: Maintains per-channel message history for accurate AI moderation suggestions.
+- **Contextual Analysis**: Pulls per-channel message history on demand to keep moderation context up to date.
 - **Temporary Actions**: Supports temporary bans and timeouts with automatic removal.
 - **Standardized Embeds**: Clear and consistent embeds for all moderation actions.
 - **Per-Guild Settings**: Customizable settings and rules for each server.

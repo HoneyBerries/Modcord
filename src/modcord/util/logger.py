@@ -149,7 +149,7 @@ NOISY_LOGGERS = [
     "vllm", "vllm.engine", "vllm.client", "transformers", "urllib3",
     "torch", "torch.distributed", "c10d", "gloo",
     # Silence Discord internals and networking layers that spam INFO messages
-    "discord", "discord.gateway", "discord.client", "discord.http",
+    "discord", "discord.gateway", "discord.Bot", "discord.http",
     "websockets", "aiohttp", "cuda"
 ]
 

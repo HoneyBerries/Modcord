@@ -2,7 +2,6 @@
 
 import hashlib
 from io import BytesIO
-from typing import Optional
 
 import requests
 from PIL import Image
@@ -26,12 +25,12 @@ def generate_image_hash_id(image_url: str) -> str:
     return hash_obj.hexdigest()[:8]
 
 
-def download_image_to_pil(url: str, timeout: int = 2) -> Optional[Image.Image]:
+def download_image_to_pil(url: str, timeout: int = 2) -> Image.Image | None:
     """
     Downloads an image from a given URL and returns it as a resized PIL Image in RGB mode.
         url (str): The URL of the image to download.
         timeout (int, optional): Timeout for the HTTP request in seconds. Defaults to 2.
-        Optional[Image.Image]: The downloaded image as a PIL Image object in RGB mode, resized so the longest side is 512 pixels.
+        Image.Image | None: The downloaded image as a PIL Image object in RGB mode, resized so the longest side is 512 pixels.
         Returns None if the download or conversion fails.
     Raises:
         None. All exceptions are caught and logged internally.

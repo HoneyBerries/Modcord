@@ -15,7 +15,7 @@ Key Features:
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
 from modcord.moderation.moderation_datatypes import (
@@ -46,12 +46,12 @@ class ModerationProcessor:
         _shutdown (bool): Tracks whether the processor is shutting down.
     """
 
-    def __init__(self, engine: Optional[InferenceProcessor] = None) -> None:
+    def __init__(self, engine: InferenceProcessor | None = None) -> None:
         self.inference_processor = engine or inference_processor
         self._shutdown = False
 
     # ======== Engine Lifecycle ========
-    async def init_model(self, model: Optional[str] = None) -> bool:
+    async def init_model(self, model: str | None = None) -> bool:
         """Initialize the inference engine and report availability."""
         self._shutdown = False
         result = await self.inference_processor.init_model(model)
@@ -72,10 +72,11 @@ class ModerationProcessor:
     async def get_multi_batch_moderation_actions(
         self,
         batches: List[ModerationChannelBatch],
-        server_rules_map: Optional[Dict[int, str]] = None,
+        server_rules_map: Dict[int, str] | None = None,
+        channel_guidelines_map: Dict[int, str] | None = None,
     ) -> Dict[int, List[ActionData]]:
         """
-        Process multiple channel batches together in a single vLLM call.
+        Process multiple channel batches in a single global inference call.
 
         This is the global batch processing entry point. It:
         1. Converts all batches to vLLM conversations (one per channel).
@@ -86,6 +87,7 @@ class ModerationProcessor:
         Args:
             batches: List of ModerationChannelBatch objects from different channels.
             server_rules_map: Optional mapping of channel_id -> server rules text.
+            channel_guidelines_map: Optional mapping of channel_id -> channel-specific guidelines text.
 
         Returns:
             Dictionary mapping channel_id to list of ActionData objects.
@@ -103,6 +105,7 @@ class ModerationProcessor:
         grammar_strings: List[str] = []
         channel_mapping = []  # Maps conversation index to channel_id and batch
         rules_lookup = server_rules_map or {}
+        guidelines_lookup = channel_guidelines_map or {}
 
         for batch in batches:
             # Convert batch to JSON payload with image IDs
@@ -110,11 +113,9 @@ class ModerationProcessor:
 
             # Build user->message_ids map for non-history users
             user_message_map: Dict[str, List[str]] = {}
-            for msg in batch.messages:
-                user_id = str(msg.user_id)
-                if user_id not in user_message_map:
-                    user_message_map[user_id] = []
-                user_message_map[user_id].append(str(msg.message_id))
+            for user in batch.users:
+                user_id = str(user.user_id)
+                user_message_map[user_id] = [str(msg.message_id) for msg in user.messages]
 
             channel_id_str = str(batch.channel_id)
 
@@ -127,10 +128,14 @@ class ModerationProcessor:
             grammar = Grammar.from_json_schema(dynamic_schema, strict_mode=True)
             grammar_str = str(grammar)
 
-            # Resolve and apply server rules per channel
+            # Resolve and apply server rules and channel guidelines per channel
             channel_rules = rules_lookup.get(batch.channel_id, "")
             merged_rules = self._resolve_server_rules(channel_rules)
-            system_prompt = self.inference_processor.get_system_prompt(merged_rules)
+            
+            channel_guidelines = guidelines_lookup.get(batch.channel_id, "")
+            merged_guidelines = self._resolve_channel_guidelines(channel_guidelines)
+            
+            system_prompt = self.inference_processor.get_system_prompt(merged_rules, merged_guidelines)
 
             # Format messages for vLLM
             llm_messages = self._format_multimodal_messages(
@@ -203,56 +208,63 @@ class ModerationProcessor:
         """
         Convert ModerationChannelBatch to JSON structure with image IDs.
 
-        This method processes all messages and history in the batch, grouping them by user
-        and collecting associated image IDs. The resulting JSON payload is used as input
-        for the AI model.
+        This method processes all users and their messages in the batch, collecting
+        associated image IDs. The resulting JSON payload is used as input for the AI model.
 
         Returns:
             Tuple of (json_payload, pil_images_list, image_id_map).
         """
-        all_messages = list(batch.messages) + list(batch.history)
         pil_images: List[Any] = []
         image_id_map: Dict[str, int] = {}
-        users_dict: Dict[str, Dict[str, Any]] = {}
+        users_list = []
         
-        # Collect messages and images, group by user
-        for msg in all_messages:
-            user_id = str(msg.user_id)
+        # Process all users (current batch + history)
+        all_users = list(batch.users) + list(batch.history_users)
+        
+        total_messages = 0
+        for user in all_users:
+            user_messages = []
             
-            # Initialize user dict if first message from this user
-            if user_id not in users_dict:
-                users_dict[user_id] = {
-                    "username": msg.username,
-                    "messages": [],
-                    "message_count": 0,
+            # Process each message for this user
+            for msg in user.messages:
+                # Collect image IDs for this message
+                msg_image_ids = []
+                for img in msg.images:
+                    if img.pil_image and img.image_id:
+                        if img.image_id not in image_id_map:
+                            image_id_map[img.image_id] = len(pil_images)
+                            pil_images.append(img.pil_image)
+                        msg_image_ids.append(img.image_id)
+                
+                msg_dict = {
+                    "message_id": str(msg.message_id),
+                    "timestamp": humanize_timestamp(msg.timestamp) if msg.timestamp else None,
+                    "content": msg.content or ("[Images only]" if msg_image_ids else ""),
+                    "image_ids": msg_image_ids,
+                    "is_history": user in batch.history_users,
                 }
+                
+                user_messages.append(msg_dict)
+                total_messages += 1
             
-            # Collect image IDs for this message
-            msg_image_ids = []
-            for img in msg.images:
-                if img.pil_image and img.image_id:
-                    if img.image_id not in image_id_map:
-                        image_id_map[img.image_id] = len(pil_images)
-                        pil_images.append(img.pil_image)
-                    msg_image_ids.append(img.image_id)
-            
-            msg_dict = {
-                "message_id": str(msg.message_id),
-                "timestamp": humanize_timestamp(msg.timestamp) if msg.timestamp else None,
-                "content": msg.content or ("[Images only]" if msg_image_ids else ""),
-                "image_ids": msg_image_ids,
-                "is_history": msg in batch.history,
+            # Create user dict with all their messages
+            user_dict = {
+                "user_id": str(user.user_id),
+                "username": user.username,
+                "roles": user.roles,
+                "join_date": user.join_date,
+                "message_count": len(user_messages),
+                "messages": user_messages,
             }
-            
-            users_dict[user_id]["messages"].append(msg_dict)
-            users_dict[user_id]["message_count"] = len(users_dict[user_id]["messages"])
+            users_list.append(user_dict)
         
         payload = {
             "channel_id": str(batch.channel_id),
-            "message_count": len(all_messages),
-            "unique_user_count": len(users_dict),
+            "channel_name": batch.channel_name,
+            "message_count": total_messages,
+            "unique_user_count": len(all_users),
             "total_images": len(pil_images),
-            "users": users_dict,
+            "users": users_list,
         }
         
         return payload, pil_images, image_id_map
@@ -327,6 +339,8 @@ class ModerationProcessor:
             return [self._null_response(reason or "unavailable") for _ in conversations]
         
         try:
+            # DEBUG: Log the full input going into the LLM
+            logger.debug("[LLM INPUT] Conversations: %s", conversations)
             logger.debug("[INFERENCE] Starting multi-batch inference with %d conversations...", len(conversations))
             results = await self.inference_processor.generate_multi_chat(
                 conversations,
@@ -360,6 +374,19 @@ class ModerationProcessor:
         )
         return resolved
 
+    def _resolve_channel_guidelines(self, channel_guidelines: str = "") -> str:
+        """Pick channel-specific guidelines when provided, otherwise fall back to global defaults."""
+        base_guidelines = (app_config.channel_guidelines or "").strip()
+        channel_specific = (channel_guidelines or "").strip()
+        resolved = channel_specific or base_guidelines
+        logger.debug(
+            "Resolved channel guidelines: channel_specific_len=%d, base_guidelines_len=%d, using=%s",
+            len(channel_specific),
+            len(base_guidelines),
+            "channel_specific" if channel_specific else "base"
+        )
+        return resolved
+
     async def shutdown(self) -> None:
         """Gracefully stop the moderation processor and unload the AI model."""
         if self._shutdown:
@@ -384,7 +411,7 @@ model_state = inference_processor.state
 
 
 # Direct API functions (eliminates ai_lifecycle abstraction layer)
-async def initialize_engine(model: Optional[str] = None) -> tuple[bool, Optional[str]]:
+async def initialize_engine(model: str | None = None) -> tuple[bool, str | None]:
     """Initialize the moderation engine. Returns (success, error_message)."""
     logger.info("[ENGINE] Initializing moderation engine...")
     await moderation_processor.init_model(model)
@@ -392,7 +419,7 @@ async def initialize_engine(model: Optional[str] = None) -> tuple[bool, Optional
     return model_state.available, model_state.init_error
 
 
-async def restart_engine(model: Optional[str] = None) -> tuple[bool, Optional[str]]:
+async def restart_engine(model: str | None = None) -> tuple[bool, str | None]:
     """Restart the moderation engine. Returns (success, error_message)."""
     logger.info("[ENGINE] Restarting moderation engine...")
     try:

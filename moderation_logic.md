@@ -13,12 +13,11 @@
 
 ## Message Intake & Context Gathering
 - `MessageListenerCog` consumes `on_message` events, filtering out DMs, bot authors, and empty payloads. Accepted messages are normalized into `ModerationMessage` dataclasses.
-- Every accepted message is added to a per-channel history cache through `guild_settings_manager.add_message_to_history`, allowing the system to reconstruct context even if the bot was offline when older messages were posted.
-- The same listener queues messages for moderation by passing them to the manager’s batching layer. Guild-level feature toggles are consulted before queuing so that moderators can disable AI assistance per server.
+- The same listener queues messages for moderation by passing them to the batching manager. Guild-level feature toggles are consulted before queuing so that moderators can disable AI assistance per server.
 
 ## Channel Batching Layer
-- `GuildSettingsManager` orchestrates batched moderation using a **global batching approach**. Messages from each channel are queued independently, but all channels share a single global timer whose length comes from configuration (`moderation_batch_seconds`).
-- When the global timer fires, the manager gathers **all pending channel batches** and enriches each with contextual history via `global_history_cache_manager.fetch_history_for_context`, which blends cached content with on-demand Discord API fetches if necessary.
+- `MessageBatchManager` orchestrates batched moderation using a **global batching approach**. Messages from each channel are queued independently, but all channels share a single global timer whose length comes from configuration (`moderation_batch_seconds`).
+- When the global timer fires, the manager gathers **all pending channel batches** and enriches each with contextual history by pulling fresh messages directly from the Discord API. No local message cache is maintained, ensuring edits and deletions are reflected immediately.
 - The manager wraps each channel's messages in a `ModerationChannelBatch` structure and creates a list of all batches. This list is forwarded to the registered callback, which binds back into `moderation_helper.process_message_batches` with access to the cog instance.
 - **Key advantage**: All channel batches are processed together in a single vLLM inference call, maximizing GPU utilization and throughput compared to processing each channel individually.
 
@@ -45,9 +44,8 @@
 - All enforcement steps are surrounded by Discord-specific error handling so a single failure (e.g., missing permissions on one channel) does not derail the rest of the pipeline.
 
 ## Configuration & Data Flow
-- `app_config` is a thread-safe reader around `config/app_config.yml`. It exposes default server rules, the moderation prompt template, AI settings, and batching/ cache tuning parameters.
+- `app_config` is a thread-safe reader around `config/app_config.yml`. It exposes default server rules, the moderation prompt template, and AI settings (including batching windows and history depth).
 - `GuildSettingsManager` persists per-guild settings to `data/guild_settings.json`. Settings include whether AI is enabled and whether each automated action type is allowed. Writes happen asynchronously with atomic file replacement to avoid data corruption.
-- Channel history is stored in `GlobalHistoryCacheManager`, which supports TTL-based eviction and API fallback. The cache is reconfigured during startup if the YAML provides overrides for size, TTL, or fetch limits.
 - The rules manager scrapes likely rule channels and persists the aggregated text within guild settings, ensuring that updated rules automatically feed the AI prompt without redeploying the bot.
 
 ## Design Principles

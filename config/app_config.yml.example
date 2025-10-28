@@ -1,8 +1,3 @@
-history_fetching:
-  max_historical_messages_per_channel: 16 # Maximum messages to retain in memory per channel
-  history_ttl_seconds: 3600 # Time-to-live for cached messages (1 hour default); older messages are discarded
-  api_fetch_limit: 128  # Max messages to fetch from Discord API in one call
-
 ai_settings:
   enabled: false
   vram_percentage: 0.85 # Percentage of GPU VRAM to use if using GPU (0.0 to 1.0)
@@ -23,6 +18,9 @@ ai_settings:
 
   # moderation_batch_seconds: time window (in seconds) to group messages for moderation.
   moderation_batch_seconds: 10.0
+
+  # Number of recent messages to fetch from Discord for context when building history.
+  history_context_messages: 20
 
   system_prompt: |
     You are a Discord moderation AI. Output only JSON-formatted moderation actions.
@@ -99,6 +97,9 @@ ai_settings:
     --- Discord Server Rules ---
     <|SERVER_RULES_INJECT|>
 
+    --- Channel-Specific Guidelines ---
+    <|CHANNEL_GUIDELINES_INJECT|>
+
     
 default_server_rules: |
   1. Be respectful to all members and moderators.
@@ -111,3 +112,5 @@ default_server_rules: |
   8. Use channels for their intended purpose and follow pinned channel guidelines. (Minor if off-topic once; Major if repeated)
   9. Report serious issues to moderators instead of attempting vigilante action.
   10. Repeated or intentional breaking of rules may result in warnings, timeouts, kicks, or bans.
+
+default_channel_guidelines: ""

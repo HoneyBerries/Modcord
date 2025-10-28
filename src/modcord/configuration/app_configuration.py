@@ -60,19 +60,17 @@ class AppConfig:
     # --------------------------
     def load_from_disk(self) -> Dict[str, Any]:
         try:
-            with self.config_path.open("r", encoding="utf-8") as file_handle:
-                loaded_data = yaml.safe_load(file_handle) or {}
+            with self.config_path.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            if not isinstance(data, dict):
+                logger.warning("Config file %s must contain a mapping at the top level; ignoring.", self.config_path)
+                return {}
+            return data
         except FileNotFoundError:
             logger.error("Config file %s not found.", self.config_path)
-            return {}
         except Exception as exc:
             logger.error("Failed to load config %s: %s", self.config_path, exc)
-            return {}
-
-        if not isinstance(loaded_data, dict):
-            logger.warning("Config file %s must contain a mapping at the top level; ignoring.", self.config_path)
-            return {}
-        return loaded_data
+        return {}
 
     # --------------------------
     # Public API
@@ -86,22 +84,6 @@ class AppConfig:
         """
         with self.lock:
             self._data = self.load_from_disk()
-
-            # Log a concise summary of important AI settings for observability.
-            try:
-                ai = self.ai_settings
-                sampling_parameters = ai.sampling_parameters if hasattr(ai, "sampling_parameters") else {}
-                logger.info(
-                    "Loaded config: ai.enabled=%s, ai.model_id=%s, sampling_parameters=%s, moderation_batch_seconds=%s",
-                    bool(ai.enabled),
-                    ai.model_id or "<none>",
-                    {k: sampling_parameters.get(k) for k in ("dtype", "max_new_tokens", "temperature") if k in sampling_parameters},
-                    ai.get("moderation_batch_seconds", 10.0),
-                )
-            except Exception:
-                # Non-fatal: don't block reload on logging errors
-                logger.debug("Loaded config but failed to summarize ai settings for logging")
-
             return self._data
 
     @property
@@ -134,10 +116,18 @@ class AppConfig:
         prompts without additional checks.
         """
         with self.lock:
-            if "server_rules" in self._data:
-                value = self._data.get("server_rules", "")
-            else:
-                value = self._data.get("default_server_rules", "")
+            value = self._data.get("server_rules") or self._data.get("default_server_rules", "")
+        return str(value or "")
+
+    @property
+    def channel_guidelines(self) -> str:
+        """Return the configured default channel guidelines as a string (or empty string).
+
+        The value is coerced to a string so callers can safely embed it into
+        prompts without additional checks.
+        """
+        with self.lock:
+            value = self._data.get("channel_guidelines") or self._data.get("default_channel_guidelines", "")
         return str(value or "")
 
     @property
@@ -171,27 +161,25 @@ class AppConfig:
             return AISettings(settings)
 
 
-class AISettings(Mapping):
-    """Mapping-backed helper exposing typed accessors for AI tuning configuration."""
 
-    def __init__(self, data: Optional[Dict[str, Any]] = None) -> None:
+class AISettings:
+    """Helper exposing typed accessors for AI tuning configuration.
+
+    This class intentionally provides a minimal, explicit API (`get`,
+    `as_dict`, and convenience properties) and does not implement the full
+    mapping protocol. Callers that previously relied on mapping behavior
+    should use the explicit helpers.
+    """
+
+    def __init__(self, data: Dict[str, Any] | None = None) -> None:
         self.data: Dict[str, Any] = data or {}
 
-    # Minimal mapping API
     def get(self, key: str, default: Any = None) -> Any:
+        """Return the value for `key` or `default` if missing."""
         return self.data.get(key, default)
 
-    # Mapping protocol methods
-    def __getitem__(self, key: str) -> Any:
-        return self.data[key]
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.data)
-
-    def __len__(self) -> int:
-        return len(self.data)
-
     def as_dict(self) -> Dict[str, Any]:
+        """Return the underlying mapping (shallow copy recommended by callers)."""
         return self.data
 
     # Commonly used fields exposed as properties for convenience
@@ -208,7 +196,7 @@ class AISettings(Mapping):
         return float(self.data.get("vram_percentage", 0.5))
 
     @property
-    def model_id(self) -> Optional[str]:
+    def model_id(self) -> str | None:
         val = self.data.get("model_id")
         return str(val) if val else None
 

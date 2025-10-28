@@ -1,29 +1,8 @@
 [
     {
-        "id": "1426307901705683120",
-        "application_id": "1258947859617808456",
-        "version": "1426307901798223945",
-        "default_member_permissions": null,
-        "type": 1,
-        "name": "settings",
-        "name_localizations": null,
-        "description": "Open an interactive panel to configure Modcord for this server.",
-        "description_localizations": null,
-        "dm_permission": true,
-        "contexts": [
-            0,
-            1,
-            2
-        ],
-        "integration_types": [
-            0
-        ],
-        "nsfw": false
-    },
-    {
-        "id": "1426307901705683122",
-        "application_id": "1258947859617808456",
-        "version": "1426307901798223947",
+        "id": "1421340660019101765",
+        "application_id": "1387903423592005663",
+        "version": "1431021575704023202",
         "default_member_permissions": null,
         "type": 1,
         "name": "warn",
@@ -57,9 +36,9 @@
             },
             {
                 "type": 4,
-                "name": "delete_message_seconds",
+                "name": "delete_message_minutes",
                 "name_localizations": null,
-                "description": "Delete messages from (choose time range)",
+                "description": "Delete messages from (choose time range, in minutes)",
                 "description_localizations": null,
                 "choices": [
                     {
@@ -70,32 +49,32 @@
                     {
                         "name": "Previous Hour",
                         "name_localizations": null,
-                        "value": 3600
+                        "value": 60
                     },
                     {
                         "name": "Previous 6 Hours",
                         "name_localizations": null,
-                        "value": 21600
+                        "value": 360
                     },
                     {
                         "name": "Previous 12 Hours",
                         "name_localizations": null,
-                        "value": 43200
+                        "value": 720
                     },
                     {
                         "name": "Previous 24 Hours",
                         "name_localizations": null,
-                        "value": 86400
+                        "value": 1440
                     },
                     {
                         "name": "Previous 3 Days",
                         "name_localizations": null,
-                        "value": 259200
+                        "value": 4320
                     },
                     {
                         "name": "Previous 7 Days",
                         "name_localizations": null,
-                        "value": 604800
+                        "value": 10080
                     }
                 ]
             }
@@ -103,9 +82,9 @@
         "nsfw": false
     },
     {
-        "id": "1426307901705683123",
-        "application_id": "1258947859617808456",
-        "version": "1426307901798223948",
+        "id": "1421340660602114240",
+        "application_id": "1387903423592005663",
+        "version": "1431021575704023203",
         "default_member_permissions": null,
         "type": 1,
         "name": "timeout",
@@ -193,9 +172,9 @@
             },
             {
                 "type": 4,
-                "name": "delete_message_seconds",
+                "name": "delete_message_minutes",
                 "name_localizations": null,
-                "description": "Delete messages from (choose time range)",
+                "description": "Delete messages from (choose time range, in minutes)",
                 "description_localizations": null,
                 "choices": [
                     {
@@ -206,32 +185,32 @@
                     {
                         "name": "Previous Hour",
                         "name_localizations": null,
-                        "value": 3600
+                        "value": 60
                     },
                     {
                         "name": "Previous 6 Hours",
                         "name_localizations": null,
-                        "value": 21600
+                        "value": 360
                     },
                     {
                         "name": "Previous 12 Hours",
                         "name_localizations": null,
-                        "value": 43200
+                        "value": 720
                     },
                     {
                         "name": "Previous 24 Hours",
                         "name_localizations": null,
-                        "value": 86400
+                        "value": 1440
                     },
                     {
                         "name": "Previous 3 Days",
                         "name_localizations": null,
-                        "value": 259200
+                        "value": 4320
                     },
                     {
                         "name": "Previous 7 Days",
                         "name_localizations": null,
-                        "value": 604800
+                        "value": 10080
                     }
                 ]
             }
@@ -239,9 +218,9 @@
         "nsfw": false
     },
     {
-        "id": "1426307901705683124",
-        "application_id": "1258947859617808456",
-        "version": "1426307901798223949",
+        "id": "1421340660602114241",
+        "application_id": "1387903423592005663",
+        "version": "1431021575704023204",
         "default_member_permissions": null,
         "type": 1,
         "name": "kick",
@@ -275,9 +254,9 @@
             },
             {
                 "type": 4,
-                "name": "delete_message_seconds",
+                "name": "delete_message_minutes",
                 "name_localizations": null,
-                "description": "Delete messages from (choose time range)",
+                "description": "Delete messages from (choose time range, in minutes)",
                 "description_localizations": null,
                 "choices": [
                     {
@@ -288,32 +267,32 @@
                     {
                         "name": "Previous Hour",
                         "name_localizations": null,
-                        "value": 3600
+                        "value": 60
                     },
                     {
                         "name": "Previous 6 Hours",
                         "name_localizations": null,
-                        "value": 21600
+                        "value": 360
                     },
                     {
                         "name": "Previous 12 Hours",
                         "name_localizations": null,
-                        "value": 43200
+                        "value": 720
                     },
                     {
                         "name": "Previous 24 Hours",
                         "name_localizations": null,
-                        "value": 86400
+                        "value": 1440
                     },
                     {
                         "name": "Previous 3 Days",
                         "name_localizations": null,
-                        "value": 259200
+                        "value": 4320
                     },
                     {
                         "name": "Previous 7 Days",
                         "name_localizations": null,
-                        "value": 604800
+                        "value": 10080
                     }
                 ]
             }
@@ -321,9 +300,9 @@
         "nsfw": false
     },
     {
-        "id": "1426307901705683125",
-        "application_id": "1258947859617808456",
-        "version": "1426307901798223950",
+        "id": "1421340660602114242",
+        "application_id": "1387903423592005663",
+        "version": "1431021575704023205",
         "default_member_permissions": null,
         "type": 1,
         "name": "ban",
@@ -411,9 +390,9 @@
             },
             {
                 "type": 4,
-                "name": "delete_message_seconds",
+                "name": "delete_message_minutes",
                 "name_localizations": null,
-                "description": "Delete messages from (choose time range)",
+                "description": "Delete messages from (choose time range, in minutes)",
                 "description_localizations": null,
                 "choices": [
                     {
@@ -424,32 +403,32 @@
                     {
                         "name": "Previous Hour",
                         "name_localizations": null,
-                        "value": 3600
+                        "value": 60
                     },
                     {
                         "name": "Previous 6 Hours",
                         "name_localizations": null,
-                        "value": 21600
+                        "value": 360
                     },
                     {
                         "name": "Previous 12 Hours",
                         "name_localizations": null,
-                        "value": 43200
+                        "value": 720
                     },
                     {
                         "name": "Previous 24 Hours",
                         "name_localizations": null,
-                        "value": 86400
+                        "value": 1440
                     },
                     {
                         "name": "Previous 3 Days",
                         "name_localizations": null,
-                        "value": 259200
+                        "value": 4320
                     },
                     {
                         "name": "Previous 7 Days",
                         "name_localizations": null,
-                        "value": 604800
+                        "value": 10080
                     }
                 ]
             }
@@ -457,9 +436,30 @@
         "nsfw": false
     },
     {
-        "id": "1429948899585687598",
-        "application_id": "1258947859617808456",
-        "version": "1429948900047065230",
+        "id": "1425943171254194257",
+        "application_id": "1387903423592005663",
+        "version": "1425943171254194258",
+        "default_member_permissions": null,
+        "type": 1,
+        "name": "settings",
+        "name_localizations": null,
+        "description": "Open an interactive panel to configure Modcord for this server.",
+        "description_localizations": null,
+        "dm_permission": true,
+        "contexts": [
+            0,
+            1,
+            2
+        ],
+        "integration_types": [
+            0
+        ],
+        "nsfw": false
+    },
+    {
+        "id": "1430068544850366504",
+        "application_id": "1387903423592005663",
+        "version": "1430068544850366505",
         "default_member_permissions": null,
         "type": 1,
         "name": "debug",

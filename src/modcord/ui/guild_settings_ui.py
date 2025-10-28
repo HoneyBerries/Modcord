@@ -1,5 +1,5 @@
 import datetime
-from typing import Optional
+from typing import Any
 
 import discord
 
@@ -69,19 +69,19 @@ def build_settings_embed(guild_id: int) -> discord.Embed:
 class GuildSettingsView(discord.ui.View):
     """Interactive view that exposes guild settings via buttons."""
 
-    def __init__(self, guild_id: int, invoker_id: Optional[int], *, timeout_seconds: int = 300):
+    def __init__(self, guild_id: int, invoker_id: int | None, *, timeout_seconds: int = 300):
         super().__init__(timeout=timeout_seconds)
         self.guild_id = guild_id
         self.invoker_id = invoker_id
-        self._message: Optional[discord.Message] = None
+        self._message: discord.Message | None = None
         self.refresh_items()
 
     @property
-    def message(self) -> Optional[discord.Message]:
+    def message(self) -> discord.Message | None:
         return self._message
 
     @message.setter
-    def message(self, value: Optional[discord.Message]) -> None:
+    def message(self, value: discord.Message | None) -> None:
         self._message = value
 
     def refresh_items(self) -> None:
@@ -101,7 +101,7 @@ class GuildSettingsView(discord.ui.View):
 
         self.add_item(ClosePanelButton())
 
-    def can_manage(self, member: Optional[discord.abc.Snowflake]) -> bool:
+    def can_manage(self, member: discord.abc.Snowflake | None) -> bool:
         """Check whether the interacting user can manage guild settings."""
 
         if member is None:
@@ -110,7 +110,7 @@ class GuildSettingsView(discord.ui.View):
         permissions = getattr(member, "guild_permissions", None)
         return bool(getattr(permissions, "manage_guild", False))
 
-    async def refresh_message(self, interaction: discord.Interaction, *, flash: Optional[str] = None) -> None:
+    async def refresh_message(self, interaction: discord.Interaction, *, flash: str | None = None) -> None:
         """Refresh the embed + buttons on the active message."""
 
         self.refresh_items()

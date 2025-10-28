@@ -1,10 +1,9 @@
 """
-Bot settings: persistent per-guild flags and runtime batching.
+Persistent per-guild configuration storage for the moderation bot.
 
 Responsibilities:
 - Persist per-guild settings (ai_enabled, rules, and action toggles) to SQLite database
-- Cache server rules and per-channel chat history
-- Provide a 15s channel message batching mechanism with an async callback
+- Cache server rules and per-channel guideline overrides in memory
 
 Database schema:
 - guild_settings table with columns: guild_id, ai_enabled, rules, auto_*_enabled flags
@@ -12,12 +11,10 @@ Database schema:
 
 import collections
 import asyncio
-from typing import Dict, DefaultDict, Callable, Awaitable, Optional, List, Sequence, Set
+from typing import Dict, DefaultDict, List, Set
 from dataclasses import dataclass
 from modcord.util.logger import get_logger
-from modcord.moderation.moderation_datatypes import ActionType, ModerationChannelBatch, ModerationMessage
-from modcord.history.history_cache import global_history_cache_manager
-from modcord.configuration.app_configuration import app_config
+from modcord.moderation.moderation_datatypes import ActionType
 from modcord.database.database import init_database, get_connection
 
 logger = get_logger("guild_settings_manager")
@@ -25,7 +22,7 @@ logger = get_logger("guild_settings_manager")
 
 @dataclass(slots=True)
 class GuildSettings:
-    """Persistent per-guild configuration along with transient batching state."""
+    """Persistent per-guild configuration values."""
 
     guild_id: int
     ai_enabled: bool = True
@@ -48,32 +45,26 @@ ACTION_FLAG_FIELDS: dict[ActionType, str] = {
 
 class GuildSettingsManager:
     """
-    Manager for persistent per-guild settings and transient state.
+    Manager for persistent per-guild settings and in-memory guideline overrides.
 
     Responsibilities:
     - Persist per-guild settings (ai_enabled, rules, action toggles) to SQLite database
-    - Cache server rules and per-channel chat history
-    - Provide a config-driven global message batching window with an async callback
+    - Cache server rules and per-channel guideline overrides for quick access
     """
 
     def __init__(self):
-        """Instantiate caches, batching queues, and persistence helpers."""
+        """Instantiate caches and persistence helpers."""
         # Persisted guild settings registry (guild_id -> GuildSettings)
         self.guilds: Dict[int, GuildSettings] = {}
 
-        # Global message batching system
-        self.channel_message_batches: DefaultDict[int, List[ModerationMessage]] = collections.defaultdict(list)
-        self.global_batch_timer: Optional[asyncio.Task] = None
-        self.batch_processing_callback: Optional[Callable[[List[ModerationChannelBatch]], Awaitable[None]]] = None
-        self._batch_lock = asyncio.Lock()
+        # Channel-specific guidelines cache (guild_id -> channel_id -> guidelines_text)
+        self.channel_guidelines: DefaultDict[int, Dict[int, str]] = collections.defaultdict(dict)
 
         # Persistence helpers
         self._persist_lock = asyncio.Lock()
         self._active_persists: Set[asyncio.Task] = set()
         self._db_initialized = False
 
-        # Initialize database and load settings asynchronously
-        # This will be called from an async context during bot startup
         logger.info("Guild settings manager initialized")
 
     async def async_init(self) -> None:
@@ -120,91 +111,28 @@ class GuildSettingsManager:
 
         self._trigger_persist(guild_id)
 
-    # --- Global message batching system ---
-    def set_batch_processing_callback(self, callback: Callable[[List[ModerationChannelBatch]], Awaitable[None]]) -> None:
-        """Set the async callback invoked when global batches are ready."""
-        self.batch_processing_callback = callback
-        logger.info("Batch processing callback set")
+    def get_channel_guidelines(self, guild_id: int, channel_id: int) -> str:
+        """Return cached channel-specific guidelines or an empty string."""
+        return self.channel_guidelines.get(guild_id, {}).get(channel_id, "")
 
-    async def add_message_to_batch(self, channel_id: int, message: ModerationMessage) -> None:
-        """Queue a message for global batch processing and start timer if needed."""
-        async with self._batch_lock:
-            self.channel_message_batches[channel_id].append(message)
-            logger.debug(
-                "Added message to batch for channel %s, current batch size: %d",
-                channel_id,
-                len(self.channel_message_batches[channel_id]),
-            )
-
-            if self.global_batch_timer is None or self.global_batch_timer.done():
-                self.global_batch_timer = asyncio.create_task(self.global_batch_timer_task())
-                logger.debug("Started global batch timer")
-
-    async def global_batch_timer_task(self) -> None:
-        """Global timer that processes all pending channel batches together."""
-        try:
-            ai_settings = app_config.ai_settings if app_config else {}
-            moderation_batch_seconds = float(ai_settings.get("moderation_batch_seconds", 10.0))
-            logger.debug("Global batch timer started with %s seconds", moderation_batch_seconds)
-            await asyncio.sleep(moderation_batch_seconds)
-
-            async with self._batch_lock:
-                pending_batches = {
-                    channel_id: list(messages)
-                    for channel_id, messages in self.channel_message_batches.items()
-                    if messages
-                }
-                # Reset container for next window
-                self.channel_message_batches = collections.defaultdict(list)
-
-            channel_batches: List[ModerationChannelBatch] = []
-            for channel_id, messages in pending_batches.items():
-                history_context = await self._resolve_history_context(channel_id, messages)
-                channel_batches.append(
-                    ModerationChannelBatch(
-                        channel_id=channel_id,
-                        messages=messages,
-                        history=history_context,
-                    )
-                )
-                logger.debug(
-                    "Prepared batch for channel %s: %d messages, %d history",
-                    channel_id,
-                    len(messages),
-                    len(history_context),
-                )
-
-            if channel_batches and self.batch_processing_callback:
-                logger.debug(
-                    "Processing global batch: %d channels, %d total messages",
-                    len(channel_batches),
-                    sum(len(b.messages) for b in channel_batches),
-                )
-                try:
-                    await self.batch_processing_callback(channel_batches)
-                except Exception:
-                    logger.exception("Exception while processing global batch")
-            else:
-                logger.debug("No batches or callback to process")
-
-        except asyncio.CancelledError:
-            logger.info("Global batch timer cancelled")
-        except Exception:
-            logger.exception("Error in global batch timer")
-        finally:
-            self.global_batch_timer = None
-
-    def cancel_all_batch_timers(self) -> None:
+    def set_channel_guidelines(self, guild_id: int, channel_id: int, guidelines: str) -> None:
         """
-        Cancel the global batch timer (use during shutdown).
+        Cache and persist channel-specific guidelines.
 
-        This is synchronous and will request cancellation; call shutdown() to
-        await the task and ensure cleanup.
+        Persistence is scheduled in a non-blocking manner.
         """
-        if self.global_batch_timer and not self.global_batch_timer.done():
-            self.global_batch_timer.cancel()
-        self.global_batch_timer = None
-        logger.info("Requested cancellation of global batch timer")
+        if guidelines is None:
+            guidelines = ""
+
+        if guild_id not in self.channel_guidelines:
+            self.channel_guidelines[guild_id] = {}
+        
+        self.channel_guidelines[guild_id][channel_id] = guidelines
+        logger.debug(
+            f"Updated channel guidelines cache for guild {guild_id}, channel {channel_id} (len={len(guidelines)})"
+        )
+
+        self._trigger_persist_channel_guidelines(guild_id, channel_id)
 
     def _trigger_persist(self, guild_id: int) -> None:
         """Schedule a best-effort persist of a single guild's settings to database."""
@@ -227,61 +155,47 @@ class GuildSettingsManager:
 
         task.add_done_callback(_cleanup)
 
-    async def _resolve_history_context(
-        self,
-        channel_id: int,
-        current_batch: Sequence[ModerationMessage],
-    ) -> List[ModerationMessage]:
-        """Select prior channel messages to provide as model context.
-        
-        Uses the message cache and Discord API fallback to fetch historical
-        context, ensuring availability even if the bot was offline when
-        messages were posted.
-        """
-        # Build set of message IDs to exclude (current batch)
-        current_ids = {str(msg.message_id) for msg in current_batch}
-
-        # Use a default or config-driven value for history context length, or make it a parameter if needed
-        default_limit = 20  # You can make this configurable elsewhere if desired
+    def _trigger_persist_channel_guidelines(self, guild_id: int, channel_id: int) -> None:
+        """Schedule a best-effort persist of channel guidelines to database."""
         try:
-            history_messages = await global_history_cache_manager.fetch_history_for_context(
-                channel_id,
-                limit=default_limit,
-                exclude_message_ids=current_ids,
-            )
-            if history_messages:
-                logger.debug(
-                    "Resolved %d history messages for channel %s from cache/API",
-                    len(history_messages),
-                    channel_id,
-                )
-            return history_messages
-        except Exception as exc:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
             logger.warning(
-                "Error fetching history context for channel %s: %s",
-                channel_id,
-                exc,
+                "Cannot persist channel guidelines for guild %s, channel %s: no running event loop",
+                guild_id,
+                channel_id
             )
-            return []
+            return
+
+        task = loop.create_task(self._persist_channel_guidelines_async(guild_id, channel_id))
+        self._active_persists.add(task)
+
+        def _cleanup(completed: asyncio.Task) -> None:
+            self._active_persists.discard(completed)
+            try:
+                if not completed.result():
+                    logger.error(
+                        "Failed to persist channel guidelines for guild %s, channel %s",
+                        guild_id,
+                        channel_id
+                    )
+            except Exception:
+                logger.exception(
+                    "Error while persisting channel guidelines for guild %s, channel %s",
+                    guild_id,
+                    channel_id
+                )
+
+        task.add_done_callback(_cleanup)
 
     async def shutdown(self) -> None:
-        """Gracefully cancel and await the global batch timer (await on shutdown)."""
-        if self.global_batch_timer and not self.global_batch_timer.done():
-            self.global_batch_timer.cancel()
-            try:
-                await self.global_batch_timer
-            except asyncio.CancelledError:
-                pass
-        self.global_batch_timer = None
-
-        self.channel_message_batches.clear()
-
+        """Await any pending persistence tasks during shutdown."""
         pending = list(self._active_persists)
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._active_persists.clear()
 
-        logger.info("Shutdown complete: batch timer cleared")
+        logger.info("Shutdown complete: pending persistence tasks cleared")
         logger.info("--------------------------------------------------------------------------------")
 
     # --- AI moderation enable/disable ---
@@ -379,10 +293,55 @@ class GuildSettingsManager:
                 logger.exception("Failed to persist guild %s to database", guild_id)
                 return False
 
+    async def _persist_channel_guidelines_async(self, guild_id: int, channel_id: int) -> bool:
+        """
+        Persist channel-specific guidelines to the database asynchronously.
+
+        Args:
+            guild_id: The guild ID
+            channel_id: The channel ID
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        guidelines = self.channel_guidelines.get(guild_id, {}).get(channel_id)
+        if guidelines is None:
+            logger.warning(
+                "Cannot persist channel guidelines for guild %s, channel %s: not in cache",
+                guild_id,
+                channel_id
+            )
+            return False
+
+        async with self._persist_lock:
+            try:
+                async with get_connection() as db:
+                    await db.execute("""
+                        INSERT INTO channel_guidelines (guild_id, channel_id, guidelines)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(guild_id, channel_id) DO UPDATE SET
+                            guidelines = excluded.guidelines
+                    """, (guild_id, channel_id, guidelines))
+                    await db.commit()
+                    logger.debug(
+                        "Persisted channel guidelines for guild %s, channel %s to database",
+                        guild_id,
+                        channel_id
+                    )
+                    return True
+            except Exception:
+                logger.exception(
+                    "Failed to persist channel guidelines for guild %s, channel %s to database",
+                    guild_id,
+                    channel_id
+                )
+                return False
+
     async def load_from_disk(self) -> bool:
         """Load persisted guild settings from database into memory."""
         try:
             async with get_connection() as db:
+                # Load guild settings
                 async with db.execute("SELECT * FROM guild_settings") as cursor:
                     rows = await cursor.fetchall()
                     
@@ -400,10 +359,26 @@ class GuildSettingsManager:
                         auto_ban_enabled=bool(row[7]),
                     )
                 
+                # Load channel guidelines
+                async with db.execute("SELECT guild_id, channel_id, guidelines FROM channel_guidelines") as cursor:
+                    guidelines_rows = await cursor.fetchall()
+                
+                self.channel_guidelines.clear()
+                for row in guidelines_rows:
+                    guild_id = row[0]
+                    channel_id = row[1]
+                    guidelines = row[2]
+                    
+                    if guild_id not in self.channel_guidelines:
+                        self.channel_guidelines[guild_id] = {}
+                    self.channel_guidelines[guild_id][channel_id] = guidelines
+                
                 if rows:
                     logger.info("Loaded %d guild settings from database", len(list(rows)))
-                    return True
-                return False
+                if guidelines_rows:
+                    logger.info("Loaded %d channel guidelines from database", len(list(guidelines_rows)))
+                
+                return bool(rows or guidelines_rows)
         except Exception:
             logger.exception("Failed to load guild settings from database")
             return False

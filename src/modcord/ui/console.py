@@ -18,20 +18,22 @@ from prompt_toolkit.shortcuts import PromptSession
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.util.logger import get_logger
 
+
 # Box drawing helpers for aligned console output
-BOX_WIDTH = 45
+BOX_WIDTH = 60
 
-def box_line(char: str) -> str:
-    return char * BOX_WIDTH
-
-def box_title(title: str) -> list[str]:
-    pad = (BOX_WIDTH - 2 - len(title)) // 2
-    pad_extra = (BOX_WIDTH - 2 - len(title)) % 2
-    return [
-        f"╔{box_line('═')[1:-1]}╗",
-        f"║{' ' * pad}{title}{' ' * (BOX_WIDTH - 2 - len(title) - pad)}{' ' * pad_extra}║",
-        f"╚{box_line('═')[1:-1]}╝"
-    ]
+def print_boxed_title(title: str, color: str = "") -> None:
+    """
+    Print a centered, consistently aligned box with the given title and color.
+    """
+    inner_width = BOX_WIDTH - 2
+    pad_left = (inner_width - len(title)) // 2
+    pad_right = inner_width - len(title) - pad_left
+    top = f"╔{'═' * inner_width}╗"
+    mid = f"║{' ' * pad_left}{title}{' ' * pad_right}║"
+    bot = f"╚{'═' * inner_width}╝"
+    for line in (top, mid, bot):
+        console_print(line, color)
 
 logger = get_logger("console")
 
@@ -100,10 +102,12 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
         return
 
     try:
+        # Set bot status to offline before closing
+        await bot.change_presence(status=discord.Status.offline)
         await bot.close()
         if log_close:
             logger.info("Discord bot connection closed.")
-    except Exception as exc:  # pragma: no cover - defensive logging
+    except Exception as exc:
         logger.exception("Error while closing Discord bot: %s", exc)
 
 
@@ -119,25 +123,20 @@ async def _request_lifecycle_action(control: ConsoleControl, *, restart: bool) -
 
 async def cmd_help(control: ConsoleControl, args: list[str]) -> None:
     """Display available commands and their descriptions."""
-    console_print("\n╔═══════════════════════════════════════════╗", "ansigreen")
-    console_print("║       Console Commands Reference          ║", "ansigreen")
-    console_print("╚═══════════════════════════════════════════╝", "ansigreen")
-    
+    print_boxed_title("Console Commands Reference", "ansigreen")
     for cmd in COMMANDS:
         aliases_str = f" (aliases: {', '.join(cmd.aliases)})" if cmd.aliases else ""
         console_print(f"\n  {cmd.name}{aliases_str}", "ansicyan")
         console_print(f"    {cmd.description}")
         if cmd.usage:
             console_print(f"    Usage: {cmd.usage}", "ansibrightblack")
-    
     console_print("")
 
 
 async def cmd_status(control: ConsoleControl, args: list[str]) -> None:
     """Display bot and AI status information."""
 
-    for line in box_title("Bot Status"):
-        console_print(line, "ansiblue")
+    print_boxed_title("Bot Status", "ansimagenta")
 
     # AI Status
     ai_status = "🟢 Available" if model_state.available else "🔴 Unavailable"
@@ -165,8 +164,7 @@ async def cmd_guilds(control: ConsoleControl, args: list[str]) -> None:
     
 
     title = f"Connected Guilds ({len(control.bot.guilds)})"
-    for line in box_title(title):
-        console_print(line, "ansiblue")
+    print_boxed_title(title, "ansiblue")
     
     for guild in control.bot.guilds:
         console_print(f"  • {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
@@ -176,9 +174,8 @@ async def cmd_guilds(control: ConsoleControl, args: list[str]) -> None:
 
 async def cmd_clear(control: ConsoleControl, args: list[str]) -> None:
     """Clear the console screen."""
-    # ANSI escape code to clear screen and move cursor to home
     os.system('cls' if os.name == 'nt' else 'clear')
-    console_print("Console cleared.", "ansigreen")
+    console_print("Console cleared.", "ansibrightcyan")
 
 
 async def cmd_restart(control: ConsoleControl, args: list[str]) -> None:
@@ -253,21 +250,18 @@ async def handle_console_command(command: str, control: ConsoleControl) -> None:
                 await cmd.handler(control, args)
             except Exception as exc:
                 logger.exception("Error executing command '%s': %s", cmd_name, exc)
-                console_print(f"Error executing command: {exc}", "ansired")
+                console_print(f"Error executing command: {exc}", "ansibrightred")
             return
     
     # No command found
-    console_print(f"Unknown command '{cmd_name}'. Type 'help' for available commands.", "ansired")
-
+    console_print(f"Unknown command '{cmd_name}'. Type 'help' for available commands.", "ansibrightred")
 
 async def run_console(control: ConsoleControl) -> None:
     """Run the interactive developer console until shutdown is requested."""
     session = PromptSession("> ")
     
     # Welcome message
-    console_print("\n╔═════════════════════════════════════╗", "ansigreen")
-    console_print(  "║     Modcord Interactive Console     ║", "ansigreen")
-    console_print(  "╚═════════════════════════════════════╝", "ansigreen")
+    print_boxed_title("Modcord Interactive Console", "ansicyan")
     console_print("Type 'help' for available commands or 'exit' to quit.\n", "ansibrightblack")
 
     with patch_stdout():
@@ -277,12 +271,12 @@ async def run_console(control: ConsoleControl) -> None:
                 if line.strip():
                     await handle_console_command(line, control)
             except (EOFError, KeyboardInterrupt):
-                console_print("\nShutdown requested by user.", "ansiyellow")
+                console_print("\nShutdown requested by user.", "ansibrightyellow")
                 control.request_shutdown()
                 break
             except Exception as exc:  # pragma: no cover - defensive logging
                 logger.exception("Error in console input loop: %s", exc)
-                console_print(f"Error: {exc}", "ansired")
+                console_print(f"Error: {exc}", "ansibrightred")
 
 
 @asynccontextmanager
