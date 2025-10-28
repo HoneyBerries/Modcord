@@ -10,7 +10,7 @@ The vLLM platform detection logic incorrectly identifies WSL environments, causi
 
 ### Solution
 
-Apply the `vllm_interface.patch` file to fix the WSL detection in vLLM's platform interface.
+Apply the `interface.patch` file to fix the WSL detection in vLLM's platform interface.
 
 ### How to Apply
 
@@ -21,7 +21,7 @@ Apply the `vllm_interface.patch` file to fix the WSL detection in vLLM's platfor
 
 2. Apply the patch:
    ```bash
-   patch venv/lib/python3.12/site-packages/vllm/platforms/interface.py < hacks/vllm_interface.patch
+   patch venv/lib/python3.12/site-packages/vllm/platforms/interface.py < hacks/interface.patch
    ```
 
 3. Verify the patch was applied successfully:
@@ -46,7 +46,7 @@ The `in_wsl()` function now properly differentiates between WSL1 and WSL2 enviro
 If you need to revert the patch:
 
 ```bash
-patch -R venv/lib/python3.12/site-packages/vllm/platforms/interface.py < hacks/vllm_interface.patch
+patch -R venv/lib/python3.12/site-packages/vllm/platforms/interface.py < hacks/interface.patch
 ```
 
 ### For Fresh Installations
