@@ -92,10 +92,13 @@ class ModerationActionCog(commands.Cog):
         -------
         bool
             ``True`` when allowed to proceed; ``False`` if an error was sent to invoker.
+        
+        Note
+        ----
+        This method assumes the interaction has already been deferred by the caller.
         """
         # Check invoking user's permission
         if not has_permissions(application_context, **{required_permission_name: True}):
-            await application_context.defer(ephemeral=True)
             await application_context.send_followup(
                 "You do not have permission to use this command."
             )
@@ -103,7 +106,6 @@ class ModerationActionCog(commands.Cog):
 
         # Check if target is a member of this server
         if not isinstance(target_user, discord.Member):
-            await application_context.defer(ephemeral=True)
             await application_context.send_followup(
                 "The specified user is not a member of this server."
             )
@@ -111,7 +113,6 @@ class ModerationActionCog(commands.Cog):
 
         # Prevent self-moderation
         if target_user.id == application_context.user.id:
-            await application_context.defer(ephemeral=True)
             await application_context.send_followup(
                 "You cannot perform moderation actions on yourself."
             )
@@ -119,7 +120,6 @@ class ModerationActionCog(commands.Cog):
 
         # Protect administrators from moderation via these commands
         if target_user.guild_permissions.administrator:
-            await application_context.defer(ephemeral=True)
             await application_context.send_followup(
                 "You cannot perform moderation actions against administrators."
             )
