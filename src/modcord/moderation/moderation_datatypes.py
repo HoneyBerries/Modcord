@@ -338,6 +338,7 @@ class WarnCommand(CommandAction):
                 guild=ctx.guild,
                 reason=self.reason,
                 channel=ctx.channel,
+                duration_str=None,
                 bot_user=bot_instance.user
             )
         except Exception as exc:
@@ -435,6 +436,7 @@ class KickCommand(CommandAction):
                 guild=ctx.guild,
                 reason=self.reason,
                 channel=ctx.channel,
+                duration_str=None,
                 bot_user=bot_instance.user
             )
         except Exception as exc:

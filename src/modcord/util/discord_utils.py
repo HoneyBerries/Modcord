@@ -628,6 +628,7 @@ async def apply_action_decision(
                     guild=guild,
                     reason=action.reason,
                     channel=channel,
+                    duration_str=None,
                     bot_user=bot_user
                 )
             except Exception as exc:
@@ -670,6 +671,7 @@ async def apply_action_decision(
                     guild=guild,
                     reason=action.reason,
                     channel=channel,
+                    duration_str=None,
                     bot_user=bot_user
                 )
             except Exception as exc:
@@ -685,6 +687,7 @@ async def apply_action_decision(
                     guild=guild,
                     reason=action.reason,
                     channel=channel,
+                    duration_str=None,
                     bot_user=bot_user
                 )
             except Exception as exc:
