@@ -220,6 +220,8 @@ class ModerationProcessor:
         
         # Process all users (current batch + history)
         all_users = list(batch.users) + list(batch.history_users)
+        # Create a set for fast membership testing
+        history_users_set = set(batch.history_users)
         
         total_messages = 0
         for user in all_users:
@@ -241,7 +243,7 @@ class ModerationProcessor:
                     "timestamp": humanize_timestamp(msg.timestamp) if msg.timestamp else None,
                     "content": msg.content or ("[Images only]" if msg_image_ids else ""),
                     "image_ids": msg_image_ids,
-                    "is_history": user in batch.history_users,
+                    "is_history": user in history_users_set,
                 }
                 
                 user_messages.append(msg_dict)
