@@ -333,7 +333,12 @@ class WarnCommand(CommandAction):
 
         try:
             await execute_moderation_notification(
-                ActionType.WARN, user, ctx.guild, self.reason, ctx.channel, None, bot_instance.user
+                action_type=ActionType.WARN,
+                user=user,
+                guild=ctx.guild,
+                reason=self.reason,
+                channel=ctx.channel,
+                bot_user=bot_instance.user
             )
         except Exception as exc:
             logger.error("Failed to process warn for user %s: %s", user.id, exc)
@@ -385,7 +390,13 @@ class TimeoutCommand(CommandAction):
         try:
             await user.timeout(until, reason=f"Manual Mod: {self.reason}")
             await execute_moderation_notification(
-                ActionType.TIMEOUT, user, ctx.guild, self.reason, ctx.channel, duration_label, bot_instance.user
+                action_type=ActionType.TIMEOUT,
+                user=user,
+                guild=ctx.guild,
+                reason=self.reason,
+                channel=ctx.channel,
+                duration_str=duration_label,
+                bot_user=bot_instance.user
             )
         except Exception as exc:
             logger.error("Failed to timeout user %s: %s", user.id, exc)
@@ -419,7 +430,12 @@ class KickCommand(CommandAction):
         try:
             await ctx.guild.kick(user, reason=f"Manual Mod: {self.reason}")
             await execute_moderation_notification(
-                ActionType.KICK, user, ctx.guild, self.reason, ctx.channel, None, bot_instance.user
+                action_type=ActionType.KICK,
+                user=user,
+                guild=ctx.guild,
+                reason=self.reason,
+                channel=ctx.channel,
+                bot_user=bot_instance.user
             )
         except Exception as exc:
             logger.error("Failed to kick user %s: %s", user.id, exc)
@@ -475,7 +491,13 @@ class BanCommand(CommandAction):
         try:
             await ctx.guild.ban(user, reason=f"Manual Mod: {self.reason}")
             await execute_moderation_notification(
-                ActionType.BAN, user, ctx.guild, self.reason, ctx.channel, duration_label, bot_instance.user
+                action_type=ActionType.BAN,
+                user=user,
+                guild=ctx.guild,
+                reason=self.reason,
+                channel=ctx.channel,
+                duration_str=duration_label,
+                bot_user=bot_instance.user
             )
             
             # Schedule unban if not permanent

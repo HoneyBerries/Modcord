@@ -466,7 +466,7 @@ async def execute_moderation_notification(
     """
     # Create the embed once for both DM and channel
     embed = await create_punishment_embed(
-        action_type, user, reason, duration_str, issuer=bot_user, bot_user=bot_user
+        action_type, user, reason, duration_str, issuer=None, bot_user=bot_user
     )
     
     if not embed:
@@ -592,7 +592,13 @@ async def apply_action_decision(
             try:
                 await guild.ban(author, reason=f"AI Mod: {action.reason}")
                 await execute_moderation_notification(
-                    ActionType.BAN, author, guild, action.reason, channel, duration_label, bot_user
+                    action_type=ActionType.BAN,
+                    user=author,
+                    guild=guild,
+                    reason=action.reason,
+                    channel=channel,
+                    duration_str=duration_label,
+                    bot_user=bot_user
                 )
             except Exception as exc:
                 logger.error("Failed to ban user %s: %s", author.id, exc)
@@ -617,7 +623,12 @@ async def apply_action_decision(
             try:
                 await guild.kick(author, reason=f"AI Mod: {action.reason}")
                 await execute_moderation_notification(
-                    ActionType.KICK, author, guild, action.reason, channel, None, bot_user
+                    action_type=ActionType.KICK,
+                    user=author,
+                    guild=guild,
+                    reason=action.reason,
+                    channel=channel,
+                    bot_user=bot_user
                 )
             except Exception as exc:
                 logger.error("Failed to kick user %s: %s", author.id, exc)
@@ -638,7 +649,13 @@ async def apply_action_decision(
             try:
                 await author.timeout(until, reason=f"AI Mod: {action.reason}")
                 await execute_moderation_notification(
-                    ActionType.TIMEOUT, author, guild, action.reason, channel, duration_label, bot_user
+                    action_type=ActionType.TIMEOUT,
+                    user=author,
+                    guild=guild,
+                    reason=action.reason,
+                    channel=channel,
+                    duration_str=duration_label,
+                    bot_user=bot_user
                 )
             except Exception as exc:
                 logger.error("Failed to timeout user %s: %s", author.id, exc)
@@ -648,7 +665,12 @@ async def apply_action_decision(
         case ActionType.WARN:
             try:
                 await execute_moderation_notification(
-                    ActionType.WARN, author, guild, action.reason, channel, None, bot_user
+                    action_type=ActionType.WARN,
+                    user=author,
+                    guild=guild,
+                    reason=action.reason,
+                    channel=channel,
+                    bot_user=bot_user
                 )
             except Exception as exc:
                 logger.error("Failed to process warn for user %s: %s", author.id, exc)
@@ -658,7 +680,12 @@ async def apply_action_decision(
         case ActionType.UNBAN:
             try:
                 await execute_moderation_notification(
-                    ActionType.UNBAN, author, guild, action.reason, channel, None, bot_user
+                    action_type=ActionType.UNBAN,
+                    user=author,
+                    guild=guild,
+                    reason=action.reason,
+                    channel=channel,
+                    bot_user=bot_user
                 )
             except Exception as exc:
                 logger.error("Failed to create unban embed for user %s: %s", author.id, exc)
