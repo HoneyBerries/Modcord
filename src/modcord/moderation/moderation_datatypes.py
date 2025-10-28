@@ -145,7 +145,7 @@ class ModerationMessage:
     images: List[ModerationImage] = field(default_factory=list)
     discord_message: "discord.Message | None" = None
 
-@dataclass(slots=True)
+@dataclass(slots=True, eq=False)
 class ModerationUser:
     """Represents a user in the moderation system with their messages and metadata.
     
@@ -168,6 +168,15 @@ class ModerationUser:
     join_date: str | None = None
     messages: List[ModerationMessage] = field(default_factory=list)
     past_actions: List[dict] = field(default_factory=list)
+
+    # Make ModerationUser hashable and comparable by stable identifier only.
+    def __hash__(self) -> int:
+        return hash(self.user_id)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ModerationUser):
+            return NotImplemented
+        return self.user_id == other.user_id
 
     def add_message(self: ModerationUser, message: ModerationMessage) -> None:
         """Add a message to this user's message list.
