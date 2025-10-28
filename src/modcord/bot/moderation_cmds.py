@@ -92,10 +92,13 @@ class ModerationActionCog(commands.Cog):
         -------
         bool
             ``True`` when allowed to proceed; ``False`` if an error was sent to invoker.
+        
+        Notes
+        -----
+        This method expects the interaction to already be deferred by the caller.
         """
         # Check invoking user's permission
         if not has_permissions(application_context, **{required_permission_name: True}):
-            await application_context.defer(ephemeral=True)
             await application_context.send_followup(
                 "You do not have permission to use this command."
             )
@@ -103,7 +106,6 @@ class ModerationActionCog(commands.Cog):
 
         # Check if target is a member of this server
         if not isinstance(target_user, discord.Member):
-            await application_context.defer(ephemeral=True)
             await application_context.send_followup(
                 "The specified user is not a member of this server."
             )
@@ -111,7 +113,6 @@ class ModerationActionCog(commands.Cog):
 
         # Prevent self-moderation
         if target_user.id == application_context.user.id:
-            await application_context.defer(ephemeral=True)
             await application_context.send_followup(
                 "You cannot perform moderation actions on yourself."
             )
@@ -119,7 +120,6 @@ class ModerationActionCog(commands.Cog):
 
         # Protect administrators from moderation via these commands
         if target_user.guild_permissions.administrator:
-            await application_context.defer(ephemeral=True)
             await application_context.send_followup(
                 "You cannot perform moderation actions against administrators."
             )
@@ -192,7 +192,6 @@ class ModerationActionCog(commands.Cog):
         await ctx.defer(ephemeral=True)
 
         if not await self.check_moderation_permissions(ctx, user, "manage_messages"):
-            await ctx.send_followup("You lack the required permissions to warn this user.")
             return
 
         action = WarnCommand(reason=reason)
@@ -224,7 +223,6 @@ class ModerationActionCog(commands.Cog):
         await ctx.defer(ephemeral=True)
 
         if not await self.check_moderation_permissions(ctx, user, "moderate_members"):
-            await ctx.send_followup("You lack the required permissions to timeout this user.")
             return
 
         timeout_minutes = parse_duration_to_minutes(duration)
@@ -254,7 +252,6 @@ class ModerationActionCog(commands.Cog):
         await ctx.defer(ephemeral=True)
 
         if not await self.check_moderation_permissions(ctx, user, "kick_members"):
-            await ctx.send_followup("You lack the required permissions to kick this user.")
             return
 
         action = KickCommand(reason=reason)
@@ -289,7 +286,6 @@ class ModerationActionCog(commands.Cog):
         await ctx.defer(ephemeral=True)
 
         if not await self.check_moderation_permissions(ctx, user, "ban_members"):
-            await ctx.send_followup("You lack the required permissions to ban this user.")
             return
 
         ban_minutes = parse_duration_to_minutes(duration) if duration != PERMANENT_DURATION else 0
