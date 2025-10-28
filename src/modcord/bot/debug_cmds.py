@@ -24,7 +24,6 @@ class DebugCog(commands.Cog):
     async def test(self, application_context: discord.ApplicationContext) -> None:
         """Test command to verify the bot is responsive."""
         try:
-            await application_context.defer(ephemeral=True)
             embed = discord.Embed(
                 title="✅ Bot Test Successful",
                 description="The bot is responsive and working correctly.",
@@ -32,11 +31,11 @@ class DebugCog(commands.Cog):
             )
             embed.add_field(name="Guild", value=application_context.guild.name, inline=False)
             embed.add_field(name="User", value=application_context.user.mention, inline=False)
-            await application_context.send_followup(embed=embed)
+            await application_context.respond(embed=embed, ephemeral=True)
             logger.debug(f"Test command executed by {application_context.user} in {application_context.guild.name}")
         except Exception as e:
             logger.error(f"Error in test command: {e}")
-            await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
+            await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
 
     @debug.command(name="purge", description="Delete all messages in the current channel")
     async def purge(self, application_context: discord.ApplicationContext) -> None:
@@ -66,11 +65,10 @@ class DebugCog(commands.Cog):
     async def refresh_rules(self, application_context: discord.ApplicationContext) -> None:
         """Manually refresh the server rules cache from the database."""
         try:
-            await application_context.defer(ephemeral=True)
             guild = application_context.guild
 
             if not guild:
-                await application_context.send_followup(content="❌ This command must be used in a guild.", ephemeral=True)
+                await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
             settings = guild_settings_manager.get_guild_settings(guild.id)
@@ -80,21 +78,20 @@ class DebugCog(commands.Cog):
                 color=discord.Color.green(),
             )
             embed.add_field(name="Rules Length", value=str(len(settings.rules)), inline=False)
-            await application_context.send_followup(embed=embed)
+            await application_context.respond(embed=embed, ephemeral=True)
             logger.debug(f"Rules cache refreshed for guild {guild.name}")
         except Exception as e:
             logger.error(f"Error in refresh_rules command: {e}")
-            await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
+            await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
 
     @debug.command(name="show_rules", description="Display the current server rules")
     async def show_rules(self, application_context: discord.ApplicationContext) -> None:
         """Display the current server rules cached in memory."""
         try:
-            await application_context.defer(ephemeral=True)
             guild = application_context.guild
 
             if not guild:
-                await application_context.send_followup(content="❌ This command must be used in a guild.", ephemeral=True)
+                await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
             rules = guild_settings_manager.get_server_rules(guild.id)
@@ -110,11 +107,11 @@ class DebugCog(commands.Cog):
                     description=rules,
                     color=discord.Color.blue(),
                 )
-            await application_context.send_followup(embed=embed, ephemeral=True)
+            await application_context.respond(embed=embed, ephemeral=True)
             logger.debug(f"Displayed rules for guild {guild.name}")
         except Exception as e:
             logger.error(f"Error in show_rules command: {e}")
-            await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
+            await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
 
 
 def setup(bot: discord.Bot) -> None:
