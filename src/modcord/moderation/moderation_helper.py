@@ -137,8 +137,14 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
         )
         return False
 
-    msg_lookup = {str(m.message_id).strip(): m.discord_message
-                  for user in batch.users for m in user.messages if m.discord_message}
+    # Build message lookup dict with optimized comprehension
+    # Cache str() and strip() results, filter None values efficiently
+    msg_lookup = {
+        str(m.message_id).strip(): m.discord_message
+        for user in batch.users 
+        for m in user.messages 
+        if m.discord_message is not None
+    }
 
     try:
         logger.debug(

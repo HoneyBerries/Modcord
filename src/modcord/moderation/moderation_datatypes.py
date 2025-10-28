@@ -327,28 +327,20 @@ class WarnCommand(CommandAction):
             user (discord.Member): Guild member to warn.
             bot_instance (discord.Bot): Discord bot instance.
         """
-        from modcord.util.discord_utils import (
-            send_dm_to_user,
-            build_dm_message,
-            create_punishment_embed,
-        )
+        from modcord.util.discord_utils import execute_moderation_notification
 
         self.user_id = str(user.id)
-        guild = ctx.guild
 
         try:
-            try:
-                await send_dm_to_user(
-                    user, build_dm_message(ActionType.WARN, guild.name, self.reason)
-                )
-            except Exception:
-                logger.debug("Failed to DM user for warning, continuing.")
-            
-            embed = await create_punishment_embed(
-                ActionType.WARN, user, self.reason, issuer=bot_instance.user, bot_user=bot_instance.user
+            await execute_moderation_notification(
+                action_type=ActionType.WARN,
+                user=user,
+                guild=ctx.guild,
+                reason=self.reason,
+                channel=ctx.channel,
+                duration_str=None,
+                bot_user=bot_instance.user
             )
-            if embed and isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
-                await ctx.channel.send(embed=embed)
         except Exception as exc:
             logger.error("Failed to process warn for user %s: %s", user.id, exc)
 
@@ -383,14 +375,11 @@ class TimeoutCommand(CommandAction):
         """Execute timeout action."""
         import datetime
         from modcord.util.discord_utils import (
-            send_dm_to_user,
-            build_dm_message,
-            create_punishment_embed,
+            execute_moderation_notification,
             format_duration,
         )
 
         self.user_id = str(user.id)
-        guild = ctx.guild
         duration_minutes = self.timeout_duration or 10
         # Handle -1 (permanent) by capping to Discord's 28-day max
         if duration_minutes == -1:
@@ -401,26 +390,15 @@ class TimeoutCommand(CommandAction):
 
         try:
             await user.timeout(until, reason=f"Manual Mod: {self.reason}")
-            try:
-                await send_dm_to_user(
-                    user,
-                    build_dm_message(
-                        ActionType.TIMEOUT, guild.name, self.reason, duration_label
-                    ),
-                )
-            except Exception:
-                logger.debug("Failed to DM user about timeout, continuing.")
-            
-            embed = await create_punishment_embed(
-                ActionType.TIMEOUT,
-                user,
-                self.reason,
-                duration_label,
-                issuer=bot_instance.user,
-                bot_user=bot_instance.user,
+            await execute_moderation_notification(
+                action_type=ActionType.TIMEOUT,
+                user=user,
+                guild=ctx.guild,
+                reason=self.reason,
+                channel=ctx.channel,
+                duration_str=duration_label,
+                bot_user=bot_instance.user
             )
-            if embed and isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
-                await ctx.channel.send(embed=embed)
         except Exception as exc:
             logger.error("Failed to timeout user %s: %s", user.id, exc)
             raise
@@ -446,33 +424,21 @@ class KickCommand(CommandAction):
         bot_instance: discord.Bot,
     ) -> None:
         """Execute kick action."""
-        from modcord.util.discord_utils import (
-            send_dm_to_user,
-            build_dm_message,
-            create_punishment_embed,
-        )
+        from modcord.util.discord_utils import execute_moderation_notification
 
         self.user_id = str(user.id)
-        guild = ctx.guild
 
         try:
-            try:
-                await send_dm_to_user(
-                    user, build_dm_message(ActionType.KICK, guild.name, self.reason)
-                )
-            except Exception:
-                logger.debug("Failed to DM user prior to kick, continuing.")
-            
-            await guild.kick(user, reason=f"Manual Mod: {self.reason}")
-            embed = await create_punishment_embed(
-                ActionType.KICK,
-                user,
-                self.reason,
-                issuer=bot_instance.user,
-                bot_user=bot_instance.user,
+            await ctx.guild.kick(user, reason=f"Manual Mod: {self.reason}")
+            await execute_moderation_notification(
+                action_type=ActionType.KICK,
+                user=user,
+                guild=ctx.guild,
+                reason=self.reason,
+                channel=ctx.channel,
+                duration_str=None,
+                bot_user=bot_instance.user
             )
-            if embed and isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
-                await ctx.channel.send(embed=embed)
         except Exception as exc:
             logger.error("Failed to kick user %s: %s", user.id, exc)
             raise
@@ -509,15 +475,12 @@ class BanCommand(CommandAction):
     ) -> None:
         """Execute ban action."""
         from modcord.util.discord_utils import (
-            send_dm_to_user,
-            build_dm_message,
-            create_punishment_embed,
+            execute_moderation_notification,
             format_duration,
         )
         from modcord.scheduler.unban_scheduler import schedule_unban
 
         self.user_id = str(user.id)
-        guild = ctx.guild
         duration_minutes = self.ban_duration or 0
         is_permanent = duration_minutes <= 0
         if is_permanent:
@@ -528,31 +491,22 @@ class BanCommand(CommandAction):
             duration_label = format_duration(duration_seconds)
 
         try:
-            try:
-                await send_dm_to_user(
-                    user,
-                    build_dm_message(ActionType.BAN, guild.name, self.reason, duration_label),
-                )
-            except Exception:
-                logger.debug("Failed to DM user prior to ban, continuing.")
-            
-            await guild.ban(user, reason=f"Manual Mod: {self.reason}")
-            embed = await create_punishment_embed(
-                ActionType.BAN,
-                user,
-                self.reason,
-                duration_label,
-                issuer=bot_instance.user,
-                bot_user=bot_instance.user,
+            await ctx.guild.ban(user, reason=f"Manual Mod: {self.reason}")
+            await execute_moderation_notification(
+                action_type=ActionType.BAN,
+                user=user,
+                guild=ctx.guild,
+                reason=self.reason,
+                channel=ctx.channel,
+                duration_str=duration_label,
+                bot_user=bot_instance.user
             )
-            if embed and isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
-                await ctx.channel.send(embed=embed)
             
             # Schedule unban if not permanent
             if not is_permanent:
                 try:
                     await schedule_unban(
-                        guild=guild,
+                        guild=ctx.guild,
                         user_id=user.id,
                         channel=ctx.channel if isinstance(ctx.channel, (discord.TextChannel, discord.Thread)) else None,
                         duration_seconds=duration_seconds,

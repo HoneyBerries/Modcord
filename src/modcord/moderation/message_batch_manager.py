@@ -259,6 +259,7 @@ class MessageBatchManager:
         user_messages: Dict[str, List[ModerationMessage]] = defaultdict(list)
         first_seen: Dict[str, int] = {}
 
+        # Single pass through messages - cache user_id strings
         for idx, msg in enumerate(messages):
             user_id = str(msg.user_id)
             if user_id not in first_seen:
@@ -269,6 +270,7 @@ class MessageBatchManager:
 
         grouped_users: List[ModerationUser] = []
         for user_id, msgs in user_messages.items():
+            # Use next() with generator for early exit - more efficient than list comprehension
             discord_msg = next((m.discord_message for m in msgs if m.discord_message), None)
 
             username = "Unknown User"
@@ -282,10 +284,13 @@ class MessageBatchManager:
 
                 if isinstance(discord_msg.author, discord.Member):
                     member = discord_msg.author
+                    # List comprehension is faster than generator for small lists
                     roles = [role.name for role in member.roles if role.name != "@everyone"]
                     if member.joined_at:
+                        # Cache timezone to avoid repeated attribute access
+                        utc_tz = datetime.timezone.utc
                         join_date = (
-                            member.joined_at.astimezone(datetime.timezone.utc)
+                            member.joined_at.astimezone(utc_tz)
                             .replace(microsecond=0)
                             .isoformat()
                             .replace("+00:00", "Z")
@@ -303,17 +308,19 @@ class MessageBatchManager:
                         exc,
                     )
 
+            # Avoid redundant list() conversion - msgs is already iterable
             grouped_users.append(
                 ModerationUser(
                     user_id=user_id,
                     username=username,
                     roles=roles,
                     join_date=join_date,
-                    messages=list(msgs),
+                    messages=msgs,  # Direct assignment instead of list(msgs)
                     past_actions=past_actions,
                 )
             )
 
+        # Sort once at the end using cached first_seen dict
         grouped_users.sort(key=lambda user: first_seen[user.user_id])
         return grouped_users
 
