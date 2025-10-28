@@ -8,6 +8,7 @@ This module provides stateless helpers for Discord-specific operations, includin
 """
 
 
+import asyncio
 import datetime
 from typing import Mapping, Union
 
@@ -96,8 +97,7 @@ def iter_moderatable_channels(guild: discord.Guild):
             logger.debug(f"Skipping channel {getattr(channel, 'name', 'unknown')} due to error: {exc}")
 
 
-# Shared sets for timeout-like actions
-TIMEOUT_ACTIONS: set[ActionType] = {ActionType.TIMEOUT}
+# Note: TIMEOUT_ACTIONS was removed as it was only used in one place
 
 
 
@@ -167,7 +167,7 @@ def build_dm_message(
     if action == ActionType.KICK:
         return f"You have been kicked from {guild_name}.\n**Reason**: {reason}"
 
-    if action in TIMEOUT_ACTIONS:
+    if action == ActionType.TIMEOUT:
         duration_label = duration_str or PERMANENT_DURATION
         return f"You have been timed out in {guild_name} for {duration_label}.\n**Reason**: {reason}"
 
@@ -366,6 +366,8 @@ async def safe_delete_message(message: discord.Message) -> bool:
 async def delete_messages_by_ids(guild: discord.Guild, message_ids: list[str]) -> int:
     """
     Delete specific messages by their IDs across all moderatable channels in a guild.
+    
+    Uses concurrent operations for improved performance when deleting multiple messages.
 
     Args:
         guild (discord.Guild): The guild to search for messages.
@@ -376,30 +378,74 @@ async def delete_messages_by_ids(guild: discord.Guild, message_ids: list[str]) -
     """
     if not message_ids:
         return 0
-    deleted_count = 0
+    
+    # Convert to integer IDs and filter invalid ones
     pending_ids = set()
     for raw_id in message_ids:
         try:
             pending_ids.add(int(raw_id))
         except Exception:
             logger.warning(f"Skipping invalid message id: {raw_id}")
-    for channel in iter_moderatable_channels(guild):
+    
+    if not pending_ids:
+        return 0
+    
+    deleted_count = 0
+    channels = list(iter_moderatable_channels(guild))
+    
+    # Optimize by trying to fetch and delete messages concurrently from each channel
+    for channel in channels:
         if not pending_ids:
             break
-        for message_id in list(pending_ids):
-            try:
-                message = await channel.fetch_message(message_id)
-                if await safe_delete_message(message):
-                    deleted_count += 1
+        
+        # Create tasks for fetching messages concurrently
+        fetch_tasks = []
+        message_id_list = list(pending_ids)
+        
+        for message_id in message_id_list:
+            fetch_tasks.append(asyncio.create_task(_fetch_and_delete_message(channel, message_id)))
+        
+        # Wait for all fetch/delete operations in this channel
+        results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+        
+        for message_id, result in zip(message_id_list, results):
+            if isinstance(result, Exception):
+                # Message not found or other error - remove from pending
+                if not isinstance(result, discord.HTTPException):
+                    logger.error(f"Error processing message {message_id} in {getattr(channel, 'name', '')}: {result}")
                 pending_ids.discard(message_id)
-            except (discord.NotFound, discord.Forbidden):
+            elif result:
+                # Successfully deleted
+                deleted_count += 1
                 pending_ids.discard(message_id)
-            except Exception as exc:
-                logger.error(f"Error fetching/deleting message {message_id} in {getattr(channel, 'name', '')}: {exc}")
-                pending_ids.discard(message_id)
+            # If result is False, message wasn't in this channel, keep in pending_ids
+    
     if pending_ids:
         logger.debug(f"Failed to locate messages: {sorted(pending_ids)}")
     return deleted_count
+
+
+async def _fetch_and_delete_message(channel: discord.TextChannel, message_id: int) -> bool:
+    """
+    Helper to fetch and delete a message from a channel.
+    
+    Args:
+        channel (discord.TextChannel): The channel to fetch from.
+        message_id (int): The message ID to fetch and delete.
+    
+    Returns:
+        bool: True if deleted, False if not found in this channel.
+    
+    Raises:
+        Exception: If an unexpected error occurs.
+    """
+    try:
+        message = await channel.fetch_message(message_id)
+        return await safe_delete_message(message)
+    except discord.NotFound:
+        return False
+    except discord.Forbidden:
+        return False
 
 
 async def delete_recent_messages_by_count(guild: discord.Guild, member: discord.Member, count: int) -> int:
@@ -447,6 +493,72 @@ async def send_dm_to_user(target_user: discord.Member, message_content: str) -> 
         logger.warning(f"Could not DM {target_user.display_name}: They may have DMs disabled.")
     except Exception as e:
         logger.error(f"Failed to send DM to {target_user.display_name}: {e}")
+    return False
+
+
+async def send_dm_with_suppression(
+    user: discord.Member,
+    action_type: ActionType,
+    guild_name: str,
+    reason: str,
+    duration_str: str | None = None
+) -> None:
+    """
+    Send a DM to a user, suppressing errors with a debug log.
+    
+    This is a common pattern used throughout moderation actions where
+    DM failures should not stop the moderation action from proceeding.
+
+    Args:
+        user (discord.Member): The member to DM.
+        action_type (ActionType): The moderation action type.
+        guild_name (str): The guild name.
+        reason (str): The reason for the action.
+        duration_str (str | None): Optional duration label.
+    """
+    try:
+        dm_message = build_dm_message(action_type, guild_name, reason, duration_str)
+        await send_dm_to_user(user, dm_message)
+    except Exception:
+        logger.debug(f"Failed to DM user for {action_type.value}, continuing.")
+
+
+async def create_and_send_embed(
+    channel: discord.TextChannel | discord.Thread,
+    action_type: ActionType,
+    user: discord.Member,
+    reason: str,
+    duration_str: str | None = None,
+    issuer: discord.User | discord.Member | discord.ClientUser | None = None,
+    bot_user: discord.ClientUser | None = None
+) -> bool:
+    """
+    Create a punishment embed and send it to a channel.
+    
+    This helper combines the common pattern of creating an embed and
+    posting it to a channel with error handling.
+
+    Args:
+        channel (discord.TextChannel | discord.Thread): The channel to post to.
+        action_type (ActionType): The moderation action type.
+        user (discord.Member): The affected user.
+        reason (str): The reason for the action.
+        duration_str (str | None): Optional duration label.
+        issuer (discord.User | discord.Member | discord.ClientUser | None): Moderator responsible for the action.
+        bot_user (discord.ClientUser | None): Bot user for footer labeling.
+    
+    Returns:
+        bool: True if the embed was sent successfully, False otherwise.
+    """
+    try:
+        embed = await create_punishment_embed(
+            action_type, user, reason, duration_str, issuer=issuer, bot_user=bot_user
+        )
+        if embed and isinstance(channel, (discord.TextChannel, discord.Thread)):
+            await channel.send(embed=embed)
+            return True
+    except Exception as exc:
+        logger.error(f"Failed to send moderation embed: {exc}")
     return False
 
 
@@ -572,10 +684,9 @@ async def apply_action_decision(
             else:
                 duration_seconds = duration_minutes * 60
                 duration_label = format_duration(duration_seconds)
-            try:
-                await send_dm_to_user(author, build_dm_message(ActionType.BAN, guild.name, action.reason, duration_label))
-            except Exception:
-                logger.debug("Failed to DM user prior to ban, continuing with ban.")
+            
+            await send_dm_with_suppression(author, ActionType.BAN, guild.name, action.reason, duration_label)
+            
             try:
                 await guild.ban(author, reason=f"AI Mod: {action.reason}")
                 embed = await create_punishment_embed(ActionType.BAN, author, action.reason, duration_label, issuer=bot_user, bot_user=bot_user)
@@ -598,11 +709,9 @@ async def apply_action_decision(
 
 
         case ActionType.KICK:
+            await send_dm_with_suppression(author, ActionType.KICK, guild.name, action.reason)
+            
             try:
-                try:
-                    await send_dm_to_user(author, build_dm_message(ActionType.KICK, guild.name, action.reason))
-                except Exception:
-                    logger.debug("Failed to DM user prior to kick, continuing with kick.")
                 await guild.kick(author, reason=f"AI Mod: {action.reason}")
                 embed = await create_punishment_embed(ActionType.KICK, author, action.reason, issuer=bot_user, bot_user=bot_user)
             except Exception as exc:
@@ -620,12 +729,10 @@ async def apply_action_decision(
             duration_seconds = duration_minutes * 60
             duration_label = format_duration(duration_seconds)
             until = discord.utils.utcnow() + datetime.timedelta(seconds=duration_seconds)
+            
             try:
                 await author.timeout(until, reason=f"AI Mod: {action.reason}")
-                try:
-                    await send_dm_to_user(author, build_dm_message(ActionType.TIMEOUT, guild.name, action.reason, duration_label))
-                except Exception:
-                    logger.debug("Failed to DM user about timeout, continuing.")
+                await send_dm_with_suppression(author, ActionType.TIMEOUT, guild.name, action.reason, duration_label)
                 embed = await create_punishment_embed(ActionType.TIMEOUT, author, action.reason, duration_label, issuer=bot_user, bot_user=bot_user)
             except Exception as exc:
                 logger.error("Failed to timeout user %s: %s", author.id, exc)
@@ -633,11 +740,9 @@ async def apply_action_decision(
             
 
         case ActionType.WARN:
+            await send_dm_with_suppression(author, ActionType.WARN, guild.name, action.reason)
+            
             try:
-                try:
-                    await send_dm_to_user(author, build_dm_message(ActionType.WARN, guild.name, action.reason))
-                except Exception:
-                    logger.debug("Failed to DM user for warning, continuing to post embed.")
                 embed = await create_punishment_embed(ActionType.WARN, author, action.reason, issuer=bot_user, bot_user=bot_user)
             except Exception as exc:
                 logger.error("Failed to process warn for user %s: %s", author.id, exc)

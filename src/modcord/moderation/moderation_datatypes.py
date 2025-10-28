@@ -328,27 +328,19 @@ class WarnCommand(CommandAction):
             bot_instance (discord.Bot): Discord bot instance.
         """
         from modcord.util.discord_utils import (
-            send_dm_to_user,
-            build_dm_message,
-            create_punishment_embed,
+            send_dm_with_suppression,
+            create_and_send_embed,
         )
 
         self.user_id = str(user.id)
         guild = ctx.guild
 
         try:
-            try:
-                await send_dm_to_user(
-                    user, build_dm_message(ActionType.WARN, guild.name, self.reason)
-                )
-            except Exception:
-                logger.debug("Failed to DM user for warning, continuing.")
-            
-            embed = await create_punishment_embed(
-                ActionType.WARN, user, self.reason, issuer=bot_instance.user, bot_user=bot_instance.user
+            await send_dm_with_suppression(user, ActionType.WARN, guild.name, self.reason)
+            await create_and_send_embed(
+                ctx.channel, ActionType.WARN, user, self.reason,
+                issuer=bot_instance.user, bot_user=bot_instance.user
             )
-            if embed and isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
-                await ctx.channel.send(embed=embed)
         except Exception as exc:
             logger.error("Failed to process warn for user %s: %s", user.id, exc)
 
@@ -383,9 +375,8 @@ class TimeoutCommand(CommandAction):
         """Execute timeout action."""
         import datetime
         from modcord.util.discord_utils import (
-            send_dm_to_user,
-            build_dm_message,
-            create_punishment_embed,
+            send_dm_with_suppression,
+            create_and_send_embed,
             format_duration,
         )
 
@@ -401,26 +392,11 @@ class TimeoutCommand(CommandAction):
 
         try:
             await user.timeout(until, reason=f"Manual Mod: {self.reason}")
-            try:
-                await send_dm_to_user(
-                    user,
-                    build_dm_message(
-                        ActionType.TIMEOUT, guild.name, self.reason, duration_label
-                    ),
-                )
-            except Exception:
-                logger.debug("Failed to DM user about timeout, continuing.")
-            
-            embed = await create_punishment_embed(
-                ActionType.TIMEOUT,
-                user,
-                self.reason,
-                duration_label,
-                issuer=bot_instance.user,
-                bot_user=bot_instance.user,
+            await send_dm_with_suppression(user, ActionType.TIMEOUT, guild.name, self.reason, duration_label)
+            await create_and_send_embed(
+                ctx.channel, ActionType.TIMEOUT, user, self.reason, duration_label,
+                issuer=bot_instance.user, bot_user=bot_instance.user
             )
-            if embed and isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
-                await ctx.channel.send(embed=embed)
         except Exception as exc:
             logger.error("Failed to timeout user %s: %s", user.id, exc)
             raise
@@ -447,32 +423,20 @@ class KickCommand(CommandAction):
     ) -> None:
         """Execute kick action."""
         from modcord.util.discord_utils import (
-            send_dm_to_user,
-            build_dm_message,
-            create_punishment_embed,
+            send_dm_with_suppression,
+            create_and_send_embed,
         )
 
         self.user_id = str(user.id)
         guild = ctx.guild
 
         try:
-            try:
-                await send_dm_to_user(
-                    user, build_dm_message(ActionType.KICK, guild.name, self.reason)
-                )
-            except Exception:
-                logger.debug("Failed to DM user prior to kick, continuing.")
-            
+            await send_dm_with_suppression(user, ActionType.KICK, guild.name, self.reason)
             await guild.kick(user, reason=f"Manual Mod: {self.reason}")
-            embed = await create_punishment_embed(
-                ActionType.KICK,
-                user,
-                self.reason,
-                issuer=bot_instance.user,
-                bot_user=bot_instance.user,
+            await create_and_send_embed(
+                ctx.channel, ActionType.KICK, user, self.reason,
+                issuer=bot_instance.user, bot_user=bot_instance.user
             )
-            if embed and isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
-                await ctx.channel.send(embed=embed)
         except Exception as exc:
             logger.error("Failed to kick user %s: %s", user.id, exc)
             raise
@@ -509,9 +473,8 @@ class BanCommand(CommandAction):
     ) -> None:
         """Execute ban action."""
         from modcord.util.discord_utils import (
-            send_dm_to_user,
-            build_dm_message,
-            create_punishment_embed,
+            send_dm_with_suppression,
+            create_and_send_embed,
             format_duration,
         )
         from modcord.scheduler.unban_scheduler import schedule_unban
@@ -528,25 +491,12 @@ class BanCommand(CommandAction):
             duration_label = format_duration(duration_seconds)
 
         try:
-            try:
-                await send_dm_to_user(
-                    user,
-                    build_dm_message(ActionType.BAN, guild.name, self.reason, duration_label),
-                )
-            except Exception:
-                logger.debug("Failed to DM user prior to ban, continuing.")
-            
+            await send_dm_with_suppression(user, ActionType.BAN, guild.name, self.reason, duration_label)
             await guild.ban(user, reason=f"Manual Mod: {self.reason}")
-            embed = await create_punishment_embed(
-                ActionType.BAN,
-                user,
-                self.reason,
-                duration_label,
-                issuer=bot_instance.user,
-                bot_user=bot_instance.user,
+            await create_and_send_embed(
+                ctx.channel, ActionType.BAN, user, self.reason, duration_label,
+                issuer=bot_instance.user, bot_user=bot_instance.user
             )
-            if embed and isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
-                await ctx.channel.send(embed=embed)
             
             # Schedule unban if not permanent
             if not is_permanent:
