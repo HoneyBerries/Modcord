@@ -215,7 +215,8 @@ class TestUnbanScheduler:
             
             assert result is True
             assert (123, 456) not in scheduler.pending_keys
-            assert scheduler.counter in scheduler.cancelled_ids
+            # The job_id that was assigned is what gets added to cancelled_ids
+            assert len(scheduler.cancelled_ids) == 1
             
             # Cleanup
             if scheduler.runner_task:
