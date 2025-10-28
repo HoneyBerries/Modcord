@@ -10,9 +10,7 @@ from modcord.util.discord_utils import (
     iter_moderatable_channels,
     is_ignored_author,
     has_elevated_permissions,
-    build_dm_message,
     format_duration,
-    ActionType,
 )
 
 
@@ -259,79 +257,6 @@ class TestHasElevatedPermissions:
         
         result = has_elevated_permissions(mock_user)
         assert result is False
-
-
-class TestBuildDmMessage:
-    """Tests for build_dm_message function."""
-
-    def test_build_dm_message_ban_permanent(self):
-        """Test build_dm_message for permanent ban."""
-        result = build_dm_message(
-            ActionType.BAN,
-            "Test Guild",
-            "Breaking rules",
-            PERMANENT_DURATION
-        )
-        assert "banned" in result.lower()
-        assert "Test Guild" in result
-        assert "permanently" in result
-        assert "Breaking rules" in result
-
-    def test_build_dm_message_ban_temporary(self):
-        """Test build_dm_message for temporary ban."""
-        result = build_dm_message(
-            ActionType.BAN,
-            "Test Guild",
-            "Spam",
-            "1 day"
-        )
-        assert "banned" in result.lower()
-        assert "for 1 day" in result
-        assert "Spam" in result
-
-    def test_build_dm_message_kick(self):
-        """Test build_dm_message for kick action."""
-        result = build_dm_message(
-            ActionType.KICK,
-            "Test Guild",
-            "Inappropriate behavior"
-        )
-        assert "kicked" in result.lower()
-        assert "Test Guild" in result
-        assert "Inappropriate behavior" in result
-
-    def test_build_dm_message_timeout(self):
-        """Test build_dm_message for timeout action."""
-        result = build_dm_message(
-            ActionType.TIMEOUT,
-            "Test Guild",
-            "Warning",
-            "10 mins"
-        )
-        assert "timed out" in result.lower()
-        assert "Test Guild" in result
-        assert "10 mins" in result
-        assert "Warning" in result
-
-    def test_build_dm_message_warn(self):
-        """Test build_dm_message for warn action."""
-        result = build_dm_message(
-            ActionType.WARN,
-            "Test Guild",
-            "First warning"
-        )
-        assert "warning" in result.lower()
-        assert "Test Guild" in result
-        assert "First warning" in result
-
-    def test_build_dm_message_unknown_action(self):
-        """Test build_dm_message returns empty string for unknown action."""
-        result = build_dm_message(
-            ActionType.NULL,
-            "Test Guild",
-            "Some reason"
-        )
-        assert result == ""
 
 
 class TestFormatDuration:

@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 
 from modcord.util.discord_utils import (
     safe_delete_message,
-    send_dm_to_user,
     has_permissions,
     iter_moderatable_channels,
     delete_messages_by_ids,
@@ -65,45 +64,6 @@ class TestSafeDeleteMessage:
         
         assert result is False
 
-
-class TestSendDmToUser:
-    """Tests for send_dm_to_user async function."""
-
-    @pytest.mark.asyncio
-    async def test_send_dm_success(self):
-        """Test successful DM sending."""
-        user = AsyncMock()
-        user.send = AsyncMock()
-        
-        result = await send_dm_to_user(user, "Test message")
-        
-        assert result is True
-        user.send.assert_called_once_with("Test message")
-
-    @pytest.mark.asyncio
-    async def test_send_dm_forbidden(self):
-        """Test DM sending when DMs are disabled."""
-        user = AsyncMock()
-        response = MagicMock()
-        response.status = 403
-        response.reason = "Forbidden"
-        user.send.side_effect = discord.Forbidden(response, "message")
-        user.display_name = "TestUser"
-        
-        result = await send_dm_to_user(user, "Test message")
-        
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_send_dm_exception(self):
-        """Test DM sending with generic exception."""
-        user = AsyncMock()
-        user.send.side_effect = Exception("Network error")
-        user.display_name = "TestUser"
-        
-        result = await send_dm_to_user(user, "Test message")
-        
-        assert result is False
 
 
 class TestHasPermissions:

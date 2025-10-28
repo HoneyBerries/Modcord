@@ -1,22 +1,3 @@
-"""
-Unit tests for discord_utils module.
-
-Tests the core Discord utility functions including message deletion,
-embed creation, and moderation notifications.
-"""
-
-import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
-from datetime import datetime, timezone, timedelta
-
-# Import the module under test
-from modcord.util.discord_utils import (
-    format_duration,
-    parse_duration_to_minutes,
-    bot_can_manage_messages,
-    iter_moderatable_channels,
-    safe_delete_message,
 """Tests for discord_utils module."""
 
 import pytest
@@ -27,10 +8,11 @@ from datetime import datetime, timezone
 from modcord.util.discord_utils import (
     format_duration,
     parse_duration_to_minutes,
-    build_dm_message,
     is_ignored_author,
     has_elevated_permissions,
     bot_can_manage_messages,
+    iter_moderatable_channels,
+    safe_delete_message,
     DURATIONS,
     PERMANENT_DURATION,
 )
