@@ -17,6 +17,20 @@ from modcord.util.discord_utils import (
     bot_can_manage_messages,
     iter_moderatable_channels,
     safe_delete_message,
+"""Tests for discord_utils module."""
+
+import pytest
+from unittest.mock import Mock, MagicMock, AsyncMock, patch
+import discord
+from datetime import datetime, timezone
+
+from modcord.util.discord_utils import (
+    format_duration,
+    parse_duration_to_minutes,
+    build_dm_message,
+    is_ignored_author,
+    has_elevated_permissions,
+    bot_can_manage_messages,
     DURATIONS,
     PERMANENT_DURATION,
 )
