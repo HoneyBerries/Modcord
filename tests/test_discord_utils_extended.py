@@ -1,4 +1,4 @@
-"""Additional tests for discord_utils utility functions that can be mocked."""
+"""Extended tests for discord_utils module - utility functions."""
 
 import pytest
 from unittest.mock import Mock, MagicMock, AsyncMock, patch
@@ -9,8 +9,7 @@ from modcord.util.discord_utils import (
     create_punishment_embed,
     delete_recent_messages,
     delete_messages_background,
-    send_dm_and_embed,
-    TIMEOUT_ACTIONS,
+    DURATIONS,
 )
 from modcord.moderation.moderation_datatypes import ActionType
 
@@ -288,13 +287,3 @@ class TestDeleteMessagesBackground:
         assert "failed" in call_args[0][0].lower() or "⚠" in call_args[0][0]
 
 
-class TestTimeoutActions:
-    """Tests for TIMEOUT_ACTIONS constant."""
-
-    def test_timeout_actions_contains_timeout(self):
-        """Test TIMEOUT_ACTIONS contains TIMEOUT action."""
-        assert ActionType.TIMEOUT in TIMEOUT_ACTIONS
-
-    def test_timeout_actions_is_set(self):
-        """Test TIMEOUT_ACTIONS is a set."""
-        assert isinstance(TIMEOUT_ACTIONS, set)

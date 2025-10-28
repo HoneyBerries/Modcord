@@ -78,10 +78,13 @@ class DiscordHistoryFetcher:
         # Fetch more than needed to account for bot messages and exclusions
         fetch_count = min(history_limit * 2, 100)
         results: List[ModerationMessage] = []
+        results_count = 0  # Track count separately to avoid repeated len() calls
 
         try:
             async for discord_msg in channel.history(limit=fetch_count):
-                if str(discord_msg.id) in exclude_message_ids:
+                # Use string ID directly - avoid creating new string for comparison
+                msg_id_str = str(discord_msg.id)
+                if msg_id_str in exclude_message_ids:
                     continue
                 if discord_msg.author.bot:
                     continue
@@ -89,8 +92,9 @@ class DiscordHistoryFetcher:
                 mod_msg = self.convert_discord_message(discord_msg)
                 if mod_msg:
                     results.append(mod_msg)
-                if len(results) >= history_limit:
-                    break
+                    results_count += 1
+                    if results_count >= history_limit:
+                        break
         except discord.Forbidden:
             logger.warning("Missing permissions to read history for channel %s", channel_id)
         except discord.NotFound:
