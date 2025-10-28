@@ -154,12 +154,19 @@ class ModerationActionCog(commands.Cog):
             if delete_message_minutes > 0:
                 asyncio.create_task(delete_messages_background(ctx, user, delete_message_minutes))
 
+            # Send success confirmation to dismiss "thinking" state
+            action_name = action.action.value.capitalize()
+            await ctx.send_followup(
+                f"{action_name} action applied successfully to {user.mention}.",
+                ephemeral=True
+            )
+
         except Exception as e:
             logger.exception("Error executing moderation action: %s", e)
             try:
-                await ctx.defer(ephemeral=True)
                 await ctx.send_followup(
-                    "An error occurred while processing the command."
+                    "An error occurred while processing the command.",
+                    ephemeral=True
                 )
             except Exception:
                 logger.error("Failed to send error response to user.")
