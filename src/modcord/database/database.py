@@ -51,6 +51,22 @@ async def init_database() -> bool:
                     FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
                 )
             """)
+            # Moderation action log used by discord_utils.apply_action_decision and history context
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS moderation_actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    metadata TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_moderation_actions_lookup
+                ON moderation_actions(guild_id, user_id, timestamp)
+            """)
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_channel_guidelines_guild 
                 ON channel_guidelines(guild_id)
