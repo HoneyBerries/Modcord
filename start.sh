@@ -1,5 +1,3 @@
-
-
 #!/bin/bash
 # Change to the directory where this script is located (project root)
 cd "$(dirname "$0")"
