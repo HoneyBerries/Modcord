@@ -6,7 +6,7 @@ ai_settings:
   vram_percentage: 0.86 # Percentage of GPU VRAM to use if using GPU (0.0 to 1.0)
 
   # Path to your local model directory or model identifier from Hugging Face
-  model_id: "/mnt/d/AI_MODELS/modcord_custom_models/qwen3-vl-4b-instruct-nf4"
+  model_id: "./modcord_custom_models/qwen3-vl-4b-instruct-nf4"
 
   # CPU offload size in GB (used when model exceeds available GPU memory)
   cpu_offload_gb: 0
