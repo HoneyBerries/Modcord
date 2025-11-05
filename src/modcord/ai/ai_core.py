@@ -134,13 +134,15 @@ class InferenceProcessor:
             }
             sampling_params = {**sampling_defaults, **(ai_config.get("sampling_parameters") or {})}
             vram_percentage = float(ai_config.get("vram_percentage", 0.5))
+            cpu_offload_gb = int(ai_config.get("cpu_offload_gb", 0))
             
             # Initialize in thread pool
             result = await asyncio.to_thread(
                 self._init_model_sync,
                 model_id,
                 sampling_params,
-                vram_percentage
+                vram_percentage,
+                cpu_offload_gb
             )
             
             return result
@@ -149,7 +151,8 @@ class InferenceProcessor:
         self,
         model_id: str,
         sampling_parameters: Dict[str, Any],
-        vram_percentage: float
+        vram_percentage: float,
+        cpu_offload_gb: int
     ) -> bool:
         """
         Synchronously initialize the vLLM model and sampling parameters (runs in a thread).
@@ -160,6 +163,7 @@ class InferenceProcessor:
             model_id (str): Model identifier.
             sampling_parameters (Dict[str, Any]): Sampling parameters for generation.
             vram_percentage (float): Fraction of GPU memory to use.
+            cpu_offload_gb (int): CPU offload size in GB for model layers.
 
         Returns:
             bool: True if model initialized successfully, False otherwise.
@@ -189,7 +193,9 @@ class InferenceProcessor:
                 model=model_id,
                 dtype=chosen_dtype,
                 gpu_memory_utilization=gpu_mem_util,
+                cpu_offload_gb=cpu_offload_gb,
                 max_model_len=sampling_parameters["max_model_length"],
+                tokenizer_mode="auto",
                 tensor_parallel_size=tensor_parallel,
                 trust_remote_code=True,
                 limit_mm_per_prompt={"image": 8, "video": 0},

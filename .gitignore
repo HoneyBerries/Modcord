@@ -1,7 +1,7 @@
-
 # Project-specific ignores
 data/
 logs/
+modcord_custom_models/
 
 *.log
 

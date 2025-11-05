@@ -205,6 +205,10 @@ class AISettings:
         k = self.data.get("sampling_parameters", {})
         return k if isinstance(k, dict) else {}
 
+    @property
+    def cpu_offload_gb(self) -> int:
+        return int(self.data.get("cpu_offload_gb", 0))
+
 
 # Shared application-wide configuration instance
 app_config = AppConfig(CONFIG_PATH)

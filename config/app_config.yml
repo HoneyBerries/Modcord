@@ -3,10 +3,13 @@ rules_cache_refresh:
 
 ai_settings:
   enabled: true
-  vram_percentage: 0.85 # Percentage of GPU VRAM to use if using GPU (0.0 to 1.0)
+  vram_percentage: 0.86 # Percentage of GPU VRAM to use if using GPU (0.0 to 1.0)
 
   # Path to your local model directory or model identifier from Hugging Face
   model_id: "/mnt/d/AI_MODELS/modcord_custom_models/qwen3-vl-4b-instruct-nf4"
+
+  # CPU offload size in GB (used when model exceeds available GPU memory)
+  cpu_offload_gb: 0
 
   # Time window (in minutes) for querying past moderation actions for context
   # Default: 10080 minutes (7 days). Actions older than this won't be included in AI context.
@@ -14,7 +17,7 @@ ai_settings:
 
   sampling_parameters:
     dtype: "bfloat16" # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
-    max_new_tokens: 2048
+    max_new_tokens: 1024
     max_model_length: 6144
     temperature: 0.7
     top_p: 0.9
@@ -24,10 +27,10 @@ ai_settings:
     frequency_penalty: 0.1
 
   # moderation_batch_seconds: time window (in seconds) to group messages for moderation.
-  moderation_batch_seconds: 15
+  moderation_batch_seconds: 30
 
   # Number of recent messages to fetch from Discord for context when building history.
-  history_context_messages: 20
+  history_context_messages: 16
 
   # System prompt for the AI moderation model
   system_prompt: |
