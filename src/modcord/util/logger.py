@@ -24,8 +24,8 @@ LOG_COLORS = {
 }
 RESET_COLOR = "\033[0m"
 
-LOG_FILENAME: str = datetime.now().strftime(DATE_FORMAT) + ".log"
-LOG_FILEPATH: Path = LOGS_DIR / LOG_FILENAME
+# Global variable to store the log file path (initialized on first use)
+_LOG_FILEPATH: Path | None = None
 
 # -------------------- Formatters --------------------
 class ColorFormatter(logging.Formatter):
@@ -69,6 +69,48 @@ color_formatter = ColorFormatter(LOG_FORMAT, datefmt=DATE_FORMAT) if should_use_
 
 # -------------------- Logger Setup --------------------
 
+def _get_log_filepath() -> Path:
+    """Get or create the log file path. Ensures all loggers use the same file.
+    
+    This function implements a session-based logging strategy:
+    - On first call, it looks for the most recent log file created today
+    - If a recent log exists (within 60 seconds), it reuses it (handles restarts)
+    - Otherwise, creates a new log file with the current timestamp
+    - All subsequent calls return the same path, ensuring one log file per session
+    
+    Returns
+    -------
+    Path
+        Path to the log file that should be used for all loggers.
+    """
+    global _LOG_FILEPATH
+    
+    if _LOG_FILEPATH is None:
+        # Look for the most recent log file created today
+        today_prefix = datetime.now().strftime("%Y-%m-%d")
+        existing_logs = sorted(LOGS_DIR.glob(f"{today_prefix}*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        
+        if existing_logs:
+            # Use the most recent log file from today if it was created recently
+            most_recent = existing_logs[0]
+            time_since_creation = datetime.now().timestamp() - most_recent.stat().st_mtime
+            
+            # If the log file was created within the last 60 seconds, reuse it
+            # This handles bot restarts and ensures we append to the same file
+            if time_since_creation < 60:
+                _LOG_FILEPATH = most_recent
+            else:
+                # Create a new log file with current timestamp
+                log_filename = datetime.now().strftime(DATE_FORMAT) + ".log"
+                _LOG_FILEPATH = LOGS_DIR / log_filename
+        else:
+            # No existing log file for today, create a new one
+            log_filename = datetime.now().strftime(DATE_FORMAT) + ".log"
+            _LOG_FILEPATH = LOGS_DIR / log_filename
+    
+    return _LOG_FILEPATH
+
+
 def setup_logger(logger_name: str) -> logging.Logger:
     """Configure and return a logger with console and rotating file handlers.
 
@@ -97,9 +139,10 @@ def setup_logger(logger_name: str) -> logging.Logger:
     logger.addHandler(console_handler)
 
 
-    # File handler (DEBUG level)
+    # File handler (DEBUG level) - use shared log file path
+    log_filepath = _get_log_filepath()
     file_handler = RotatingFileHandler(
-        LOG_FILEPATH,
+        log_filepath,
         encoding="utf-8"
     )
     file_handler.setLevel(logging.DEBUG)
