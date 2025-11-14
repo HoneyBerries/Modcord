@@ -2,7 +2,7 @@
 """Quick test to verify the logging fix works - should create only one log file."""
 
 import sys
-import time
+
 from pathlib import Path
 
 # Add src to path
