@@ -277,7 +277,8 @@ class TestInferenceProcessor:
                     "top_p": 1.0,
                     "top_k": -1,
                 },
-                vram_percentage=0.5
+                vram_percentage=0.5,
+                cpu_offload_gb=0
             )
             assert result is False
             assert "AI libraries not available" in processor.state.init_error

@@ -1,9 +1,8 @@
-
 # Project-specific ignores
 data/
 logs/
-
-*.log
+modcord_custom_models/
+finetune/**/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -11,11 +10,8 @@ __pycache__/
 *$py.class
 
 # Virtual environment
-venv/
-env/
-ENV/
-.venv/
-.env/
+*venv/
+*env/
 
 # Environment files (catch common variants)
 .env
@@ -31,7 +27,6 @@ config/commands.json
 # VS Code settings
 .vscode/
 
-.git_corrupt/
 
 # PyCharm / IntelliJ
 .idea/

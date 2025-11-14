@@ -1,126 +1,183 @@
+# ========================================
+# MODCORD CONFIGURATION
+# ========================================
+# This configuration file defines all settings for Modcord, including AI/LLM tuning,
+# moderation behavior, and cache refresh intervals.
+#
+# Sections:
+#   1. Cache & Performance Settings
+#   2. AI Model & Inference Settings
+#   3. Moderation System Prompt
+#   4. Default Rules & Guidelines
+
+# ========================================
+# 1. CACHE & PERFORMANCE SETTINGS
+# ========================================
+
 rules_cache_refresh:
-  interval_seconds: 600  # Refresh server and channel rules every 10 minutes
+  # Interval (seconds) to refresh server rules and channel guidelines from Discord.
+  # Recommended: 600 (10 minutes). Lower values increase API calls and latency.
+  # Higher values reduce API load but may miss rule updates.
+  interval_seconds: 600
+
+# ========================================
+# 2. AI MODEL & INFERENCE SETTINGS
+# ========================================
 
 ai_settings:
+  # Enable/disable AI-based moderation. Set to false to use rule-only moderation.
   enabled: true
-  vram_percentage: 0.85 # Percentage of GPU VRAM to use if using GPU (0.0 to 1.0)
 
-  # Path to your local model directory or model identifier from Hugging Face
-  model_id: "/mnt/d/AI_MODELS/modcord_custom_models/qwen3-vl-4b-instruct-nf4"
+  # Path to your local model directory or Hugging Face model identifier.
+  # Examples:
+  #   - Local: "./modcord_custom_models/qwen3-vl-4b-instruct-nf4"
+  #   - HuggingFace: "Qwen/Qwen3-VL-4B-Instruct"
+  model_id: "./modcord_custom_models/qwen3-vl-4b-instruct-nf4"
 
-  # Time window (in minutes) for querying past moderation actions for context
-  # Default: 10080 minutes (7 days). Actions older than this won't be included in AI context.
+  # GPU memory utilization (0.0 to 1.0).
+  # 0.86 = use 86% of GPU VRAM. Reduce if running out of memory.
+  vram_percentage: 0.86
+
+  # CPU offload size in GB (used when model exceeds available GPU memory).
+  # Set to 0 to disable offloading. Increase if model doesn't fit in VRAM.
+  cpu_offload_gb: 0
+
+  # Moderation batch window (seconds).
+  # Messages received within this window are grouped for batch moderation.
+  # Lower values = faster response (more API calls), higher values = better efficiency.
+  moderation_batch_seconds: 15
+
+  # Historical context lookback (minutes) for past moderation actions.
+  # When processing current violations, include actions from the past N minutes.
+  # Default: 10080 (7 days). Set to 0 to disable context lookback.
   past_actions_lookback_minutes: 10080
 
+  # Number of recent messages to fetch for context when building message history.
+  # Higher values provide more context for violations but increase processing time.
+  # Recommended: 8-20. Adjust based on channel activity level.
+  history_context_messages: 8
+
+  # Sampling parameters for text generation.
+  # These control model behavior, creativity, and output quality.
   sampling_parameters:
-    dtype: "bfloat16" # "auto", "half", "float16", "bfloat16", or "float32"; "bfloat16" is efficient for modern GPUs
+    # Data type for model computation.
+    # Options: "auto" (default), "float32", "float16" (half), "bfloat16" (efficient)
+    # "bfloat16" is recommended for modern GPUs (A100, H100, RTX 40-series).
+    dtype: "bfloat16"
+
+    # Maximum number of tokens to generate in a single inference.
+    # Higher = more verbose output but slower. Moderation typically needs ~200-500 tokens.
     max_new_tokens: 1024
+
+    # Maximum total model context length (input + output tokens).
+    # Ensure this is <= model's actual context window.
+    # Qwen3-VL-4B: 4096-8192 tokens recommended.
     max_model_length: 5120
+
+    # Temperature (0.0-2.0): Controls randomness/creativity.
+    # 0.0 = deterministic (same output every time)
+    # 1.0 = balanced (default)
+    # >1.0 = more creative/random
+    # For moderation: 0.7 (slightly deterministic) is recommended.
     temperature: 0.7
+
+    # Top-P (nucleus sampling): Keep only top P% probability mass.
+    # 0.9 = keep top 90% of probable tokens, drop bottom 10%.
+    # Higher values = more diverse output, lower = more focused.
     top_p: 0.9
+
+    # Top-K: Keep only top K most probable tokens.
+    # 40 = consider only top 40 tokens at each step.
+    # Lower = more focused, higher = more diverse.
     top_k: 40
+
+    # Repetition penalty: Penalizes repeated tokens.
+    # 1.0 = no penalty, >1.0 = penalize repetition.
+    # 1.2 is good for avoiding repetitive/spam-like output.
     repetition_penalty: 1.2
+
+    # Presence penalty: Penalizes tokens that have already appeared.
+    # 0.0 = disabled, >0.0 = penalize already-used tokens.
     presence_penalty: 0.1
+
+    # Frequency penalty: Penalizes tokens proportional to their frequency.
+    # 0.0 = disabled, >0.0 = penalize high-frequency tokens.
     frequency_penalty: 0.1
 
-  # moderation_batch_seconds: time window (in seconds) to group messages for moderation.
-  moderation_batch_seconds: 20
-
-  # Number of recent messages to fetch from Discord for context when building history.
-  history_context_messages: 20
-
-  # System prompt for the AI moderation model
+  # System prompt for the AI moderation model.
+  # This guides the model to make moderation decisions in JSON format.
+  # Injected placeholders:
+  #   <|SERVER_RULES_INJECT|> → Replaced with server_rules or default_server_rules
+  #   <|CHANNEL_GUIDELINES_INJECT|> → Replaced with channel-specific guidelines
   system_prompt: |
-    You are Modcord, a Discord moderation AI. Your sole output must be a valid JSON object with no explanation, backticks, or extra text.
-  
-    **PRIMARY DIRECTIVES:**
-    1. **Act only on current messages** (`is_history: false`). History is for context only.
-    2. **One action per user.** Output all users, using `"action": "null"` for those with no new violations.
-    3. **Evidence-based decisions.** Use only the provided rules, message content, and metadata. Do not invent rules or guess information.
-    4. **No double punishment.** Do not re-punish for past actions or act on the same message ID twice.
-  
-    **ACTIONS & DURATIONS:**
-    - `"null"`: No action needed or case is ambiguous.
-    - `"warn"`: Minor violations.
-    - `"delete"`: Remove specific current messages only.
-    - `"timeout"`: Repeated or serious violations. Set `timeout_duration` in minutes (0 if not applicable).
-    - `"kick"`: Serious disruption. Set both `timeout_duration` and `ban_duration` to `null`.
-    - `"ban"`: Severe violations. Use `ban_duration: -1` for permanent, or minutes for temporary. Set `timeout_duration` to `null`.
-    - Durations are in minutes. Set to `0` or `null` if not applicable to the action.
-  
-    **JUDGMENT & ESCALATION:**
-    - Default to leniency for one-off, low-risk, or unclear content. When in doubt, use `"null"`.
-    - Consider tone and frequency across current messages only.
-    - Quoting objectionable content for critique ≠ endorsing it.
-    - Never act on history messages; use them for context only.
-  
-    **ANTI-HALLUCINATION:**
-    - Use only payload content—no guessing intent, missing IDs, or assumptions.
-    - Images are represented as `image_ids` and are referenced separately from the JSON input. Treat them like text when judging violations.
-    - If a message lacks a valid ID but needs deletion, omit it from `message_ids_to_delete`.
-  
-    **DE-DUPLICATION:**
-    - Each current message ID must appear at most once in `message_ids_to_delete`.
-    - Never include history message IDs.
-    - Aggregate current messages into a single decision per user.
-  
-    **INPUT SCHEMA:**
-    {
-      "channel_id": "string",
-      "message_count": number,
-      "unique_user_count": number,
-      "total_images": number,
-      "users": {
-        "<user_id>": {
-          "username": "string",
-          "message_count": number,
-          "messages": [
-            {
-              "message_id": "string",
-              "content": "string",
-              "timestamp": "YYYY-MM-DD HH:MM:SS UTC",
-              "image_ids": ["string", ...],
-              "is_history": boolean
-            },
-            ...
-          ]
-        },
-        ...
-      }
-    }
-  
-    **OUTPUT SCHEMA:**
+    ROLE: You are a Discord moderation AI. Output ONLY valid JSON. No explanations, no extra text.
+
+    INPUT:
+    - Consider the JSON input containing channel_id, users, and messages.
+    - Only process current messages (is_history: false).
+    - Historical messages are for context only; do not act on them.
+
+    USER ACTIONS:
+    - One action per user.
+    - Include all users; if no violation, use "action": "null".
+    - Valid actions:
+      - "null" → no violation / not major / ambiguous
+      - "warn" → first-time significant violation
+      - "delete" → remove specific current messages if they violate rules
+      - "timeout" → repeated violations (set timeout_duration in minutes)
+      - "kick" → serious violation (set durations null)
+      - "ban" → repeated serious violations (set ban_duration; -1 = permanent)
+
+    RULES & POLICIES:
+    Follow the rules below strictly when evaluating messages. Do not invent rules, regardless of moral or ethical considerations. Be objective and lenient towards users to avoid false positives.
+
+    --- Discord Server Rules ---
+    <|SERVER_RULES_INJECT|>
+
+    --- Channel-Specific Guidelines ---
+    <|CHANNEL_GUIDELINES_INJECT|>
+
+    OUTPUT FORMAT:
     {
       "channel_id": "string",
       "users": [
         {
           "user_id": "string",
           "action": "null|warn|delete|timeout|kick|ban",
-          "reason": "brief factual explanation",
-          "message_ids_to_delete": ["current message IDs only"],
-          "timeout_duration": number|null,
-          "ban_duration": number|null
+          "reason": "factual, concise",
+          "message_ids_to_delete": ["current IDs only, no duplicates"],
+          "timeout_duration": number|0,
+          "ban_duration": number|0
         }
       ]
     }
-  
-    **MODERATION PROCEDURE:**
-    1. Collect each user's current messages (`is_history: false`).
-    2. Users with no current messages → `"action": "null"`.
-    3. Review current messages against server rules.
-    4. Minor/ambiguous violations → `"warn"` or `"null"`.
-    5. Specific content to remove → `"delete"` (include current message IDs only).
-    6. Repeated or serious pattern → `"timeout"` or escalate.
-    7. Severe/malicious behavior → `"kick"` or `"ban"`.
-    8. **Verification:** All users included, one action per user, only current message IDs (deduplicated), durations match action, reason is concise and factual.
-  
-    --- Discord Server Rules ---
-    <|SERVER_RULES_INJECT|>
-  
-    --- Channel‑Specific Guidelines ---
-    <|CHANNEL_GUIDELINES_INJECT|>
+    - Only include current message IDs.
+    - Ensure durations match the action type.
+    - Include all users, one action per user, no duplicates.
 
+    PROCEDURE:
+    1. Use historical messages (is_history: true) **only for context**, never to determine actions.
+    2. If a user has no current messages → "action": "null".
+    3. Evaluate current messages strictly against server rules and channel guidelines.
+    4. For minor or first-time violations → issue "warn" or "null".
+    5. If specific messages violate rules → mark them for "delete".
+    6. Repeated or severe violations → escalate to "timeout", "kick", or "ban" as appropriate.
+    7. Always ensure all users are included, only one action per user, message IDs are current, and durations match the action type.
 
+    ANTI-BIAS:
+    - Treat all users equally, regardless of username, style, or tone.
+    - Do not assume intent or extrapolate beyond the text provided.
+    - If a message includes `image_ids`, judge the images according to server rules.
+
+# ========================================
+# 4. DEFAULT RULES & GUIDELINES
+# ========================================
+# These are template rules that apply to all servers unless overridden per-guild.
+# To customize per-guild, use the Discord bot commands to set server-specific rules.
+
+# Default server rules for all servers.
+# Used when a server hasn't defined custom rules via the bot.
+# Rules are displayed to users and used by the AI moderation model.
 default_server_rules: |
   1. Be respectful to all members and moderators.
   2. No spamming, flooding, or excessive use of caps/emoji. (Minor: occasional caps/emoji; Major: repeated spamming)
@@ -133,4 +190,6 @@ default_server_rules: |
   9. Report serious issues to moderators instead of attempting vigilante action.
   10. Repeated or intentional breaking of rules may result in warnings, timeouts, kicks, or bans.
 
-default_channel_guidelines: ""
+# Default channel guidelines for all channels.
+# Used when a channel hasn't defined custom guidelines via the bot.
+default_channel_guidelines: "Be respectful and stay on topic. No spamming, self-promotion, or NSFW content."

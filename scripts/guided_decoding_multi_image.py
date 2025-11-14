@@ -3,7 +3,7 @@ import json
 from io import BytesIO
 import requests
 from PIL import Image
-from vllm import LLM, EngineArgs, SamplingParams
+from vllm import LLM, SamplingParams
 from vllm.sampling_params import StructuredOutputsParams
 from xgrammar.grammar import Grammar
 

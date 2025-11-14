@@ -1,50 +1,63 @@
 name: Run Tests
-permissions:
-  contents: read
 
 on:
   push:
-    branches: [ main, dev, feature/* ]
   pull_request:
-    branches: [ main, dev ]
+  workflow_dispatch:
 
 jobs:
-  test:
+  tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.12.11'
+          python-version: "3.12"
 
-      - name: Cache virtual environment
-        uses: actions/cache@v4
-        with:
-          path: venv
-          key: ${{ runner.os }}-venv-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-venv-
-
-      - name: Install dependencies
+      - name: Free up disk space and show usage
         run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov codecov
+          echo "Before cleanup"
+          df -h || true
+          # Remove common large preinstalled SDKs (safe on hosted runners)
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/lib/android || true
+          # Purge pip cache and wheel caches
+          python -m pip cache purge || true
+          sudo rm -rf /home/runner/.cache/pip || true
+          echo "After cleanup"
+          df -h || true
 
-      - name: Run tests with coverage
+      - name: Create virtualenv and upgrade pip
         run: |
-          source venv/bin/activate
-          pytest --cov=src --cov-branch --cov-report=xml --cov-report=term-missing
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip setuptools wheel
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.xml
-          fail_ci_if_error: true
+      - name: Install test dependencies (no pip cache)
+        env:
+          PIP_NO_CACHE_DIR: "1"
+        run: |
+          source .venv/bin/activate
+          # Prefer a small test-only requirements file for CI if present
+          if [ -f tests/ci-requirements.txt ]; then
+            echo "Installing tests/ci-requirements.txt"
+            python -m pip install --prefer-binary --no-cache-dir -r tests/ci-requirements.txt
+          else
+            echo "Installing requirements.txt (fallback)"
+            python -m pip install --prefer-binary --no-cache-dir -r requirements.txt
+          fi
+          df -h || true
+
+      - name: Run tests
+        run: |
+          source .venv/bin/activate
+          pytest -q
+
+      - name: Final disk usage
+        run: df -h || true
