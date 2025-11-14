@@ -7,7 +7,7 @@ torch
 torchvision
 transformers
 bitsandbytes
-unsloth
+unsloth>=2025.11.2
 accelerate
 Pillow
 py-cord
