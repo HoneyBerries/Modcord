@@ -16,6 +16,8 @@ pyyaml
 jsonschema
 aiosqlite
 vllm>=0.11.0  # <--- PINNED TO LATEST
+flashinfer-python
+xgrammar
 prompt_toolkit
 rich
 nuitka
