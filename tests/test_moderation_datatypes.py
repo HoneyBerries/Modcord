@@ -33,6 +33,41 @@ class TestHumanizeTimestamp:
         result = humanize_timestamp(timestamp)
         assert result == "2024-01-15 10:30:00 UTC"
 
+    def test_future_timestamp_clamped(self):
+        """Test that future timestamps are clamped to current time."""
+        # Create a timestamp 1 year in the future
+        future_time = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year + 1)
+        future_timestamp = future_time.isoformat().replace('+00:00', 'Z')
+        
+        result = humanize_timestamp(future_timestamp)
+        
+        # Parse the result back to datetime
+        result_dt = datetime.strptime(result, "%Y-%m-%d %H:%M:%S UTC").replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        
+        # Result should be at or before current time
+        assert result_dt <= now
+        # Should be recent (within last few seconds)
+        assert (now - result_dt).total_seconds() < 5
+
+    def test_current_timestamp_not_modified(self):
+        """Test that current timestamps are not modified."""
+        # Use a timestamp from a few seconds ago
+        past_time = datetime.now(timezone.utc)
+        past_timestamp = past_time.isoformat().replace('+00:00', 'Z')
+        
+        result = humanize_timestamp(past_timestamp)
+        
+        # Should match the input time (allowing for formatting differences)
+        expected = past_time.strftime("%Y-%m-%d %H:%M:%S UTC")
+        assert result == expected
+
+    def test_old_timestamp_not_modified(self):
+        """Test that old timestamps are preserved."""
+        old_timestamp = "2023-06-15T10:30:00Z"
+        result = humanize_timestamp(old_timestamp)
+        assert result == "2023-06-15 10:30:00 UTC"
+
 
 class TestActionData:
     """Test the ActionData class."""

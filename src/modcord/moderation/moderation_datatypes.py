@@ -24,6 +24,8 @@ logger = get_logger("moderation_datatypes")
 
 def humanize_timestamp(value: str) -> str:
     """Return a human-readable timestamp (YYYY-MM-DD HH:MM:SS) in UTC.
+    
+    Ensures timestamps are never in the future by clamping to current time.
 
     Args:
         value (str): ISO 8601 timestamp string.
@@ -33,6 +35,17 @@ def humanize_timestamp(value: str) -> str:
     """
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     dt = dt.astimezone(timezone.utc)
+    
+    # Clamp to current time if timestamp is in the future
+    now_utc = datetime.now(timezone.utc)
+    if dt > now_utc:
+        logger.warning(
+            "Timestamp %s is in the future, clamping to current time %s",
+            dt.isoformat(),
+            now_utc.isoformat()
+        )
+        dt = now_utc
+    
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 class ActionType(Enum):

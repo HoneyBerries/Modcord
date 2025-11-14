@@ -318,3 +318,202 @@ class TestModerationProcessor:
             mock_config.channel_guidelines = ""
             result = processor._resolve_channel_guidelines("Be respectful")
             assert result == "Be respectful"
+
+    def test_batch_to_json_deduplicates_users(self):
+        """Test _batch_to_json_with_images deduplicates users appearing in both current and history."""
+        processor = ModerationProcessor()
+        
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        # Same user appears in both current and history
+        current_msg = ModerationMessage(
+            message_id="123",
+            user_id="456",
+            content="Current message",
+            timestamp=timestamp,
+            guild_id=789,
+            channel_id=111
+        )
+        
+        history_msg = ModerationMessage(
+            message_id="124",
+            user_id="456",
+            content="History message",
+            timestamp=timestamp,
+            guild_id=789,
+            channel_id=111
+        )
+        
+        current_user = ModerationUser(
+            user_id="456",
+            username="TestUser",
+            roles=["Member"],
+            messages=[current_msg]
+        )
+        
+        history_user = ModerationUser(
+            user_id="456",
+            username="TestUser",
+            messages=[history_msg]
+        )
+        
+        batch = ModerationChannelBatch(
+            channel_id=111,
+            channel_name="general",
+            users=[current_user],
+            history_users=[history_user]
+        )
+        
+        payload, _, _ = processor._batch_to_json_with_images(batch)
+        
+        # Should only have 1 unique user, not 2
+        assert payload["unique_user_count"] == 1
+        assert len(payload["users"]) == 1
+        
+        # Should have both messages
+        assert payload["message_count"] == 2
+        user_data = payload["users"][0]
+        assert user_data["user_id"] == "456"
+        assert len(user_data["messages"]) == 2
+
+    def test_batch_to_json_correct_is_history_flags(self):
+        """Test _batch_to_json_with_images sets is_history flags correctly for merged users."""
+        processor = ModerationProcessor()
+        
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        # Same user with current and historical messages
+        current_msg = ModerationMessage(
+            message_id="123",
+            user_id="456",
+            content="Current",
+            timestamp=timestamp,
+            guild_id=789,
+            channel_id=111
+        )
+        
+        history_msg = ModerationMessage(
+            message_id="124",
+            user_id="456",
+            content="History",
+            timestamp=timestamp,
+            guild_id=789,
+            channel_id=111
+        )
+        
+        current_user = ModerationUser(user_id="456", username="User", messages=[current_msg])
+        history_user = ModerationUser(user_id="456", username="User", messages=[history_msg])
+        
+        batch = ModerationChannelBatch(
+            channel_id=111,
+            channel_name="general",
+            users=[current_user],
+            history_users=[history_user]
+        )
+        
+        payload, _, _ = processor._batch_to_json_with_images(batch)
+        
+        user_data = payload["users"][0]
+        messages = user_data["messages"]
+        
+        # Find which message is which by message_id
+        current_msg_data = next(m for m in messages if m["message_id"] == "123")
+        history_msg_data = next(m for m in messages if m["message_id"] == "124")
+        
+        # Current message should have is_history=False
+        assert current_msg_data["is_history"] is False
+        # History message should have is_history=True
+        assert history_msg_data["is_history"] is True
+
+    def test_batch_to_json_no_duplicate_messages(self):
+        """Test _batch_to_json_with_images doesn't duplicate messages if same message in both lists."""
+        processor = ModerationProcessor()
+        
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        # Same message ID appears in both current and history
+        msg_id = "123"
+        current_msg = ModerationMessage(
+            message_id=msg_id,
+            user_id="456",
+            content="Message",
+            timestamp=timestamp,
+            guild_id=789,
+            channel_id=111
+        )
+        
+        # Create a duplicate with same message_id
+        history_msg = ModerationMessage(
+            message_id=msg_id,
+            user_id="456",
+            content="Message",
+            timestamp=timestamp,
+            guild_id=789,
+            channel_id=111
+        )
+        
+        current_user = ModerationUser(user_id="456", username="User", messages=[current_msg])
+        history_user = ModerationUser(user_id="456", username="User", messages=[history_msg])
+        
+        batch = ModerationChannelBatch(
+            channel_id=111,
+            channel_name="general",
+            users=[current_user],
+            history_users=[history_user]
+        )
+        
+        payload, _, _ = processor._batch_to_json_with_images(batch)
+        
+        # Should only have 1 message, not 2 duplicates
+        assert payload["message_count"] == 1
+        user_data = payload["users"][0]
+        assert len(user_data["messages"]) == 1
+        assert user_data["messages"][0]["message_id"] == msg_id
+        # Should be marked as current (is_history=False) since it appears in current batch
+        assert user_data["messages"][0]["is_history"] is False
+
+    def test_batch_to_json_separate_users_both_tracked(self):
+        """Test _batch_to_json_with_images correctly tracks separate users."""
+        processor = ModerationProcessor()
+        
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        msg1 = ModerationMessage(
+            message_id="123",
+            user_id="456",
+            content="User 1 message",
+            timestamp=timestamp,
+            guild_id=789,
+            channel_id=111
+        )
+        
+        msg2 = ModerationMessage(
+            message_id="124",
+            user_id="789",
+            content="User 2 message",
+            timestamp=timestamp,
+            guild_id=789,
+            channel_id=111
+        )
+        
+        user1 = ModerationUser(user_id="456", username="User1", messages=[msg1])
+        user2 = ModerationUser(user_id="789", username="User2", messages=[msg2])
+        
+        batch = ModerationChannelBatch(
+            channel_id=111,
+            channel_name="general",
+            users=[user1],
+            history_users=[user2]
+        )
+        
+        payload, _, _ = processor._batch_to_json_with_images(batch)
+        
+        # Should have 2 distinct users
+        assert payload["unique_user_count"] == 2
+        assert len(payload["users"]) == 2
+        assert payload["message_count"] == 2
+        
+        # Check user IDs are distinct
+        user_ids = {u["user_id"] for u in payload["users"]}
+        assert user_ids == {"456", "789"}
+
