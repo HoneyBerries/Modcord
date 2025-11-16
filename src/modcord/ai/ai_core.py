@@ -198,7 +198,7 @@ class InferenceProcessor:
                 tokenizer_mode="auto",
                 tensor_parallel_size=tensor_parallel,
                 trust_remote_code=True,
-                limit_mm_per_prompt={"image": 8, "video": 0},
+                limit_mm_per_prompt={"image": 16, "video": 0},
                 skip_mm_profiling=True,
             )
             
