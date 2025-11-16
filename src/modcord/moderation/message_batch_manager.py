@@ -266,7 +266,7 @@ class MessageBatchManager:
                 first_seen[user_id] = idx
             user_messages[user_id].append(msg)
 
-        lookback_minutes = app_config.ai_settings.get("past_actions_lookback_minutes", 10080)
+        lookback_minutes = app_config.ai_settings.get("past_actions_lookback_days", 7) * 24 * 60
 
         grouped_users: List[ModerationUser] = []
         for user_id, msgs in user_messages.items():

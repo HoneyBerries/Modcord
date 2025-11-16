@@ -211,6 +211,35 @@ class ModerationUser:
         if self.join_date:
             join_date_value = humanize_timestamp(self.join_date)
 
+        # Format past actions to include action, reason, timestamp, and optional duration
+        formatted_past_actions = []
+        for action in self.past_actions:
+            formatted_action = {
+                "action": action.get("action_type", "unknown"),
+                "reason": action.get("reason", ""),
+                "timestamp": humanize_timestamp(action.get("timestamp", "")) if action.get("timestamp") else None,
+            }
+            
+            # Extract duration from metadata if present
+            metadata = action.get("metadata", {})
+            if isinstance(metadata, dict):
+                # For ban actions, include ban_duration
+                if "ban_duration" in metadata:
+                    ban_duration = metadata["ban_duration"]
+                    if ban_duration == -1:
+                        formatted_action["duration"] = "permanent"
+                    elif ban_duration > 0:
+                        formatted_action["duration"] = f"{ban_duration} minutes"
+                # For timeout actions, include timeout_duration
+                elif "timeout_duration" in metadata:
+                    timeout_duration = metadata["timeout_duration"]
+                    if timeout_duration == -1:
+                        formatted_action["duration"] = "permanent"
+                    elif timeout_duration > 0:
+                        formatted_action["duration"] = f"{timeout_duration} minutes"
+            
+            formatted_past_actions.append(formatted_action)
+
         return {
             "user_id": self.user_id,
             "username": self.username,
@@ -218,7 +247,7 @@ class ModerationUser:
             "join_date": join_date_value,
             "message_count": len(self.messages),
             "messages": [{"message_id": msg.message_id, "content": msg.content, "timestamp": humanize_timestamp(msg.timestamp)} for msg in self.messages],
-            "past_actions": self.past_actions,
+            "past_actions": formatted_past_actions,
         }
 
 @dataclass(slots=True)
