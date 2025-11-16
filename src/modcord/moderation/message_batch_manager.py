@@ -266,7 +266,19 @@ class MessageBatchManager:
                 first_seen[user_id] = idx
             user_messages[user_id].append(msg)
 
-        lookback_minutes = app_config.ai_settings.get("past_actions_lookback_days", 7) * 24 * 60
+        # Get lookback period - support both days (new) and minutes (legacy)
+        lookback_days = app_config.ai_settings.get("past_actions_lookback_days")
+        lookback_minutes_legacy = app_config.ai_settings.get("past_actions_lookback_minutes")
+        
+        if lookback_days is not None:
+            # New config: days
+            lookback_minutes = int(lookback_days) * 24 * 60
+        elif lookback_minutes_legacy is not None:
+            # Legacy config: minutes
+            lookback_minutes = int(lookback_minutes_legacy)
+        else:
+            # Default: 7 days
+            lookback_minutes = 7 * 24 * 60
 
         grouped_users: List[ModerationUser] = []
         for user_id, msgs in user_messages.items():
