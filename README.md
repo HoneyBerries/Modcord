@@ -23,6 +23,8 @@ Follow these steps to get Modcord running on your local machine for development 
 
 - Python 3.12.x
 - A virtual environment (e.g., `venv`)
+- A Discord bot token (create one at the [Discord Developer Portal](https://discord.com/developers/applications))
+- Linux, as vLLM currently only supports Linux environments
 
 ### Installation
 
@@ -64,10 +66,10 @@ Follow these steps to get Modcord running on your local machine for development 
 ## Features
 
 - **AI-Powered Moderation**: Uses a local or hosted Large Language Model to analyze messages and suggest moderation actions.
-- **Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`) and other management commands.
+- **Manual Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`) and other management commands.
 - **Contextual Analysis**: Pulls per-channel message history on demand to keep moderation context up to date.
-- **Temporary Actions**: Supports temporary bans and timeouts with automatic removal.
-- **Standardized Embeds**: Clear and consistent embeds for all moderation actions.
+- **Temporary Actions**: Supports temporary bans and timeouts.
+- **Nice-looking Embeds**: Clear and consistent embeds for moderation actions and other commands.
 - **Per-Guild Settings**: Customizable settings and rules for each server.
 - **Extensible Architecture**: A modular design with a pluggable AI engine layer.
 
@@ -112,7 +114,7 @@ We welcome contributions! Please see [`CONTRIBUTING.md`](CONTRIBUTING.md) for de
 
 ## Security
 
-- **Never commit secrets**. Use environment variables or CI secrets for tokens and keys. The `.env` file is included in `.gitignore` to prevent accidental commits.
+- **Never show people your secrets**. Use environment variables or CI secrets for tokens and keys. The `.env` file is included in `.gitignore` to prevent accidental commits.
 
 ---
 
