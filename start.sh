@@ -47,9 +47,34 @@ if [ $FOUND -eq 0 ]; then
     echo "No working Python virtual environment found."
     read -p "Would you like to create a new venv and install dependencies? (Y/N): " CREATEVENV
     if [[ "$CREATEVENV" =~ ^[Yy]$ ]]; then
-        python -m venv venv
-        source venv/bin/activate
+        if python -m venv .venv --prompt "ModCord"; then
+            echo "Created virtualenv with python"
+        else
+            echo "python -m venv failed, trying python3..."
+            if command -v python3 >/dev/null 2>&1 && python3 -m venv .venv --prompt "ModCord"; then
+            echo "Created virtualenv with python3"
+            else
+            echo "Failed to create virtualenv with python or python3."
+            exit 1
+            fi
+        fi
+        source .venv/bin/activate
         pip install -r requirements.txt
+        
+        # Apply vLLM WSL detection patch
+        echo "Applying vLLM workaround patch..."
+        VLLM_INTERFACE_PATH=".venv/lib/python3.12/site-packages/vllm/platforms/interface.py"
+        if [ -f "$VLLM_INTERFACE_PATH" ]; then
+            patch "$VLLM_INTERFACE_PATH" < hacks/interface.patch
+            if [ $? -eq 0 ]; then
+                echo "vLLM patch applied successfully."
+            else
+                echo "Warning: vLLM patch application failed or was already applied."
+            fi
+        else
+            echo "Warning: vLLM interface file not found at $VLLM_INTERFACE_PATH"
+        fi
+        
         echo "Running bot..."
         python src/modcord/main.py
         exit $?
