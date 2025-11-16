@@ -22,44 +22,35 @@ Follow these steps to get Modcord running on your local machine for development 
 ### Prerequisites
 
 - Python 3.12.x
-- A virtual environment (e.g., `venv`)
 - A Discord bot token (create one at the [Discord Developer Portal](https://discord.com/developers/applications))
-- Linux, as vLLM currently only supports Linux environments
+- Linux (required for vLLM)
 
-### Installation
+### Quick Start
 
-1.  **Clone the Repository**:
+1. **Clone the Repository**:
     ```bash
-    git clone https://github.com/HoneyBerries/Modcord
+    git clone https://github.com/HoneyBerries/Modcord modcord
     cd modcord
     ```
 
-2.  **Create and Activate a Virtual Environment**:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate
-    ```
-
-3.  **Install Dependencies**:
-    This command installs all necessary packages, including the project itself in editable mode.
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-4.  **Configure Your Bot Token**:
+2. **Configure Your Bot Token**:
     Create a file named `.env` in the project's root directory and add your Discord bot token:
     ```
     DISCORD_BOT_TOKEN=your_discord_bot_token_here
     ```
 
-5.  **Run the Bot**:
+3. **Run the Program**:
     ```bash
-    # Run directly via the Python module
-    python -m modcord
-
-    # Or use the console script
     ./start.sh
     ```
+
+The `start.sh` script will automatically:
+- Detect or create a Python virtual environment
+- Install all required dependencies from `requirements.txt`
+- Apply necessary patches (e.g., vLLM workaround)
+- Launch the bot
+
+No manual setup of a virtual environment or dependency installation is required—just run `./start.sh` and follow the prompts.
 
 ---
 
