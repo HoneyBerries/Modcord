@@ -280,6 +280,109 @@ class TestModerationUser:
         assert len(payload["messages"]) == 1
         assert payload["messages"][0]["message_id"] == "1"
 
+    def test_to_model_payload_with_past_actions(self):
+        """Test conversion to model payload with past actions."""
+        msg = ModerationMessage(
+            message_id="1",
+            user_id="123",
+            content="Test message",
+            timestamp="2024-01-15T10:30:00Z",
+            guild_id=1,
+            channel_id=1
+        )
+        
+        past_actions = [
+            {
+                "action_type": "warn",
+                "reason": "Spamming",
+                "timestamp": "2024-01-10T10:00:00Z",
+                "metadata": {}
+            },
+            {
+                "action_type": "timeout",
+                "reason": "Repeated spamming",
+                "timestamp": "2024-01-12T15:30:00Z",
+                "metadata": {"timeout_duration": 60}
+            },
+            {
+                "action_type": "ban",
+                "reason": "Severe violations",
+                "timestamp": "2024-01-14T09:00:00Z",
+                "metadata": {"ban_duration": -1}
+            }
+        ]
+        
+        user = ModerationUser(
+            user_id="123",
+            username="TestUser",
+            roles=["Member"],
+            join_date="2024-01-01T00:00:00Z",
+            messages=[msg],
+            past_actions=past_actions
+        )
+        
+        payload = user.to_model_payload()
+        
+        assert payload["user_id"] == "123"
+        assert len(payload["past_actions"]) == 3
+        
+        # Check warn action formatting
+        assert payload["past_actions"][0]["action"] == "warn"
+        assert payload["past_actions"][0]["reason"] == "Spamming"
+        assert "duration" not in payload["past_actions"][0]
+        
+        # Check timeout action with duration
+        assert payload["past_actions"][1]["action"] == "timeout"
+        assert payload["past_actions"][1]["duration"] == "60 minutes"
+        
+        # Check permanent ban
+        assert payload["past_actions"][2]["action"] == "ban"
+        assert payload["past_actions"][2]["duration"] == "permanent"
+
+    def test_to_model_payload_with_empty_past_actions(self):
+        """Test that empty past_actions list is handled correctly."""
+        msg = ModerationMessage(
+            message_id="1",
+            user_id="123",
+            content="Test message",
+            timestamp="2024-01-15T10:30:00Z",
+            guild_id=1,
+            channel_id=1
+        )
+        
+        user = ModerationUser(
+            user_id="123",
+            username="TestUser",
+            messages=[msg],
+            past_actions=[]
+        )
+        
+        payload = user.to_model_payload()
+        assert payload["past_actions"] == []
+
+    def test_to_model_payload_past_actions_without_metadata(self):
+        """Test past actions that don't have metadata."""
+        past_actions = [
+            {
+                "action_type": "kick",
+                "reason": "Inappropriate behavior",
+                "timestamp": "2024-01-10T10:00:00Z",
+                "metadata": None
+            }
+        ]
+        
+        user = ModerationUser(
+            user_id="123",
+            username="TestUser",
+            past_actions=past_actions
+        )
+        
+        payload = user.to_model_payload()
+        
+        assert len(payload["past_actions"]) == 1
+        assert payload["past_actions"][0]["action"] == "kick"
+        assert "duration" not in payload["past_actions"][0]
+
 
 class TestModerationChannelBatch:
     """Test the ModerationChannelBatch class."""
