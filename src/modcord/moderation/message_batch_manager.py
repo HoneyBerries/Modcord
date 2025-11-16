@@ -285,7 +285,7 @@ class MessageBatchManager:
                 if isinstance(discord_msg.author, discord.Member):
                     member = discord_msg.author
                     # List comprehension is faster than generator for small lists
-                    roles = [role.name for role in member.roles if role.name != "@everyone"]
+                    roles = [role.name for role in member.roles]
                     if member.joined_at:
                         # Cache timezone to avoid repeated attribute access
                         utc_tz = datetime.timezone.utc

@@ -272,7 +272,9 @@ class TestModerationUser:
             messages=[msg]
         )
         
-        payload = user.to_model_payload()
+        # Format messages as they would be in batch processing
+        messages_payload = [msg.to_model_payload(is_history=False, image_id_map={})]
+        payload = user.to_model_payload(messages_payload=messages_payload)
         
         assert payload["user_id"] == "123"
         assert payload["username"] == "TestUser"
@@ -321,7 +323,8 @@ class TestModerationUser:
             past_actions=past_actions
         )
         
-        payload = user.to_model_payload()
+        messages_payload = [msg.to_model_payload(is_history=False, image_id_map={})]
+        payload = user.to_model_payload(messages_payload=messages_payload)
         
         assert payload["user_id"] == "123"
         assert len(payload["past_actions"]) == 3
@@ -357,7 +360,9 @@ class TestModerationUser:
             past_actions=[]
         )
         
-        payload = user.to_model_payload()
+        messages_payload = [msg.to_model_payload(is_history=False, image_id_map={})]
+        payload = user.to_model_payload(messages_payload=messages_payload)
+        
         assert payload["past_actions"] == []
 
     def test_to_model_payload_past_actions_without_metadata(self):
@@ -377,7 +382,9 @@ class TestModerationUser:
             past_actions=past_actions
         )
         
-        payload = user.to_model_payload()
+        # Create a dummy message for messages_payload
+        messages_payload = []
+        payload = user.to_model_payload(messages_payload=messages_payload)
         
         assert len(payload["past_actions"]) == 1
         assert payload["past_actions"][0]["action"] == "kick"
@@ -482,8 +489,8 @@ class TestModerationChannelBatch:
         
         assert batch.is_empty() is False
 
-    def test_to_model_payload(self):
-        """Test conversion to model payload."""
+    def test_to_multimodal_payload_basic(self):
+        """Test basic multimodal payload generation."""
         msg = ModerationMessage(
             message_id="1",
             user_id="1",
@@ -501,10 +508,12 @@ class TestModerationChannelBatch:
             users=[user]
         )
         
-        payload = batch.to_model_payload()
+        payload, images, image_map = batch.to_multimodal_payload()
         
-        assert len(payload) == 1
-        assert payload[0]["user_id"] == "1"
+        assert len(payload["users"]) == 1
+        assert payload["users"][0]["user_id"] == "1"
+        assert len(images) == 0
+        assert len(image_map) == 0
 
 
 if __name__ == "__main__":

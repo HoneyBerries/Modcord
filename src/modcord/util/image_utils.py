@@ -5,12 +5,12 @@ from io import BytesIO
 
 import requests
 from PIL import Image
-
+from pillow_heif import register_heif_opener
 from modcord.util.logger import get_logger
 
 logger = get_logger("image_utils")
 
-
+register_heif_opener()
 def generate_image_hash_id(image_url: str) -> str:
     """
     Generate a unique 8-character hash ID for an image based on its URL.

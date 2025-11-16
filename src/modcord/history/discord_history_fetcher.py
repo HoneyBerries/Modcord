@@ -47,23 +47,16 @@ class DiscordHistoryFetcher:
         self._bot = bot_instance
 
     async def fetch_history_context(
-        self,
-        channel_id: int,
-        exclude_message_ids: Set[str],
-        history_limit: int | None = None,
+    self,
+    channel_id: int,
+    exclude_message_ids: Set[str],
+    history_limit: int | None = None,
     ) -> List[ModerationMessage]:
         """
-        Fetch recent message history from a Discord channel.
-
-        Args:
-            channel_id (int): Discord channel ID to fetch history from.
-            exclude_message_ids (Set[str]): Message IDs to exclude (e.g., current batch messages).
-            history_limit (int | None): Maximum number of history messages to return. 
-                If None, uses config value from 'history_context_messages' (default 20).
-
-        Returns:
-            List[ModerationMessage]: List of historical messages in ModerationMessage format.
+        Fetch recent message history from a Discord channel without guessing how many to fetch.
+        Uses adaptive paging and stops exactly when enough usable messages are found.
         """
+
         channel = self._bot.get_channel(channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             logger.debug("Channel %s is not a text channel or thread", channel_id)
@@ -75,38 +68,50 @@ class DiscordHistoryFetcher:
             except Exception:
                 history_limit = 20
 
-        # Fetch more than needed to account for bot messages and exclusions
-        fetch_count = min(history_limit * 2, 100)
         results: List[ModerationMessage] = []
-        results_count = 0  # Track count separately to avoid repeated len() calls
+        results_count = 0
+        last_message = None  # Used for pagination
 
         try:
-            async for discord_msg in channel.history(limit=fetch_count):
-                # Use string ID directly - avoid creating new string for comparison
-                msg_id_str = str(discord_msg.id)
-                if msg_id_str in exclude_message_ids:
-                    continue
-                if discord_msg.author.bot:
-                    continue
+            while results_count < history_limit:
+                # Always fetch the maximum allowed (100) to minimize API calls
+                history = channel.history(
+                    limit=100,
+                    before=last_message  # paginate backward
+                )
 
-                mod_msg = self.convert_discord_message(discord_msg)
-                if mod_msg:
-                    results.append(mod_msg)
-                    results_count += 1
-                    if results_count >= history_limit:
-                        break
+                batch_empty = True
+
+                async for discord_msg in history:
+                    batch_empty = False
+                    last_message = discord_msg  # update pagination cursor
+
+                    msg_id_str = str(discord_msg.id)
+                    if msg_id_str in exclude_message_ids:
+                        continue
+                    if discord_msg.author.bot:
+                        continue
+
+                    mod_msg = self.convert_discord_message(discord_msg)
+                    if mod_msg:
+                        results.append(mod_msg)
+                        results_count += 1
+                        if results_count >= history_limit:
+                            break
+
+                if batch_empty:
+                    # No more messages available in history
+                    break
+
         except discord.Forbidden:
             logger.warning("Missing permissions to read history for channel %s", channel_id)
         except discord.NotFound:
             logger.warning("Channel %s not found while fetching history", channel_id)
         except Exception as exc:
-            logger.error(
-                "Unexpected error fetching history for channel %s: %s",
-                channel_id,
-                exc,
-            )
+            logger.error("Unexpected error fetching history for channel %s: %s", channel_id, exc)
 
         return results
+
 
     def convert_discord_message(self, message: discord.Message) -> ModerationMessage | None:
         """
@@ -143,7 +148,7 @@ class DiscordHistoryFetcher:
             guild_id=message.guild.id if message.guild else None,
             channel_id=message.channel.id if message.channel else None,
             images=images,
-            discord_message=None,
+            discord_message=message,
         )
 
     @staticmethod
