@@ -93,8 +93,8 @@ def iter_moderatable_channels(guild: discord.Guild):
         try:
             if bot_can_manage_messages(channel, guild):
                 yield channel
-        except Exception as exc:  # pragma: no cover - defensive guard
-            logger.debug(f"Skipping channel {getattr(channel, 'name', 'unknown')} due to error: {exc}")
+        except Exception as exc:
+            logger.debug(f"Skipping channel {getattr(channel, 'name', '<unknown>')} due to error: {exc}")
 
 
 # Note: TIMEOUT_ACTIONS was removed as it was only used in one place
@@ -271,9 +271,9 @@ async def delete_recent_messages(guild, member, seconds) -> int:
     member_id = member.id  # Cache member ID to avoid repeated attribute access
 
     for channel in iter_moderatable_channels(guild):
+        channel_name = channel.name if hasattr(channel, 'name') else str(channel.id)
         try:
             # Pre-cache channel name to avoid repeated getattr calls in error case
-            channel_name = channel.name if hasattr(channel, 'name') else 'unknown'
             async for message in channel.history(after=window_start):
                 if message.author.id == member_id and await safe_delete_message(message):
                     deleted_count += 1
@@ -449,9 +449,9 @@ async def delete_recent_messages_by_count(guild: discord.Guild, member: discord.
     for channel in iter_moderatable_channels(guild):
         if deleted >= count:
             break
+        # Pre-cache channel name for error logging
+        channel_name = channel.name if hasattr(channel, 'name') else str(channel.id)
         try:
-            # Pre-cache channel name for error logging
-            channel_name = channel.name if hasattr(channel, 'name') else str(channel.id)
             async for message in channel.history(limit=count - deleted):
                 if message.author.id == member_id and await safe_delete_message(message):
                     deleted += 1
@@ -618,7 +618,7 @@ async def apply_action_decision(
                     user=author,
                     guild=guild,
                     reason=action.reason,
-                    channel=channel,
+                    channel=channel if isinstance(channel, (discord.TextChannel, discord.Thread)) else None,
                     duration_str=duration_label,
                     bot_user=bot_user
                 )
@@ -649,7 +649,7 @@ async def apply_action_decision(
                     user=author,
                     guild=guild,
                     reason=action.reason,
-                    channel=channel,
+                    channel=channel if isinstance(channel, (discord.TextChannel, discord.Thread)) else None,
                     duration_str=None,
                     bot_user=bot_user
                 )
@@ -676,7 +676,7 @@ async def apply_action_decision(
                     user=author,
                     guild=guild,
                     reason=action.reason,
-                    channel=channel,
+                    channel=channel if isinstance(channel, (discord.TextChannel, discord.Thread)) else None,
                     duration_str=duration_label,
                     bot_user=bot_user
                 )
@@ -692,7 +692,7 @@ async def apply_action_decision(
                     user=author,
                     guild=guild,
                     reason=action.reason,
-                    channel=channel,
+                    channel=channel if isinstance(channel, (discord.TextChannel, discord.Thread)) else None,
                     duration_str=None,
                     bot_user=bot_user
                 )
@@ -708,7 +708,7 @@ async def apply_action_decision(
                     user=author,
                     guild=guild,
                     reason=action.reason,
-                    channel=channel,
+                    channel=channel if isinstance(channel, (discord.TextChannel, discord.Thread)) else None,
                     duration_str=None,
                     bot_user=bot_user
                 )

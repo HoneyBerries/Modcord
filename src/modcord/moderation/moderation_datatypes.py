@@ -16,7 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Iterable, List, Sequence
+import PIL.Image
+from typing import Any, Dict, Iterable, List, Sequence, Set
 import discord
 from modcord.util.logger import get_logger
 
@@ -47,6 +48,46 @@ def humanize_timestamp(value: str) -> str:
         dt = now_utc
     
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+def format_past_actions(past_actions: List[dict]) -> List[dict]:
+    """Format past moderation actions for inclusion in AI model payload.
+    
+    Args:
+        past_actions (List[dict]): Raw past actions from database with keys:
+            action_type, reason, timestamp, metadata.
+    
+    Returns:
+        List[dict]: Formatted actions with keys: action, reason, timestamp, duration (optional).
+    """
+    formatted_past_actions = []
+    for action in past_actions:
+        formatted_action = {
+            "action": action.get("action_type", "unknown"),
+            "reason": action.get("reason", ""),
+            "timestamp": humanize_timestamp(action.get("timestamp", "")) if action.get("timestamp") else None,
+        }
+        
+        # Extract duration from metadata if present
+        metadata = action.get("metadata", {})
+        if isinstance(metadata, dict):
+            # For ban actions, include ban_duration
+            if "ban_duration" in metadata:
+                ban_duration = metadata["ban_duration"]
+                if ban_duration == -1:
+                    formatted_action["duration"] = "permanent"
+                elif ban_duration > 0:
+                    formatted_action["duration"] = f"{ban_duration} minutes"
+            # For timeout actions, include timeout_duration
+            elif "timeout_duration" in metadata:
+                timeout_duration = metadata["timeout_duration"]
+                if timeout_duration == -1:
+                    formatted_action["duration"] = "permanent"
+                elif timeout_duration > 0:
+                    formatted_action["duration"] = f"{timeout_duration} minutes"
+        
+        formatted_past_actions.append(formatted_action)
+    
+    return formatted_past_actions
 
 class ActionType(Enum):
     """Enumeration of supported moderation actions."""
@@ -129,7 +170,7 @@ class ModerationImage:
     """
 
     image_id: str
-    pil_image: Any | None = None
+    pil_image: PIL.Image.Image | None = None
 
 @dataclass(slots=True)
 class ModerationMessage:
@@ -157,6 +198,31 @@ class ModerationMessage:
     channel_id: int | None
     images: List[ModerationImage] = field(default_factory=list)
     discord_message: "discord.Message | None" = None
+
+    def to_model_payload(self, is_history: bool = False, image_id_map: Dict[str, int] | None = None) -> dict[str, Any]:
+        """Convert message to AI model payload format.
+        
+        Args:
+            is_history: Whether this message is historical context (not for action).
+            image_id_map: Mapping of image_id -> index for PIL images list.
+        
+        Returns:
+            dict: JSON-serializable message representation.
+        """
+        # Collect image IDs for this message
+        msg_image_ids = []
+        if self.images and image_id_map is not None:
+            for img in self.images:
+                if img.image_id and img.image_id in image_id_map:
+                    msg_image_ids.append(img.image_id)
+        
+        return {
+            "message_id": str(self.message_id),
+            "timestamp": humanize_timestamp(self.timestamp) if self.timestamp else None,
+            "content": self.content or ("[Images only]" if msg_image_ids else ""),
+            "image_ids": msg_image_ids,
+            "is_history": is_history,
+        }
 
 @dataclass(slots=True, eq=False)
 class ModerationUser:
@@ -199,26 +265,23 @@ class ModerationUser:
         """
         self.messages.append(message)
 
-    def to_model_payload(self: ModerationUser) -> dict[str, Any]:
-        """Convert to the dictionary structure expected by the AI model.
+    def to_model_payload(self, messages_payload: List[dict]) -> dict[str, Any]:
+        """Convert user to AI model payload format with pre-formatted messages.
         
-        Returns a JSON payload with user metadata and all their messages.
-
+        Args:
+            messages_payload: Pre-formatted messages list from message.to_model_payload().
+        
         Returns:
             dict: JSON-serializable representation of the user.
         """
-        join_date_value = None
-        if self.join_date:
-            join_date_value = humanize_timestamp(self.join_date)
-
         return {
             "user_id": self.user_id,
             "username": self.username,
             "roles": self.roles,
-            "join_date": join_date_value,
-            "message_count": len(self.messages),
-            "messages": [{"message_id": msg.message_id, "content": msg.content, "timestamp": humanize_timestamp(msg.timestamp)} for msg in self.messages],
-            "past_actions": self.past_actions,
+            "join_date": humanize_timestamp(self.join_date) if self.join_date else None,
+            "message_count": len(messages_payload),
+            "messages": messages_payload,
+            "past_actions": format_past_actions(self.past_actions),
         }
 
 @dataclass(slots=True)
@@ -271,22 +334,92 @@ class ModerationChannelBatch:
             bool: True if the batch is empty, False otherwise.
         """
         return not self.users or all(not user.messages for user in self.users)
-
-    def to_model_payload(self) -> List[dict]:
-        """Convert batch users to the payload structure expected by the AI model.
-
+    
+    def to_multimodal_payload(self) -> tuple[Dict[str, Any], List[Any], Dict[str, int]]:
+        """Convert batch to complete multimodal AI payload with images and deduplication.
+        
+        This is the primary method for preparing batches for AI inference. It handles:
+        - User deduplication (merging current and history)
+        - Message deduplication
+        - Image collection and ID mapping
+        - is_history flag setting
+        - Complete payload construction
+        
         Returns:
-            List[dict]: List of user payloads.
+            Tuple of (json_payload, pil_images_list, image_id_map).
         """
-        return [user.to_model_payload() for user in self.users]
-
-    def history_to_model_payload(self) -> List[dict]:
-        """Convert historical users to the payload structure expected by the AI model.
-
-        Returns:
-            List[dict]: List of historical user payloads.
-        """
-        return [user.to_model_payload() for user in self.history_users]
+        from collections import defaultdict
+        
+        pil_images: List[Any] = []
+        image_id_map: Dict[str, int] = {}
+        
+        # Build sets of message IDs to determine which messages are historical
+        current_message_ids: Set[str] = set()
+        for user in self.users:
+            for msg in user.messages:
+                current_message_ids.add(str(msg.message_id))
+        
+        # Merge users by user_id, combining current and historical messages
+        user_map: Dict[str, ModerationUser] = {}
+        all_messages_by_user: Dict[str, List[tuple[ModerationMessage, bool]]] = defaultdict(list)
+        
+        # First, process current batch users (is_history=False for their messages)
+        for user in self.users:
+            user_id = str(user.user_id)
+            if user_id not in user_map:
+                user_map[user_id] = user
+            for msg in user.messages:
+                all_messages_by_user[user_id].append((msg, False))
+        
+        # Then, process history users (is_history=True for their messages)
+        for user in self.history_users:
+            user_id = str(user.user_id)
+            if user_id not in user_map:
+                # User only exists in history, use their data
+                user_map[user_id] = user
+            # Add historical messages (those not in current batch)
+            for msg in user.messages:
+                msg_id = str(msg.message_id)
+                if msg_id not in current_message_ids:
+                    all_messages_by_user[user_id].append((msg, True))
+        
+        total_messages = 0
+        users_list = []
+        
+        # Process each unique user
+        for user_id in sorted(user_map.keys()):
+            user = user_map[user_id]
+            messages_with_flags = all_messages_by_user[user_id]
+            
+            user_messages = []
+            for msg, is_history in messages_with_flags:
+                # Collect PIL images and build image ID map
+                if msg.images:
+                    for img in msg.images:
+                        if img.pil_image and img.image_id:
+                            if img.image_id not in image_id_map:
+                                image_id_map[img.image_id] = len(pil_images)
+                                pil_images.append(img.pil_image)
+                
+                # Convert message to payload
+                msg_dict = msg.to_model_payload(is_history=is_history, image_id_map=image_id_map)
+                user_messages.append(msg_dict)
+                total_messages += 1
+            
+            # Convert user to payload with formatted messages
+            user_dict = user.to_model_payload(messages_payload=user_messages)
+            users_list.append(user_dict)
+        
+        payload = {
+            "channel_id": str(self.channel_id),
+            "channel_name": self.channel_name,
+            "message_count": total_messages,
+            "unique_user_count": len(user_map),
+            "total_images": len(pil_images),
+            "users": users_list,
+        }
+        
+        return payload, pil_images, image_id_map
 
 # ============================================================
 # Command Action Classes - extend ActionData for manual commands

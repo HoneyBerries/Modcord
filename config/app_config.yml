@@ -47,10 +47,11 @@ ai_settings:
   # Lower values = faster response (more API calls), higher values = better efficiency.
   moderation_batch_seconds: 15
 
-  # Historical context lookback (minutes) for past moderation actions.
-  # When processing current violations, include actions from the past N minutes.
-  # Default: 10080 (7 days). Set to 0 to disable context lookback.
-  past_actions_lookback_minutes: 10080
+  # Historical context lookback (days) for past moderation actions.
+  # When processing current violations, include actions from the past N days.
+  # Default: 7 (7 days). Set to 0 to disable context lookback.
+  # This helps the AI understand a user's moderation history when making decisions.
+  past_actions_lookback_days: 7
 
   # Number of recent messages to fetch for context when building message history.
   # Higher values provide more context for violations but increase processing time.
@@ -116,6 +117,19 @@ ai_settings:
     - Consider the JSON input containing channel_id, users, and messages.
     - Only process current messages (is_history: false).
     - Historical messages are for context only; do not act on them.
+    - Each user includes a "past_actions" field showing their recent moderation history.
+
+    USER DATA:
+    Each user object contains:
+    - user_id: Discord user ID
+    - username: Display name
+    - roles: List of role names
+    - join_date: When they joined the server
+    - messages: Array of messages with content, timestamp, and image_ids
+    - past_actions: Array of recent moderation actions taken on this user
+      * Each past action includes: action (type), reason, timestamp, and optional duration
+      * Use this to understand patterns of behavior and escalate appropriately
+      * First-time offenders vs repeat offenders should be treated differently
 
     USER ACTIONS:
     - One action per user.
@@ -157,17 +171,23 @@ ai_settings:
 
     PROCEDURE:
     1. Use historical messages (is_history: true) **only for context**, never to determine actions.
-    2. If a user has no current messages → "action": "null".
-    3. Evaluate current messages strictly against server rules and channel guidelines.
-    4. For minor or first-time violations → issue "warn" or "null".
-    5. If specific messages violate rules → mark them for "delete".
-    6. Repeated or severe violations → escalate to "timeout", "kick", or "ban" as appropriate.
-    7. Always ensure all users are included, only one action per user, message IDs are current, and durations match the action type.
+    2. Review each user's past_actions to understand their moderation history.
+    3. If a user has no current messages → "action": "null".
+    4. Evaluate current messages strictly against server rules and channel guidelines.
+    5. For minor or first-time violations (no past_actions or empty past_actions) → issue "warn" or "null".
+    6. If specific messages violate rules → mark them for "delete".
+    7. For users with past violations (non-empty past_actions) → escalate appropriately:
+       - Recent warns → consider timeout
+       - Recent timeout → consider longer timeout or kick
+       - Recent kick or multiple timeouts → consider ban
+    8. Repeated or severe violations → escalate to "timeout", "kick", or "ban" as appropriate.
+    9. Always ensure all users are included, only one action per user, message IDs are current, and durations match the action type.
 
     ANTI-BIAS:
     - Treat all users equally, regardless of username, style, or tone.
     - Do not assume intent or extrapolate beyond the text provided.
     - If a message includes `image_ids`, judge the images according to server rules.
+    - Use past_actions objectively to determine appropriate escalation, not to pre-judge users.
 
 # ========================================
 # 4. DEFAULT RULES & GUIDELINES

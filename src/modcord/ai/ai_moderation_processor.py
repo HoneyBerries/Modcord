@@ -15,16 +15,12 @@ Key Features:
 from __future__ import annotations
 
 import json
-from collections import defaultdict
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
 from modcord.moderation.moderation_datatypes import (
     ActionData,
     ModerationChannelBatch,
-    ModerationMessage,
-    ModerationUser,
-    humanize_timestamp,
 )
 import modcord.moderation.moderation_parsing as moderation_parsing
 from modcord.configuration.app_configuration import app_config
@@ -112,7 +108,7 @@ class ModerationProcessor:
 
         for batch in batches:
             # Convert batch to JSON payload with image IDs
-            json_payload, pil_images, _ = self._batch_to_json_with_images(batch)
+            json_payload, pil_images, _ = batch.to_multimodal_payload()
 
             # Build user->message_ids map for non-history users
             user_message_map: Dict[str, List[str]] = {}
@@ -204,112 +200,6 @@ class ModerationProcessor:
 
         return actions_by_channel
 
-    def _batch_to_json_with_images(
-        self,
-        batch: ModerationChannelBatch,
-    ) -> tuple[Dict[str, Any], List[Any], Dict[str, int]]:
-        """
-        Convert ModerationChannelBatch to JSON structure with image IDs.
-
-        This method processes all users and their messages in the batch, collecting
-        associated image IDs. The resulting JSON payload is used as input for the AI model.
-        
-        Users are deduplicated by user_id. If a user appears in both batch.users and 
-        batch.history_users, their entries are merged with messages from batch.users 
-        marked as current (is_history=false) and messages from batch.history_users 
-        marked as historical (is_history=true).
-
-        Returns:
-            Tuple of (json_payload, pil_images_list, image_id_map).
-        """
-        pil_images: List[Any] = []
-        image_id_map: Dict[str, int] = {}
-        
-        # Build sets of message IDs to determine which messages are historical
-        current_message_ids: Set[str] = set()
-        for user in batch.users:
-            for msg in user.messages:
-                current_message_ids.add(str(msg.message_id))
-        
-        # Merge users by user_id, combining current and historical messages
-        user_map: Dict[str, ModerationUser] = {}
-        all_messages_by_user: Dict[str, List[tuple[ModerationMessage, bool]]] = defaultdict(list)
-        
-        # First, process current batch users (is_history=False for their messages)
-        for user in batch.users:
-            user_id = str(user.user_id)
-            if user_id not in user_map:
-                user_map[user_id] = user
-            for msg in user.messages:
-                all_messages_by_user[user_id].append((msg, False))
-        
-        # Then, process history users (is_history=True for their messages)
-        for user in batch.history_users:
-            user_id = str(user.user_id)
-            if user_id not in user_map:
-                # User only exists in history, use their data
-                user_map[user_id] = user
-            # Add historical messages (those not in current batch)
-            for msg in user.messages:
-                msg_id = str(msg.message_id)
-                if msg_id not in current_message_ids:
-                    all_messages_by_user[user_id].append((msg, True))
-        
-        total_messages = 0
-        users_list = []
-        
-        # Process each unique user
-        for user_id in sorted(user_map.keys()):
-            user = user_map[user_id]
-            messages_with_flags = all_messages_by_user[user_id]
-            
-            user_messages = []
-            for msg, is_history in messages_with_flags:
-                # Collect image IDs for this message
-                msg_image_ids = []
-                if msg.images:
-                    for img in msg.images:
-                        if img.pil_image and img.image_id:
-                            if img.image_id not in image_id_map:
-                                image_id_map[img.image_id] = len(pil_images)
-                                pil_images.append(img.pil_image)
-                            msg_image_ids.append(img.image_id)
-                
-                # Format timestamp and ensure it's not in the future
-                timestamp_str = humanize_timestamp(msg.timestamp) if msg.timestamp else None
-                
-                msg_dict = {
-                    "message_id": str(msg.message_id),
-                    "timestamp": timestamp_str,
-                    "content": msg.content or ("[Images only]" if msg_image_ids else ""),
-                    "image_ids": msg_image_ids,
-                    "is_history": is_history,
-                }
-                
-                user_messages.append(msg_dict)
-                total_messages += 1
-            
-            # Create user dict with all their messages
-            user_dict = {
-                "user_id": user_id,
-                "username": user.username,
-                "roles": user.roles,
-                "join_date": user.join_date,
-                "message_count": len(user_messages),
-                "messages": user_messages,
-            }
-            users_list.append(user_dict)
-        
-        payload = {
-            "channel_id": str(batch.channel_id),
-            "channel_name": batch.channel_name,
-            "message_count": total_messages,
-            "unique_user_count": len(user_map),
-            "total_images": len(pil_images),
-            "users": users_list,
-        }
-        
-        return payload, pil_images, image_id_map
 
     def _format_multimodal_messages(
         self,

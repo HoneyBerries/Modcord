@@ -22,52 +22,45 @@ Follow these steps to get Modcord running on your local machine for development 
 ### Prerequisites
 
 - Python 3.12.x
-- A virtual environment (e.g., `venv`)
+- A Discord bot token (create one at the [Discord Developer Portal](https://discord.com/developers/applications))
+- Linux (required for vLLM)
 
-### Installation
+### Quick Start
 
-1.  **Clone the Repository**:
+1. **Clone the Repository**:
     ```bash
-    git clone https://github.com/HoneyBerries/Modcord
+    git clone https://github.com/HoneyBerries/Modcord modcord
     cd modcord
     ```
 
-2.  **Create and Activate a Virtual Environment**:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate
-    ```
-
-3.  **Install Dependencies**:
-    This command installs all necessary packages, including the project itself in editable mode.
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-4.  **Configure Your Bot Token**:
+2. **Configure Your Bot Token**:
     Create a file named `.env` in the project's root directory and add your Discord bot token:
     ```
     DISCORD_BOT_TOKEN=your_discord_bot_token_here
     ```
 
-5.  **Run the Bot**:
+3. **Run the Program**:
     ```bash
-    # Run directly via the Python module
-    python -m modcord
-
-    # Or use the console script
     ./start.sh
     ```
+
+The `start.sh` script will automatically:
+- Detect or create a Python virtual environment
+- Install all required dependencies from `requirements.txt`
+- Apply necessary patches (e.g., vLLM workaround)
+- Launch the bot
+
+No manual setup of a virtual environment or dependency installation is required—just run `./start.sh` and follow the prompts.
 
 ---
 
 ## Features
 
 - **AI-Powered Moderation**: Uses a local or hosted Large Language Model to analyze messages and suggest moderation actions.
-- **Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`) and other management commands.
+- **Manual Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`) and other management commands.
 - **Contextual Analysis**: Pulls per-channel message history on demand to keep moderation context up to date.
-- **Temporary Actions**: Supports temporary bans and timeouts with automatic removal.
-- **Standardized Embeds**: Clear and consistent embeds for all moderation actions.
+- **Temporary Actions**: Supports temporary bans and timeouts.
+- **Nice-looking Embeds**: Clear and consistent embeds for moderation actions and other commands.
 - **Per-Guild Settings**: Customizable settings and rules for each server.
 - **Extensible Architecture**: A modular design with a pluggable AI engine layer.
 
@@ -112,7 +105,7 @@ We welcome contributions! Please see [`CONTRIBUTING.md`](CONTRIBUTING.md) for de
 
 ## Security
 
-- **Never commit secrets**. Use environment variables or CI secrets for tokens and keys. The `.env` file is included in `.gitignore` to prevent accidental commits.
+- **Never show people your secrets**. Use environment variables or CI secrets for tokens and keys. The `.env` file is included in `.gitignore` to prevent accidental commits.
 
 ---
 

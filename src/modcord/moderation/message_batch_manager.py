@@ -266,7 +266,7 @@ class MessageBatchManager:
                 first_seen[user_id] = idx
             user_messages[user_id].append(msg)
 
-        lookback_minutes = app_config.ai_settings.get("past_actions_lookback_minutes", 10080)
+        lookback_minutes = app_config.ai_settings.get("past_actions_lookback_days", 7) * 24 * 60
 
         grouped_users: List[ModerationUser] = []
         for user_id, msgs in user_messages.items():
@@ -285,7 +285,7 @@ class MessageBatchManager:
                 if isinstance(discord_msg.author, discord.Member):
                     member = discord_msg.author
                     # List comprehension is faster than generator for small lists
-                    roles = [role.name for role in member.roles if role.name != "@everyone"]
+                    roles = [role.name for role in member.roles]
                     if member.joined_at:
                         # Cache timezone to avoid repeated attribute access
                         utc_tz = datetime.timezone.utc
