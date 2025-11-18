@@ -101,9 +101,7 @@ class TestModerationProcessor:
         assert result == {}
 
     def test_batch_to_json_with_images_basic(self):
-        """Test _batch_to_json_with_images with basic batch."""
-        processor = ModerationProcessor()
-        
+        """Test batch.to_multimodal_payload with basic batch."""
         timestamp = datetime.now(timezone.utc).isoformat()
         msg = ModerationMessage(
             message_id="123",
@@ -126,7 +124,7 @@ class TestModerationProcessor:
             users=[user]
         )
         
-        payload, pil_images, image_map = processor._batch_to_json_with_images(batch)
+        payload, pil_images, image_map = batch.to_multimodal_payload()
         
         assert payload["channel_id"] == "111"
         assert payload["channel_name"] == "general"
@@ -138,9 +136,7 @@ class TestModerationProcessor:
         assert len(pil_images) == 0
 
     def test_batch_to_json_with_images_with_history(self):
-        """Test _batch_to_json_with_images includes history users."""
-        processor = ModerationProcessor()
-        
+        """Test batch.to_multimodal_payload includes history users."""
         timestamp = datetime.now(timezone.utc).isoformat()
         msg1 = ModerationMessage(
             message_id="123",
@@ -170,16 +166,14 @@ class TestModerationProcessor:
             history_users=[user2]
         )
         
-        payload, pil_images, image_map = processor._batch_to_json_with_images(batch)
+        payload, pil_images, image_map = batch.to_multimodal_payload()
         
         assert payload["unique_user_count"] == 2
         assert payload["message_count"] == 2
         assert len(payload["users"]) == 2
 
     def test_batch_to_json_with_images_with_pil_images(self):
-        """Test _batch_to_json_with_images handles PIL images."""
-        processor = ModerationProcessor()
-        
+        """Test batch.to_multimodal_payload handles PIL images."""
         mock_pil = MagicMock()
         img = ModerationImage(
             image_id="img123",
@@ -200,7 +194,7 @@ class TestModerationProcessor:
         user = ModerationUser(user_id="456", username="User", messages=[msg])
         batch = ModerationChannelBatch(channel_id=111, channel_name="general", users=[user])
         
-        payload, pil_images, image_map = processor._batch_to_json_with_images(batch)
+        payload, pil_images, image_map = batch.to_multimodal_payload()
         
         assert payload["total_images"] == 1
         assert len(pil_images) == 1
@@ -214,9 +208,7 @@ class TestModerationProcessor:
         assert "img123" in msg_data["image_ids"]
 
     def test_batch_to_json_with_images_empty_content(self):
-        """Test _batch_to_json_with_images handles empty content with images."""
-        processor = ModerationProcessor()
-        
+        """Test batch.to_multimodal_payload handles empty content with images."""
         mock_pil = MagicMock()
         img = ModerationImage(
             image_id="img1",
@@ -237,7 +229,7 @@ class TestModerationProcessor:
         user = ModerationUser(user_id="456", username="User", messages=[msg])
         batch = ModerationChannelBatch(channel_id=111, channel_name="general", users=[user])
         
-        payload, _, _ = processor._batch_to_json_with_images(batch)
+        payload, _, _ = batch.to_multimodal_payload()
         
         user_data = payload["users"][0]
         msg_data = user_data["messages"][0]
@@ -320,9 +312,7 @@ class TestModerationProcessor:
             assert result == "Be respectful"
 
     def test_batch_to_json_deduplicates_users(self):
-        """Test _batch_to_json_with_images deduplicates users appearing in both current and history."""
-        processor = ModerationProcessor()
-        
+        """Test batch.to_multimodal_payload deduplicates users appearing in both current and history."""
         timestamp = datetime.now(timezone.utc).isoformat()
         
         # Same user appears in both current and history
@@ -364,7 +354,7 @@ class TestModerationProcessor:
             history_users=[history_user]
         )
         
-        payload, _, _ = processor._batch_to_json_with_images(batch)
+        payload, _, _ = batch.to_multimodal_payload()
         
         # Should only have 1 unique user, not 2
         assert payload["unique_user_count"] == 1
@@ -377,9 +367,7 @@ class TestModerationProcessor:
         assert len(user_data["messages"]) == 2
 
     def test_batch_to_json_correct_is_history_flags(self):
-        """Test _batch_to_json_with_images sets is_history flags correctly for merged users."""
-        processor = ModerationProcessor()
-        
+        """Test batch.to_multimodal_payload sets is_history flags correctly for merged users."""
         timestamp = datetime.now(timezone.utc).isoformat()
         
         # Same user with current and historical messages
@@ -411,7 +399,7 @@ class TestModerationProcessor:
             history_users=[history_user]
         )
         
-        payload, _, _ = processor._batch_to_json_with_images(batch)
+        payload, _, _ = batch.to_multimodal_payload()
         
         user_data = payload["users"][0]
         messages = user_data["messages"]
@@ -426,9 +414,7 @@ class TestModerationProcessor:
         assert history_msg_data["is_history"] is True
 
     def test_batch_to_json_no_duplicate_messages(self):
-        """Test _batch_to_json_with_images doesn't duplicate messages if same message in both lists."""
-        processor = ModerationProcessor()
-        
+        """Test batch.to_multimodal_payload doesn't duplicate messages if same message in both lists."""
         timestamp = datetime.now(timezone.utc).isoformat()
         
         # Same message ID appears in both current and history
@@ -462,7 +448,7 @@ class TestModerationProcessor:
             history_users=[history_user]
         )
         
-        payload, _, _ = processor._batch_to_json_with_images(batch)
+        payload, _, _ = batch.to_multimodal_payload()
         
         # Should only have 1 message, not 2 duplicates
         assert payload["message_count"] == 1
@@ -473,9 +459,7 @@ class TestModerationProcessor:
         assert user_data["messages"][0]["is_history"] is False
 
     def test_batch_to_json_separate_users_both_tracked(self):
-        """Test _batch_to_json_with_images correctly tracks separate users."""
-        processor = ModerationProcessor()
-        
+        """Test batch.to_multimodal_payload correctly tracks separate users."""
         timestamp = datetime.now(timezone.utc).isoformat()
         
         msg1 = ModerationMessage(
@@ -506,7 +490,7 @@ class TestModerationProcessor:
             history_users=[user2]
         )
         
-        payload, _, _ = processor._batch_to_json_with_images(batch)
+        payload, _, _ = batch.to_multimodal_payload()
         
         # Should have 2 distinct users
         assert payload["unique_user_count"] == 2
