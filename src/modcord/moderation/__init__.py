@@ -1,5 +1,4 @@
 """
-"""
 Moderation data structures and processing for Modcord.
 
 This package coordinates the entire moderation pipeline:
@@ -21,5 +20,4 @@ This package coordinates the entire moderation pipeline:
 - **moderation_helper.py**: High-level batch processing orchestrator. Applies
   server rules and channel guidelines per-guild, executes moderation actions,
   handles permission checks and error recovery.
-"""
 """
