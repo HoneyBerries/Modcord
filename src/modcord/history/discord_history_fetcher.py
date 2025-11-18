@@ -25,13 +25,17 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 
 class DiscordHistoryFetcher:
     """
-    Fetches and converts Discord message history for moderation processing.
+    Fetches and converts Discord message history for moderation context.
     
     This class provides utilities to:
     - Fetch recent message history from Discord channels
     - Convert Discord messages to ModerationMessage format
     - Extract embed content and images from messages
     - Filter bot messages and duplicates
+    - Respect configured history limits and lookback windows
+    
+    Args:
+        bot_instance (discord.Bot): The Discord bot instance for API access.
     """
 
     def __init__(self, bot_instance: discord.Bot) -> None:
@@ -53,8 +57,24 @@ class DiscordHistoryFetcher:
     history_limit: int | None = None,
     ) -> List[ModerationMessage]:
         """
-        Fetch recent message history from a Discord channel without guessing how many to fetch.
-        Uses adaptive paging and stops exactly when enough usable messages are found.
+        Fetch recent message history from a Discord channel for moderation context.
+        
+        Uses adaptive paging to efficiently fetch exactly the required number of
+        usable messages. Automatically filters out bot messages and excludes messages
+        already in the current batch.
+        
+        Args:
+            channel_id (int): The Discord channel ID to fetch history from.
+            exclude_message_ids (Set[str]): Set of message IDs to skip (current batch messages).
+            history_limit (int | None): Maximum number of historical messages to fetch.
+                If None, uses the value from ai_settings.history_context_messages.
+        
+        Returns:
+            List[ModerationMessage]: List of converted historical messages in chronological
+                order (oldest first), up to the specified limit.
+        
+        Note:
+            Only fetches from text channels and threads. Bot messages are automatically excluded.
         """
 
         channel = self._bot.get_channel(channel_id)
@@ -115,13 +135,17 @@ class DiscordHistoryFetcher:
 
     def convert_discord_message(self, message: discord.Message) -> ModerationMessage | None:
         """
-        Convert a Discord message to ModerationMessage format.
-
+        Convert a Discord message to ModerationMessage format for processing.
+        
+        Extracts text content, embed content, and image attachments from the Discord
+        message and packages them into the normalized ModerationMessage format.
+        
         Args:
             message (discord.Message): Discord message object to convert.
-
+        
         Returns:
-            ModerationMessage | None: Converted message, or None if message has no content/images.
+            ModerationMessage | None: Converted message with all relevant data, or None
+                if the message has no content and no images.
         """
         content = (message.clean_content or "").strip()
         embed_content = self._extract_embed_content(message)
@@ -154,13 +178,16 @@ class DiscordHistoryFetcher:
     @staticmethod
     def _extract_embed_content(message: discord.Message) -> str:
         """
-        Extract text content from message embeds.
-
+        Extract all text content from message embeds.
+        
+        Extracts and formats text from embed titles, descriptions, fields,
+        footers, and author names into a single concatenated string.
+        
         Args:
             message (discord.Message): Discord message with potential embeds.
-
+        
         Returns:
-            str: Concatenated embed content as formatted text.
+            str: Concatenated embed content as formatted text, or empty string if no embeds.
         """
         if not message.embeds:
             return ""
@@ -184,13 +211,17 @@ class DiscordHistoryFetcher:
 
     def _build_moderation_images(self, message: discord.Message) -> List[ModerationImage]:
         """
-        Extract image attachments from a Discord message.
-
+        Extract image attachments from a Discord message and create ModerationImage objects.
+        
+        Identifies image attachments by content type, dimensions, or file extension
+        and creates ModerationImage objects with hash IDs. PIL images are not loaded
+        at this stage.
+        
         Args:
-            message (discord.Message): Discord message with potential attachments.
-
+            message (discord.Message): Discord message with potential image attachments.
+        
         Returns:
-            List[ModerationImage]: List of moderation image objects.
+            List[ModerationImage]: List of ModerationImage objects (without loaded PIL images).
         """
         images: List[ModerationImage] = []
         for attachment in message.attachments:
@@ -208,12 +239,17 @@ class DiscordHistoryFetcher:
     def _is_image_attachment(attachment: discord.Attachment) -> bool:
         """
         Determine if a Discord attachment is an image.
-
+        
+        Checks multiple indicators to identify image attachments:
+        1. Content type starts with "image/"
+        2. Attachment has width and height properties
+        3. Filename ends with common image extensions
+        
         Args:
-            attachment (discord.Attachment): Attachment to check.
-
+            attachment (discord.Attachment): The attachment to check.
+        
         Returns:
-            bool: True if attachment is an image, False otherwise.
+            bool: True if the attachment is identified as an image, False otherwise.
         """
         content_type = (attachment.content_type or "").lower()
         if content_type.startswith("image/"):

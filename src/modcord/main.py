@@ -12,11 +12,21 @@ import sys
 from pathlib import Path
 
 def resolve_base_dir() -> Path:
-    """Determine the base directory of the project. Designed for compiled/bundled execution.
-    Resolution order:
-    1. MODCORD_HOME environment variable, if set.
-    2. If running in a frozen/compiled context (e.g., PyInstaller, Nuitka), use the executable's directory.
-    3. Otherwise, assume running from source and use the grandparent of this file's directory.
+    """
+    Determine the base directory of the Modcord project.
+    
+    This function resolves the project root using multiple strategies to support
+    both development and compiled/deployed environments:
+    
+    1. MODCORD_HOME environment variable, if set
+    2. Executable's directory if running as compiled/frozen binary (PyInstaller, Nuitka)
+    3. Grandparent of this file's directory if running from source
+    
+    Returns:
+        Path: Resolved absolute path to the project base directory.
+    
+    Note:
+        The base directory is used as the working directory for the application.
     """
     if env_home := os.getenv("MODCORD_HOME"):
         return Path(env_home).resolve()
@@ -48,17 +58,17 @@ logger = get_logger("main")
 
 
 def load_environment() -> str:
-    """Load environment variables and return the Discord bot token.
-
-    Returns
-    -------
-    str
-        Discord bot token extracted from the loaded environment.
-
-    Raises
-    ------
-    SystemExit
-        If the required ``DISCORD_BOT_TOKEN`` variable is missing.
+    """
+    Load environment variables from .env file and return the Discord bot token.
+    
+    Searches for a .env file in the base directory and loads all variables.
+    Validates that the required DISCORD_BOT_TOKEN is present.
+    
+    Returns:
+        str: Discord bot token extracted from the environment.
+    
+    Raises:
+        SystemExit: If DISCORD_BOT_TOKEN is not set in the environment.
     """
     load_dotenv(dotenv_path=BASE_DIR / ".env")
     token = os.getenv("DISCORD_BOT_TOKEN")
@@ -69,12 +79,18 @@ def load_environment() -> str:
 
 
 def build_intents() -> discord.Intents:
-    """Construct the Discord intents required for Modcord runtime features.
-
-    Returns
-    -------
-    discord.Intents
-        Intents enabling guild, member, message, and reaction events.
+    """
+    Construct the Discord intents required for Modcord to function.
+    
+    Enables the following intents:
+    - message_content: Read message text for moderation
+    - guilds: Access guild information
+    - messages: Receive message events
+    - reactions: Handle reaction events
+    - members: Access member information and events
+    
+    Returns:
+        discord.Intents: Configured intents object for bot initialization.
     """
     intents = discord.Intents.default()
     intents.message_content = True
@@ -86,12 +102,18 @@ def build_intents() -> discord.Intents:
 
 
 def load_cogs(discord_bot_instance: discord.Bot) -> None:
-    """Register all operational cogs with the provided Discord bot instance.
-
-    Parameters
-    ----------
-    discord_bot_instance:
-        Py-Cord bot object that should receive the Modcord cogs.
+    """
+    Register all Modcord cogs with the Discord bot instance.
+    
+    Loads and initializes the following cogs:
+    - debug_cmds: Debug and testing commands
+    - events_listener: Bot lifecycle and event handling
+    - message_listener: Message creation, editing, and deletion events
+    - guild_settings_cmds: Guild-specific settings management
+    - moderation_cmds: Manual moderation commands (warn, timeout, kick, ban)
+    
+    Args:
+        discord_bot_instance (discord.Bot): The bot instance to attach cogs to.
     """
     from modcord.bot import debug_cmds, guild_settings_cmds, moderation_cmds, events_listener, message_listener
 
@@ -105,19 +127,27 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
 
 
 def create_bot() -> discord.Bot:
-    """Instantiate the Discord bot and register all cogs."""
+    """
+    Create and initialize the Discord bot instance with all cogs loaded.
+    
+    Returns:
+        discord.Bot: Fully configured bot instance ready to connect to Discord.
+    """
     bot = discord.Bot(intents=build_intents())
     load_cogs(bot)
     return bot
 
 
 async def initialize_ai_model() -> None:
-    """Initialize the AI moderation engine prior to connecting the Discord client.
-
-    Raises
-    ------
-    Exception
-        Propagated when the underlying initializer encounters an unexpected failure.
+    """
+    Initialize the AI moderation engine before the bot connects to Discord.
+    
+    Attempts to load and initialize the vLLM-based AI model for automated
+    moderation. If initialization fails, logs the error but allows the bot
+    to continue running without AI capabilities.
+    
+    Raises:
+        Exception: Re-raises any unexpected initialization failures.
     """
     try:
         logger.info("Initializing AI moderation engine before bot startup…")
@@ -130,10 +160,19 @@ async def initialize_ai_model() -> None:
 
 
 async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
-    """Run the Discord bot inside the console session and return an exit code.
-
-    This consolidates starting the bot, listening for console-driven control
-    (restart/stop), and ensuring a graceful shutdown of subsystems.
+    """
+    Run the Discord bot within the console session and return an exit code.
+    
+    Starts the bot, integrates with the interactive console for lifecycle control,
+    and handles graceful shutdown of all subsystems when the bot stops.
+    
+    Args:
+        bot (discord.Bot): The initialized bot instance to run.
+        token (str): Discord bot authentication token.
+        control (ConsoleControl): Console control for handling shutdown/restart requests.
+    
+    Returns:
+        int: Exit code (0 for success, 1 for error).
     """
     logger.info("Attempting to run Discord bot with console control…")
     control.set_bot(bot)
@@ -156,12 +195,22 @@ async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
 
 
 async def shutdown_runtime(bot: discord.Bot) -> None:
-    """Gracefully stop the Discord bot, AI engine, and guild settings manager.
-
-    Parameters
-    ----------
-    bot:
-        Optional bot instance to close before shutting down subsystems.
+    """
+    Gracefully shutdown all Modcord subsystems and clean up resources.
+    
+    Performs cleanup in the following order:
+    1. Close Discord bot connection
+    2. Close HTTP client session
+    3. Shutdown AI moderation engine
+    4. Shutdown guild settings manager
+    5. Shutdown message batch manager
+    
+    Args:
+        bot (discord.Bot): The bot instance to shut down.
+    
+    Note:
+        All exceptions during shutdown are caught and logged to ensure
+        cleanup continues even if individual subsystems fail.
     """
     await close_bot_instance(bot, log_close=True)
     await bot.http.close() # type: ignore
@@ -188,12 +237,19 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
 
 
 async def async_main() -> int:
-    """Bootstrap the bot, console, and AI engine, returning an exit code.
-
-    Returns
-    -------
-    int
-        Process exit code reflecting success or failure of initialization.
+    """
+    Main async entry point that bootstraps and runs Modcord.
+    
+    Coordinates the complete startup sequence:
+    1. Load environment variables and bot token
+    2. Initialize database and load guild settings
+    3. Create Discord bot instance and load cogs
+    4. Initialize AI moderation engine
+    5. Run bot with interactive console
+    6. Handle restart requests
+    
+    Returns:
+        int: Process exit code (0 for normal exit, 1 for error, 42 for restart).
     """
     token = load_environment()
 
@@ -236,12 +292,18 @@ async def async_main() -> int:
 
 
 def main() -> int:
-    """Entrypoint that orchestrates the async runtime and returns the process code.
-
-    Returns
-    -------
-    int
-        Exit code propagated to the operating system. Returns 42 to trigger a restart.
+    """
+    Main entry point that runs the async event loop and handles process lifecycle.
+    
+    Executes the async_main coroutine and handles special exit codes:
+    - Exit code 42 triggers a process restart using os.execv
+    - Other exit codes are returned normally
+    
+    Handles KeyboardInterrupt for graceful shutdown and SystemExit for
+    explicit exit requests.
+    
+    Returns:
+        int: Process exit code to return to the operating system.
     """
     logger.info("Starting Discord Moderation Bot…")
     try:

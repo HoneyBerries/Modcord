@@ -33,7 +33,18 @@ ACTION_UI_EMOJIS: dict[ActionType, str] = {
 
 
 def build_settings_embed(guild_id: int) -> discord.Embed:
-    """Create an embed summarizing the current guild settings."""
+    """
+    Create a Discord embed summarizing current guild moderation settings.
+    
+    Builds a formatted embed showing the AI moderation status and which automatic
+    moderation actions are enabled for the specified guild.
+    
+    Args:
+        guild_id (int): The Discord guild ID to fetch settings for.
+    
+    Returns:
+        discord.Embed: A formatted embed with current settings information.
+    """
     settings = guild_settings_manager.get_guild_settings(guild_id)
     ai_status = "Enabled ✅" if settings.ai_enabled else "Disabled ❌"
 
@@ -67,7 +78,24 @@ def build_settings_embed(guild_id: int) -> discord.Embed:
 
 
 class GuildSettingsView(discord.ui.View):
-    """Interactive view that exposes guild settings via buttons."""
+    """
+    Interactive Discord UI view for managing guild-specific moderation settings.
+    
+    Provides button-based controls for toggling AI moderation and individual
+    automatic action types (warn, delete, timeout, kick, ban). Only users with
+    the Manage Server permission can interact with the controls.
+    
+    Attributes:
+        guild_id (int): The Discord guild ID this view manages settings for.
+        invoker_id (int | None): The user ID who invoked the settings panel.
+        timeout_seconds (int): How long the view remains active before timing out.
+    
+    Methods:
+        refresh_items: Rebuild button set based on current settings.
+        can_manage: Check if a member has permission to change settings.
+        refresh_message: Update the settings embed and buttons.
+        on_timeout: Disable all buttons when the view times out.
+    """
 
     def __init__(self, guild_id: int, invoker_id: int | None, *, timeout_seconds: int = 300):
         super().__init__(timeout=timeout_seconds)
@@ -85,7 +113,12 @@ class GuildSettingsView(discord.ui.View):
         self._message = value
 
     def refresh_items(self) -> None:
-        """Rebuild button set based on current settings."""
+        """
+        Rebuild the button set based on current guild settings.
+        
+        Clears all existing items and recreates buttons with current state,
+        including the AI toggle button, individual action buttons, and close button.
+        """
 
         self.clear_items()
 
@@ -102,7 +135,17 @@ class GuildSettingsView(discord.ui.View):
         self.add_item(ClosePanelButton())
 
     def can_manage(self, member: discord.abc.Snowflake | None) -> bool:
-        """Check whether the interacting user can manage guild settings."""
+        """
+        Check if the interacting user has permission to manage guild settings.
+        
+        Requires the Manage Server (manage_guild) permission.
+        
+        Args:
+            member (discord.abc.Snowflake | None): The member to check permissions for.
+        
+        Returns:
+            bool: True if the member has Manage Server permission, False otherwise.
+        """
 
         if member is None:
             return False
@@ -111,7 +154,16 @@ class GuildSettingsView(discord.ui.View):
         return bool(getattr(permissions, "manage_guild", False))
 
     async def refresh_message(self, interaction: discord.Interaction, *, flash: str | None = None) -> None:
-        """Refresh the embed + buttons on the active message."""
+        """
+        Refresh the settings embed and button states on the active message.
+        
+        Updates both the embed content and the interactive buttons to reflect
+        the current settings state. Optionally displays a temporary flash message.
+        
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the refresh.
+            flash (str | None): Optional temporary message to display above the embed.
+        """
 
         self.refresh_items()
         embed = build_settings_embed(self.guild_id)
@@ -150,7 +202,16 @@ class GuildSettingsView(discord.ui.View):
 
 
 class ToggleAIButton(discord.ui.Button):
-    """Button to toggle AI moderation enablement."""
+    """
+    Button control for toggling AI moderation on/off for a guild.
+    
+    Changes color and label based on current state:
+    - Green "ON" when AI moderation is enabled
+    - Gray "OFF" when AI moderation is disabled
+    
+    Args:
+        enabled (bool): Current AI moderation state.
+    """
 
     def __init__(self, enabled: bool):
         label = "AI Moderation: ON" if enabled else "AI Moderation: OFF"
@@ -178,7 +239,19 @@ class ToggleAIButton(discord.ui.Button):
 
 
 class ToggleActionButton(discord.ui.Button):
-    """Button that toggles a specific moderation action type."""
+    """
+    Button control for toggling a specific automatic moderation action type.
+    
+    Each button controls whether the AI can automatically apply a specific
+    action type (warn, delete, timeout, kick, or ban) for the guild.
+    
+    Args:
+        action (ActionType): The moderation action this button controls.
+        label (str): Display label for the action.
+        emoji (str): Emoji to display on the button.
+        enabled (bool): Current enabled state for this action.
+        row (int): Button row position (0-4).
+    """
 
     def __init__(self, action: ActionType, label: str, emoji: str, enabled: bool, *, row: int):
         self.action = action
@@ -210,7 +283,12 @@ class ToggleActionButton(discord.ui.Button):
 
 
 class ClosePanelButton(discord.ui.Button):
-    """Button to close the settings panel and disable controls."""
+    """
+    Button to close the settings panel and disable all controls.
+    
+    When clicked, disables all buttons in the view and attempts to delete
+    the settings message to clean up the interface.
+    """
 
     def __init__(self):
         super().__init__(label="Close", style=discord.ButtonStyle.secondary, row=4, emoji="❌")

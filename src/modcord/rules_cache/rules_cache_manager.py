@@ -30,7 +30,24 @@ RULE_CHANNEL_PATTERN = re.compile(
 
 
 class RulesCacheManager:
-    """Manager for auto-discovering and caching server rules and channel guidelines."""
+    """
+    Manager for auto-discovering, caching, and refreshing server rules and channel guidelines.
+    
+    This manager handles two types of moderation context:
+    1. Server Rules: Discovered from channels matching rule-related name patterns
+    2. Channel Guidelines: Extracted from individual channel topics
+    
+    Both types are automatically refreshed on a configurable interval and cached
+    in the guild_settings_manager for quick access during moderation.
+    
+    Methods:
+        collect_server_rules: Discover and collect rules from guild channels.
+        collect_channel_guidelines: Extract guidelines from channel topics.
+        refresh_guild_rules: Fetch and persist latest server rules.
+        refresh_channel_guidelines: Fetch and persist channel-specific guidelines.
+        refresh_all_guilds: Refresh rules and guidelines for all guilds.
+        run_periodic_refresh: Continuously refresh on a fixed interval.
+    """
 
     def __init__(self):
         """Initialize the rules cache manager."""
@@ -40,7 +57,18 @@ class RulesCacheManager:
 
     @staticmethod
     def _extract_embed_text(embed: discord.Embed) -> List[str]:
-        """Extract text from embed description and fields."""
+        """
+        Extract all text content from a Discord embed.
+        
+        Extracts text from embed description and all fields, combining field
+        names and values into formatted strings.
+        
+        Args:
+            embed (discord.Embed): The embed to extract text from.
+        
+        Returns:
+            List[str]: List of text strings extracted from the embed.
+        """
         texts = []
         if embed.description and isinstance(embed.description, str):
             texts.append(embed.description.strip())
@@ -53,17 +81,36 @@ class RulesCacheManager:
 
     @staticmethod
     def _is_rules_channel(channel: discord.abc.GuildChannel) -> bool:
-        """Check if channel name matches rules pattern."""
+        """
+        Check if a channel name matches the rules channel pattern.
+        
+        Uses a regex pattern to identify channels likely to contain server rules
+        based on common naming conventions (rules, guidelines, regulations, etc.).
+        
+        Args:
+            channel (discord.abc.GuildChannel): The channel to check.
+        
+        Returns:
+            bool: True if the channel name matches the rules pattern, False otherwise.
+        """
         name = channel.name
         if not name:
             return False
         return RULE_CHANNEL_PATTERN.search(name) is not None
 
     async def _collect_channel_messages(self, channel: discord.TextChannel) -> List[str]:
-        """Collect message and embed text from a single channel.
+        """
+        Collect all message text and embed content from a single channel.
         
-        Logs and skips errors from individual channels so one issue doesn't
-        abort the entire collection.
+        Fetches up to 100 messages from the channel in chronological order and
+        extracts both direct message content and text from embeds. Individual
+        channel errors are logged but don't abort the collection process.
+        
+        Args:
+            channel (discord.TextChannel): The channel to collect messages from.
+        
+        Returns:
+            List[str]: List of message text strings (both content and embeds).
         """
         messages = []
         try:
@@ -81,10 +128,18 @@ class RulesCacheManager:
         return messages
 
     async def collect_server_rules(self, guild: discord.Guild) -> str:
-        """Collect rule text from channels in guild matching RULE_CHANNEL_PATTERN.
-
-        Returns concatenated rules text, or empty string if none found.
-        Errors in individual channels are logged and skipped.
+        """
+        Collect server rule text from all channels matching the rule pattern in a guild.
+        
+        Searches all text channels in the guild for rule-related names and collects
+        their message content. Errors in individual channels are logged and skipped.
+        
+        Args:
+            guild (discord.Guild): The guild to collect rules from.
+        
+        Returns:
+            str: Concatenated rules text from all matching channels, or empty string
+                if no rules are found.
         """
         all_messages = []
         for channel in guild.text_channels:
@@ -99,9 +154,18 @@ class RulesCacheManager:
         return "\n\n".join(all_messages)
 
     async def collect_channel_guidelines(self, channel: discord.TextChannel) -> str:
-        """Collect channel-specific guidelines from the channel topic.
-
-        Returns the channel topic text, or empty string if none found.
+        """
+        Collect channel-specific guidelines from the channel topic.
+        
+        Extracts the channel's topic text as channel-specific moderation guidelines.
+        This allows each channel to have unique moderation rules separate from
+        server-wide rules.
+        
+        Args:
+            channel (discord.TextChannel): The channel to extract guidelines from.
+        
+        Returns:
+            str: The channel topic text, or empty string if no topic is set.
         """
         # Simply use the channel topic as the guidelines
         if channel.topic and isinstance(channel.topic, str):
@@ -119,10 +183,21 @@ class RulesCacheManager:
         return ""
 
     async def refresh_guild_rules(self, guild: discord.Guild) -> str:
-        """Fetch and persist latest server rules for guild.
-
-        Returns collected rules text. If collection fails, cached value
-        is left untouched and exception is propagated.
+        """
+        Fetch and persist the latest server rules for a guild.
+        
+        Collects rules from all rule-related channels and stores them in the
+        guild settings manager. If collection fails, the cached value is left
+        untouched and the exception is propagated.
+        
+        Args:
+            guild (discord.Guild): The guild to refresh rules for.
+        
+        Returns:
+            str: The collected rules text.
+        
+        Raises:
+            Exception: If rules collection fails.
         """
         try:
             rules_text = await self.collect_server_rules(guild)
@@ -135,10 +210,21 @@ class RulesCacheManager:
         return rules_text
 
     async def refresh_channel_guidelines(self, channel: discord.TextChannel) -> str:
-        """Fetch and persist latest guidelines for a specific channel.
-
-        Returns collected guidelines text. If collection fails, cached value
-        is left untouched and exception is propagated.
+        """
+        Fetch and persist the latest guidelines for a specific channel.
+        
+        Extracts guidelines from the channel topic and stores them in the
+        guild settings manager. If collection fails, the cached value is
+        left untouched and the exception is propagated.
+        
+        Args:
+            channel (discord.TextChannel): The channel to refresh guidelines for.
+        
+        Returns:
+            str: The collected guidelines text.
+        
+        Raises:
+            Exception: If guidelines collection fails.
         """
         guild = channel.guild
         if not guild:
@@ -166,9 +252,15 @@ class RulesCacheManager:
         return guidelines_text
 
     async def refresh_guild_rules_and_guidelines(self, guild: discord.Guild) -> None:
-        """Refresh both server rules and all channel guidelines for a guild.
-
-        This is the main entry point for refreshing all rules/guidelines for a guild.
+        """
+        Refresh both server rules and all channel guidelines for a guild.
+        
+        This is the main entry point for refreshing all moderation context for a guild.
+        Attempts to refresh server rules first, then iterates through all text channels
+        to refresh their individual guidelines. Errors are logged but don't stop the process.
+        
+        Args:
+            guild (discord.Guild): The guild to refresh rules and guidelines for.
         """
         logger.debug("Refreshing rules and guidelines for guild %s", guild.name)
 
@@ -195,7 +287,15 @@ class RulesCacheManager:
                 )
 
     async def refresh_all_guilds(self, bot: discord.Bot) -> None:
-        """Refresh cached rules and guidelines for all guilds the bot is in."""
+        """
+        Refresh cached rules and guidelines for all guilds the bot is connected to.
+        
+        Iterates through all guilds and refreshes both server rules and channel
+        guidelines. Individual guild errors are logged but don't stop the process.
+        
+        Args:
+            bot (discord.Bot): The Discord bot instance providing guild access.
+        """
         logger.debug("Refreshing rules/guidelines cache for %d guilds", len(bot.guilds))
         for guild in bot.guilds:
             try:
@@ -211,19 +311,18 @@ class RulesCacheManager:
         *,
         interval_seconds: float = 600.0,
     ) -> None:
-        """Continuously refresh rules/guidelines cache on a fixed interval.
-
-        Parameters
-        ----------
-        bot:
-            Discord client instance whose guilds require periodic refresh.
-        interval_seconds:
-            Delay between successive refresh runs, in seconds.
-
-        Raises
-        ------
-        asyncio.CancelledError
-            Propagated when the enclosing task is cancelled.
+        """
+        Continuously refresh rules and guidelines cache on a fixed interval.
+        
+        Runs an infinite loop that refreshes all guilds' rules and guidelines,
+        then sleeps for the specified interval before refreshing again.
+        
+        Args:
+            bot (discord.Bot): Discord client instance whose guilds require periodic refresh.
+            interval_seconds (float): Delay between successive refresh runs. Defaults to 600.0 (10 minutes).
+        
+        Raises:
+            asyncio.CancelledError: Propagated when the task is cancelled for shutdown.
         """
         self._bot = bot
         logger.info(
@@ -245,7 +344,15 @@ class RulesCacheManager:
             raise
 
     async def refresh_if_rules_channel(self, channel: discord.abc.GuildChannel) -> None:
-        """Refresh guild rules if channel matches the rules channel pattern."""
+        """
+        Refresh guild rules if the specified channel matches the rules channel pattern.
+        
+        Used to automatically refresh rules when messages are posted in rules channels,
+        ensuring the cache stays up-to-date with manual rule updates.
+        
+        Args:
+            channel (discord.abc.GuildChannel): The channel to check and potentially trigger refresh for.
+        """
         if not isinstance(channel, discord.TextChannel) or not self._is_rules_channel(channel):
             return
 
@@ -260,14 +367,16 @@ class RulesCacheManager:
             logger.error("Failed to refresh rules from channel %s: %s", channel.name, exc)
 
     async def start_periodic_task(self, bot: discord.Bot, interval_seconds: float | None = None) -> None:
-        """Start the periodic rules/guidelines refresh background task.
-
-        Parameters
-        ----------
-        bot:
-            Discord client instance
-        interval_seconds:
-            Refresh interval in seconds. If None, reads from app_config.
+        """
+        Start the periodic rules and guidelines refresh background task.
+        
+        Creates and runs the periodic refresh task if one isn't already running.
+        If interval_seconds is not provided, reads the interval from app_config.
+        
+        Args:
+            bot (discord.Bot): Discord client instance to use for refreshing.
+            interval_seconds (float | None): Refresh interval in seconds. If None,
+                reads from app_config rules_cache_refresh.interval_seconds.
         """
         if interval_seconds is None:
             interval_seconds = float(app_config.get("rules_cache_refresh", {}).get("interval_seconds", 600.0))
@@ -282,7 +391,12 @@ class RulesCacheManager:
         logger.info("Started periodic rules/guidelines refresh task")
 
     async def stop_periodic_task(self) -> None:
-        """Stop the periodic refresh task if running."""
+        """
+        Stop the periodic refresh task if it's currently running.
+        
+        Cancels the background refresh task and waits for it to complete cleanup.
+        Safe to call even if no task is running.
+        """
         if self._refresh_task and not self._refresh_task.done():
             self._refresh_task.cancel()
             try:

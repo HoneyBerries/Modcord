@@ -29,7 +29,20 @@ _LOG_FILEPATH: Path | None = None
 
 # -------------------- Formatters --------------------
 class ColorFormatter(logging.Formatter):
-    """Formatter that applies ANSI color codes to log records during console output."""
+    """
+    Custom log formatter that applies ANSI color codes based on log level.
+    
+    This formatter wraps log messages with ANSI color escape sequences to make
+    console output more readable. Colors are assigned based on the severity level:
+    - DEBUG: Cyan
+    - INFO: Green
+    - WARNING: Yellow
+    - ERROR: Red
+    - CRITICAL: Dark Red
+    
+    Attributes:
+        Inherits all attributes from logging.Formatter.
+    """
 
     def format(self, record: logging.LogRecord) -> str:
         color = LOG_COLORS.get(record.levelname, "")
@@ -38,7 +51,16 @@ class ColorFormatter(logging.Formatter):
 
 
 class PromptToolkitHandler(logging.Handler):
-    """Custom logging handler that uses prompt_toolkit's print to avoid interfering with prompts."""
+    """
+    Custom logging handler that integrates with prompt_toolkit.
+    
+    This handler uses prompt_toolkit's print_formatted_text instead of standard
+    print to ensure log messages don't interfere with active prompts or user
+    input in the interactive console.
+    
+    Args:
+        formatter (logging.Formatter | None): Optional formatter to apply to log records.
+    """
 
     def __init__(self, formatter: logging.Formatter | None = None):
         super().__init__()
@@ -57,7 +79,15 @@ plain_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
 
 def should_use_color() -> bool:
-    """Return ``True`` when the current environment supports colorized output."""
+    """
+    Determine if the current environment supports colorized terminal output.
+    
+    Checks if stderr is attached to a terminal (TTY) to determine if ANSI
+    color codes should be used in console output.
+    
+    Returns:
+        bool: True if the environment supports colored output, False otherwise.
+    """
     try:
         return sys.stderr.isatty()
     except Exception:
@@ -70,18 +100,21 @@ color_formatter = ColorFormatter(LOG_FORMAT, datefmt=DATE_FORMAT) if should_use_
 # -------------------- Logger Setup --------------------
 
 def _get_log_filepath() -> Path:
-    """Get or create the log file path. Ensures all loggers use the same file.
+    """
+    Get or create the log file path for the current session.
     
-    This function implements a session-based logging strategy:
+    This function implements a session-based logging strategy that ensures all loggers
+    write to the same file:
     - On first call, it looks for the most recent log file created today
     - If a recent log exists (within 60 seconds), it reuses it (handles restarts)
     - Otherwise, creates a new log file with the current timestamp
     - All subsequent calls return the same path, ensuring one log file per session
     
-    Returns
-    -------
-    Path
-        Path to the log file that should be used for all loggers.
+    Returns:
+        Path: Path to the log file that should be used for all loggers in this session.
+    
+    Note:
+        The global _LOG_FILEPATH variable is used to cache the path after first call.
     """
     global _LOG_FILEPATH
     
@@ -170,16 +203,20 @@ def get_logger(logger_name: str) -> logging.Logger:
 
 # -------------------- Exception Handling --------------------
 def handle_exception(exception_type, exception_instance, exception_traceback) -> None:
-    """Log uncaught exceptions using the centralized logging configuration.
-
-    Parameters
-    ----------
-    exception_type:
-        Exception class that was raised.
-    exception_instance:
-        Exception instance produced by the runtime.
-    exception_traceback:
-        Traceback object associated with the exception.
+    """
+    Global exception handler that logs uncaught exceptions.
+    
+    This function is set as sys.excepthook to catch and log all unhandled exceptions.
+    KeyboardInterrupt is handled specially to allow graceful shutdown.
+    
+    Args:
+        exception_type: The exception class that was raised.
+        exception_instance: The actual exception instance with details.
+        exception_traceback: Traceback object containing the call stack.
+    
+    Note:
+        KeyboardInterrupt exceptions are passed to the default handler to allow
+        normal program termination.
     """
     if issubclass(exception_type, KeyboardInterrupt):
         sys.__excepthook__(exception_type, exception_instance, exception_traceback)

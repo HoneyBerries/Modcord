@@ -16,9 +16,9 @@
 
 rules_cache_refresh:
   # Interval (seconds) to refresh server rules and channel guidelines from Discord.
-  # Recommended: 600 (10 minutes). Lower values increase API calls and latency.
-  # Higher values reduce API load but may miss rule updates.
-  interval_seconds: 600
+  # Recommended: 3600 (60 minutes). Lower values increase API calls and latency.
+  # Higher values reduce API load but may miss fast rule updates.
+  interval_seconds: 3600
 
 # ========================================
 # 2. AI MODEL & INFERENCE SETTINGS
@@ -62,25 +62,24 @@ ai_settings:
   # These control model behavior, creativity, and output quality.
   sampling_parameters:
     # Data type for model computation.
-    # Options: "auto" (default), "float32", "float16" (half), "bfloat16" (efficient)
-    # "bfloat16" is recommended for modern GPUs (A100, H100, RTX 40-series).
+    # Options: "auto" (default), "float32", "float16" (half), "bfloat16" (better than float16).
     dtype: "bfloat16"
 
     # Maximum number of tokens to generate in a single inference.
-    # Higher = more verbose output but slower. Moderation typically needs ~200-500 tokens.
-    max_new_tokens: 1024
+    # Higher = more verbose output but slower. Moderation typically needs ~256-512 tokens.
+    max_new_tokens: 512
 
     # Maximum total model context length (input + output tokens).
     # Ensure this is <= model's actual context window.
     # Qwen3-VL-4B: 4096-8192 tokens recommended.
-    max_model_length: 5120
+    max_model_length: 4096
 
-    # Temperature (0.0-2.0): Controls randomness/creativity.
-    # 0.0 = deterministic (same output every time)
-    # 1.0 = balanced (default)
-    # >1.0 = more creative/random
-    # For moderation: 0.7 (slightly deterministic) is recommended.
-    temperature: 0.7
+    # Temperature (0.0-1.5): Controls randomness/creativity.
+    # 0.0 = deterministic (guranteed same output every time)
+    # 0.3 = balanced (default)
+    # 0.7 = more creative/random
+    # For moderation: 0.3 (somewhat deterministic) is recommended.
+    temperature: 0.3
 
     # Top-P (nucleus sampling): Keep only top P% probability mass.
     # 0.9 = keep top 90% of probable tokens, drop bottom 10%.
@@ -94,16 +93,16 @@ ai_settings:
 
     # Repetition penalty: Penalizes repeated tokens.
     # 1.0 = no penalty, >1.0 = penalize repetition.
-    # 1.2 is good for avoiding repetitive/spam-like output.
-    repetition_penalty: 1.2
+    # 1.1 is good for avoiding repetitive/spam-like output.
+    repetition_penalty: 1.1
 
     # Presence penalty: Penalizes tokens that have already appeared.
     # 0.0 = disabled, >0.0 = penalize already-used tokens.
-    presence_penalty: 0.1
+    presence_penalty: 0.0
 
     # Frequency penalty: Penalizes tokens proportional to their frequency.
     # 0.0 = disabled, >0.0 = penalize high-frequency tokens.
-    frequency_penalty: 0.1
+    frequency_penalty: 0.0
 
   # System prompt for the AI moderation model.
   # This guides the model to make moderation decisions in JSON format.
