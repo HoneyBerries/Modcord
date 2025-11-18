@@ -38,42 +38,61 @@ fi
 
 echo "Using uv to manage dependencies..."
 
-# Create virtual environment if it doesn't exist
-if [ ! -d ".venv" ]; then
-    echo "Creating virtual environment..."
-    uv venv .venv
-    
+# Check if virtual environment already exists and is set up
+if [ -d ".venv" ] && [ -f ".venv/bin/activate" ] && [ -f ".venv/.setup_complete" ]; then
+    echo "Virtual environment already set up. Skipping installation..."
+else
+    # Create virtual environment if it doesn't exist
+    if [ ! -d ".venv" ]; then
+        echo "Creating virtual environment..."
+        uv venv .venv
+        
+        if [ $? -ne 0 ]; then
+            echo "Failed to create virtual environment"
+            exit 1
+        fi
+    fi
+
+    # Activate the virtual environment
+    source .venv/bin/activate
+
+    # Install dependencies using uv
+    echo "Installing dependencies..."
+    uv pip install -r requirements.txt
+
     if [ $? -ne 0 ]; then
-        echo "Failed to create virtual environment"
+        echo "Failed to install dependencies with uv"
         exit 1
     fi
+
+    # Apply vLLM WSL detection patch
+    echo "Applying vLLM workaround patch..."
+    PYTHON_VERSION=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    VLLM_INTERFACE_PATH=".venv/lib/python${PYTHON_VERSION}/site-packages/vllm/platforms/interface.py"
+
+    if [ -f "$VLLM_INTERFACE_PATH" ]; then
+        # Check if patch is already applied
+        if grep -q 'and not "wsl2" in uname_str' "$VLLM_INTERFACE_PATH"; then
+            echo "vLLM patch already applied."
+        else
+            patch "$VLLM_INTERFACE_PATH" < hacks/interface.patch
+            if [ $? -eq 0 ]; then
+                echo "vLLM patch applied successfully."
+            else
+                echo "Warning: vLLM patch application failed."
+            fi
+        fi
+    else
+        echo "Warning: vLLM interface file not found at $VLLM_INTERFACE_PATH"
+    fi
+
+    # Mark setup as complete
+    touch .venv/.setup_complete
+    echo "Setup complete!"
 fi
 
 # Activate the virtual environment
 source .venv/bin/activate
-
-# Install dependencies using uv
-uv pip install -r requirements.txt
-
-if [ $? -ne 0 ]; then
-    echo "Failed to install dependencies with uv"
-    exit 1
-fi
-
-# Apply vLLM WSL detection patch
-echo "Applying vLLM workaround patch..."
-PYTHON_VERSION=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-VLLM_INTERFACE_PATH=".venv/lib/python${PYTHON_VERSION}/site-packages/vllm/platforms/interface.py"
-if [ -f "$VLLM_INTERFACE_PATH" ]; then
-    patch "$VLLM_INTERFACE_PATH" < hacks/interface.patch
-    if [ $? -eq 0 ]; then
-        echo "vLLM patch applied successfully."
-    else
-        echo "Warning: vLLM patch application failed or was already applied."
-    fi
-else
-    echo "Warning: vLLM interface file not found at $VLLM_INTERFACE_PATH"
-fi
 
 echo "Running bot..."
 python src/modcord/main.py
