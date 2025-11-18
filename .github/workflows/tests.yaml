@@ -15,50 +15,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python
         with:
-          python-version: "3.12"
+          python-version: "3.12.11"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv
         with:
           enable-cache: true
-
-      - name: Free up disk space and show usage
-        run: |
-          echo "Before cleanup"
-          df -h || true
-          # Remove common large preinstalled SDKs (safe on hosted runners)
-          sudo rm -rf /usr/share/dotnet || true
-          sudo rm -rf /opt/ghc || true
-          sudo rm -rf /usr/local/lib/android || true
-          # Purge pip cache and wheel caches
-          python -m pip cache purge || true
-          sudo rm -rf /home/runner/.cache/pip || true
-          echo "After cleanup"
-          df -h || true
 
       - name: Create virtualenv and install dependencies
         run: |
           uv venv .venv
-          source .venv/bin/activate
-          # Prefer a small test-only requirements file for CI if present
-          if [ -f tests/ci-requirements.txt ]; then
-            echo "Installing tests/ci-requirements.txt"
-            uv pip install -r tests/ci-requirements.txt
-          else
-            echo "Installing requirements.txt (fallback)"
-            uv pip install -r requirements.txt
-          fi
-          df -h || true
+          uv pip install -r requirements.txt
+        env:
+          UV_CACHE_DIR: /tmp/.uv-cache
 
       - name: Run tests
         run: |
           source .venv/bin/activate
-          uv run pytest -q
-
-      - name: Final disk usage
-        run: df -h || true
+          pytest -q
