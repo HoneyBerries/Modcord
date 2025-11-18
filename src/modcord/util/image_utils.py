@@ -27,13 +27,22 @@ def generate_image_hash_id(image_url: str) -> str:
 
 def download_image_to_pil(url: str, timeout: int = 2) -> Image.Image | None:
     """
-    Downloads an image from a given URL and returns it as a resized PIL Image in RGB mode.
+    Download an image from a URL and return it as a resized PIL Image in RGB mode.
+    
+    The image is automatically resized so that the longest side is 512 pixels while
+    maintaining aspect ratio. This helps reduce memory usage and processing time.
+    
+    Args:
         url (str): The URL of the image to download.
-        timeout (int, optional): Timeout for the HTTP request in seconds. Defaults to 2.
-        Image.Image | None: The downloaded image as a PIL Image object in RGB mode, resized so the longest side is 512 pixels.
-        Returns None if the download or conversion fails.
-    Raises:
-        None. All exceptions are caught and logged internally.
+        timeout (int): Timeout for the HTTP request in seconds. Defaults to 2.
+    
+    Returns:
+        Image.Image | None: The downloaded image as a PIL Image object in RGB mode,
+            resized so the longest side is 512 pixels. Returns None if the download
+            or conversion fails.
+    
+    Note:
+        All exceptions are caught and logged internally to prevent crashes.
     """
     
     try:

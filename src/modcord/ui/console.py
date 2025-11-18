@@ -24,7 +24,14 @@ BOX_WIDTH = 60
 
 def print_boxed_title(title: str, color: str = "") -> None:
     """
-    Print a centered, consistently aligned box with the given title and color.
+    Print a centered title inside a box drawn with Unicode box-drawing characters.
+    
+    The box has a fixed width defined by BOX_WIDTH and the title is centered
+    within it. The box is drawn using ╔═══╗ style characters.
+    
+    Args:
+        title (str): The text to display in the center of the box.
+        color (str): Optional ANSI color code to apply to the entire box.
     """
     inner_width = BOX_WIDTH - 2
     pad_left = (inner_width - len(title)) // 2
@@ -43,7 +50,19 @@ CommandHandler = Callable[["ConsoleControl", list[str]], Awaitable[None]]
 
 @dataclass
 class Command:
-    """Definition of a console command."""
+    """
+    Definition of a console command with handler and metadata.
+    
+    This dataclass encapsulates all information needed to register and execute
+    a console command, including its name, aliases, handler function, and help text.
+    
+    Attributes:
+        name (str): Primary name of the command.
+        handler (CommandHandler): Async function to execute when command is invoked.
+        aliases (list[str]): Alternative names that can trigger this command.
+        description (str): Human-readable description shown in help text.
+        usage (str): Optional usage string showing command syntax.
+    """
     name: str
     handler: CommandHandler
     aliases: list[str]
@@ -56,7 +75,16 @@ class Command:
 
 
 def console_print(message: str, style: str = "") -> None:
-    """Render text via prompt_toolkit without breaking the active prompt."""
+    """
+    Print text to the console using prompt_toolkit without breaking active prompts.
+    
+    This function uses prompt_toolkit's print_formatted_text to ensure console
+    output doesn't interfere with the user's current input line.
+    
+    Args:
+        message (str): The text to print to the console.
+        style (str): Optional ANSI style code to apply to the message.
+    """
     formatted: FormattedText | str
     if style:
         formatted = FormattedText([(style, message)])
@@ -66,7 +94,24 @@ def console_print(message: str, style: str = "") -> None:
 
 
 class ConsoleControl:
-    """Manage console-driven lifecycle controls for the running Discord bot."""
+    """
+    Manager for console-driven bot lifecycle controls.
+    
+    This class coordinates shutdown and restart requests from the interactive console,
+    maintaining state flags and providing access to the Discord bot instance.
+    
+    Attributes:
+        shutdown_event (asyncio.Event): Event that signals shutdown request.
+        restart_event (asyncio.Event): Event that signals restart request.
+    
+    Methods:
+        set_bot: Set the Discord bot instance reference.
+        request_shutdown: Signal that the bot should shut down.
+        request_restart: Signal that the bot should restart.
+        stop: Alias for request_shutdown.
+        is_shutdown_requested: Check if shutdown has been requested.
+        is_restart_requested: Check if restart has been requested.
+    """
 
     def __init__(self) -> None:
         self.shutdown_event = asyncio.Event()
@@ -97,7 +142,19 @@ class ConsoleControl:
 
 
 async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False) -> None:
-    """Close the Discord bot instance if it is active."""
+    """
+    Gracefully close the Discord bot connection if active.
+    
+    Sets the bot's status to offline before closing to indicate proper shutdown.
+    All exceptions during closure are caught and logged to prevent crashes during
+    shutdown.
+    
+    Args:
+        bot (discord.Bot | None): The Discord bot instance to close. If None or
+            already closed, this function does nothing.
+        log_close (bool): Whether to log a confirmation message after closing.
+            Defaults to False.
+    """
     if bot is None or bot.is_closed():
         return
 
@@ -112,7 +169,15 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
 
 
 async def _request_lifecycle_action(control: ConsoleControl, *, restart: bool) -> None:
-    """Trigger shutdown or restart from the console, closing the bot safely."""
+    """
+    Internal helper to trigger shutdown or restart from console commands.
+    
+    Sets the appropriate event flags and closes the bot connection gracefully.
+    
+    Args:
+        control (ConsoleControl): The control object managing lifecycle state.
+        restart (bool): If True, sets restart flag; otherwise only sets shutdown flag.
+    """
     if restart:
         control.request_restart()
     control.request_shutdown()
@@ -122,7 +187,16 @@ async def _request_lifecycle_action(control: ConsoleControl, *, restart: bool) -
 # ==================== Command Handlers ====================
 
 async def cmd_help(control: ConsoleControl, args: list[str]) -> None:
-    """Display available commands and their descriptions."""
+    """
+    Display available commands and their descriptions.
+    
+    Prints a formatted reference of all registered console commands including
+    their names, aliases, descriptions, and usage information.
+    
+    Args:
+        control (ConsoleControl): The console control instance.
+        args (list[str]): Command arguments (unused for this command).
+    """
     print_boxed_title("Console Commands Reference", "ansigreen")
     for cmd in COMMANDS:
         aliases_str = f" (aliases: {', '.join(cmd.aliases)})" if cmd.aliases else ""
@@ -134,7 +208,19 @@ async def cmd_help(control: ConsoleControl, args: list[str]) -> None:
 
 
 async def cmd_status(control: ConsoleControl, args: list[str]) -> None:
-    """Display bot and AI status information."""
+    """
+    Display comprehensive bot and AI engine status information.
+    
+    Shows the current state of:
+    - AI moderation engine (available/unavailable)
+    - Bot connection status
+    - Number of connected guilds
+    - Current latency
+    
+    Args:
+        control (ConsoleControl): The console control instance.
+        args (list[str]): Command arguments (unused for this command).
+    """
 
     print_boxed_title("Bot Status", "ansimagenta")
 
@@ -157,7 +243,15 @@ async def cmd_status(control: ConsoleControl, args: list[str]) -> None:
 
 
 async def cmd_guilds(control: ConsoleControl, args: list[str]) -> None:
-    """List all guilds the bot is connected to."""
+    """
+    List all guilds (servers) the bot is currently connected to.
+    
+    Displays each guild's name, ID, and member count in a formatted list.
+    
+    Args:
+        control (ConsoleControl): The console control instance.
+        args (list[str]): Command arguments (unused for this command).
+    """
     if not control.bot or not control.bot.guilds:
         console_print("No guilds found or bot not connected.", "ansiyellow")
         return
@@ -173,19 +267,47 @@ async def cmd_guilds(control: ConsoleControl, args: list[str]) -> None:
 
 
 async def cmd_clear(control: ConsoleControl, args: list[str]) -> None:
-    """Clear the console screen."""
+    """
+    Clear the console screen.
+    
+    Uses platform-appropriate commands ('cls' on Windows, 'clear' on Unix-like systems)
+    to clear the terminal screen.
+    
+    Args:
+        control (ConsoleControl): The console control instance.
+        args (list[str]): Command arguments (unused for this command).
+    """
     os.system('cls' if os.name == 'nt' else 'clear')
     console_print("Console cleared.", "ansibrightcyan")
 
 
 async def cmd_restart(control: ConsoleControl, args: list[str]) -> None:
-    """Request a full bot restart."""
+    """
+    Request a full bot restart.
+    
+    Triggers both restart and shutdown flags, causing the bot to shut down cleanly
+    and then restart with a fresh process. The main loop will detect the restart
+    flag and handle process replacement.
+    
+    Args:
+        control (ConsoleControl): The console control instance.
+        args (list[str]): Command arguments (unused for this command).
+    """
     console_print("Restart requested. Bot will shut down and restart...", "ansiyellow")
     await _request_lifecycle_action(control, restart=True)
 
 
 async def cmd_shutdown(control: ConsoleControl, args: list[str]) -> None:
-    """Request graceful bot shutdown."""
+    """
+    Request graceful bot shutdown.
+    
+    Triggers the shutdown flag, causing the bot to close all connections, clean up
+    resources, and exit the process gracefully.
+    
+    Args:
+        control (ConsoleControl): The console control instance.
+        args (list[str]): Command arguments (unused for this command).
+    """
     console_print("Shutdown requested.", "ansiyellow")
     await _request_lifecycle_action(control, restart=False)
 
@@ -235,7 +357,17 @@ COMMANDS: list[Command] = [
 # ==================== Command Dispatcher ====================
 
 async def handle_console_command(command: str, control: ConsoleControl) -> None:
-    """Interpret and execute a single console command line."""
+    """
+    Parse and execute a console command line.
+    
+    Splits the input into command name and arguments, finds the matching command
+    in the registry, and executes its handler. If no matching command is found,
+    displays an error message.
+    
+    Args:
+        command (str): The raw command line input from the user.
+        control (ConsoleControl): The console control instance to pass to handlers.
+    """
     if not command.strip():
         return
     
@@ -257,7 +389,15 @@ async def handle_console_command(command: str, control: ConsoleControl) -> None:
     console_print(f"Unknown command '{cmd_name}'. Type 'help' for available commands.", "ansibrightred")
 
 async def run_console(control: ConsoleControl) -> None:
-    """Run the interactive developer console until shutdown is requested."""
+    """
+    Run the interactive developer console until shutdown is requested.
+    
+    Creates a prompt_toolkit session and continuously reads user input, dispatching
+    commands until the shutdown event is triggered via command or keyboard interrupt.
+    
+    Args:
+        control (ConsoleControl): The console control instance managing lifecycle.
+    """
     session = PromptSession("> ")
     
     # Welcome message
@@ -281,7 +421,22 @@ async def run_console(control: ConsoleControl) -> None:
 
 @asynccontextmanager
 async def console_session(control: ConsoleControl) -> AsyncIterator[ConsoleControl]:
-    """Run the console alongside the bot, cleaning up automatically."""
+    """
+    Context manager that runs the console alongside the bot with automatic cleanup.
+    
+    Starts the console in a background task and ensures it's properly cancelled
+    and cleaned up when the context exits, regardless of how the exit occurs.
+    
+    Args:
+        control (ConsoleControl): The console control instance to run.
+    
+    Yields:
+        ConsoleControl: The control instance for use within the context.
+    
+    Example:
+        async with console_session(control):
+            await bot.start(token)
+    """
     console_task = asyncio.create_task(run_console(control))
     try:
         yield control

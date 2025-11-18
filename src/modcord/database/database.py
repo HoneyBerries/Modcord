@@ -16,10 +16,21 @@ DB_PATH = Path("data/app.db").resolve()
 
 async def init_database() -> bool:
     """
-    Initialize the SQLite database and create tables if they don't exist.
-
+    Initialize the SQLite database and create all required tables and indexes.
+    
+    Creates the following tables if they don't exist:
+    - guild_settings: Per-guild AI and moderation configuration
+    - channel_guidelines: Channel-specific moderation guidelines
+    - moderation_actions: Historical log of all moderation actions
+    - schema_version: Database schema version tracking
+    
+    Also creates indexes, triggers, and enables SQLite optimizations:
+    - Foreign key enforcement
+    - Write-Ahead Logging (WAL) for better concurrency
+    - Automatic timestamp updates on record changes
+    
     Returns:
-        bool: True if initialization succeeded, False otherwise.
+        bool: True if initialization succeeded, False if any errors occurred.
     """
     try:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -108,12 +119,21 @@ async def init_database() -> bool:
 
 def get_connection() -> aiosqlite.Connection:
     """
-    Get an async database connection.
+    Get an async database connection for use in a context manager.
     
-    This returns a connection object that can be used in an async context manager.
+    This function returns a connection object that should be used with
+    Python's async context manager syntax:
+    
+    Example:
+        async with get_connection() as db:
+            await db.execute("SELECT * FROM table")
+            await db.commit()
     
     Returns:
-        aiosqlite.Connection: Async database connection
+        aiosqlite.Connection: Async database connection object.
+    
+    Note:
+        The connection is not opened until used in an async context manager.
     """
     # Return connection object that will be used with async context manager
     return aiosqlite.connect(DB_PATH)
@@ -127,14 +147,23 @@ async def log_moderation_action(
     metadata: dict | None = None
 ) -> None:
     """
-    Log a moderation action to the database.
+    Log a moderation action to the database for audit trail and history context.
+    
+    Creates a permanent record of moderation actions that can be queried later
+    for user history and moderation analytics.
     
     Args:
-        guild_id: ID of the guild where the action was taken.
-        user_id: Snowflake ID of the user the action was taken on.
-        action_type: Type of action (ban, kick, timeout, warn, delete).
-        reason: Reason for the action.
-        metadata: Optional dictionary containing additional info (e.g., duration, message_ids).
+        guild_id (int): ID of the guild where the action was taken.
+        user_id (str): Snowflake ID of the user affected by the action.
+        action_type (str): Type of action (ban, kick, timeout, warn, delete, etc.).
+        reason (str): Human-readable reason for the action.
+        metadata (dict | None): Optional dictionary with additional action details:
+            - ban_duration: Duration in minutes for bans (-1 for permanent)
+            - timeout_duration: Duration in minutes for timeouts
+            - message_ids: List of deleted message IDs
+    
+    Note:
+        The metadata dictionary is serialized to JSON before storage.
     """
     import json
     
@@ -159,15 +188,24 @@ async def get_past_actions(
     lookback_minutes: int
 ) -> list[dict]:
     """
-    Query past moderation actions for a user within a time window.
+    Query past moderation actions for a user within a specified time window.
+    
+    Retrieves the moderation history for a user to provide context to the AI
+    model when making moderation decisions. More recent actions may influence
+    the severity of automated responses.
     
     Args:
-        guild_id: ID of the guild.
-        user_id: Snowflake ID of the user.
-        lookback_minutes: How many minutes back to query.
+        guild_id (int): ID of the guild to query actions from.
+        user_id (str): Snowflake ID of the user to query history for.
+        lookback_minutes (int): How many minutes back to query (e.g., 7 days = 10080 minutes).
     
     Returns:
-        List of action dictionaries with keys: action_type, reason, timestamp, metadata.
+        list[dict]: List of action dictionaries sorted by timestamp (newest first),
+            each containing:
+            - action_type (str): Type of moderation action
+            - reason (str): Reason given for the action
+            - timestamp (str): ISO 8601 timestamp of when the action occurred
+            - metadata (dict): Additional action-specific data (durations, message IDs, etc.)
     """
     import json
     from datetime import datetime, timedelta, timezone
