@@ -16,6 +16,7 @@ from modcord.configuration.app_configuration import app_config
 from modcord.moderation.moderation_datatypes import ModerationImage, ModerationMessage
 from modcord.util.image_utils import generate_image_hash_id
 from modcord.util.logger import get_logger
+from modcord.util import discord_utils
 
 logger = get_logger("discord_history_fetcher")
 
@@ -109,7 +110,8 @@ class DiscordHistoryFetcher:
                     msg_id_str = str(discord_msg.id)
                     if msg_id_str in exclude_message_ids:
                         continue
-                    if discord_msg.author.bot:
+                    
+                    if not discord_utils.should_process_message(discord_msg, bot_user_id=self._bot.user.id if self._bot.user else None):
                         continue
 
                     mod_msg = self.convert_discord_message(discord_msg)
@@ -225,7 +227,7 @@ class DiscordHistoryFetcher:
         """
         images: List[ModerationImage] = []
         for attachment in message.attachments:
-            if not self._is_image_attachment(attachment):
+            if not discord_utils.is_image_attachment(attachment):
                 continue
             images.append(
                 ModerationImage(
@@ -234,27 +236,3 @@ class DiscordHistoryFetcher:
                 )
             )
         return images
-
-    @staticmethod
-    def _is_image_attachment(attachment: discord.Attachment) -> bool:
-        """
-        Determine if a Discord attachment is an image.
-        
-        Checks multiple indicators to identify image attachments:
-        1. Content type starts with "image/"
-        2. Attachment has width and height properties
-        3. Filename ends with common image extensions
-        
-        Args:
-            attachment (discord.Attachment): The attachment to check.
-        
-        Returns:
-            bool: True if the attachment is identified as an image, False otherwise.
-        """
-        content_type = (attachment.content_type or "").lower()
-        if content_type.startswith("image/"):
-            return True
-        if attachment.width is not None and attachment.height is not None:
-            return True
-        filename = (attachment.filename or "").lower()
-        return filename.endswith(IMAGE_EXTENSIONS)
