@@ -213,11 +213,15 @@ def has_elevated_permissions(member: Union[discord.User, discord.Member]) -> boo
 
     # Check for elevated roles by substring (case-insensitive)
     elevated_keywords = ("mod", "moderator", "admin", "staff")
-    for role in getattr(member, "roles", []):
-        role_name = role.name.lower()
-        if any(keyword in role_name for keyword in elevated_keywords):
-            return True
-
+    roles = getattr(member, "roles", [])
+    # If roles is a Mock or not iterable, treat as empty list
+    try:
+        for role in roles:
+            role_name = getattr(role, "name", "").lower()
+            if any(keyword in role_name for keyword in elevated_keywords):
+                return True
+    except TypeError:
+        pass
     return False
 
 
