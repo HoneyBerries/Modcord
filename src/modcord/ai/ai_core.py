@@ -188,7 +188,7 @@ class InferenceProcessor:
         gpu_mem_util = vram_percentage if cuda_available else 0.0
         
         try:
-            # Initialize LLM with multimodal limits
+            # Initialize LLM instance
             self.llm = LLM(
                 model=model_id,
                 dtype=chosen_dtype,
@@ -320,13 +320,13 @@ class InferenceProcessor:
             List[str]: Generated output strings for each conversation.
         """
         from vllm import SamplingParams
-        from vllm.sampling_params import GuidedDecodingParams
+        from vllm.sampling_params import StructuredOutputsParams
         
         # Build sampling params list (one per conversation)
         sampling_params_list = []
         for grammar_str in grammar_strings:
             if grammar_str and self.sampling_params:
-                guided_params = GuidedDecodingParams(
+                structured_outputs = StructuredOutputsParams(
                     grammar=grammar_str,
                     disable_fallback=True,
                 )
@@ -335,7 +335,7 @@ class InferenceProcessor:
                     max_tokens=self.sampling_params.max_tokens,
                     top_p=self.sampling_params.top_p,
                     top_k=self.sampling_params.top_k,
-                    guided_decoding=guided_params,
+                    structured_outputs=structured_outputs,
                 )
             else:
                 sp = self.sampling_params
