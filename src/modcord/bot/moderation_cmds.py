@@ -69,7 +69,7 @@ class ModerationActionCog(commands.Cog):
             Active :class:`discord.Bot` instance used for moderation and scheduling tasks.
         """
         self.discord_bot_instance = discord_bot_instance
-        logger.info("Moderation cog loaded")
+        logger.info("[MODERATION CMDS] Moderation cog loaded")
 
     async def check_moderation_permissions(
         self,
@@ -169,7 +169,7 @@ class ModerationActionCog(commands.Cog):
                     ephemeral=True
                 )
             except Exception:
-                logger.error("Failed to send error response to user.")
+                logger.error("[MODERATION CMDS] Failed to send error response to user.")
 
     @commands.slash_command(name="warn", description="Warns a user for a specified reason.")
     async def warn(

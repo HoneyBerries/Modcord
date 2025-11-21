@@ -34,7 +34,7 @@ class EventsListenerCog(commands.Cog):
         """
         self.bot = discord_bot_instance
         self.discord_bot_instance = discord_bot_instance
-        logger.info("Events listener cog loaded")
+        logger.info("[EVENTS LISTENER] Events listener cog loaded")
 
     @commands.Cog.listener(name='on_ready')
     async def on_ready(self):
@@ -51,17 +51,16 @@ class EventsListenerCog(commands.Cog):
             await self._update_presence()
             logger.info(f"Bot connected as {self.bot.user} (ID: {self.bot.user.id})")
         else:
-            logger.warning("Bot partially connected, but user information not yet available.")
+            logger.warning("[EVENTS LISTENER] Bot partially connected, but user information not yet available.")
 
-        logger.info("--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--")
 
         # Start the rules and guidelines cache refresh task
-        logger.info("Starting server rules and channel guidelines cache refresh task...")
+        logger.info("[EVENTS LISTENER] Starting server rules and channel guidelines cache refresh task...")
         interval_seconds = float(app_config.get("rules_cache_refresh", {}).get("interval_seconds", 600.0))
         asyncio.create_task(rules_cache_manager.start_periodic_task(self.bot, interval_seconds))
 
         # Set up batch processing callback for global batching
-        logger.info("Setting up batch processing callback...")
+        logger.info("[EVENTS LISTENER] Setting up batch processing callback...")
         message_batch_manager.set_bot_instance(self.bot)
         message_batch_manager.set_batch_processing_callback(
             lambda batches: moderation_helper.process_message_batches(self, batches)

@@ -15,7 +15,6 @@ All blocking operations are wrapped in asyncio.to_thread() to avoid blocking the
 from __future__ import annotations
 
 import asyncio
-import gc
 import os
 from dataclasses import dataclass
 from typing import Any, List, Dict
@@ -382,7 +381,7 @@ class InferenceProcessor:
 
     async def unload_model(self) -> None:
         """
-        Asynchronously unload the model and clean up resources.
+        Asynchronously unload the model and clean up resources, including GPU memory.
 
         Resets state attributes and clears GPU memory in a thread-safe manner.
         """
@@ -393,28 +392,38 @@ class InferenceProcessor:
             self.state.init_started = False
             self.state.init_error = None
 
-        # Run cleanup in thread
-        await asyncio.to_thread(self._cleanup_gpu)
+        def cleanup_gpu_sync() -> None:
+            """
+            Synchronously clean up GPU memory (runs in a separate thread).
+            """
+            try:
+                import torch
+                if torch.distributed.is_initialized():
+                    torch.distributed.destroy_process_group()
+                    logger.info("[AI MODEL] Distributed process group destroyed")
+            except ImportError:
+                # Handle case where torch is not installed
+                logger.debug("[AI MODEL] PyTorch not available for distributed cleanup.")
+            except Exception as exc:
+                logger.debug("[AI MODEL] Distributed cleanup failed: %s", exc)
+
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    # Clear the cached memory for the current device
+                    torch.cuda.empty_cache()
+                    logger.info("[AI MODEL] CUDA cache cleared")
+                        
+            except ImportError:
+                # Handle case where torch is not installed
+                logger.debug("[AI MODEL] PyTorch not available for cleanup.")
+            except Exception as exc:
+                logger.debug("[AI MODEL] CUDA cache cleanup failed: %s", exc)
+
+        # Run the synchronous cleanup code in a separate thread
+        await asyncio.to_thread(cleanup_gpu_sync)
         
         logger.info("[AI MODEL] Model unloaded")
-
-    def _cleanup_gpu(self) -> None:
-        """
-        Synchronously clean up GPU memory and run garbage collection (runs in a thread).
-
-        Calls torch.cuda.empty_cache() if available and runs Python garbage collection.
-        """
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
-        except Exception as exc:
-            logger.debug("[AI MODEL] CUDA cache cleanup failed: %s", exc)
-
-        gc.collect()
-
 
 inference_processor = InferenceProcessor()
 model_state = inference_processor.state

@@ -63,13 +63,13 @@ class AppConfig:
             with self.config_path.open("r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             if not isinstance(data, dict):
-                logger.warning("Config file %s must contain a mapping at the top level; ignoring.", self.config_path)
+                logger.warning("[APP CONFIGURATION] Config file %s must contain a mapping at the top level; ignoring.", self.config_path)
                 return {}
             return data
         except FileNotFoundError:
-            logger.error("Config file %s not found.", self.config_path)
+            logger.error("[APP CONFIGURATION] Config file %s not found.", self.config_path)
         except Exception as exc:
-            logger.error("Failed to load config %s: %s", self.config_path, exc)
+            logger.error("[APP CONFIGURATION] Failed to load config %s: %s", self.config_path, exc)
         return {}
 
     # --------------------------

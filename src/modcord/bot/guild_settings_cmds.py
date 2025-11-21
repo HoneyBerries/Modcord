@@ -34,7 +34,7 @@ class GuildSettingsCog(commands.Cog):
     def __init__(self, discord_bot_instance):
         """Store the Discord bot reference and prepare guild settings access."""
         self.discord_bot_instance = discord_bot_instance
-        logger.info("Settings cog loaded")
+        logger.info("[GUILD SETTINGS CMDS] Settings cog loaded")
 
     async def _ensure_guild_context(self, ctx: discord.ApplicationContext) -> bool:
         if not ctx.guild_id:

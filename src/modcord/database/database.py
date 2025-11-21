@@ -110,10 +110,10 @@ async def init_database() -> bool:
                 INSERT OR IGNORE INTO schema_version (version) VALUES (1)
             """)
             await db.commit()
-        logger.info("Database initialized at %s", DB_PATH)
+        logger.info("[DATABASE] Database initialized at %s", DB_PATH)
         return True
     except Exception as e:
-        logger.error("Database initialization failed: %s", e)
+        logger.error("[DATABASE] Database initialization failed: %s", e)
         return False
 
 
@@ -179,7 +179,7 @@ async def log_moderation_action(
         )
         await db.commit()
     
-    logger.debug("Logged moderation action: %s on user %s in guild %s", action_type, user_id, guild_id)
+    logger.debug("[DATABASE] Logged moderation action: %s on user %s in guild %s", action_type, user_id, guild_id)
 
 
 async def get_past_actions(

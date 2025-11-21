@@ -34,8 +34,15 @@ def humanize_timestamp(value: str) -> str:
     Returns:
         str: Human-readable UTC timestamp.
     """
+    # Parse ISO timestamp and ensure it's in UTC
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    dt = dt.astimezone(timezone.utc)
+    
+    # Convert to UTC if it has a different timezone
+    if dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) != timezone.utc.utcoffset(None):
+        dt = dt.astimezone(timezone.utc)
+    elif dt.tzinfo is None:
+        # If naive, assume UTC
+        dt = dt.replace(tzinfo=timezone.utc)
     
     # Clamp to current time if timestamp is in the future
     now_utc = datetime.now(timezone.utc)
@@ -497,7 +504,7 @@ class WarnCommand(CommandAction):
                 bot_user=bot_instance.user
             )
         except Exception as exc:
-            logger.error("Failed to process warn for user %s: %s", user.id, exc)
+            logger.error("[MODERATION DATATYPES] Failed to process warn for user %s: %s", user.id, exc)
 
 
 class TimeoutCommand(CommandAction):
@@ -555,7 +562,7 @@ class TimeoutCommand(CommandAction):
                 bot_user=bot_instance.user
             )
         except Exception as exc:
-            logger.error("Failed to timeout user %s: %s", user.id, exc)
+            logger.error("[MODERATION DATATYPES] Failed to timeout user %s: %s", user.id, exc)
             raise
 
 
@@ -595,7 +602,7 @@ class KickCommand(CommandAction):
                 bot_user=bot_instance.user
             )
         except Exception as exc:
-            logger.error("Failed to kick user %s: %s", user.id, exc)
+            logger.error("[MODERATION DATATYPES] Failed to kick user %s: %s", user.id, exc)
             raise
 
 
@@ -669,7 +676,7 @@ class BanCommand(CommandAction):
                         reason="Ban duration expired.",
                     )
                 except Exception as exc:
-                    logger.error("Failed to schedule unban for user %s: %s", user.id, exc)
+                    logger.error("[MODERATION DATATYPES] Failed to schedule unban for user %s: %s", user.id, exc)
         except Exception as exc:
-            logger.error("Failed to ban user %s: %s", user.id, exc)
+            logger.error("[MODERATION DATATYPES] Failed to ban user %s: %s", user.id, exc)
             raise

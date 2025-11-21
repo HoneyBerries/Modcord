@@ -322,7 +322,7 @@ class ModerationProcessor:
     async def shutdown(self) -> None:
         """Gracefully stop the moderation processor and unload the AI model."""
         if self._shutdown:
-            logger.debug("ModerationProcessor.shutdown called multiple times")
+            logger.debug("[AI MODERATION PROCESSOR] ModerationProcessor.shutdown called multiple times")
             return
 
         self._shutdown = True
@@ -330,7 +330,7 @@ class ModerationProcessor:
         try:
             await self.inference_processor.unload_model()
         except Exception as exc:
-            logger.warning("Failed to unload AI model cleanly: %s", exc)
+            logger.warning("[AI MODERATION PROCESSOR] Failed to unload AI model cleanly: %s", exc)
 
     @staticmethod
     def _null_response(reason: str) -> str:

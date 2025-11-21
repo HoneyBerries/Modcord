@@ -69,14 +69,14 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
     Apply a moderation action to a user in the batch, ensuring permissions and context.
     """
     logger.debug(
-        "[APPLY_ACTION] Attempting to apply action %s for user %s in channel %s",
+        "[MODERATION HELPER] [APPLY_ACTION] Attempting to apply action %s for user %s in channel %s",
         action.action.value,
         action.user_id,
         batch.channel_id
     )
     
     if action.action is ActionType.NULL or not action.user_id:
-        logger.debug("[APPLY_ACTION] Skipping: action is NULL or no user_id")
+        logger.debug("[MODERATION HELPER] [APPLY_ACTION] Skipping: action is NULL or no user_id")
         return False
 
     # Normalize user_id for comparison
@@ -84,7 +84,7 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
     target_user = next((u for u in batch.users if str(u.user_id).strip() == target_user_id), None)
     if not target_user or not target_user.messages:
         logger.warning(
-            "[APPLY_ACTION] Cannot apply action: target user %s not found in batch or has no messages. Batch has %d users: %s",
+            "[MODERATION HELPER] [APPLY_ACTION] Cannot apply action: target user %s not found in batch or has no messages. Batch has %d users: %s",
             action.user_id,
             len(batch.users),
             [str(u.user_id).strip() for u in batch.users]
@@ -92,7 +92,7 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
         return False
 
     logger.debug(
-        "[APPLY_ACTION] Found target user %s with %d messages",
+        "[MODERATION HELPER] [APPLY_ACTION] Found target user %s with %d messages",
         target_user_id,
         len(target_user.messages)
     )

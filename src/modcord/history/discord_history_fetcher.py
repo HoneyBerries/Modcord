@@ -80,7 +80,7 @@ class DiscordHistoryFetcher:
 
         channel = self._bot.get_channel(channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
-            logger.debug("Channel %s is not a text channel or thread", channel_id)
+            logger.debug("[HISTORY FETCHER] Channel %s is not a text channel or thread", channel_id)
             return []
 
         if history_limit is None:
@@ -126,11 +126,11 @@ class DiscordHistoryFetcher:
                     break
 
         except discord.Forbidden:
-            logger.warning("Missing permissions to read history for channel %s", channel_id)
+            logger.warning("[HISTORY FETCHER] Missing permissions to read history for channel %s", channel_id)
         except discord.NotFound:
-            logger.warning("Channel %s not found while fetching history", channel_id)
+            logger.warning("[HISTORY FETCHER] Channel %s not found while fetching history", channel_id)
         except Exception as exc:
-            logger.error("Unexpected error fetching history for channel %s: %s", channel_id, exc)
+            logger.error("[HISTORY FETCHER] Unexpected error fetching history for channel %s: %s", channel_id, exc)
 
         return results
 
@@ -159,18 +159,12 @@ class DiscordHistoryFetcher:
         if not content and not images:
             return None
 
-        created_at = message.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=datetime.timezone.utc)
-
+        # Discord's created_at is already UTC-aware, just format it
         return ModerationMessage(
             message_id=str(message.id),
             user_id=str(message.author.id),
             content=content,
-            timestamp=created_at.astimezone(datetime.timezone.utc)
-            .replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            timestamp=message.created_at.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
             guild_id=message.guild.id if message.guild else None,
             channel_id=message.channel.id if message.channel else None,
             images=images,

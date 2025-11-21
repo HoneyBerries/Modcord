@@ -75,7 +75,7 @@ class MessageBatchManager:
         """
         self._bot_instance = bot_instance
         self._history_fetcher = DiscordHistoryFetcher(bot_instance)
-        logger.info("Bot instance set for MessageBatchManager")
+        logger.info("[MESSAGE BATCH MANAGER] Bot instance set for MessageBatchManager")
 
     def set_batch_processing_callback(
         self,
@@ -92,7 +92,7 @@ class MessageBatchManager:
             None
         """
         self._batch_processing_callback = callback
-        logger.info("Batch processing callback configured")
+        logger.info("[MESSAGE BATCH MANAGER] Batch processing callback configured")
 
     # ------------------------------------------------------------------
     # Message tracking operations
@@ -112,7 +112,7 @@ class MessageBatchManager:
             bucket = self._channel_message_batches[channel_id]
             bucket.append(message)
             logger.debug(
-                "Queued message %s for channel %s (batch size now %d)",
+                "[MESSAGE BATCH MANAGER] Queued message %s for channel %s (batch size now %d)",
                 message.message_id,
                 channel_id,
                 len(bucket),
@@ -120,7 +120,7 @@ class MessageBatchManager:
 
             if self._global_batch_timer is None or self._global_batch_timer.done():
                 self._global_batch_timer = asyncio.create_task(self._global_batch_timer_task())
-                logger.debug("Started global batch timer")
+                logger.debug("[MESSAGE BATCH MANAGER] Started global batch timer")
 
     async def remove_message_from_batch(self, channel_id: int, message_id: str) -> None:
         """
@@ -144,7 +144,7 @@ class MessageBatchManager:
             after = len(bucket)
             if before != after:
                 logger.debug(
-                    "Removed message %s from channel %s batch (size %d -> %d)",
+                    "[MESSAGE BATCH MANAGER] Removed message %s from channel %s batch (size %d -> %d)",
                     message_id_str,
                     channel_id,
                     before,
@@ -172,7 +172,7 @@ class MessageBatchManager:
                 if str(existing.message_id) == target_id:
                     bucket[idx] = message
                     logger.debug(
-                        "Updated message %s for channel %s in current batch", target_id, channel_id
+                        "[MESSAGE BATCH MANAGER] Updated message %s for channel %s in current batch", target_id, channel_id
                     )
                     break
 
@@ -187,7 +187,7 @@ class MessageBatchManager:
             )
         except Exception:
             moderation_batch_seconds = 10.0
-        logger.debug("Global batch timer sleeping for %s seconds", moderation_batch_seconds)
+        logger.debug("[MESSAGE BATCH MANAGER] Global batch timer sleeping for %s seconds", moderation_batch_seconds)
         await asyncio.sleep(moderation_batch_seconds)
 
         async with self._batch_lock:
@@ -199,7 +199,7 @@ class MessageBatchManager:
             self._channel_message_batches.clear()
 
         if not pending_batches:
-            logger.debug("Global batch timer fired but no pending messages")
+            logger.debug("[MESSAGE BATCH MANAGER] Global batch timer fired but no pending messages")
             return
 
         channel_batches: List[ModerationChannelBatch] = []
@@ -217,7 +217,7 @@ class MessageBatchManager:
             history_users = await self._group_messages_by_user(history_messages) if history_messages else []
 
             logger.debug(
-                "Prepared batch for channel %s: %d current users, %d history users",
+                "[MESSAGE BATCH MANAGER] Prepared batch for channel %s: %d current users, %d history users",
                 channel_id,
                 len(users),
                 len(history_users),
@@ -236,9 +236,9 @@ class MessageBatchManager:
             try:
                 await self._batch_processing_callback(channel_batches)
             except Exception:
-                logger.exception("Exception while processing moderation batches")
+                logger.exception("[MESSAGE BATCH MANAGER] Exception while processing moderation batches")
         else:
-            logger.debug("No batch processing callback configured")
+            logger.debug("[MESSAGE BATCH MANAGER] No batch processing callback configured")
 
         self._global_batch_timer = None
 
@@ -302,7 +302,7 @@ class MessageBatchManager:
                     past_actions = await get_past_actions(guild_id, user_id, lookback_minutes)
                 except Exception as exc:
                     logger.warning(
-                        "Failed to query past actions for user %s in guild %s: %s",
+                        "[MESSAGE BATCH MANAGER] Failed to query past actions for user %s in guild %s: %s",
                         user_id,
                         guild_id,
                         exc,
@@ -347,7 +347,7 @@ class MessageBatchManager:
         async with self._batch_lock:
             self._channel_message_batches.clear()
 
-        logger.info("MessageBatchManager shutdown complete")
+        logger.info("[MESSAGE BATCH MANAGER] MessageBatchManager shutdown complete")
 
 
 message_batch_manager = MessageBatchManager()

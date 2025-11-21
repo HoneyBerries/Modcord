@@ -639,18 +639,18 @@ async def apply_action_decision(
     """
 
     if action.action is ActionType.NULL:
-        logger.debug("Ignoring null moderation action for user %s", action.user_id)
+        logger.debug("[DISCORD UTILS] Ignoring null moderation action for user %s", action.user_id)
         return True
 
     discord_message = pivot.discord_message
     if not discord_message or not discord_message.guild or not isinstance(discord_message.author, discord.Member):
-        logger.warning("Invalid discord message or author for moderation pivot %s; skipping action", pivot.message_id)
+        logger.warning("[DISCORD UTILS] Invalid discord message or author for moderation pivot %s; skipping action", pivot.message_id)
         return False
 
     guild = discord_message.guild
     author = discord_message.author
     channel = discord_message.channel
-    logger.debug("Executing %s on user %s (%s) for reason '%s'", action.action.value, author.display_name, author.id, action.reason)
+    logger.debug("[DISCORD UTILS] Executing %s on user %s (%s) for reason '%s'", action.action.value, author.display_name, author.id, action.reason)
 
     # Delete pivot message
     await safe_delete_message(discord_message)
@@ -670,8 +670,8 @@ async def apply_action_decision(
             try:
                 deleted_total += await delete_messages_by_ids(guild, delete_queue)
             except Exception as exc:
-                logger.error("Failed to delete referenced messages %s: %s", sorted(delete_queue), exc)
-        logger.debug("Deleted %s referenced messages for user %s", deleted_total, author.display_name)
+                logger.error("[DISCORD UTILS] Failed to delete referenced messages %s: %s", sorted(delete_queue), exc)
+        logger.debug("[DISCORD UTILS] Deleted %s referenced messages for user %s", deleted_total, author.display_name)
 
     if action.action is ActionType.DELETE:
         return True
@@ -685,7 +685,7 @@ async def apply_action_decision(
         case ActionType.BAN:
             duration_minutes = int(action.ban_duration or 0)
             if duration_minutes == 0:
-                logger.debug("Ban duration is 0 (not applicable); skipping ban for user %s", action.user_id)
+                logger.debug("[DISCORD UTILS] Ban duration is 0 (not applicable); skipping ban for user %s", action.user_id)
                 return True
             is_permanent = duration_minutes == -1
             if is_permanent:
@@ -707,7 +707,7 @@ async def apply_action_decision(
                     bot_user=bot_user
                 )
             except Exception as exc:
-                logger.error("Failed to ban user %s: %s", author.id, exc)
+                logger.error("[DISCORD UTILS] Failed to ban user %s: %s", author.id, exc)
                 return False
                 
             if not is_permanent:
@@ -721,7 +721,7 @@ async def apply_action_decision(
                         reason="Ban duration expired.",
                     )
                 except Exception as exc:
-                    logger.error("Failed to schedule unban for user %s: %s", author.id, exc)
+                    logger.error("[DISCORD UTILS] Failed to schedule unban for user %s: %s", author.id, exc)
                     success = False
 
 
@@ -738,14 +738,14 @@ async def apply_action_decision(
                     bot_user=bot_user
                 )
             except Exception as exc:
-                logger.error("Failed to kick user %s: %s", author.id, exc)
+                logger.error("[DISCORD UTILS] Failed to kick user %s: %s", author.id, exc)
                 return False
             
 
         case ActionType.TIMEOUT:
             duration_minutes = action.timeout_duration if action.timeout_duration is not None else 0
             if duration_minutes == 0:
-                logger.debug("Timeout duration is 0 (not applicable); skipping timeout for user %s", action.user_id)
+                logger.debug("[DISCORD UTILS] Timeout duration is 0 (not applicable); skipping timeout for user %s", action.user_id)
                 return True
             if duration_minutes == -1:
                 duration_minutes = 28 * 24 * 60  # 28 days in minutes
@@ -765,7 +765,7 @@ async def apply_action_decision(
                     bot_user=bot_user
                 )
             except Exception as exc:
-                logger.error("Failed to timeout user %s: %s", author.id, exc)
+                logger.error("[DISCORD UTILS] Failed to timeout user %s: %s", author.id, exc)
                 return False
             
 
@@ -781,7 +781,7 @@ async def apply_action_decision(
                     bot_user=bot_user
                 )
             except Exception as exc:
-                logger.error("Failed to process warn for user %s: %s", author.id, exc)
+                logger.error("[DISCORD UTILS] Failed to process warn for user %s: %s", author.id, exc)
                 return False
             
 
@@ -797,7 +797,7 @@ async def apply_action_decision(
                     bot_user=bot_user
                 )
             except Exception as exc:
-                logger.error("Failed to create unban embed for user %s: %s", author.id, exc)
+                logger.error("[DISCORD UTILS] Failed to create unban embed for user %s: %s", author.id, exc)
                 return False
         case _:
             pass
@@ -832,6 +832,6 @@ async def apply_action_decision(
             )
 
         except Exception as exc:
-            logger.error("Failed to log moderation action to database: %s", exc)
+            logger.error("[DISCORD UTILS] Failed to log moderation action to database: %s", exc)
 
     return success

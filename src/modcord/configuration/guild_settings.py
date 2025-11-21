@@ -65,7 +65,7 @@ class GuildSettingsManager:
         self._active_persists: Set[asyncio.Task] = set()
         self._db_initialized = False
 
-        logger.info("Guild settings manager initialized")
+        logger.info("[GUILD SETTINGS MANAGER] Guild settings manager initialized")
 
     async def async_init(self) -> None:
         """Initialize the database and load settings from disk (async)."""
@@ -73,7 +73,7 @@ class GuildSettingsManager:
             await init_database()
             await self.load_from_disk()
             self._db_initialized = True
-            logger.info("Database initialized and settings loaded")
+            logger.info("[GUILD SETTINGS MANAGER] Database initialized and settings loaded")
 
     def ensure_guild(self, guild_id: int) -> GuildSettings:
         """Create default settings for a guild if none exist and return the record."""
@@ -107,7 +107,7 @@ class GuildSettingsManager:
 
         settings = self.ensure_guild(guild_id)
         settings.rules = rules
-        logger.debug(f"Updated rules cache for guild {guild_id} (len={len(rules)})")
+        logger.debug(f"[GUILD SETTINGS MANAGER] Updated rules cache for guild {guild_id} (len={len(rules)})")
 
         self._trigger_persist(guild_id)
 
@@ -129,7 +129,7 @@ class GuildSettingsManager:
         
         self.channel_guidelines[guild_id][channel_id] = guidelines
         logger.debug(
-            f"Updated channel guidelines cache for guild {guild_id}, channel {channel_id} (len={len(guidelines)})"
+            f"[GUILD SETTINGS MANAGER] Updated channel guidelines cache for guild {guild_id}, channel {channel_id} (len={len(guidelines)})"
         )
 
         self._trigger_persist_channel_guidelines(guild_id, channel_id)
@@ -139,7 +139,7 @@ class GuildSettingsManager:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            logger.warning("Cannot persist guild %s: no running event loop", guild_id)
+            logger.warning("[GUILD SETTINGS MANAGER] Cannot persist guild %s: no running event loop", guild_id)
             return
 
         task = loop.create_task(self._persist_guild_async(guild_id))
@@ -149,7 +149,7 @@ class GuildSettingsManager:
             self._active_persists.discard(completed)
             try:
                 if not completed.result():
-                    logger.error("Failed to persist guild %s to database", guild_id)
+                    logger.error("[GUILD SETTINGS MANAGER] Failed to persist guild %s to database", guild_id)
             except Exception:
                 logger.exception("Error while persisting guild %s to database", guild_id)
 
@@ -161,7 +161,7 @@ class GuildSettingsManager:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             logger.warning(
-                "Cannot persist channel guidelines for guild %s, channel %s: no running event loop",
+                "[GUILD SETTINGS MANAGER] Cannot persist channel guidelines for guild %s, channel %s: no running event loop",
                 guild_id,
                 channel_id
             )
@@ -175,7 +175,7 @@ class GuildSettingsManager:
             try:
                 if not completed.result():
                     logger.error(
-                        "Failed to persist channel guidelines for guild %s, channel %s",
+                        "[GUILD SETTINGS MANAGER] Failed to persist channel guidelines for guild %s, channel %s",
                         guild_id,
                         channel_id
                     )
@@ -195,8 +195,7 @@ class GuildSettingsManager:
             await asyncio.gather(*pending, return_exceptions=True)
         self._active_persists.clear()
 
-        logger.info("Shutdown complete: pending persistence tasks cleared")
-        logger.info("--------------------------------------------------------------------------------")
+        logger.info("[GUILD SETTINGS MANAGER] Guild settings manager shutdown complete")
 
     # --- AI moderation enable/disable ---
     def is_ai_enabled(self, guild_id: int) -> bool:
@@ -212,7 +211,7 @@ class GuildSettingsManager:
         settings = self.ensure_guild(guild_id)
         settings.ai_enabled = bool(enabled)
         state = "enabled" if enabled else "disabled"
-        logger.debug("AI moderation %s for guild %s", state, guild_id)
+        logger.debug("[GUILD SETTINGS MANAGER] AI moderation %s for guild %s", state, guild_id)
         self._trigger_persist(guild_id)
         return True
 
@@ -229,13 +228,13 @@ class GuildSettingsManager:
         """Enable or disable an AI action for the guild and persist the change."""
         field_name = ACTION_FLAG_FIELDS.get(action)
         if field_name is None:
-            logger.warning("Attempted to toggle unsupported action %s for guild %s", action, guild_id)
+            logger.warning("[GUILD SETTINGS MANAGER] Attempted to toggle unsupported action %s for guild %s", action, guild_id)
             return False
 
         settings = self.ensure_guild(guild_id)
         setattr(settings, field_name, bool(enabled))
         logger.debug(
-            "Set %s to %s for guild %s",
+            "[GUILD SETTINGS MANAGER] Set %s to %s for guild %s",
             field_name,
             enabled,
             guild_id,
@@ -256,7 +255,7 @@ class GuildSettingsManager:
         """
         settings = self.guilds.get(guild_id)
         if settings is None:
-            logger.warning("Cannot persist guild %s: not in cache", guild_id)
+            logger.warning("[GUILD SETTINGS MANAGER] Cannot persist guild %s: not in cache", guild_id)
             return False
 
         async with self._persist_lock:
@@ -287,10 +286,10 @@ class GuildSettingsManager:
                         1 if settings.auto_ban_enabled else 0,
                     ))
                     await db.commit()
-                    logger.debug("Persisted guild %s to database", guild_id)
+                    logger.debug("[GUILD SETTINGS MANAGER] Persisted guild %s to database", guild_id)
                     return True
             except Exception:
-                logger.exception("Failed to persist guild %s to database", guild_id)
+                logger.exception("[GUILD SETTINGS MANAGER] Failed to persist guild %s to database", guild_id)
                 return False
 
     async def _persist_channel_guidelines_async(self, guild_id: int, channel_id: int) -> bool:
@@ -307,7 +306,7 @@ class GuildSettingsManager:
         guidelines = self.channel_guidelines.get(guild_id, {}).get(channel_id)
         if guidelines is None:
             logger.warning(
-                "Cannot persist channel guidelines for guild %s, channel %s: not in cache",
+                "[GUILD SETTINGS MANAGER] Cannot persist channel guidelines for guild %s, channel %s: not in cache",
                 guild_id,
                 channel_id
             )
@@ -324,14 +323,14 @@ class GuildSettingsManager:
                     """, (guild_id, channel_id, guidelines))
                     await db.commit()
                     logger.debug(
-                        "Persisted channel guidelines for guild %s, channel %s to database",
+                        "[GUILD SETTINGS MANAGER] Persisted channel guidelines for guild %s, channel %s to database",
                         guild_id,
                         channel_id
                     )
                     return True
             except Exception:
                 logger.exception(
-                    "Failed to persist channel guidelines for guild %s, channel %s to database",
+                    "[GUILD SETTINGS MANAGER] Failed to persist channel guidelines for guild %s, channel %s to database",
                     guild_id,
                     channel_id
                 )
@@ -374,13 +373,13 @@ class GuildSettingsManager:
                     self.channel_guidelines[guild_id][channel_id] = guidelines
                 
                 if rows:
-                    logger.info("Loaded %d guild settings from database", len(list(rows)))
+                    logger.info("[GUILD SETTINGS MANAGER] Loaded %d guild settings from database", len(list(rows)))
                 if guidelines_rows:
-                    logger.info("Loaded %d channel guidelines from database", len(list(guidelines_rows)))
+                    logger.info("[GUILD SETTINGS MANAGER] Loaded %d channel guidelines from database", len(list(guidelines_rows)))
                 
                 return bool(rows or guidelines_rows)
         except Exception:
-            logger.exception("Failed to load guild settings from database")
+            logger.exception("[GUILD SETTINGS MANAGER] Failed to load guild settings from database")
             return False
 
     async def persist_guild(self, guild_id: int) -> bool:

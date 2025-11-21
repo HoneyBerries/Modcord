@@ -25,7 +25,7 @@ rules_cache_refresh:
 # ========================================
 
 ai_settings:
-  # Enable/disable AI-based moderation. Set to false to use rule-only moderation.
+  # Enable/disable AI-based moderation. Set to false to use basic moderation.
   enabled: true
 
   # Path to your local model directory or Hugging Face model identifier.

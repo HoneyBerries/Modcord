@@ -34,7 +34,7 @@ class MessageListenerCog(commands.Cog):
         """
         self.bot = discord_bot_instance
         self.discord_bot_instance = discord_bot_instance
-        logger.info("Message listener cog loaded")
+        logger.info("[MESSAGE LISTENER] Message listener cog loaded")
 
 
 
@@ -133,9 +133,8 @@ class MessageListenerCog(commands.Cog):
         ModerationMessage
             The normalized moderation message structure.
         """
-        timestamp_iso = message.created_at.astimezone(
-            datetime.timezone.utc
-        ).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        # Discord's created_at is already UTC-aware, just format it
+        timestamp_iso = message.created_at.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         
         # Build image tuples and download PIL images immediately
         image_tuples = self._build_moderation_images(message)
@@ -249,7 +248,7 @@ class MessageListenerCog(commands.Cog):
                 after.channel.id,
             )
         except Exception as exc:
-            logger.error("Failed to update edited message %s: %s", after.id, exc)
+            logger.error("[MESSAGE LISTENER] Failed to update edited message %s: %s", after.id, exc)
 
     @commands.Cog.listener(name='on_message_delete')
     async def on_message_delete(self, message: discord.Message):
