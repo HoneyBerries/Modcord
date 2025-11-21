@@ -146,18 +146,6 @@ class ModerationProcessor:
             conversations.append(llm_messages)
             grammar_strings.append(grammar_str)
             channel_mapping.append((batch.channel_id, batch, dynamic_schema))
-
-            logger.debug(
-                "[BATCH_PREP] Channel %d: %d users, %d images",
-                batch.channel_id,
-                len(user_message_map),
-                len(pil_images)
-            )
-
-        logger.debug(
-            "[INPUT] Submitting global batch with %d channels/conversations to LLM",
-            len(conversations)
-        )
         
         # Submit all conversations to vLLM in one call
         responses = await self._run_multi_inference(conversations, grammar_strings)
@@ -172,14 +160,6 @@ class ModerationProcessor:
         # Parse responses and group actions by channel
         actions_by_channel: Dict[int, List[ActionData]] = {}
         for (channel_id, _, dynamic_schema), response_text in zip(channel_mapping, responses):
-            
-            logger.debug(
-                "[MODERATION RAW OUTPUT] Channel %d response length: %d chars\n%s",
-                channel_id,
-                len(response_text),
-                response_text[:2000],
-            )
-            
             # Parse response into actions
             actions = moderation_parsing.parse_batch_actions(
                 response_text,
@@ -187,15 +167,20 @@ class ModerationProcessor:
                 dynamic_schema
             )
             actions_by_channel[channel_id] = actions
+            
+            # Log summary: channel ID, action count, and response sample
+            action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != "null")
             logger.debug(
-                "[MODERATION] Parsed %d actions for channel %d",
-                len(actions),
-                channel_id
+                "[RESULT] Channel %d: %d actions [%s] | Response: \n%s",
+                channel_id,
+                len([a for a in actions if a.action != "null"]),
+                action_summary or "none",
+                response_text
             )
         
         if len(channel_mapping) > len(responses):
             for channel_id, _, _ in channel_mapping[len(responses):]:
-                logger.warning("[MODERATION] Missing response for channel %d", channel_id)
+                logger.warning("[RESULT] Missing response for channel %d", channel_id)
                 actions_by_channel.setdefault(channel_id, [])
 
         return actions_by_channel
@@ -271,16 +256,43 @@ class ModerationProcessor:
             return [self._null_response(reason or "unavailable") for _ in conversations]
         
         try:
-            # DEBUG: Log the full input going into the LLM
-            logger.debug("[LLM INPUT] Conversations: %s", conversations)
-            logger.debug("[INFERENCE] Starting multi-batch inference with %d conversations...", len(conversations))
+            # DEBUG: Log the full input going into the LLM in readable format
+            def format_msg(msg):
+                if msg["role"] == "system":
+                    return None
+                content = msg["content"]
+                if isinstance(content, str):
+                    return {"role": msg["role"], "content": content}
+                formatted_content = []
+                image_count = 0
+                for item in content:
+                    if item.get("type") == "text":
+                        try:
+                            data = json.loads(item["text"])
+                            formatted_content.append({"type": "text_json", "data": data})
+                        except Exception:
+                            formatted_content.append(item)
+                    elif item.get("type") == "image_pil":
+                        # Show image placeholder with count (actual image IDs are in the JSON data above)
+                        formatted_content.append({"type": "image_pil", "placeholder": f"<PIL Image #{image_count + 1}>"})
+                        image_count += 1
+                    else:
+                        formatted_content.append(item)
+                return {"role": msg["role"], "content": formatted_content}
+
+            formatted_convos = [
+                [fm for fm in (format_msg(msg) for msg in conv) if fm]
+                for conv in conversations
+            ]
+            logger.debug(
+                "[LLM INPUT] Submitting %d conversations to model:\n%s",
+                len(conversations),
+                json.dumps(formatted_convos, indent=2, ensure_ascii=False)[:10000]
+            )
+            
             results = await self.inference_processor.generate_multi_chat(
                 conversations,
                 grammar_strings
-            )
-            logger.debug(
-                "[INFERENCE] Multi-batch inference completed, %d responses",
-                len(results)
             )
             return [r.strip() if r else self._null_response("no response") for r in results]
         except Exception as exc:
@@ -288,7 +300,10 @@ class ModerationProcessor:
             return [self._null_response("inference error") for _ in conversations]
 
     async def _ensure_model_initialized(self) -> bool:
-        """Ensure the model has been initialized at least once."""
+        """Ensure the model has been initialized at least once.
+        
+        Returns:
+            bool: True if the model is initialized and available, False otherwise."""
         if not self.inference_processor.state.init_started:
             return await self.init_model()
         return True
