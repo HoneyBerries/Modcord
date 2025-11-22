@@ -94,7 +94,7 @@ def iter_moderatable_channels(guild: discord.Guild):
             if bot_can_manage_messages(channel, guild):
                 yield channel
         except Exception as exc:
-            logger.debug(f"Skipping channel {getattr(channel, 'name', '<unknown>')} due to error: {exc}")
+            logger.debug("Skipping channel %s due to error: %s", getattr(channel, 'name', '<unknown>'), exc)
 
 
 # Note: TIMEOUT_ACTIONS was removed as it was only used in one place
@@ -207,22 +207,72 @@ def has_elevated_permissions(member: Union[discord.User, discord.Member]) -> boo
     if not isinstance(member, discord.Member):
         return False
 
+    # Check computed permissions first (includes all roles)
     perms = member.guild_permissions
     if perms.administrator or perms.manage_guild or perms.moderate_members:
         return True
 
-    # Check for elevated roles by substring (case-insensitive)
-    elevated_keywords = ("mod", "moderator", "admin", "staff")
-    roles = getattr(member, "roles", [])
-    # If roles is a Mock or not iterable, treat as empty list
-    try:
-        for role in roles:
-            role_name = getattr(role, "name", "").lower()
-            if any(keyword in role_name for keyword in elevated_keywords):
-                return True
-    except TypeError:
-        pass
+    # Check for elevated roles by name
+    elevated_keywords = ("mod", "moderator", "admin", "staff", "owner")
+    for role in member.roles:
+        if role.is_default() or role.managed:
+            continue
+        role_name = role.name.lower()
+        if any(keyword in role_name for keyword in elevated_keywords):
+            return True
+    
     return False
+
+
+def get_potential_moderator_roles(guild: discord.Guild) -> list[discord.Role]:
+    """
+    Get a list of roles in the guild that are likely moderator roles.
+
+    Args:
+        guild (discord.Guild): The guild to search.
+
+    Returns:
+        list[discord.Role]: List of potential moderator roles.
+    """
+    elevated_keywords = ("mod", "moderator", "admin", "staff", "owner")
+    potential_roles = []
+    
+    for role in guild.roles:
+        if role.is_default() or role.managed:
+            continue
+        
+        perms = role.permissions
+        if perms.administrator or perms.manage_guild or perms.moderate_members:
+            potential_roles.append(role)
+            continue
+        
+        name = role.name.lower()
+        if any(keyword in name for keyword in elevated_keywords):
+            potential_roles.append(role)
+    
+    return potential_roles
+
+
+def get_potential_review_channel(guild: discord.Guild) -> discord.TextChannel | None:
+    """
+    Find a suitable channel for moderation reviews based on name.
+
+    Args:
+        guild (discord.Guild): The guild to search.
+
+    Returns:
+        discord.TextChannel | None: The found channel or None.
+    """
+    keywords = ("moderator", "admin", "staff", "log", "review", "audit")
+    
+    for channel in guild.text_channels:
+        name = channel.name.lower()
+        # Check if name contains any keyword
+        if any(k in name for k in keywords):
+            # Verify bot can send messages there
+            if channel.permissions_for(guild.me).send_messages:
+                return channel
+    return None
 
 
 
@@ -294,6 +344,7 @@ async def create_punishment_embed(
         ActionType.TIMEOUT: ("⏱️", "Timeout", discord.Color.blue()),
         ActionType.DELETE:  ("🗑️", "Delete", discord.Color.light_grey()),
         ActionType.UNBAN:   ("🔓", "Unban", discord.Color.green()),
+        ActionType.REVIEW:  ("🛡️", "Review Request", discord.Color.gold()),
         ActionType.NULL:    ("❓", "No Action", discord.Color.light_grey()),
     }.get(action_type, ("❓", "No Action", discord.Color.light_grey()))
 
@@ -799,6 +850,16 @@ async def apply_action_decision(
             except Exception as exc:
                 logger.error("[DISCORD UTILS] Failed to create unban embed for user %s: %s", author.id, exc)
                 return False
+
+        case ActionType.REVIEW:
+            # REVIEW actions are now handled by ReviewNotificationManager in moderation_helper.py
+            # This ensures batch consolidation (one embed per guild per batch) instead of individual embeds
+            logger.info(
+                "[DISCORD UTILS] Review action for user %s should be handled by ReviewNotificationManager, not apply_action_decision",
+                action.user_id
+            )
+            # Return True since the action itself is valid, even though it's processed elsewhere
+            return True
         case _:
             pass
 

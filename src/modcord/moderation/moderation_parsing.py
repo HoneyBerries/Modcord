@@ -52,7 +52,7 @@ def build_dynamic_moderation_schema(
             "type": "object",
             "properties": {
                 "user_id": {"type": "string", "enum": [user_id]},
-                "action": {"type": "string", "enum": ["null", "delete", "warn", "timeout", "kick", "ban"]},
+                "action": {"type": "string", "enum": ["null", "delete", "warn", "timeout", "kick", "ban", "review"]},
                 "reason": {"type": "string"},
                 "message_ids_to_delete": {
                     "type": "array",

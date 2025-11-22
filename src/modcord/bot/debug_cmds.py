@@ -9,6 +9,9 @@ from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
+from modcord.moderation.moderation_datatypes import ActionType, ActionData, ModerationMessage
+from modcord.util.discord_utils import apply_action_decision
+from modcord.moderation.review_notifications import ReviewNotificationManager
 
 logger = get_logger("debug_commands")
 
@@ -112,6 +115,98 @@ class DebugCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error in show_rules command: {e}")
             await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
+
+    @debug.command(name="simulate_review", description="Simulate a moderation review action for testing")
+    async def simulate_review(self, application_context: discord.ApplicationContext) -> None:
+        """Simulate a hardcoded moderation review action to test the review notification system."""
+        try:
+            # Defer IMMEDIATELY to avoid interaction timeout
+            await application_context.defer(ephemeral=True)
+            
+            guild = application_context.guild
+            channel = application_context.channel
+            user = application_context.user
+
+            if not guild or not channel:
+                await application_context.followup.send(content="❌ This command must be used in a guild channel.", ephemeral=True)
+                return
+
+            # Check if guild has review channels configured
+            settings = guild_settings_manager.get_guild_settings(guild.id)
+            if not ReviewNotificationManager.validate_review_channels(settings):
+                await application_context.followup.send(
+                    content="❌ No review channels configured for this guild. Use `/config set_review_channel` first.",
+                    ephemeral=True
+                )
+                return
+
+            # Check if user is a Member before we do any heavy work
+            if not isinstance(user, discord.Member):
+                await application_context.followup.send(content="❌ User must be a guild member.", ephemeral=True)
+                return
+
+            # Create a fake message for the review
+            fake_message = await channel.send("🔨 **[DEBUG]** This is a simulated violation message for testing. It contains potentially problematic content that the AI would flag for review.")
+            
+            # Create hardcoded ActionData simulating AI output
+            action_data = ActionData(
+                user_id=str(user.id),
+                action=ActionType.REVIEW,
+                reason="Simulated review: Message contains ambiguous content that requires human moderator judgment. The AI is uncertain whether this violates server rules.",
+                message_ids=[str(fake_message.id)],
+                timeout_duration=0,
+                ban_duration=0
+            )
+            
+            # Initialize ReviewNotificationManager
+            review_manager = ReviewNotificationManager(self.bot)
+            
+            # Add review item to the manager
+            await review_manager.add_review_item(
+                guild=guild,
+                user=user,
+                message=fake_message,
+                action=action_data
+            )
+            
+            # Finalize the batch to send the review notification
+            success = await review_manager.finalize_batch(guild, settings)
+            
+            if success:
+                embed = discord.Embed(
+                    title="✅ Review Simulation Complete",
+                    description="A simulated review notification has been sent to configured review channels.",
+                    color=discord.Color.green(),
+                )
+                embed.add_field(name="Action", value="REVIEW", inline=True)
+                embed.add_field(name="Target User", value=user.mention, inline=True)
+                embed.add_field(name="Test Message", value=f"[Message {fake_message.id}]({fake_message.jump_url})", inline=False)
+                
+                # List review channels
+                channel_mentions = []
+                for channel_id in settings.review_channel_ids:
+                    review_channel = guild.get_channel(channel_id)
+                    if review_channel:
+                        channel_mentions.append(review_channel.mention)
+                
+                if channel_mentions:
+                    embed.add_field(name="Review Channels", value=", ".join(channel_mentions), inline=False)
+                
+                await application_context.followup.send(embed=embed, ephemeral=True)
+                logger.info(f"Simulated review action executed by {user} ({user.display_name}) in {guild.name}")
+            else:
+                await application_context.followup.send(content="❌ Failed to send review notification.", ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error in simulate_review command: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Try to send error message - if defer failed, this will also fail but at least we logged it
+            try:
+                await application_context.followup.send(content=f"❌ Error: {e}", ephemeral=True)
+            except Exception:
+                logger.error("Failed to send error message to user - interaction may have timed out")
 
 
 def setup(bot: discord.Bot) -> None:

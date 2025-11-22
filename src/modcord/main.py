@@ -275,7 +275,7 @@ async def async_main() -> int:
     """
     token = load_environment()
 
-    # Initialize database and load guild settings
+    # Initialize database and load guild settings (bot will be passed later for auto-population)
     try:
         logger.info("[MAIN] Initializing database and loading guild settings...")
         await guild_settings_manager.async_init()
@@ -288,6 +288,13 @@ async def async_main() -> int:
     except Exception as exc:
         logger.critical("Failed to initialize Discord bot: %s", exc)
         return 1
+    
+    # Auto-populate guild settings now that bot is initialized
+    try:
+        logger.info("[MAIN] Auto-populating guild moderator settings...")
+        await guild_settings_manager._auto_populate_all_guilds(bot)
+    except Exception as exc:
+        logger.warning("Failed to auto-populate guild settings: %s", exc)
 
     try:
         await initialize_ai_model()

@@ -209,7 +209,7 @@ class UnbanScheduler:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.error(f"Failed to auto-unban user {task_payload.user_id}: {exc}")
+                logger.error("Failed to auto-unban user %s: %s", task_payload.user_id, exc)
 
     async def execute(self, payload: ScheduledUnban) -> None:
         """
@@ -231,7 +231,7 @@ class UnbanScheduler:
         try:
             user_obj = discord.Object(id=user_id)
             await guild.unban(user_obj, reason=payload.reason)
-            logger.debug(f"Unbanned user {user_id} after ban expired.")
+            logger.debug("Unbanned user %s after ban expired.", user_id)
 
             # Try to notify in the provided channel with a simple embed (keeps this
             # module independent from util.discord_utils).

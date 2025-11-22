@@ -139,6 +139,7 @@ ai_settings:
       - "timeout" → repeated violations (must set timeout_duration in minutes)
       - "kick" → serious violation
       - "ban" → repeated serious violations (set ban_duration; -1 = permanent)
+      - "review" → uncertain decision requiring moderator review (DMs moderators with context)
 
     STRICT RULE:  
     - **Short**, **casual**, **unremarkable**, or **low-effort** messages are NOT violations unless they explicitly break a listed rule.  

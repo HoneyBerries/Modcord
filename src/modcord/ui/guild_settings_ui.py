@@ -6,6 +6,9 @@ import discord
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.moderation.moderation_datatypes import ActionType
 
+from modcord.util.logger import get_logger
+
+logger = get_logger("guild_settings_ui")
 
 ACTION_UI_ORDER: tuple[ActionType, ...] = (
     ActionType.WARN,
@@ -13,6 +16,7 @@ ACTION_UI_ORDER: tuple[ActionType, ...] = (
     ActionType.TIMEOUT,
     ActionType.KICK,
     ActionType.BAN,
+    ActionType.REVIEW,
 )
 
 ACTION_UI_LABELS: dict[ActionType, str] = {
@@ -21,6 +25,7 @@ ACTION_UI_LABELS: dict[ActionType, str] = {
     ActionType.TIMEOUT: "Timeout",
     ActionType.KICK: "Kick",
     ActionType.BAN: "Ban",
+    ActionType.REVIEW: "Review",
 }
 
 ACTION_UI_EMOJIS: dict[ActionType, str] = {
@@ -29,6 +34,7 @@ ACTION_UI_EMOJIS: dict[ActionType, str] = {
     ActionType.TIMEOUT: "⏲️",
     ActionType.KICK: "👢",
     ActionType.BAN: "🔨",
+    ActionType.REVIEW: "🛡️",
 }
 
 
@@ -197,8 +203,8 @@ class GuildSettingsView(discord.ui.View):
         if self._message is not None:
             try:
                 await self._message.edit(view=self)
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as e:
+                logger.debug("[GUILD SETTINGS UI] Failed to edit message on timeout: %s", e)
 
 
 class ToggleAIButton(discord.ui.Button):

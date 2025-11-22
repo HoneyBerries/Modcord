@@ -48,9 +48,79 @@ async def init_database() -> bool:
                     auto_kick_enabled INTEGER NOT NULL DEFAULT 1,
                     auto_ban_enabled INTEGER NOT NULL DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    auto_review_enabled INTEGER NOT NULL DEFAULT 1
                 )
             """)
+            
+            # Attempt to add new columns if they don't exist (for existing DBs)
+            # Note: ALTER TABLE will fail if column already exists, which is expected behavior
+            try:
+                await db.execute("ALTER TABLE guild_settings ADD COLUMN auto_review_enabled INTEGER NOT NULL DEFAULT 1")
+                logger.info("[DATABASE] Added auto_review_enabled column to guild_settings")
+            except Exception as e:
+                # Column likely already exists, which is fine
+                logger.debug("[DATABASE] auto_review_enabled column already exists or migration failed: %s", e)
+            
+            # Create normalized tables for moderator roles and review channels
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS guild_moderator_roles (
+                    guild_id INTEGER NOT NULL,
+                    role_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (guild_id, role_id),
+                    FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
+                )
+            """)
+            
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS guild_review_channels (
+                    guild_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (guild_id, channel_id),
+                    FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
+                )
+            """)
+            
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_moderator_roles_guild
+                ON guild_moderator_roles(guild_id)
+            """)
+            
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_review_channels_guild
+                ON guild_review_channels(guild_id)
+            """)
+            
+            # Review requests table for tracking human moderator review batches
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS review_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    batch_id TEXT NOT NULL UNIQUE,
+                    guild_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    message_id INTEGER,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    resolved_at TIMESTAMP,
+                    resolved_by INTEGER,
+                    resolution_note TEXT,
+                    FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE,
+                    CHECK (status IN ('pending', 'resolved', 'dismissed'))
+                )
+            """)
+            
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_review_requests_batch
+                ON review_requests(batch_id)
+            """)
+            
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_review_requests_guild_status
+                ON review_requests(guild_id, status, created_at DESC)
+            """)
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS channel_guidelines (
                     guild_id INTEGER NOT NULL,

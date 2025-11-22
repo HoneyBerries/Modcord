@@ -12,10 +12,11 @@ Database schema:
 import collections
 import asyncio
 from typing import Dict, DefaultDict, List, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from modcord.util.logger import get_logger
 from modcord.moderation.moderation_datatypes import ActionType
 from modcord.database.database import init_database, get_connection
+import discord
 
 logger = get_logger("guild_settings_manager")
 
@@ -32,6 +33,9 @@ class GuildSettings:
     auto_timeout_enabled: bool = True
     auto_kick_enabled: bool = True
     auto_ban_enabled: bool = True
+    auto_review_enabled: bool = True
+    moderator_role_ids: List[int] = field(default_factory=list)
+    review_channel_ids: List[int] = field(default_factory=list)
 
 
 ACTION_FLAG_FIELDS: dict[ActionType, str] = {
@@ -40,6 +44,7 @@ ACTION_FLAG_FIELDS: dict[ActionType, str] = {
     ActionType.TIMEOUT: "auto_timeout_enabled",
     ActionType.KICK: "auto_kick_enabled",
     ActionType.BAN: "auto_ban_enabled",
+    ActionType.REVIEW: "auto_review_enabled",
 }
 
 
@@ -67,7 +72,7 @@ class GuildSettingsManager:
 
         logger.info("[GUILD SETTINGS MANAGER] Guild settings manager initialized")
 
-    async def async_init(self) -> None:
+    async def async_init(self, bot: discord.Bot | None = None) -> None:
         """Initialize the database and load settings from disk (async)."""
         if not self._db_initialized:
             await init_database()
@@ -129,7 +134,8 @@ class GuildSettingsManager:
         
         self.channel_guidelines[guild_id][channel_id] = guidelines
         logger.debug(
-            f"[GUILD SETTINGS MANAGER] Updated channel guidelines cache for guild {guild_id}, channel {channel_id} (len={len(guidelines)})"
+            "[GUILD SETTINGS MANAGER] Updated channel guidelines cache for guild %s, channel %s (len=%d)",
+            guild_id, channel_id, len(guidelines)
         )
 
         self._trigger_persist_channel_guidelines(guild_id, channel_id)
@@ -261,12 +267,14 @@ class GuildSettingsManager:
         async with self._persist_lock:
             try:
                 async with get_connection() as db:
+                    # Persist main guild settings
                     await db.execute("""
                         INSERT INTO guild_settings (
                             guild_id, ai_enabled, rules,
                             auto_warn_enabled, auto_delete_enabled,
-                            auto_timeout_enabled, auto_kick_enabled, auto_ban_enabled
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            auto_timeout_enabled, auto_kick_enabled, auto_ban_enabled,
+                            auto_review_enabled
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(guild_id) DO UPDATE SET
                             ai_enabled = excluded.ai_enabled,
                             rules = excluded.rules,
@@ -274,7 +282,8 @@ class GuildSettingsManager:
                             auto_delete_enabled = excluded.auto_delete_enabled,
                             auto_timeout_enabled = excluded.auto_timeout_enabled,
                             auto_kick_enabled = excluded.auto_kick_enabled,
-                            auto_ban_enabled = excluded.auto_ban_enabled
+                            auto_ban_enabled = excluded.auto_ban_enabled,
+                            auto_review_enabled = excluded.auto_review_enabled
                     """, (
                         guild_id,
                         1 if settings.ai_enabled else 0,
@@ -284,7 +293,25 @@ class GuildSettingsManager:
                         1 if settings.auto_timeout_enabled else 0,
                         1 if settings.auto_kick_enabled else 0,
                         1 if settings.auto_ban_enabled else 0,
+                        1 if settings.auto_review_enabled else 0,
                     ))
+                    
+                    # Persist moderator roles - delete and reinsert for simplicity
+                    await db.execute("DELETE FROM guild_moderator_roles WHERE guild_id = ?", (guild_id,))
+                    for role_id in settings.moderator_role_ids:
+                        await db.execute(
+                            "INSERT INTO guild_moderator_roles (guild_id, role_id) VALUES (?, ?)",
+                            (guild_id, role_id)
+                        )
+                    
+                    # Persist review channels - delete and reinsert for simplicity
+                    await db.execute("DELETE FROM guild_review_channels WHERE guild_id = ?", (guild_id,))
+                    for channel_id in settings.review_channel_ids:
+                        await db.execute(
+                            "INSERT INTO guild_review_channels (guild_id, channel_id) VALUES (?, ?)",
+                            (guild_id, channel_id)
+                        )
+                    
                     await db.commit()
                     logger.debug("[GUILD SETTINGS MANAGER] Persisted guild %s to database", guild_id)
                     return True
@@ -341,22 +368,55 @@ class GuildSettingsManager:
         try:
             async with get_connection() as db:
                 # Load guild settings
-                async with db.execute("SELECT * FROM guild_settings") as cursor:
+                async with db.execute("""
+                    SELECT 
+                        guild_id, ai_enabled, rules,
+                        auto_warn_enabled, auto_delete_enabled,
+                        auto_timeout_enabled, auto_kick_enabled, auto_ban_enabled,
+                        auto_review_enabled
+                    FROM guild_settings
+                """) as cursor:
                     rows = await cursor.fetchall()
                     
                 self.guilds.clear()
                 for row in rows:
                     guild_id = row[0]
-                    self.guilds[guild_id] = GuildSettings(
+                    
+                    settings = GuildSettings(
                         guild_id=guild_id,
                         ai_enabled=bool(row[1]),
-                        rules=row[2],
+                        rules=row[2] or "",
                         auto_warn_enabled=bool(row[3]),
                         auto_delete_enabled=bool(row[4]),
                         auto_timeout_enabled=bool(row[5]),
                         auto_kick_enabled=bool(row[6]),
                         auto_ban_enabled=bool(row[7]),
+                        auto_review_enabled=bool(row[8]) if row[8] is not None else True,
+                        moderator_role_ids=[],
+                        review_channel_ids=[],
                     )
+
+                    self.guilds[guild_id] = settings
+                
+                # Load moderator roles for all guilds
+                async with db.execute("SELECT guild_id, role_id FROM guild_moderator_roles ORDER BY guild_id, role_id") as cursor:
+                    role_rows = await cursor.fetchall()
+                
+                for row in role_rows:
+                    guild_id = row[0]
+                    role_id = row[1]
+                    if guild_id in self.guilds:
+                        self.guilds[guild_id].moderator_role_ids.append(role_id)
+                
+                # Load review channels for all guilds
+                async with db.execute("SELECT guild_id, channel_id FROM guild_review_channels ORDER BY guild_id, channel_id") as cursor:
+                    channel_rows = await cursor.fetchall()
+                
+                for row in channel_rows:
+                    guild_id = row[0]
+                    channel_id = row[1]
+                    if guild_id in self.guilds:
+                        self.guilds[guild_id].review_channel_ids.append(channel_id)
                 
                 # Load channel guidelines
                 async with db.execute("SELECT guild_id, channel_id, guidelines FROM channel_guidelines") as cursor:

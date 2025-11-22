@@ -16,10 +16,60 @@ import discord
 from modcord.ai.ai_moderation_processor import moderation_processor, model_state
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.moderation.moderation_datatypes import ActionData, ActionType, ModerationChannelBatch
+from modcord.moderation.review_notifications import ReviewNotificationManager
 from modcord.util import discord_utils
 from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_helper")
+
+
+def find_target_user_in_batch(
+    batch: ModerationChannelBatch,
+    user_id: str
+) -> tuple[bool, object | None]:
+    """
+    Find a target user in a batch by user ID.
+    
+    Args:
+        batch: ModerationChannelBatch to search
+        user_id: User ID to find (will be normalized)
+    
+    Returns:
+        tuple[bool, object | None]: (success, target_user or None)
+    """
+    target_user_id = str(user_id).strip()
+    target_user = next((u for u in batch.users if str(u.user_id).strip() == target_user_id), None)
+    
+    if not target_user or not target_user.messages:
+        logger.warning(
+            "[MODERATION HELPER] Target user %s not found in batch or has no messages",
+            user_id
+        )
+        return False, None
+    
+    return True, target_user
+
+
+def find_pivot_message(target_user):
+    """
+    Find the pivot message (most recent message with discord_message reference).
+    
+    Args:
+        target_user: User object containing messages
+    
+    Returns:
+        tuple[bool, object | None]: (success, pivot_message or None)
+    """
+    pivot = next((m for m in reversed(target_user.messages) if m.discord_message), None)
+    
+    if not pivot or not pivot.discord_message:
+        logger.warning(
+            "[MODERATION HELPER] No discord_message reference found for user (has %d messages)",
+            len(target_user.messages)
+        )
+        return False, None
+    
+    return True, pivot
 
 
 async def process_message_batches(self, batches: List[ModerationChannelBatch]) -> None:
@@ -57,16 +107,121 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
         channel_guidelines_map=channel_guidelines_map,
     )
 
+    # Initialize review notification manager
+    review_manager = ReviewNotificationManager(self.bot)
+    
+    # Track guilds that have review actions for batch finalization
+    guilds_with_reviews = set()
+
     for batch in valid_batches:
         actions = actions_by_channel.get(batch.channel_id, [])
         for action in actions:
-            if action.action is not ActionType.NULL:
+            if action.action is ActionType.NULL:
+                continue
+            
+            # Handle REVIEW actions separately through ReviewNotificationManager
+            if action.action is ActionType.REVIEW:
+                await handle_review_action(self, action, batch, review_manager)
+                # Track guild for batch finalization
+                first_message = batch.users[0].messages[0] if batch.users and batch.users[0].messages else None
+                if first_message and first_message.guild_id:
+                    guilds_with_reviews.add(first_message.guild_id)
+            else:
                 await apply_batch_action(self, action, batch)
+    
+    # Finalize all review batches after processing all actions
+    for guild_id in guilds_with_reviews:
+        guild = self.bot.get_guild(guild_id)
+        if guild:
+            settings = guild_settings_manager.get_guild_settings(guild_id)
+            if settings:
+                await review_manager.finalize_batch(guild, settings)
+
+
+async def handle_review_action(
+    self,
+    action: ActionData,
+    batch: ModerationChannelBatch,
+    review_manager: ReviewNotificationManager
+) -> bool:
+    """
+    Handle a REVIEW action by adding it to the ReviewNotificationManager.
+    
+    Args:
+        self: Bot cog instance
+        action: Review action to handle
+        batch: Batch containing the user and messages
+        review_manager: ReviewNotificationManager instance for this batch
+    
+    Returns:
+        bool: True if review item was successfully added, False otherwise
+    """
+    logger.debug(
+        "[MODERATION HELPER] [HANDLE_REVIEW] Processing review action for user %s in channel %s",
+        action.user_id,
+        batch.channel_id
+    )
+    
+    if not action.user_id:
+        logger.debug("[MODERATION HELPER] [HANDLE_REVIEW] Skipping: no user_id")
+        return False
+    
+    # Find target user and pivot message
+    success, target_user = find_target_user_in_batch(batch, action.user_id)
+    if not success:
+        return False
+    
+    success, pivot = find_pivot_message(target_user)
+    if not success:
+        return False
+    
+    msg = pivot.discord_message
+    guild = msg.guild
+    author = msg.author
+    
+    if not guild or not isinstance(author, discord.Member):
+        logger.warning(
+            "[MODERATION HELPER] [HANDLE_REVIEW] Cannot handle review: no guild or author is not a member"
+        )
+        return False
+    
+    # Skip if user has elevated permissions
+    if guild.owner_id == author.id or discord_utils.has_elevated_permissions(author):
+        logger.debug(
+            "[MODERATION HELPER] [HANDLE_REVIEW] Skipping review for user %s: user is owner or has elevated permissions",
+            action.user_id
+        )
+        return False
+    
+    # Add review item to the manager
+    try:
+        await review_manager.add_review_item(
+            guild=guild,
+            user=author,
+            message=msg,
+            action=action
+        )
+        logger.info(
+            "[MODERATION HELPER] [HANDLE_REVIEW] Added review item for user %s in guild %s",
+            action.user_id,
+            guild.id
+        )
+        return True
+    except Exception as e:
+        logger.error(
+            "[MODERATION HELPER] [HANDLE_REVIEW] Failed to add review item for user %s: %s",
+            action.user_id,
+            e,
+            exc_info=True
+        )
+        return False
 
 
 async def apply_batch_action(self, action: ActionData, batch: ModerationChannelBatch) -> bool:
     """
     Apply a moderation action to a user in the batch, ensuring permissions and context.
+    
+    Note: REVIEW actions should be handled by handle_review_action instead.
     """
     logger.debug(
         "[MODERATION HELPER] [APPLY_ACTION] Attempting to apply action %s for user %s in channel %s",
@@ -79,13 +234,11 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
         logger.debug("[MODERATION HELPER] [APPLY_ACTION] Skipping: action is NULL or no user_id")
         return False
 
-    # Normalize user_id for comparison
-    target_user_id = str(action.user_id).strip()
-    target_user = next((u for u in batch.users if str(u.user_id).strip() == target_user_id), None)
-    if not target_user or not target_user.messages:
+    # Find target user and pivot message
+    success, target_user = find_target_user_in_batch(batch, action.user_id)
+    if not success:
         logger.warning(
-            "[MODERATION HELPER] [APPLY_ACTION] Cannot apply action: target user %s not found in batch or has no messages. Batch has %d users: %s",
-            action.user_id,
+            "[MODERATION HELPER] [APPLY_ACTION] Batch has %d users: %s",
             len(batch.users),
             [str(u.user_id).strip() for u in batch.users]
         )
@@ -93,17 +246,12 @@ async def apply_batch_action(self, action: ActionData, batch: ModerationChannelB
 
     logger.debug(
         "[MODERATION HELPER] [APPLY_ACTION] Found target user %s with %d messages",
-        target_user_id,
+        action.user_id,
         len(target_user.messages)
     )
 
-    pivot = next((m for m in reversed(target_user.messages) if m.discord_message), None)
-    if not pivot or not pivot.discord_message:
-        logger.warning(
-            "[APPLY_ACTION] Cannot apply action: no discord_message reference found for user %s (has %d messages, none with discord_message)",
-            action.user_id,
-            len(target_user.messages)
-        )
+    success, pivot = find_pivot_message(target_user)
+    if not success:
         return False
 
     logger.debug(

@@ -105,6 +105,7 @@ class ActionType(Enum):
     WARN = "warn"
     DELETE = "delete"
     TIMEOUT = "timeout"
+    REVIEW = "review"
     NULL = "null"
 
     def __str__(self) -> str:
