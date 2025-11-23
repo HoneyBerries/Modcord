@@ -16,11 +16,11 @@ This document summarizes the complete refactoring and enhancement of the human m
 
 ### 2. Review Notification Manager (`src/modcord/moderation/review_notifications.py`)
 **Created new module** with `ReviewNotificationManager` class:
-- `add_review_item()`: Collects review actions per guild during batch processing
-- `finalize_batch()`: Creates consolidated embed with all review items
+- `add_item_to_review()`: Collects review actions per guild during batch processing
+- `send_review_batch_embed()`: Creates consolidated embed with all review items
 - `_build_review_embed()`: Formats embed with user context, history, and images
 - `_build_role_mentions()`: Mentions configured moderator roles
-- `_store_review_request()`: Persists review to database
+- `store_review_requests_to_database()`: Persists review to database
 - `mark_resolved()`: Static method to update review status
 - `get_review_status()`: Static method to query review state
 
@@ -77,7 +77,7 @@ This document summarizes the complete refactoring and enhancement of the human m
 - Imported `ReviewNotificationManager`
 - Separated REVIEW actions from other action types in `process_message_batches()`
 - Added `handle_review_action()` function to process review actions
-- Tracks guilds with reviews and calls `finalize_batch()` after all actions processed
+- Tracks guilds with reviews and calls `send_review_batch_embed()` after all actions processed
 
 **Key Changes:**
 ```python
@@ -96,7 +96,7 @@ for action in actions:
 
 # Finalize all review batches
 for guild_id in guilds_with_reviews:
-    await review_manager.finalize_batch(guild, settings)
+    await review_manager.send_review_batch_embed(guild, settings)
 ```
 
 **Impact:** Review actions are batched properly, preventing individual embeds per user
@@ -117,15 +117,15 @@ for guild_id in guilds_with_reviews:
 **Created new test suite** with 15+ test cases:
 
 **TestReviewNotificationManager:**
-- `test_add_review_item`: Verifies review items added to batch
+- `test_add_item_to_review`: Verifies review items added to batch
 - `test_multiple_review_items_same_guild`: Tests batch aggregation
-- `test_finalize_batch`: Validates consolidated embed sending
+- `test_send_review_batch_embed`: Validates consolidated embed sending
 - `test_finalize_empty_batch`: Ensures empty batches return False
 - `test_build_role_mentions`: Checks role mention formatting
 - `test_build_role_mentions_no_roles`: Handles missing roles gracefully
 
 **TestReviewDatabase:**
-- `test_store_review_request`: Validates database storage
+- `teststore_review_requests_to_database`: Validates database storage
 - `test_mark_resolved`: Tests status updates
 - `test_mark_resolved_nonexistent`: Handles missing reviews
 - `test_get_review_status`: Validates status queries

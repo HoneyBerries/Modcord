@@ -65,7 +65,7 @@ class ReviewNotificationManager:
         self.bot = bot
         self._active_batches: dict[int, List[ReviewItem]] = {}  # guild_id -> list of review items
     
-    async def add_review_item(
+    async def add_item_to_review(
         self,
         guild: discord.Guild,
         user: discord.Member,
@@ -75,7 +75,7 @@ class ReviewNotificationManager:
         """
         Add a review item to the current batch for this guild.
         
-        Items are accumulated per guild and will be sent together when finalize_batch is called.
+        Items are accumulated per guild and will be sent together when send_review_batch_embed is called.
         
         Args:
             guild: Discord guild where the review is needed
@@ -104,7 +104,7 @@ class ReviewNotificationManager:
         self._active_batches[guild.id].append(review_item)
         logger.debug("[REVIEW] Added review item for user %s in guild %s", user.id, guild.id)
     
-    async def finalize_batch(self, guild: discord.Guild, settings: GuildSettings) -> bool:
+    async def send_review_batch_embed(self, guild: discord.Guild, settings: GuildSettings) -> bool:
         """
         Finalize and send the consolidated review embed for this guild's batch.
         
@@ -130,29 +130,28 @@ class ReviewNotificationManager:
         embed = self._build_review_embed(review_items, batch_id)
         
         # Send to all review channels
-        sent_count, last_message_id, last_channel_id = await self._send_to_review_channels(
+        sent_messages = await self._send_to_review_channels(
             guild=guild,
             settings=settings,
             batch_id=batch_id,
             embed=embed
         )
         
-        # Store review request if successfully sent
-        if sent_count > 0 and last_channel_id is not None and last_message_id is not None:
-            await self._store_review_request(
+        # Store all review messages if successfully sent
+        if sent_messages:
+            await self.store_review_requests_to_database(
                 batch_id=batch_id,
                 guild_id=guild.id,
-                channel_id=last_channel_id,
-                message_id=last_message_id
+                messages=sent_messages
             )
-            logger.info("[REVIEW] Review batch %s sent to %d channel(s) in guild %s", batch_id, sent_count, guild.id)
+            logger.info("[REVIEW] Review batch %s sent to %d channel(s) in guild %s", batch_id, len(sent_messages), guild.id)
         else:
             logger.warning("[REVIEW] Review batch generated but no review channels responded for guild %s", guild.id)
         
         # Clear batch for this guild
         del self._active_batches[guild.id]
         
-        return sent_count > 0
+        return len(sent_messages) > 0
     
     def _build_review_embed(self, review_items: List[ReviewItem], batch_id: str) -> discord.Embed:
         """
@@ -237,7 +236,7 @@ class ReviewNotificationManager:
         settings: GuildSettings,
         batch_id: str,
         embed: discord.Embed
-    ) -> tuple[int, int | None, int | None]:
+    ) -> List[tuple[int, int]]:
         """
         Send review embed to all configured review channels.
         
@@ -248,11 +247,9 @@ class ReviewNotificationManager:
             embed: Review embed to send
         
         Returns:
-            tuple[int, int | None, int | None]: (sent_count, last_message_id, last_channel_id)
+            List[tuple[int, int]]: List of (channel_id, message_id) tuples for all sent messages
         """
-        sent_count = 0
-        last_message_id = None
-        last_channel_id = None
+        sent_messages = []
         
         # Import here to avoid circular dependency
         from modcord.bot.review_ui import ReviewResolutionView
@@ -261,7 +258,7 @@ class ReviewNotificationManager:
             review_channel = guild.get_channel(channel_id)
             if review_channel and isinstance(review_channel, (discord.TextChannel, discord.Thread)):
                 try:
-                    view = ReviewResolutionView(batch_id=batch_id, guild_id=guild.id)
+                    view = ReviewResolutionView(batch_id=batch_id, guild_id=guild.id, bot=self.bot)
                     mention_content = self.build_role_mentions(guild, settings)
                     
                     sent_message = await review_channel.send(
@@ -269,14 +266,12 @@ class ReviewNotificationManager:
                         embed=embed,
                         view=view
                     )
-                    sent_count += 1
-                    last_message_id = sent_message.id
-                    last_channel_id = channel_id
+                    sent_messages.append((channel_id, sent_message.id))
                     logger.info("[REVIEW] Sent review batch %s to channel %s", batch_id, channel_id)
                 except Exception as e:
                     logger.error("[REVIEW] Failed to send review to channel %s: %s", channel_id, e)
         
-        return sent_count, last_message_id, last_channel_id
+        return sent_messages
     
     @staticmethod
     def validate_review_channels(settings: GuildSettings) -> bool:
@@ -314,35 +309,34 @@ class ReviewNotificationManager:
         
         return " ".join(mentions) if mentions else None
     
-    async def _store_review_request(
+    async def store_review_requests_to_database(
         self,
         batch_id: str,
         guild_id: int,
-        channel_id: int,
-        message_id: int | None
+        messages: List[tuple[int, int]]
     ) -> None:
         """
-        Store a review request in the database.
+        Store multiple review request messages in the database.
         
         Args:
             batch_id: Unique identifier for this review batch
             guild_id: ID of the guild where the review was sent
-            channel_id: ID of the channel where the review was sent
-            message_id: ID of the message containing the review embed
+            messages: List of (channel_id, message_id) tuples
         """
         try:
             async with get_connection() as db:
-                await db.execute(
-                    """
-                    INSERT INTO review_requests (batch_id, guild_id, channel_id, message_id, status)
-                    VALUES (?, ?, ?, ?, 'pending')
-                    """,
-                    (batch_id, guild_id, channel_id, message_id)
-                )
+                for channel_id, message_id in messages:
+                    await db.execute(
+                        """
+                        INSERT INTO review_requests (batch_id, guild_id, channel_id, message_id, status)
+                        VALUES (?, ?, ?, ?, 'pending')
+                        """,
+                        (batch_id, guild_id, channel_id, message_id)
+                    )
                 await db.commit()
-            logger.debug("[REVIEW] Stored review request %s in database", batch_id)
+            logger.debug("[REVIEW] Stored %d review messages for batch %s in database", len(messages), batch_id)
         except Exception as e:
-            logger.error("[REVIEW] Failed to store review request %s: %s", batch_id, e)
+            logger.error("[REVIEW] Failed to store review requests for batch %s: %s", batch_id, e)
     
     @staticmethod
     async def mark_resolved(
@@ -351,7 +345,7 @@ class ReviewNotificationManager:
         resolution_note: str | None = None
     ) -> bool:
         """
-        Mark a review request as resolved.
+        Mark all review requests with this batch_id as resolved.
         
         Args:
             batch_id: Unique identifier of the review batch to resolve
@@ -363,6 +357,7 @@ class ReviewNotificationManager:
         """
         try:
             async with get_connection() as db:
+                # Update all pending messages with this batch_id
                 cursor = await db.execute(
                     """
                     UPDATE review_requests
@@ -377,7 +372,7 @@ class ReviewNotificationManager:
                 await db.commit()
                 
                 if cursor.rowcount > 0:
-                    logger.info("[REVIEW] Review batch %s marked as resolved by user %s", batch_id, resolved_by)
+                    logger.info("[REVIEW] Review batch %s marked as resolved (%d messages) by user %s", batch_id, cursor.rowcount, resolved_by)
                     return True
                 else:
                     logger.warning("[REVIEW] Review batch %s not found or already resolved", batch_id)
@@ -385,6 +380,33 @@ class ReviewNotificationManager:
         except Exception as e:
             logger.error("[REVIEW] Failed to mark review batch %s as resolved: %s", batch_id, e)
             return False
+    
+    @staticmethod
+    async def get_batch_messages(batch_id: str) -> List[tuple[int, int, int]]:
+        """
+        Get all message references for a review batch.
+        
+        Args:
+            batch_id: Unique identifier of the review batch
+        
+        Returns:
+            List[tuple[int, int, int]]: List of (guild_id, channel_id, message_id) tuples
+        """
+        try:
+            async with get_connection() as db:
+                cursor = await db.execute(
+                    """
+                    SELECT guild_id, channel_id, message_id
+                    FROM review_requests
+                    WHERE batch_id = ? AND message_id IS NOT NULL
+                    """,
+                    (batch_id,)
+                )
+                rows = await cursor.fetchall()
+                return [(row[0], row[1], row[2]) for row in rows]
+        except Exception as e:
+            logger.error("[REVIEW] Failed to get batch messages for %s: %s", batch_id, e)
+            return []
     
     @staticmethod
     async def get_review_status(batch_id: str) -> dict | None:

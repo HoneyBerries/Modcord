@@ -87,7 +87,7 @@ class TestReviewNotificationManager:
     """Tests for ReviewNotificationManager."""
     
     @pytest.mark.asyncio
-    async def test_add_review_item(self, test_db, mock_bot, mock_guild, mock_member, mock_message):
+    async def test_add_item_to_review(self, test_db, mock_bot, mock_guild, mock_member, mock_message):
         """Test adding a review item to the batch."""
         manager = ReviewNotificationManager(mock_bot)
         action = ActionData(
@@ -101,7 +101,7 @@ class TestReviewNotificationManager:
         with patch('modcord.moderation.review_notifications.get_past_actions', new_callable=AsyncMock) as mock_past:
             mock_past.return_value = []
             
-            await manager.add_review_item(
+            await manager.add_item_to_review(
                 guild=mock_guild,
                 user=mock_member,
                 message=mock_message,
@@ -148,7 +148,7 @@ class TestReviewNotificationManager:
                     ban_duration=0
                 )
                 
-                await manager.add_review_item(
+                await manager.add_item_to_review(
                     guild=mock_guild,
                     user=member,
                     message=message,
@@ -160,7 +160,7 @@ class TestReviewNotificationManager:
         assert len(manager._active_batches[mock_guild.id]) == 3
     
     @pytest.mark.asyncio
-    async def test_finalize_batch(self, test_db, mock_bot, mock_guild, mock_guild_settings):
+    async def test_send_review_batch_embed(self, test_db, mock_bot, mock_guild, mock_guild_settings):
         """Test finalizing a review batch sends consolidated embed."""
         manager = ReviewNotificationManager(mock_bot)
         
@@ -200,7 +200,7 @@ class TestReviewNotificationManager:
                     ban_duration=0
                 )
                 
-                await manager.add_review_item(
+                await manager.add_item_to_review(
                     guild=mock_guild,
                     user=member,
                     message=message,
@@ -209,7 +209,7 @@ class TestReviewNotificationManager:
         
         # Finalize the batch
         with patch('modcord.moderation.review_notifications.ReviewResolutionView'):
-            result = await manager.finalize_batch(mock_guild, mock_guild_settings)
+            result = await manager.send_review_batch_embed(mock_guild, mock_guild_settings)
         
         # Verify batch was sent
         assert result is True
@@ -230,7 +230,7 @@ class TestReviewNotificationManager:
     async def test_finalize_empty_batch(self, test_db, mock_bot, mock_guild, mock_guild_settings):
         """Test finalizing an empty batch returns False."""
         manager = ReviewNotificationManager(mock_bot)
-        result = await manager.finalize_batch(mock_guild, mock_guild_settings)
+        result = await manager.send_review_batch_embed(mock_guild, mock_guild_settings)
         assert result is False
     
     @pytest.mark.asyncio
@@ -263,7 +263,7 @@ class TestReviewDatabase:
     """Tests for review database operations."""
     
     @pytest.mark.asyncio
-    async def test_store_review_request(self, test_db):
+    async def teststore_review_requests_to_database(self, test_db):
         """Test storing a review request in the database."""
         batch_id = str(uuid.uuid4())
         guild_id = 987654321
@@ -279,7 +279,7 @@ class TestReviewDatabase:
             await db.commit()
         
         manager = ReviewNotificationManager(MagicMock())
-        await manager._store_review_request(batch_id, guild_id, channel_id, message_id)
+        await manager.store_review_requests_to_database(batch_id, guild_id, channel_id, message_id)
         
         # Verify it was stored
         async with get_connection() as db:

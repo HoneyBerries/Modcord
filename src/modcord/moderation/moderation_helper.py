@@ -135,7 +135,7 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
         if guild:
             settings = guild_settings_manager.get_guild_settings(guild_id)
             if settings:
-                await review_manager.finalize_batch(guild, settings)
+                await review_manager.send_review_batch_embed(guild, settings)
 
 
 async def handle_review_action(
@@ -195,7 +195,7 @@ async def handle_review_action(
     
     # Add review item to the manager
     try:
-        await review_manager.add_review_item(
+        await review_manager.add_item_to_review(
             guild=guild,
             user=author,
             message=msg,

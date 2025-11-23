@@ -48,7 +48,7 @@ CREATE TABLE review_requests (
 
 1. **AI Processing**: AI model returns `ActionType.REVIEW` for content requiring human judgment
 2. **Batch Collection**: `moderation_helper.handle_review_action()` adds each review to `ReviewNotificationManager`
-3. **Consolidation**: After all actions processed, `finalize_batch()` creates single embed per guild
+3. **Consolidation**: After all actions processed, `send_review_batch_embed()` creates single embed per guild
 4. **Delivery**: Embed sent to all configured review channels with role mentions
 5. **Database Storage**: Review request stored with `pending` status and unique batch ID
 6. **Moderator Interaction**: Moderators click buttons to get command suggestions or mark resolved
@@ -217,7 +217,7 @@ See `tests/test_review_system.py` for comprehensive test coverage:
 1. Check `/settings review_channels list` to verify channels configured
 2. Check bot permissions in review channels (Send Messages, Embed Links)
 3. Verify `auto_review_enabled` is not disabled in guild settings
-4. Check logs for errors during `finalize_batch()`
+4. Check logs for errors during `send_review_batch_embed()`
 
 ### Permission errors on resolution
 1. Verify moderator roles are configured via `/settings moderator_roles`

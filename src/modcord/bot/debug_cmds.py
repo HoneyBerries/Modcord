@@ -162,7 +162,7 @@ class DebugCog(commands.Cog):
             review_manager = ReviewNotificationManager(self.bot)
             
             # Add review item to the manager
-            await review_manager.add_review_item(
+            await review_manager.add_item_to_review(
                 guild=guild,
                 user=user,
                 message=fake_message,
@@ -170,7 +170,7 @@ class DebugCog(commands.Cog):
             )
             
             # Finalize the batch to send the review notification
-            success = await review_manager.finalize_batch(guild, settings)
+            success = await review_manager.send_review_batch_embed(guild, settings)
             
             if success:
                 embed = discord.Embed(
