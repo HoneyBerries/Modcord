@@ -15,9 +15,9 @@ This document summarizes the complete refactoring and enhancement of the human m
 **Impact:** Reviews are now permanently tracked in the database with full audit trail
 
 ### 2. Review Notification Manager (`src/modcord/moderation/review_notifications.py`)
-**Created new module** with `ReviewNotificationManager` class:
-- `add_item_to_review()`: Collects review actions per guild during batch processing
-- `send_review_batch_embed()`: Creates consolidated embed with all review items
+**Created new module** with `HumanReviewManager` class:
+- `add_item_for_review()`: Collects review actions per guild during batch processing
+- `send_review_embed()`: Creates consolidated embed with all review items
 - `_build_review_embed()`: Formats embed with user context, history, and images
 - `_build_role_mentions()`: Mentions configured moderator roles
 - `store_review_requests_to_database()`: Persists review to database
@@ -34,7 +34,7 @@ This document summarizes the complete refactoring and enhancement of the human m
 **Impact:** Eliminates notification spam, provides complete context for moderator decisions
 
 ### 3. Review UI Components (`src/modcord/bot/review_ui.py`)
-**Created new module** with `ReviewResolutionView` class:
+**Created new module** with `HumanReviewResolutionView` class:
 
 **Buttons:**
 1. ✅ **Mark as Resolved** (green, row 0):
@@ -74,10 +74,10 @@ This document summarizes the complete refactoring and enhancement of the human m
 
 ### 4. Moderation Helper Integration (`src/modcord/moderation/moderation_helper.py`)
 **Modified:**
-- Imported `ReviewNotificationManager`
+- Imported `HumanReviewManager`
 - Separated REVIEW actions from other action types in `process_message_batches()`
 - Added `handle_review_action()` function to process review actions
-- Tracks guilds with reviews and calls `send_review_batch_embed()` after all actions processed
+- Tracks guilds with reviews and calls `send_review_embed()` after all actions processed
 
 **Key Changes:**
 ```python
@@ -96,7 +96,7 @@ for action in actions:
 
 # Finalize all review batches
 for guild_id in guilds_with_reviews:
-    await review_manager.send_review_batch_embed(guild, settings)
+    await review_manager.send_review_embed(guild, settings)
 ```
 
 **Impact:** Review actions are batched properly, preventing individual embeds per user
@@ -108,7 +108,7 @@ for guild_id in guilds_with_reviews:
 - Direct channel sending loop
 
 **Replaced with:**
-- Simple redirect to ReviewNotificationManager with warning log
+- Simple redirect to HumanReviewManager with warning log
 - Returns True since action is valid (just processed elsewhere)
 
 **Impact:** Cleaner separation of concerns, review logic no longer scattered
@@ -116,10 +116,10 @@ for guild_id in guilds_with_reviews:
 ### 6. Comprehensive Tests (`tests/test_review_system.py`)
 **Created new test suite** with 15+ test cases:
 
-**TestReviewNotificationManager:**
-- `test_add_item_to_review`: Verifies review items added to batch
+**TestHumanReviewManager:**
+- `test_add_item_for_review`: Verifies review items added to batch
 - `test_multiple_review_items_same_guild`: Tests batch aggregation
-- `test_send_review_batch_embed`: Validates consolidated embed sending
+- `test_send_review_embed`: Validates consolidated embed sending
 - `test_finalize_empty_batch`: Ensures empty batches return False
 - `test_build_role_mentions`: Checks role mention formatting
 - `test_build_role_mentions_no_roles`: Handles missing roles gracefully

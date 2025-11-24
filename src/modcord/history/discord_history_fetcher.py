@@ -85,7 +85,7 @@ class DiscordHistoryFetcher:
 
         if history_limit is None:
             try:
-                history_limit = int(app_config.ai_settings.get("history_context_messages", 20))
+                history_limit = app_config.ai_settings.history_context_messages
             except Exception:
                 history_limit = 20
 

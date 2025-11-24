@@ -379,7 +379,7 @@ class RulesCacheManager:
                 reads from app_config rules_cache_refresh.interval_seconds.
         """
         if interval_seconds is None:
-            interval_seconds = float(app_config.get("rules_cache_refresh", {}).get("interval_seconds", 600.0))
+            interval_seconds = app_config.rules_cache_refresh_interval
 
         if self._refresh_task and not self._refresh_task.done():
             logger.warning("[RULES CACHE MANAGER] Periodic refresh task already running")

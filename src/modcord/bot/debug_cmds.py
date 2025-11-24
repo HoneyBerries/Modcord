@@ -9,9 +9,14 @@ from discord.ext import commands
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.util.logger import get_logger
-from modcord.moderation.moderation_datatypes import ActionType, ActionData, ModerationMessage
+from modcord.moderation.moderation_datatypes import (
+    ActionData,
+    ActionType,
+    ModerationMessage,
+    ModerationUser,
+)
 from modcord.util.discord_utils import apply_action_decision
-from modcord.moderation.review_notifications import ReviewNotificationManager
+from modcord.moderation.human_review_manager import HumanReviewManager
 
 logger = get_logger("debug_commands")
 
@@ -133,7 +138,7 @@ class DebugCog(commands.Cog):
 
             # Check if guild has review channels configured
             settings = guild_settings_manager.get_guild_settings(guild.id)
-            if not ReviewNotificationManager.validate_review_channels(settings):
+            if not HumanReviewManager.validate_review_channels(settings):
                 await application_context.followup.send(
                     content="❌ No review channels configured for this guild. Use `/config set_review_channel` first.",
                     ephemeral=True
@@ -157,20 +162,48 @@ class DebugCog(commands.Cog):
                 timeout_duration=0,
                 ban_duration=0
             )
+
+            pivot_message = ModerationMessage(
+                message_id=str(fake_message.id),
+                user_id=str(user.id),
+                content=fake_message.content,
+                timestamp=fake_message.created_at.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                guild_id=guild.id,
+                channel_id=channel.id if hasattr(channel, "id") else None,
+                discord_message=fake_message,
+            )
+
+            moderator_roles = [role.name for role in user.roles] if isinstance(user, discord.Member) else []
+            join_date = None
+            if isinstance(user, discord.Member) and user.joined_at:
+                join_date = (
+                    user.joined_at.astimezone(datetime.timezone.utc)
+                    .replace(microsecond=0)
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                )
+
+            review_user = ModerationUser(
+                user_id=str(user.id),
+                username=str(user),
+                roles=moderator_roles,
+                join_date=join_date,
+                messages=[pivot_message],
+                past_actions=[],
+            )
+
+            # Initialize HumanReviewManager
+            review_manager = HumanReviewManager(self.bot)
             
-            # Initialize ReviewNotificationManager
-            review_manager = ReviewNotificationManager(self.bot)
-            
-            # Add review item to the manager
-            await review_manager.add_item_to_review(
+            # Add review item to the manager (user-centric, no pivot_message parameter)
+            await review_manager.add_item_for_review(
                 guild=guild,
-                user=user,
-                message=fake_message,
+                user=review_user,
                 action=action_data
             )
             
             # Finalize the batch to send the review notification
-            success = await review_manager.send_review_batch_embed(guild, settings)
+            success = await review_manager.send_review_embed(guild, settings)
             
             if success:
                 embed = discord.Embed(

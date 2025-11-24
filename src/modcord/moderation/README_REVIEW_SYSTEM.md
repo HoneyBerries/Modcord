@@ -7,7 +7,7 @@ The human moderator review system provides a structured workflow for escalating 
 
 ### Core Components
 
-#### ReviewNotificationManager (`review_notifications.py`)
+#### HumanReviewManager (`review_notifications.py`)
 - **Purpose**: Aggregates review actions per guild and sends consolidated embeds
 - **Key Features**:
   - Batch consolidation: Groups all review items per guild into single embed
@@ -15,7 +15,7 @@ The human moderator review system provides a structured workflow for escalating 
   - Database tracking: Stores review requests with status and resolution info
   - Role mentions: Notifies configured moderator roles automatically
 
-#### ReviewResolutionView (`review_ui.py`)
+#### HumanReviewResolutionView (`review_ui.py`)
 - **Purpose**: Provides interactive UI buttons on review embeds
 - **Buttons**:
   - ✅ Mark as Resolved: Updates status, disables buttons, records resolver
@@ -47,8 +47,8 @@ CREATE TABLE review_requests (
 ### Integration Flow
 
 1. **AI Processing**: AI model returns `ActionType.REVIEW` for content requiring human judgment
-2. **Batch Collection**: `moderation_helper.handle_review_action()` adds each review to `ReviewNotificationManager`
-3. **Consolidation**: After all actions processed, `send_review_batch_embed()` creates single embed per guild
+2. **Batch Collection**: `moderation_helper.handle_review_action()` adds each review to `HumanReviewManager`
+3. **Consolidation**: After all actions processed, `send_review_embed()` creates single embed per guild
 4. **Delivery**: Embed sent to all configured review channels with role mentions
 5. **Database Storage**: Review request stored with `pending` status and unique batch ID
 6. **Moderator Interaction**: Moderators click buttons to get command suggestions or mark resolved
@@ -127,14 +127,14 @@ Bot: ModCord | Batch: abc12345
 ### Checking Review Status
 ```python
 # Get status of a specific review batch
-status = await ReviewNotificationManager.get_review_status(batch_id)
+status = await HumanReviewManager.get_review_status(batch_id)
 # Returns: {"status": "resolved", "resolved_by": 123456, "resolved_at": "2024-..."}
 ```
 
 ### Manually Marking Resolved
 ```python
 # From application code
-success = await ReviewNotificationManager.mark_resolved(
+success = await HumanReviewManager.mark_resolved(
     batch_id="abc123",
     resolved_by=moderator_user_id,
     resolution_note="Handled manually via DM"
@@ -217,7 +217,7 @@ See `tests/test_review_system.py` for comprehensive test coverage:
 1. Check `/settings review_channels list` to verify channels configured
 2. Check bot permissions in review channels (Send Messages, Embed Links)
 3. Verify `auto_review_enabled` is not disabled in guild settings
-4. Check logs for errors during `send_review_batch_embed()`
+4. Check logs for errors during `send_review_embed()`
 
 ### Permission errors on resolution
 1. Verify moderator roles are configured via `/settings moderator_roles`

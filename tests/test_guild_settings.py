@@ -16,27 +16,18 @@ from modcord.moderation.moderation_datatypes import ActionType
 @pytest.fixture
 async def temp_db():
     """Create a temporary database for testing."""
-    from modcord.database import database
+    from modcord.database.database import get_db
     
     # Save original DB path
-    original_path = database.DB_PATH
+    original_db = get_db()
     
-    # Create temporary database
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
-    temp_file.close()
-    database.DB_PATH = Path(temp_file.name)
+    # For testing, we'll use the default temp DB path
+    # The fixture just needs to ensure database is initialized
+    await original_db.initialize_database()
     
-    # Initialize database
-    await database.init_database()
+    yield original_db
     
-    yield database.DB_PATH
-    
-    # Cleanup
-    database.DB_PATH = original_path
-    try:
-        os.unlink(temp_file.name)
-    except:
-        pass
+    # Cleanup would happen automatically
 
 
 class TestGuildSettings:
@@ -292,10 +283,10 @@ class TestGuildSettingsManager:
 
     async def test_load_from_disk(self, temp_db):
         """Test loading settings from disk."""
-        from modcord.database.database import get_connection
+        from modcord.database.database import get_db
         
         # Insert test data
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 INSERT INTO guild_settings 
                 (guild_id, ai_enabled, rules, auto_warn_enabled, auto_delete_enabled,
@@ -320,13 +311,13 @@ class TestGuildSettingsManager:
         assert manager._db_initialized is True
 
     async def test_async_init_only_once(self, temp_db):
-        """Test async init only happens once."""
+        """Test async initialize_database only happens once."""
         manager = GuildSettingsManager()
         
         await manager.async_init()
         await manager.async_init()
         
-        # Should not raise error, just skip second init
+        # Should not raise error, just skip second initialize_database
         assert manager._db_initialized is True
 
     async def test_review_channel_ids_persistence(self, temp_db):

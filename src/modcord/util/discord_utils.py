@@ -16,7 +16,7 @@ import discord
 
 from modcord.util.logger import get_logger
 from modcord.moderation.moderation_datatypes import ActionData, ActionType, ModerationMessage
-from modcord.database.database import log_moderation_action
+from modcord.database.database import get_db
 
 logger = get_logger("discord_utils")
 
@@ -273,6 +273,36 @@ def get_potential_review_channel(guild: discord.Guild) -> discord.TextChannel | 
             if channel.permissions_for(guild.me).send_messages:
                 return channel
     return None
+
+
+def has_review_permission(guild_id: int, user: discord.Member) -> bool:
+    """
+    Check if a user has moderator permissions for review actions.
+    
+    Checks both manage_guild permission and configured moderator roles.
+    
+    Args:
+        guild_id: ID of the guild to check permissions for
+        user: Discord member to check permissions for
+    
+    Returns:
+        bool: True if user has moderator permissions, False otherwise
+    """
+    # Import here to avoid circular dependency
+    from modcord.configuration.guild_settings import guild_settings_manager
+    
+    # Check if user has manage guild permission
+    if user.guild_permissions.manage_guild:
+        return True
+    
+    # Check if user has any of the configured moderator roles
+    settings = guild_settings_manager.get_guild_settings(guild_id)
+    if settings and settings.moderator_role_ids:
+        user_role_ids = {role.id for role in user.roles}
+        if any(role_id in user_role_ids for role_id in settings.moderator_role_ids):
+            return True
+    
+    return False
 
 
 
@@ -852,10 +882,10 @@ async def apply_action_decision(
                 return False
 
         case ActionType.REVIEW:
-            # REVIEW actions are now handled by ReviewNotificationManager in moderation_helper.py
+            # REVIEW actions are now handled by HumanReviewManager in moderation_helper.py
             # This ensures batch consolidation (one embed per guild per batch) instead of individual embeds
             logger.info(
-                "[DISCORD UTILS] Review action for user %s should be handled by ReviewNotificationManager, not apply_action_decision",
+                "[DISCORD UTILS] Review action for user %s should be handled by HumanReviewManager, not apply_action_decision",
                 action.user_id
             )
             # Return True since the action itself is valid, even though it's processed elsewhere
@@ -884,7 +914,7 @@ async def apply_action_decision(
             if action.message_ids and action.action != ActionType.DELETE:
                 metadata["message_ids"] = action.message_ids
 
-            await log_moderation_action(
+            await get_db().log_moderation_action(
                 guild_id=guild.id,
                 user_id=action.user_id,
                 action_type=action.action.value,

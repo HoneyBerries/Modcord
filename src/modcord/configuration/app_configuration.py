@@ -1,37 +1,9 @@
-"""Centralized configuration management for Modcord.
-
-This module provides a small, thread-safe helper around a YAML
-configuration file (default: config/config.yml) so that the application can
-read configuration values from a single shared source without re-parsing the
-file repeatedly.
-
-Primary exports
-- AppConfig: a thread-safe accessor and loader for application config.
-- AISettings: a lightweight, dict-backed wrapper exposing common AI tuning
-  fields with attribute accessors while remaining mapping-compatible.
-- app_config: a module-global AppConfig instance that callers should reuse.
-
-Usage example:
-    from modcord.configuration.app_configuration import app_config
-
-    # Read a value with a default
-    value = app_config.get('some_key', 'default')
-
-    # Use the typed AI settings wrapper
-    ai = app_config.ai_settings
-    if ai.enabled:
-        model = ai.model_id
-
-The implementation favors safety and predictable fallbacks: if the YAML file
-is missing, malformed, or doesn't contain a top-level mapping, the loader
-logs an appropriate message and falls back to an empty configuration.
-"""
 from __future__ import annotations
 from pathlib import Path
 from threading import RLock
-from typing import Any, Dict, Optional, Iterator
-from collections.abc import Mapping
+from typing import Any, Dict
 
+from modcord.configuration.ai_settings import AISettings
 import yaml
 
 from modcord.util.logger import get_logger
@@ -157,57 +129,20 @@ class AppConfig:
             settings = self._data.get("ai_settings", {})
             if not isinstance(settings, dict):
                 settings = {}
-            
             return AISettings(settings)
 
-
-
-class AISettings:
-    """Helper exposing typed accessors for AI tuning configuration.
-
-    This class intentionally provides a minimal, explicit API (`get`,
-    `as_dict`, and convenience properties) and does not implement the full
-    mapping protocol. Callers that previously relied on mapping behavior
-    should use the explicit helpers.
-    """
-
-    def __init__(self, data: Dict[str, Any] | None = None) -> None:
-        self.data: Dict[str, Any] = data or {}
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """Return the value for `key` or `default` if missing."""
-        return self.data.get(key, default)
-
-    def as_dict(self) -> Dict[str, Any]:
-        """Return the underlying mapping (shallow copy recommended by callers)."""
-        return self.data
-
-    # Commonly used fields exposed as properties for convenience
     @property
-    def enabled(self) -> bool:
-        return bool(self.data.get("enabled", False))
+    def rules_cache_refresh_interval(self) -> float:
+        """Return the rules cache refresh interval in seconds.
 
-    @property
-    def allow_gpu(self) -> bool:
-        return bool(self.data.get("allow_gpu", False))
-
-    @property
-    def vram_percentage(self) -> float:
-        return float(self.data.get("vram_percentage", 0.5))
-
-    @property
-    def model_id(self) -> str | None:
-        val = self.data.get("model_id")
-        return str(val) if val else None
-
-    @property
-    def sampling_parameters(self) -> Dict[str, Any]:
-        k = self.data.get("sampling_parameters", {})
-        return k if isinstance(k, dict) else {}
-
-    @property
-    def cpu_offload_gb(self) -> int:
-        return int(self.data.get("cpu_offload_gb", 0))
+        This is the interval at which server rules and channel guidelines
+        are refreshed from Discord. Default is 600 seconds (10 minutes).
+        """
+        with self.lock:
+            refresh_config = self._data.get("rules_cache_refresh", {})
+            if isinstance(refresh_config, dict):
+                return float(refresh_config.get("interval_seconds", 600.0))
+            return 600.0
 
 
 # Shared application-wide configuration instance

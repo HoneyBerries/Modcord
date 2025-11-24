@@ -491,6 +491,7 @@ class WarnCommand(CommandAction):
             bot_instance (discord.Bot): Discord bot instance.
         """
         from modcord.util.discord_utils import execute_moderation_notification
+        from modcord.database.database import get_db
 
         self.user_id = str(user.id)
 
@@ -503,6 +504,14 @@ class WarnCommand(CommandAction):
                 channel=ctx.channel,
                 duration_str=None,
                 bot_user=bot_instance.user
+            )
+            # Log manual command action to database
+            await get_db().log_moderation_action(
+                guild_id=ctx.guild.id,
+                user_id=str(user.id),
+                action_type="WARN",
+                reason=self.reason,
+                metadata={"moderator_id": str(ctx.user.id), "manual_command": True}
             )
         except Exception as exc:
             logger.error("[MODERATION DATATYPES] Failed to process warn for user %s: %s", user.id, exc)
@@ -541,6 +550,7 @@ class TimeoutCommand(CommandAction):
             execute_moderation_notification,
             format_duration,
         )
+        from modcord.database.database import get_db
 
         self.user_id = str(user.id)
         duration_minutes = self.timeout_duration or 10
@@ -561,6 +571,18 @@ class TimeoutCommand(CommandAction):
                 channel=ctx.channel,
                 duration_str=duration_label,
                 bot_user=bot_instance.user
+            )
+            # Log manual command action to database
+            await get_db().log_moderation_action(
+                guild_id=ctx.guild.id,
+                user_id=str(user.id),
+                action_type="TIMEOUT",
+                reason=self.reason,
+                metadata={
+                    "moderator_id": str(ctx.user.id),
+                    "manual_command": True,
+                    "duration_minutes": duration_minutes
+                }
             )
         except Exception as exc:
             logger.error("[MODERATION DATATYPES] Failed to timeout user %s: %s", user.id, exc)
@@ -588,6 +610,7 @@ class KickCommand(CommandAction):
     ) -> None:
         """Execute kick action."""
         from modcord.util.discord_utils import execute_moderation_notification
+        from modcord.database.database import get_db
 
         self.user_id = str(user.id)
 
@@ -601,6 +624,14 @@ class KickCommand(CommandAction):
                 channel=ctx.channel,
                 duration_str=None,
                 bot_user=bot_instance.user
+            )
+            # Log manual command action to database
+            await get_db().log_moderation_action(
+                guild_id=ctx.guild.id,
+                user_id=str(user.id),
+                action_type="KICK",
+                reason=self.reason,
+                metadata={"moderator_id": str(ctx.user.id), "manual_command": True}
             )
         except Exception as exc:
             logger.error("[MODERATION DATATYPES] Failed to kick user %s: %s", user.id, exc)
@@ -642,6 +673,7 @@ class BanCommand(CommandAction):
             format_duration,
         )
         from modcord.scheduler.unban_scheduler import schedule_unban
+        from modcord.database.database import get_db
 
         self.user_id = str(user.id)
         duration_minutes = self.ban_duration or 0
@@ -663,6 +695,19 @@ class BanCommand(CommandAction):
                 channel=ctx.channel,
                 duration_str=duration_label,
                 bot_user=bot_instance.user
+            )
+            # Log manual command action to database
+            await get_db().log_moderation_action(
+                guild_id=ctx.guild.id,
+                user_id=str(user.id),
+                action_type="BAN",
+                reason=self.reason,
+                metadata={
+                    "moderator_id": str(ctx.user.id),
+                    "manual_command": True,
+                    "duration_minutes": duration_minutes,
+                    "is_permanent": is_permanent
+                }
             )
             
             # Schedule unban if not permanent

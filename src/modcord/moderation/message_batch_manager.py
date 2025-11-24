@@ -23,7 +23,7 @@ from typing import Awaitable, Callable, DefaultDict, Dict, List, Sequence, Set
 import discord
 
 from modcord.configuration.app_configuration import app_config
-from modcord.database.database import get_past_actions
+from modcord.database.database import get_db
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
 from modcord.moderation.moderation_datatypes import (
     ModerationChannelBatch,
@@ -182,9 +182,7 @@ class MessageBatchManager:
     async def _global_batch_timer_task(self) -> None:
         """Timer task that assembles and processes moderation batches at intervals."""
         try:
-            moderation_batch_seconds = float(
-                app_config.ai_settings.get("moderation_batch_seconds", 10.0)
-            )
+            moderation_batch_seconds = app_config.ai_settings.moderation_batch_seconds
         except Exception:
             moderation_batch_seconds = 10.0
         logger.debug("[MESSAGE BATCH MANAGER] Global batch timer sleeping for %s seconds", moderation_batch_seconds)
@@ -266,7 +264,7 @@ class MessageBatchManager:
                 first_seen[user_id] = idx
             user_messages[user_id].append(msg)
 
-        lookback_minutes = app_config.ai_settings.get("past_actions_lookback_days", 7) * 24 * 60
+        lookback_minutes = app_config.ai_settings.past_actions_lookback_minutes
 
         grouped_users: List[ModerationUser] = []
         for user_id, msgs in user_messages.items():
@@ -299,7 +297,7 @@ class MessageBatchManager:
             past_actions: List[dict] = []
             if guild_id:
                 try:
-                    past_actions = await get_past_actions(guild_id, user_id, lookback_minutes)
+                    past_actions = await get_db().get_past_actions(guild_id, user_id, lookback_minutes)
                 except Exception as exc:
                     logger.warning(
                         "[MESSAGE BATCH MANAGER] Failed to query past actions for user %s in guild %s: %s",

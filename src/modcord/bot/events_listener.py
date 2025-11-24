@@ -56,7 +56,7 @@ class EventsListenerCog(commands.Cog):
 
         # Start the rules and guidelines cache refresh task
         logger.info("[EVENTS LISTENER] Starting server rules and channel guidelines cache refresh task...")
-        interval_seconds = float(app_config.get("rules_cache_refresh", {}).get("interval_seconds", 600.0))
+        interval_seconds = app_config.rules_cache_refresh_interval
         asyncio.create_task(rules_cache_manager.start_periodic_task(self.bot, interval_seconds))
 
         # Set up batch processing callback for global batching

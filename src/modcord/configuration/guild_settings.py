@@ -15,7 +15,7 @@ from typing import Dict, DefaultDict, List, Set
 from dataclasses import dataclass, field
 from modcord.util.logger import get_logger
 from modcord.moderation.moderation_datatypes import ActionType
-from modcord.database.database import init_database, get_connection
+from modcord.database.database import get_db
 import discord
 
 logger = get_logger("guild_settings_manager")
@@ -75,7 +75,7 @@ class GuildSettingsManager:
     async def async_init(self, bot: discord.Bot | None = None) -> None:
         """Initialize the database and load settings from disk (async)."""
         if not self._db_initialized:
-            await init_database()
+            await get_db().initialize_database()
             await self.load_from_disk()
             self._db_initialized = True
             logger.info("[GUILD SETTINGS MANAGER] Database initialized and settings loaded")
@@ -266,7 +266,7 @@ class GuildSettingsManager:
 
         async with self._persist_lock:
             try:
-                async with get_connection() as db:
+                async with get_db().get_connection() as db:
                     # Persist main guild settings
                     await db.execute("""
                         INSERT INTO guild_settings (
@@ -341,7 +341,7 @@ class GuildSettingsManager:
 
         async with self._persist_lock:
             try:
-                async with get_connection() as db:
+                async with get_db().get_connection() as db:
                     await db.execute("""
                         INSERT INTO channel_guidelines (guild_id, channel_id, guidelines)
                         VALUES (?, ?, ?)
@@ -366,7 +366,7 @@ class GuildSettingsManager:
     async def load_from_disk(self) -> bool:
         """Load persisted guild settings from database into memory."""
         try:
-            async with get_connection() as db:
+            async with get_db().get_connection() as db:
                 # Load guild settings
                 async with db.execute("""
                     SELECT 

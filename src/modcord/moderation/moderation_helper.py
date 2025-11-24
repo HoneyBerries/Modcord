@@ -16,7 +16,7 @@ import discord
 from modcord.ai.ai_moderation_processor import moderation_processor, model_state
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.moderation.moderation_datatypes import ActionData, ActionType, ModerationChannelBatch
-from modcord.moderation.review_notifications import ReviewNotificationManager
+from modcord.moderation.human_review_manager import HumanReviewManager
 from modcord.util import discord_utils
 from modcord.util.logger import get_logger
 
@@ -108,7 +108,7 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
     )
 
     # Initialize review notification manager
-    review_manager = ReviewNotificationManager(self.bot)
+    review_manager = HumanReviewManager(self.bot)
     
     # Track guilds that have review actions for batch finalization
     guilds_with_reviews = set()
@@ -119,7 +119,7 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
             if action.action is ActionType.NULL:
                 continue
             
-            # Handle REVIEW actions separately through ReviewNotificationManager
+            # Handle REVIEW actions separately through HumanReviewManager
             if action.action is ActionType.REVIEW:
                 await handle_review_action(self, action, batch, review_manager)
                 # Track guild for batch finalization
@@ -135,23 +135,23 @@ async def process_message_batches(self, batches: List[ModerationChannelBatch]) -
         if guild:
             settings = guild_settings_manager.get_guild_settings(guild_id)
             if settings:
-                await review_manager.send_review_batch_embed(guild, settings)
+                await review_manager.send_review_embed(guild, settings)
 
 
 async def handle_review_action(
     self,
     action: ActionData,
     batch: ModerationChannelBatch,
-    review_manager: ReviewNotificationManager
+    review_manager: HumanReviewManager
 ) -> bool:
     """
-    Handle a REVIEW action by adding it to the ReviewNotificationManager.
+    Handle a REVIEW action by adding it to the HumanReviewManager.
     
     Args:
         self: Bot cog instance
         action: Review action to handle
         batch: Batch containing the user and messages
-        review_manager: ReviewNotificationManager instance for this batch
+        review_manager: HumanReviewManager instance for this batch
     
     Returns:
         bool: True if review item was successfully added, False otherwise
@@ -193,12 +193,11 @@ async def handle_review_action(
         )
         return False
     
-    # Add review item to the manager
+    # Add review item to the manager (user-centric, no pivot message needed)
     try:
-        await review_manager.add_item_to_review(
+        await review_manager.add_item_for_review(
             guild=guild,
-            user=author,
-            message=msg,
+            user=target_user,
             action=action
         )
         logger.info(
