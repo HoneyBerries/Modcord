@@ -5,19 +5,18 @@ from typing import Any, Dict
 
 from modcord.configuration.ai_settings import AISettings
 import yaml
-
 from modcord.util.logger import get_logger
 
 logger = get_logger("app_configuration")
 
 # Default path to the YAML configuration file (root-level config/config.yml)
-CONFIG_PATH = Path("config/app_config.yml").resolve()
+CONFIG_PATH = Path("./config/app_config.yml").resolve()
 
 
 class AppConfig:
     """Thread-safe accessor around the YAML-based application configuration.
 
-    The class caches contents of ``config/app_config.yml``, exposes dictionary-like
+    The class caches contents of ``./config/app_config.yml``, exposes dictionary-like
     access helpers, and resolves AI-specific settings through :class:`AISettings`.
     """
 

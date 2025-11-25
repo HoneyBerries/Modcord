@@ -18,19 +18,14 @@ from __future__ import annotations
 import asyncio
 import datetime
 from collections import defaultdict
-from typing import Awaitable, Callable, DefaultDict, Dict, List, Sequence, Set
-
+from typing import Awaitable, Callable, DefaultDict, Dict, List, Sequence
 import discord
-
 from modcord.configuration.app_configuration import app_config
 from modcord.database.database import get_db
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
-from modcord.moderation.moderation_datatypes import (
-    ModerationChannelBatch,
-    ModerationMessage,
-    ModerationUser,
-)
+from modcord.moderation.moderation_datatypes import ModerationChannelBatch, ModerationMessage, ModerationUser
 from modcord.util.logger import get_logger
+
 
 logger = get_logger("message_batch_manager")
 
@@ -60,9 +55,9 @@ class MessageBatchManager:
         self._bot_instance: discord.Bot | None = None
         self._history_fetcher: DiscordHistoryFetcher | None = self._bot_instance
 
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------
     # Public configuration hooks
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------
     def set_bot_instance(self, bot_instance: discord.Bot) -> None:
         """
         Set the Discord bot instance for API access and channel lookups.
