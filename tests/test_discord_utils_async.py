@@ -6,7 +6,7 @@ import discord
 from datetime import datetime, timezone
 
 from modcord.util.discord_utils import (
-    safe_delete_message,
+    delete_message,
     has_permissions,
     iter_moderatable_channels,
     delete_messages_by_ids,
@@ -15,7 +15,7 @@ from modcord.util.discord_utils import (
 
 
 class TestSafeDeleteMessage:
-    """Tests for safe_delete_message async function."""
+    """Tests for delete_message async function."""
 
     @pytest.mark.asyncio
     async def test_safe_delete_success(self):
@@ -23,7 +23,7 @@ class TestSafeDeleteMessage:
         message = AsyncMock()
         message.delete = AsyncMock()
         
-        result = await safe_delete_message(message)
+        result = await delete_message(message)
         
         assert result is True
         message.delete.assert_called_once()
@@ -37,7 +37,7 @@ class TestSafeDeleteMessage:
         response.reason = "Not Found"
         message.delete.side_effect = discord.NotFound(response, "message")
         
-        result = await safe_delete_message(message)
+        result = await delete_message(message)
         
         assert result is False
 
@@ -50,7 +50,7 @@ class TestSafeDeleteMessage:
         response.reason = "Forbidden"
         message.delete.side_effect = discord.Forbidden(response, "message")
         
-        result = await safe_delete_message(message)
+        result = await delete_message(message)
         
         assert result is False
 
@@ -60,7 +60,7 @@ class TestSafeDeleteMessage:
         message = AsyncMock()
         message.delete.side_effect = Exception("Unknown error")
         
-        result = await safe_delete_message(message)
+        result = await delete_message(message)
         
         assert result is False
 

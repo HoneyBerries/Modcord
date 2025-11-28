@@ -10,33 +10,24 @@ from modcord.configuration.guild_settings import (
     GuildSettingsManager,
     ACTION_FLAG_FIELDS,
 )
-from modcord.moderation.moderation_datatypes import ActionType
+from modcord.datatypes.action_datatypes import ActionType
 
 
 @pytest.fixture
 async def temp_db():
     """Create a temporary database for testing."""
-    from modcord.database import database
+    from modcord.database.database import get_db
     
     # Save original DB path
-    original_path = database.DB_PATH
+    original_db = get_db()
     
-    # Create temporary database
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
-    temp_file.close()
-    database.DB_PATH = Path(temp_file.name)
+    # For testing, we'll use the default temp DB path
+    # The fixture just needs to ensure database is initialized
+    await original_db.initialize_database()
     
-    # Initialize database
-    await database.init_database()
+    yield original_db
     
-    yield database.DB_PATH
-    
-    # Cleanup
-    database.DB_PATH = original_path
-    try:
-        os.unlink(temp_file.name)
-    except:
-        pass
+    # Cleanup would happen automatically
 
 
 class TestGuildSettings:
@@ -82,7 +73,7 @@ class TestActionFlagFields:
 
     def test_action_flag_fields_completeness(self):
         """Test that all relevant action types are mapped."""
-        assert len(ACTION_FLAG_FIELDS) == 5
+        assert len(ACTION_FLAG_FIELDS) == 6
 
 
 class TestGuildSettingsManager:
@@ -292,10 +283,10 @@ class TestGuildSettingsManager:
 
     async def test_load_from_disk(self, temp_db):
         """Test loading settings from disk."""
-        from modcord.database.database import get_connection
+        from modcord.database.database import get_db
         
         # Insert test data
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 INSERT INTO guild_settings 
                 (guild_id, ai_enabled, rules, auto_warn_enabled, auto_delete_enabled,
@@ -320,11 +311,107 @@ class TestGuildSettingsManager:
         assert manager._db_initialized is True
 
     async def test_async_init_only_once(self, temp_db):
-        """Test async init only happens once."""
+        """Test async initialize_database only happens once."""
         manager = GuildSettingsManager()
         
         await manager.async_init()
         await manager.async_init()
         
-        # Should not raise error, just skip second init
+        # Should not raise error, just skip second initialize_database
         assert manager._db_initialized is True
+
+    async def test_review_channel_ids_persistence(self, temp_db):
+        """Test that review_channel_ids are properly persisted and loaded."""
+        manager = GuildSettingsManager()
+        await manager.async_init()
+        
+        # Create settings and add review channels
+        settings = manager.ensure_guild(123)
+        settings.review_channel_ids = [111, 222, 333]
+        
+        # Persist
+        result = await manager.persist_guild(123)
+        assert result is True
+        
+        # Create new manager and load from disk
+        manager2 = GuildSettingsManager()
+        await manager2.async_init()
+        
+        # Verify channels were loaded
+        loaded_settings = manager2.get_guild_settings(123)
+        assert loaded_settings.review_channel_ids == [111, 222, 333]
+
+    async def test_moderator_role_ids_persistence(self, temp_db):
+        """Test that moderator_role_ids are properly persisted and loaded."""
+        manager = GuildSettingsManager()
+        await manager.async_init()
+        
+        # Create settings and add moderator roles
+        settings = manager.ensure_guild(456)
+        settings.moderator_role_ids = [777, 888, 999]
+        
+        # Persist
+        result = await manager.persist_guild(456)
+        assert result is True
+        
+        # Create new manager and load from disk
+        manager2 = GuildSettingsManager()
+        await manager2.async_init()
+        
+        # Verify roles were loaded
+        loaded_settings = manager2.get_guild_settings(456)
+        assert loaded_settings.moderator_role_ids == [777, 888, 999]
+
+    async def test_empty_lists_persistence(self, temp_db):
+        """Test that empty lists for review_channel_ids and moderator_role_ids persist correctly."""
+        manager = GuildSettingsManager()
+        await manager.async_init()
+        
+        # Create settings with empty lists
+        settings = manager.ensure_guild(789)
+        settings.review_channel_ids = []
+        settings.moderator_role_ids = []
+        
+        # Persist
+        result = await manager.persist_guild(789)
+        assert result is True
+        
+        # Create new manager and load from disk
+        manager2 = GuildSettingsManager()
+        await manager2.async_init()
+        
+        # Verify empty lists were loaded
+        loaded_settings = manager2.get_guild_settings(789)
+        assert loaded_settings.review_channel_ids == []
+        assert loaded_settings.moderator_role_ids == []
+
+    async def test_combined_settings_persistence(self, temp_db):
+        """Test persistence of all settings including lists and booleans."""
+        manager = GuildSettingsManager()
+        await manager.async_init()
+        
+        # Create comprehensive settings
+        settings = manager.ensure_guild(999)
+        settings.ai_enabled = False
+        settings.rules = "Custom rules"
+        settings.auto_warn_enabled = True
+        settings.auto_review_enabled = False
+        settings.moderator_role_ids = [100, 200]
+        settings.review_channel_ids = [300, 400, 500]
+        
+        # Persist
+        result = await manager.persist_guild(999)
+        assert result is True
+        
+        # Create new manager and load from disk
+        manager2 = GuildSettingsManager()
+        await manager2.async_init()
+        
+        # Verify all settings were loaded correctly
+        loaded = manager2.get_guild_settings(999)
+        assert loaded.ai_enabled is False
+        assert loaded.rules == "Custom rules"
+        assert loaded.auto_warn_enabled is True
+        assert loaded.auto_review_enabled is False
+        assert loaded.moderator_role_ids == [100, 200]
+        assert loaded.review_channel_ids == [300, 400, 500]

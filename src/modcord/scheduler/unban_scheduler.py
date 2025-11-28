@@ -1,6 +1,4 @@
-"""unban_scheduler.py
-=====================
-
+"""
 Implements a simple scheduled unban scheduler owned by the `modcord.bot`
 package. This module intentionally avoids importing `modcord.util.discord_utils`
 to prevent circular imports; notifications on unban are sent using a small,
@@ -14,25 +12,26 @@ from typing import Dict, Tuple
 
 import discord
 
+from modcord.datatypes.discord_datatypes import UserID
 from modcord.util.logger import get_logger
 
 logger = get_logger("unban_scheduler")
 
 
 @dataclass
-class ScheduledUnban:
+class UnbanData:
     """
     Data structure containing all information needed to execute a scheduled unban.
     
     Attributes:
         guild (discord.Guild): The guild where the ban should be lifted.
-        user_id (int): Discord user ID to unban.
+        user_id (UserID): Type-safe Discord user ID to unban.
         channel (discord.abc.Messageable | None): Optional channel to send unban notification to.
         bot (discord.Bot | None): Bot instance for fetching user info and sending notifications.
         reason (str): Audit log reason for the unban.
     """
     guild: discord.Guild
-    user_id: int
+    user_id: UserID
     channel: discord.abc.Messageable | None
     bot: discord.Bot | None
     reason: str = "Ban duration expired."
@@ -55,12 +54,13 @@ class UnbanScheduler:
     """
 
     def __init__(self) -> None:
-        self.heap: list[tuple[float, int, ScheduledUnban]] = []
-        self.pending_keys: Dict[Tuple[int, int], int] = {}
+        self.heap: list[tuple[float, int, UnbanData]] = []
+        self.pending_keys: Dict[Tuple[int, str], int] = {}
         self.cancelled_ids: set[int] = set()
         self.counter: int = 0
         self.runner_task: asyncio.Task[None] | None = None
         self.condition: asyncio.Condition = asyncio.Condition()
+        self._next_cleanup: int = 0  # Track when to clean up cancelled IDs
 
     def ensure_runner(self) -> None:
         """
@@ -76,7 +76,7 @@ class UnbanScheduler:
     async def schedule(
         self,
         guild: discord.Guild,
-        user_id: int,
+        user_id: UserID,
         channel: discord.abc.Messageable | None,
         duration_seconds: float,
         bot: discord.Bot | None,
@@ -91,13 +91,13 @@ class UnbanScheduler:
         
         Args:
             guild (discord.Guild): Guild that owns the ban to be lifted.
-            user_id (int): Discord user ID to unban.
+            user_id (UserID): Type-safe Discord user ID to unban.
             channel (discord.abc.Messageable | None): Optional channel for status notifications.
             duration_seconds (float): Delay before unban; non-positive values trigger immediate unban.
             bot (discord.Bot | None): Bot instance for fetching user info.
             reason (str): Audit log reason for the unban. Defaults to "Ban duration expired.".
         """
-        payload = ScheduledUnban(guild=guild, user_id=user_id, channel=channel, bot=bot, reason=reason)
+        payload = UnbanData(guild=guild, user_id=user_id, channel=channel, bot=bot, reason=reason)
 
         if duration_seconds <= 0:
             await self.execute(payload)
@@ -108,7 +108,7 @@ class UnbanScheduler:
 
         async with self.condition:
             self.ensure_runner()
-            key = (guild.id, user_id)
+            key = (guild.id, str(user_id))
             if key in self.pending_keys:
                 self.cancelled_ids.add(self.pending_keys[key])
 
@@ -118,7 +118,7 @@ class UnbanScheduler:
             self.pending_keys[key] = job_id
             self.condition.notify_all()
 
-    async def cancel(self, guild_id: int, user_id: int) -> bool:
+    async def cancel(self, guild_id: int, user_id: UserID) -> bool:
         """
         Cancel a previously scheduled unban if one exists.
         
@@ -127,13 +127,13 @@ class UnbanScheduler:
         
         Args:
             guild_id (int): Guild ID that originally scheduled the unban.
-            user_id (int): User ID of the pending unban job.
+            user_id (UserID): Type-safe Discord user ID of the pending unban job.
         
         Returns:
             bool: True if a job was found and cancelled, False if no matching job exists.
         """
         async with self.condition:
-            key = (guild_id, user_id)
+            key = (guild_id, str(user_id))
             job_id = self.pending_keys.pop(key, None)
             if job_id is None:
                 return False
@@ -169,49 +169,55 @@ class UnbanScheduler:
         """
         Main background loop that processes scheduled unbans when their timers elapse.
         
-        Continuously monitors the heap for jobs that are ready to execute. When a
-        job's scheduled time arrives, removes it from the heap and executes the unban.
-        Handles job cancellation by skipping cancelled jobs.
+        Continuously monitors the heap for jobs that are ready to execute. When jobs'
+        scheduled times arrive, removes them from the heap and executes the unbans.
+        Efficiently handles job cancellation by cleaning up cancelled IDs periodically
+        and batching job execution.
         
         This method runs until the scheduler is shut down.
         """
         loop = asyncio.get_running_loop()
         while True:
             async with self.condition:
-                while True:
-                    if not self.heap:
-                        await self.condition.wait()
-                        continue
+                # Clean up expired cancelled IDs periodically to prevent memory bloat
+                self.counter += 1
+                if self.counter - self._next_cleanup >= 1000:
+                    self.cancelled_ids.clear()
+                    self._next_cleanup = self.counter
 
-                    run_at, job_id, payload = self.heap[0]
+                # Skip over cancelled jobs at the top of the heap
+                while self.heap and self.heap[0][1] in self.cancelled_ids:
+                    _, job_id, payload = heapq.heappop(self.heap)
+                    self.cancelled_ids.discard(job_id)
+                    self.pending_keys.pop((payload.guild.id, str(payload.user_id)), None)
 
-                    if job_id in self.cancelled_ids:
-                        heapq.heappop(self.heap)
-                        self.cancelled_ids.remove(job_id)
-                        self.pending_keys.pop((payload.guild.id, payload.user_id), None)
-                        continue
+                if not self.heap:
+                    await self.condition.wait()
+                    continue
 
-                    delay = run_at - loop.time()
-                    if delay > 0:
-                        try:
-                            await asyncio.wait_for(self.condition.wait(), timeout=delay)
-                        except asyncio.TimeoutError:
-                            pass
-                        continue
+                run_at, _, _ = self.heap[0]
+                delay = run_at - loop.time()
 
-                    heapq.heappop(self.heap)
-                    self.pending_keys.pop((payload.guild.id, payload.user_id), None)
-                    task_payload = payload
-                    break
+                if delay > 0:
+                    try:
+                        await asyncio.wait_for(self.condition.wait(), timeout=delay)
+                    except asyncio.TimeoutError:
+                        pass
+                    continue
+
+                # Pop the ready job
+                _, job_id, payload = heapq.heappop(self.heap)
+                self.pending_keys.pop((payload.guild.id, str(payload.user_id)), None)
+                task_payload = payload
 
             try:
                 await self.execute(task_payload)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.error(f"Failed to auto-unban user {task_payload.user_id}: {exc}")
+                logger.error("Failed to auto-unban user %s: %s", task_payload.user_id, exc)
 
-    async def execute(self, payload: ScheduledUnban) -> None:
+    async def execute(self, payload: UnbanData) -> None:
         """
         Perform the actual unban operation and send optional notifications.
         
@@ -219,7 +225,7 @@ class UnbanScheduler:
         an embed notification to the specified channel.
         
         Args:
-            payload (ScheduledUnban): Structured data describing the unban operation,
+            payload (UnbanData): Structured data describing the unban operation,
                 including guild, user, notification preferences, and reason.
         
         Note:
@@ -229,15 +235,15 @@ class UnbanScheduler:
         user_id = payload.user_id
 
         try:
-            user_obj = discord.Object(id=user_id)
+            user_obj = discord.Object(id=user_id.to_int())
             await guild.unban(user_obj, reason=payload.reason)
-            logger.debug(f"Unbanned user {user_id} after ban expired.")
+            logger.debug("Unbanned user %s after ban expired.", user_id)
 
             # Try to notify in the provided channel with a simple embed (keeps this
             # module independent from util.discord_utils).
             if payload.bot and isinstance(payload.channel, (discord.TextChannel, discord.Thread)):
                 try:
-                    user = await payload.bot.fetch_user(user_id)
+                    user = await payload.bot.fetch_user(user_id.to_int())
                     embed = discord.Embed(
                         title="🔓 User Unbanned",
                         description=f"{user.mention} (`{user.id}`) has been unbanned.\n{payload.reason}",
@@ -254,64 +260,3 @@ class UnbanScheduler:
 
 
 UNBAN_SCHEDULER = UnbanScheduler()
-
-
-async def schedule_unban(
-    guild: discord.Guild,
-    user_id: int,
-    channel: discord.abc.Messageable | None,
-    duration_seconds: float,
-    bot: discord.Bot | None,
-    *,
-    reason: str = "Ban duration expired."
-) -> None:
-    """
-    Public helper function to schedule an unban using the global scheduler instance.
-    
-    Convenience wrapper around UNBAN_SCHEDULER.schedule() for simpler API usage.
-    
-    Args:
-        guild (discord.Guild): Guild where the ban should be lifted.
-        user_id (int): Discord user ID to unban.
-        channel (discord.abc.Messageable | None): Optional channel for notifications.
-        duration_seconds (float): Delay before unban in seconds.
-        bot (discord.Bot | None): Bot instance for user fetching.
-        reason (str): Audit log reason. Defaults to "Ban duration expired.".
-    """
-    await UNBAN_SCHEDULER.schedule(
-        guild=guild,
-        user_id=user_id,
-        channel=channel,
-        duration_seconds=duration_seconds,
-        bot=bot,
-        reason=reason,
-    )
-
-
-async def cancel_scheduled_unban(guild_id: int, user_id: int) -> bool:
-    """
-    Cancel a scheduled unban using the global scheduler instance.
-    
-    Args:
-        guild_id (int): Guild ID that scheduled the unban.
-        user_id (int): User ID of the pending unban.
-    
-    Returns:
-        bool: True if a job was cancelled, False if no matching job exists.
-    """
-    return await UNBAN_SCHEDULER.cancel(guild_id, user_id)
-
-
-async def reset_unban_scheduler_for_tests() -> None:
-    """
-    Reset the scheduler state for test isolation.
-    
-    Shuts down the current scheduler and creates a fresh instance. This ensures
-    each test starts with a clean scheduler state.
-    
-    Note:
-        This function is intended for use in unit tests only.
-    """
-    global UNBAN_SCHEDULER
-    await UNBAN_SCHEDULER.shutdown()
-    UNBAN_SCHEDULER = UnbanScheduler()

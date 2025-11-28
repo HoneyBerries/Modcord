@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Dict, List
-
+from typing import List
 import discord
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.configuration.app_configuration import app_config
+from modcord.datatypes.discord_datatypes import GuildID, ChannelID
 from modcord.util.logger import get_logger
+from modcord.util.discord_utils import extract_embed_text_from_message
 
 logger = get_logger("rules_cache_manager")
 
@@ -56,28 +57,7 @@ class RulesCacheManager:
         logger.info("[RULES CACHE MANAGER] Rules cache manager initialized")
 
     @staticmethod
-    def _extract_embed_text(embed: discord.Embed) -> List[str]:
-        """
-        Extract all text content from a Discord embed.
-        
-        Extracts text from embed description and all fields, combining field
-        names and values into formatted strings.
-        
-        Args:
-            embed (discord.Embed): The embed to extract text from.
-        
-        Returns:
-            List[str]: List of text strings extracted from the embed.
-        """
-        texts = []
-        if embed.description and isinstance(embed.description, str):
-            texts.append(embed.description.strip())
-        texts.extend(
-            f"{field.name}: {field.value}".strip() if field.name else field.value.strip()
-            for field in embed.fields
-            if isinstance(field.value, str) and field.value.strip()
-        )
-        return texts
+    
 
     @staticmethod
     def _is_rules_channel(channel: discord.abc.GuildChannel) -> bool:
@@ -114,11 +94,12 @@ class RulesCacheManager:
         """
         messages = []
         try:
-            async for message in channel.history(oldest_first=True, limit=100):
+            async for message in channel.history(oldest_first=True):
                 if message.content and isinstance(message.content, str) and (text := message.content.strip()):
                     messages.append(text)
                 for embed in message.embeds:
-                    messages.extend(self._extract_embed_text(embed))
+                    messages.extend(extract_embed_text_from_message(embed))
+                    
         except discord.Forbidden:
             logger.warning("[RULES CACHE MANAGER] No permission to read channel: %s", channel.name)
         except asyncio.CancelledError:
@@ -205,7 +186,7 @@ class RulesCacheManager:
             logger.exception("Failed to collect rules for guild %s", guild.name)
             raise
 
-        guild_settings_manager.set_server_rules(guild.id, rules_text)
+        guild_settings_manager.set_server_rules(GuildID(guild.id), rules_text)
         logger.debug("[RULES CACHE MANAGER] Cached %d characters of rules for guild %s", len(rules_text), guild.name)
         return rules_text
 
@@ -241,7 +222,7 @@ class RulesCacheManager:
             )
             raise
 
-        guild_settings_manager.set_channel_guidelines(guild.id, channel.id, guidelines_text)
+        guild_settings_manager.set_channel_guidelines(GuildID(guild.id), ChannelID(channel.id), guidelines_text)
         logger.debug(
             "[RULES CACHE MANAGER] Cached %d characters of guidelines for channel %s (%s) in guild %s",
             len(guidelines_text),
@@ -379,7 +360,7 @@ class RulesCacheManager:
                 reads from app_config rules_cache_refresh.interval_seconds.
         """
         if interval_seconds is None:
-            interval_seconds = float(app_config.get("rules_cache_refresh", {}).get("interval_seconds", 600.0))
+            interval_seconds = app_config.rules_cache_refresh_interval
 
         if self._refresh_task and not self._refresh_task.done():
             logger.warning("[RULES CACHE MANAGER] Periodic refresh task already running")

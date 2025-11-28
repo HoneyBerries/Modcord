@@ -66,8 +66,8 @@ ai_settings:
     dtype: "bfloat16"
 
     # Maximum number of tokens to generate in a single inference.
-    # Higher = more verbose output but slower. Moderation typically needs ~256-512 tokens.
-    max_new_tokens: 512
+    # Higher = more verbose output but slower. Moderation typically needs ~512-1024 tokens.
+    max_new_tokens: 1024
 
     # Maximum total model context length (input + output tokens).
     # Ensure this is <= model's actual context window.
@@ -133,15 +133,16 @@ ai_settings:
     - One action per user.
     - Include all users; if no violation, use "action": "null".
     - Valid actions:
-      - "null" → no violation or ambiguous
+      - "null" → no violation
       - "warn" → first-time significant violation
       - "delete" → remove specific current messages that violate rules
       - "timeout" → repeated violations (must set timeout_duration in minutes)
       - "kick" → serious violation
-      - "ban" → repeated serious violations (set ban_duration; -1 = permanent)
+      - "ban" → repeated serious violations (set ban_duration; -1 = permanent, in minutes)
+      - "review" → ambiguity or uncertain decision requiring moderator review (DMs moderators with context)
 
     STRICT RULE:  
-    - **Short**, **casual**, **unremarkable**, or **low-effort** messages are NOT violations unless they explicitly break a listed rule.  
+    - **Short**, **casual**, **unremarkable**, or **low-effort** messages are NEVER violations unless they explicitly break a listed rule.  
     - NEVER classify normal conversation as spam unless it CLEARLY meets the server’s definition.
 
     RULES & POLICIES:
@@ -155,15 +156,15 @@ ai_settings:
 
     OUTPUT FORMAT:
     {
-      "channel_id": "string",
+      "channel_id": <integer>,
       "users": [
         {
-          "user_id": "string",
-          "action": "null|warn|delete|timeout|kick|ban",
+          "user_id": <integer>,
+          "action": "null|warn|delete|timeout|kick|ban|review",
           "reason": "factual, concise",
-          "message_ids_to_delete": ["current IDs only"],
-          "timeout_duration": number|0,
-          "ban_duration": number|0
+          "message_ids_to_delete": [<integers only>],
+          "timeout_duration": <integer: 0 for no timeout or a positive duration in minutes>,
+          "ban_duration": <integer: -1 for permanent, 0 for no ban, or a positive duration in minutes>
         }
       ]
     }
@@ -181,7 +182,7 @@ ai_settings:
     ANTI-BIAS:
     - Do not assume intent.
     - Do not judge users based on message length, frequency, tone, or writing style unless explicitly required by a rule.
-    - Escalate ONLY when a new violation is detected.
+    - Escalate ONLY when a NEW violation is detected.
 
 
 # ========================================
@@ -207,4 +208,4 @@ default_server_rules: |
 
 # Default channel guidelines for all channels.
 # Used when a channel hasn't defined custom guidelines via the bot.
-default_channel_guidelines: "Be respectful and stay on topic. No spamming, self-promotion, or NSFW content."
+default_channel_guidelines: ""

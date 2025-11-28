@@ -18,12 +18,12 @@ import json
 from typing import Any, Dict, List
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
-from modcord.moderation.moderation_datatypes import (
-    ActionData,
-    ModerationChannelBatch,
-)
+from modcord.datatypes.action_datatypes import ActionData
+from modcord.datatypes.moderation_datatypes import ModerationChannelBatch
+from modcord.datatypes.discord_datatypes import UserID, MessageID, ChannelID, GuildID
 import modcord.moderation.moderation_parsing as moderation_parsing
 from modcord.configuration.app_configuration import app_config
+from modcord.configuration.guild_settings import guild_settings_manager
 from xgrammar.grammar import Grammar
 
 logger = get_logger("ai_moderation_processor")
@@ -71,8 +71,7 @@ class ModerationProcessor:
     async def get_multi_batch_moderation_actions(
         self,
         batches: List[ModerationChannelBatch],
-        server_rules_map: Dict[int, str] | None = None,
-        channel_guidelines_map: Dict[int, str] | None = None,
+        guild_id: GuildID,
     ) -> Dict[int, List[ActionData]]:
         """
         Process multiple channel batches in a single global inference call.
@@ -85,11 +84,12 @@ class ModerationProcessor:
 
         Args:
             batches: List of ModerationChannelBatch objects from different channels.
-            server_rules_map: Optional mapping of channel_id -> server rules text.
-            channel_guidelines_map: Optional mapping of channel_id -> channel-specific guidelines text.
+            guild_id: Optional GuildID or int to fetch rules from guild_settings_manager.
+                     If provided, uses configured server rules and channel guidelines.
+                     If not provided, uses app_config defaults.
 
         Returns:
-            Dictionary mapping channel_id to list of ActionData objects.
+            Dictionary mapping channel_id (as int) to list of ActionData objects.
         """
         logger.debug(
             "[MODERATION] Processing global batch: %d channels",
@@ -99,28 +99,27 @@ class ModerationProcessor:
         if not batches:
             return {}
         
+        # Normalize guild_id
+        if guild_id is not None:
+            guild_id = GuildID(guild_id) if not isinstance(guild_id, GuildID) else guild_id
+        
         # Build conversations for each channel batch
         conversations = []
         grammar_strings: List[str] = []
         channel_mapping = []  # Maps conversation index to channel_id and batch
-        rules_lookup = server_rules_map or {}
-        guidelines_lookup = channel_guidelines_map or {}
 
         for batch in batches:
             # Convert batch to JSON payload with image IDs
             json_payload, pil_images, _ = batch.to_multimodal_payload()
 
             # Build user->message_ids map for non-history users
-            user_message_map: Dict[str, List[str]] = {}
+            user_message_map: Dict[UserID, List[MessageID]] = {}
             for user in batch.users:
-                user_id = str(user.user_id)
-                user_message_map[user_id] = [str(msg.message_id) for msg in user.messages]
-
-            channel_id_str = str(batch.channel_id)
+                user_message_map[user.user_id] = [msg.message_id for msg in user.messages]
 
             # Build dynamic schema for this batch
             dynamic_schema = moderation_parsing.build_dynamic_moderation_schema(
-                user_message_map, channel_id_str
+                user_message_map, batch.channel_id
             )
 
             # Compile grammar for guided decoding
@@ -128,10 +127,17 @@ class ModerationProcessor:
             grammar_str = str(grammar)
 
             # Resolve and apply server rules and channel guidelines per channel
-            channel_rules = rules_lookup.get(batch.channel_id, "")
-            merged_rules = self._resolve_server_rules(channel_rules)
+            if guild_id:
+                # Fetch from guild_settings_manager using proper ID types
+                server_rules = guild_settings_manager.get_server_rules(guild_id)
+                channel_guidelines = guild_settings_manager.get_channel_guidelines(guild_id, batch.channel_id)
+
+            else:
+                # Fall back to app_config defaults
+                server_rules = app_config.server_rules
+                channel_guidelines = app_config.channel_guidelines
             
-            channel_guidelines = guidelines_lookup.get(batch.channel_id, "")
+            merged_rules = self._resolve_server_rules(server_rules)
             merged_guidelines = self._resolve_channel_guidelines(channel_guidelines)
             
             system_prompt = self.inference_processor.get_system_prompt(merged_rules, merged_guidelines)
@@ -159,11 +165,16 @@ class ModerationProcessor:
 
         # Parse responses and group actions by channel
         actions_by_channel: Dict[int, List[ActionData]] = {}
-        for (channel_id, _, dynamic_schema), response_text in zip(channel_mapping, responses):
+        for (channel_id, batch, dynamic_schema), response_text in zip(channel_mapping, responses):
+            # Get guild_id from the batch
+            if batch.users and batch.users[0].messages:
+                guild_id = batch.users[0].messages[0].guild_id
+            
             # Parse response into actions
             actions = moderation_parsing.parse_batch_actions(
                 response_text,
                 channel_id,
+                guild_id,
                 dynamic_schema
             )
             actions_by_channel[channel_id] = actions
@@ -171,7 +182,7 @@ class ModerationProcessor:
             # Log summary: channel ID, action count, and response sample
             action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != "null")
             logger.debug(
-                "[RESULT] Channel %d: %d actions [%s] | Response: \n%s",
+                "[RESULT] Channel %s: %d actions [%s] | Response: \n%s",
                 channel_id,
                 len([a for a in actions if a.action != "null"]),
                 action_summary or "none",
