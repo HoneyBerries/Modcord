@@ -13,8 +13,11 @@ from modcord.configuration.app_configuration import app_config
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.rules_cache.rules_cache_manager import rules_cache_manager
 from modcord.util.logger import get_logger
+from modcord.moderation import moderation_helper
+from modcord.moderation.message_batch_manager import message_batch_manager
 
 logger = get_logger("events_listener_cog")
+
 
 
 class EventsListenerCog(commands.Cog):
@@ -31,33 +34,42 @@ class EventsListenerCog(commands.Cog):
         """
         self.bot = discord_bot_instance
         self.discord_bot_instance = discord_bot_instance
-        logger.info("[EVENTS LISTENER] Events listener cog loaded")
+        logger.info("Events listener cog loaded")
 
     @commands.Cog.listener(name='on_ready')
     async def on_ready(self):
         """
-        Handle bot startup: initialize presence, rules cache.
+        Handle bot startup: initialize presence, rules cache, and batch processing.
 
         This method:
         1. Updates the bot's Discord presence based on AI model state
         2. Starts the periodic rules cache refresh task
-        3. Puts all registered commands into a file called commands.json for reference
+        3. Registers the batch processing callback
+        4. Puts all registered commands into a file called commands.json for reference
         """
         if self.bot.user:
             await self._update_presence()
             logger.info(f"Bot connected as {self.bot.user} (ID: {self.bot.user.id})")
         else:
-            logger.warning("[EVENTS LISTENER] Bot partially connected, but user information not yet available.")
+            logger.warning("Bot partially connected, but user information not yet available.")
+
+        logger.info("--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--")
 
         # Start the rules and guidelines cache refresh task
-        logger.info("[EVENTS LISTENER] Starting server rules and channel guidelines cache refresh task...")
-        interval_seconds = app_config.rules_cache_refresh_interval
+        logger.info("Starting server rules and channel guidelines cache refresh task...")
+        interval_seconds = float(app_config.get("rules_cache_refresh", {}).get("interval_seconds", 600.0))
         asyncio.create_task(rules_cache_manager.start_periodic_task(self.bot, interval_seconds))
 
-        commands = await self.bot.http.get_global_commands(self.bot.user.id)
+        # Set up batch processing callback for global batching
+        logger.info("Setting up batch processing callback...")
+        message_batch_manager.set_bot_instance(self.bot)
+        message_batch_manager.set_batch_processing_callback(
+            lambda batches: moderation_helper.process_message_batches(self, batches)
+        )
 
+        commands = await self.bot.http.get_global_commands(self.bot.user.id)
         with open("config/commands.json", "w") as f:
-            f.write(json.dumps(commands, indent=2))
+            f.write(json.dumps(commands, indent=4))
 
     async def _update_presence(self) -> None:
         """

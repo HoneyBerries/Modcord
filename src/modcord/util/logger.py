@@ -25,7 +25,7 @@ LOG_COLORS = {
 RESET_COLOR = "\033[0m"
 
 # Global variable to store the log file path (initialized on first use)
-LOG_FILEPATH: Path | None = None
+_LOG_FILEPATH: Path | None = None
 
 # -------------------- Formatters --------------------
 class ColorFormatter(logging.Formatter):
@@ -99,7 +99,7 @@ color_formatter = ColorFormatter(LOG_FORMAT, datefmt=DATE_FORMAT) if should_use_
 
 # -------------------- Logger Setup --------------------
 
-def get_log_filepath() -> Path:
+def _get_log_filepath() -> Path:
     """
     Get or create the log file path for the current session.
     
@@ -114,11 +114,11 @@ def get_log_filepath() -> Path:
         Path: Path to the log file that should be used for all loggers in this session.
     
     Note:
-        The global LOG_FILEPATH variable is used to cache the path after first call.
+        The global _LOG_FILEPATH variable is used to cache the path after first call.
     """
-    global LOG_FILEPATH
+    global _LOG_FILEPATH
     
-    if LOG_FILEPATH is None:
+    if _LOG_FILEPATH is None:
         # Look for the most recent log file created today
         today_prefix = datetime.now().strftime("%Y-%m-%d")
         existing_logs = sorted(LOGS_DIR.glob(f"{today_prefix}*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -131,17 +131,17 @@ def get_log_filepath() -> Path:
             # If the log file was created within the last 60 seconds, reuse it
             # This handles bot restarts and ensures we append to the same file
             if time_since_creation < 60:
-                LOG_FILEPATH = most_recent
+                _LOG_FILEPATH = most_recent
             else:
                 # Create a new log file with current timestamp
                 log_filename = datetime.now().strftime(DATE_FORMAT) + ".log"
-                LOG_FILEPATH = LOGS_DIR / log_filename
+                _LOG_FILEPATH = LOGS_DIR / log_filename
         else:
             # No existing log file for today, create a new one
             log_filename = datetime.now().strftime(DATE_FORMAT) + ".log"
-            LOG_FILEPATH = LOGS_DIR / log_filename
+            _LOG_FILEPATH = LOGS_DIR / log_filename
     
-    return LOG_FILEPATH
+    return _LOG_FILEPATH
 
 
 def setup_logger(logger_name: str) -> logging.Logger:
@@ -173,7 +173,7 @@ def setup_logger(logger_name: str) -> logging.Logger:
 
 
     # File handler (DEBUG level) - use shared log file path
-    log_filepath = get_log_filepath()
+    log_filepath = _get_log_filepath()
     file_handler = RotatingFileHandler(
         log_filepath,
         encoding="utf-8"

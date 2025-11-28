@@ -4,12 +4,8 @@ from typing import Any
 import discord
 
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.datatypes.action_datatypes import ActionType
+from modcord.moderation.moderation_datatypes import ActionType
 
-from modcord.datatypes.discord_datatypes import GuildID
-from modcord.util.logger import get_logger
-
-logger = get_logger("guild_settings_ui")
 
 ACTION_UI_ORDER: tuple[ActionType, ...] = (
     ActionType.WARN,
@@ -17,7 +13,6 @@ ACTION_UI_ORDER: tuple[ActionType, ...] = (
     ActionType.TIMEOUT,
     ActionType.KICK,
     ActionType.BAN,
-    ActionType.REVIEW,
 )
 
 ACTION_UI_LABELS: dict[ActionType, str] = {
@@ -26,7 +21,6 @@ ACTION_UI_LABELS: dict[ActionType, str] = {
     ActionType.TIMEOUT: "Timeout",
     ActionType.KICK: "Kick",
     ActionType.BAN: "Ban",
-    ActionType.REVIEW: "Review",
 }
 
 ACTION_UI_EMOJIS: dict[ActionType, str] = {
@@ -35,11 +29,10 @@ ACTION_UI_EMOJIS: dict[ActionType, str] = {
     ActionType.TIMEOUT: "⏲️",
     ActionType.KICK: "👢",
     ActionType.BAN: "🔨",
-    ActionType.REVIEW: "🛡️",
 }
 
 
-def build_settings_embed(guild_id: GuildID) -> discord.Embed:
+def build_settings_embed(guild_id: int) -> discord.Embed:
     """
     Create a Discord embed summarizing current guild moderation settings.
     
@@ -204,8 +197,8 @@ class GuildSettingsView(discord.ui.View):
         if self._message is not None:
             try:
                 await self._message.edit(view=self)
-            except discord.HTTPException as e:
-                logger.debug("[GUILD SETTINGS UI] Failed to edit message on timeout: %s", e)
+            except discord.HTTPException:
+                pass
 
 
 class ToggleAIButton(discord.ui.Button):

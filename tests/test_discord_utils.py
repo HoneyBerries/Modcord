@@ -12,11 +12,11 @@ from modcord.util.discord_utils import (
     has_elevated_permissions,
     bot_can_manage_messages,
     iter_moderatable_channels,
-    delete_message,
+    safe_delete_message,
     DURATIONS,
     PERMANENT_DURATION,
 )
-from modcord.datatypes.action_datatypes import ActionType
+from modcord.moderation.moderation_datatypes import ActionType
 
 
 class TestFormatDuration:
@@ -188,7 +188,7 @@ class TestIterModeratableChannels:
 
 
 class TestSafeDeleteMessage:
-    """Test the delete_message function."""
+    """Test the safe_delete_message function."""
 
     @pytest.mark.asyncio
     async def test_successful_deletion(self):
@@ -196,7 +196,7 @@ class TestSafeDeleteMessage:
         message = AsyncMock()
         message.delete = AsyncMock()
         
-        result = await delete_message(message)
+        result = await safe_delete_message(message)
         
         assert result is True
         message.delete.assert_awaited_once()
@@ -209,7 +209,7 @@ class TestSafeDeleteMessage:
         message = AsyncMock()
         message.delete = AsyncMock(side_effect=discord.NotFound(MagicMock(), "Not found"))
         
-        result = await delete_message(message)
+        result = await safe_delete_message(message)
         
         assert result is False
 
@@ -222,7 +222,7 @@ class TestSafeDeleteMessage:
         message.id = 12345
         message.delete = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "Forbidden"))
         
-        result = await delete_message(message)
+        result = await safe_delete_message(message)
         
         assert result is False
 
@@ -233,7 +233,7 @@ class TestSafeDeleteMessage:
         message.id = 12345
         message.delete = AsyncMock(side_effect=Exception("Test error"))
         
-        result = await delete_message(message)
+        result = await safe_delete_message(message)
         
         assert result is False
 
