@@ -131,10 +131,11 @@ class ModerationProcessor:
                 # Fetch from guild_settings_manager using proper ID types
                 server_rules = guild_settings_manager.get_server_rules(guild_id)
                 channel_guidelines = guild_settings_manager.get_channel_guidelines(guild_id, batch.channel_id)
+
             else:
                 # Fall back to app_config defaults
-                server_rules = app_config.server_rules or ""
-                channel_guidelines = app_config.channel_guidelines or ""
+                server_rules = app_config.server_rules
+                channel_guidelines = app_config.channel_guidelines
             
             merged_rules = self._resolve_server_rules(server_rules)
             merged_guidelines = self._resolve_channel_guidelines(channel_guidelines)

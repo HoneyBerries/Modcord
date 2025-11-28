@@ -72,6 +72,7 @@ class WarnCommand(CommandAction):
                 guild=ctx.guild,
                 reason=self.reason,
                 channel=ctx.channel,
+                bot_user=bot_instance.user,
             )
             await get_db().log_moderation_action(self)
         except Exception as exc:
@@ -118,6 +119,7 @@ class TimeoutCommand(CommandAction):
                 reason=self.reason,
                 channel=ctx.channel,
                 duration=datetime.timedelta(seconds=duration_seconds),
+                bot_user=bot_instance.user,
             )
             await get_db().log_moderation_action(self)
         except Exception as exc:
@@ -155,6 +157,7 @@ class KickCommand(CommandAction):
                 guild=ctx.guild,
                 reason=self.reason,
                 channel=ctx.channel,
+                bot_user=bot_instance.user,
             )
             await get_db().log_moderation_action(self)
         except Exception as exc:
@@ -199,6 +202,7 @@ class BanCommand(CommandAction):
                 reason=self.reason,
                 channel=ctx.channel,
                 duration=duration,
+                bot_user=bot_instance.user,
             )
             await get_db().log_moderation_action(self)
             

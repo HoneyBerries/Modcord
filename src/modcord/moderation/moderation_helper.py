@@ -19,10 +19,10 @@ from modcord.ai.ai_moderation_processor import moderation_processor, model_state
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.database.database import get_db
 from modcord.datatypes.action_datatypes import ActionData, ActionType
-from modcord.datatypes.discord_datatypes import UserID
+from modcord.datatypes.discord_datatypes import GuildID, UserID
 from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationUser
 from modcord.moderation.human_review_manager import HumanReviewManager
-from modcord.moderation.moderation_embed import create_punishment_embed
+from modcord.ui.action_embed import create_punishment_embed
 from modcord.scheduler.unban_scheduler import UNBAN_SCHEDULER
 from modcord.util import discord_utils
 from modcord.util.logger import get_logger
@@ -79,19 +79,28 @@ class ModerationEngine:
         for batch in batches:
             if batch.is_empty():
                 continue
-            first_user = batch.users[0] if batch.users else None
-            first_message = first_user.messages[0] if first_user and first_user.messages else None
-            guild_id = first_message.guild_id if first_message and first_message.guild_id else None
+            
+            first_user = batch.users[0]
+            first_message = first_user.messages[0]
+
+            guild_id = first_message.guild_id
+
             if not first_message or (guild_id and not guild_settings_manager.is_ai_enabled(guild_id)):
                 continue
+
             valid_batches.append(batch)
 
         if not valid_batches:
+            logger.error("No valid batches to process for moderation.")
+            return
+
+        if guild_id is None:
+            logger.error("No valid guild_id found for moderation batch processing.")
             return
 
         actions_by_channel = await moderation_processor.get_multi_batch_moderation_actions(
             batches=valid_batches,
-            guild_id=guild_id,
+            guild_id=guild_id
         )
 
         # Initialize review notification manager
@@ -227,13 +236,14 @@ class ModerationEngine:
 
         guild = target_user.discord_guild
         member = target_user.discord_member
-        guild_id = guild.id
+
+        guild_id = GuildID.from_guild(guild)
 
         if not guild_settings_manager.is_action_allowed(guild_id, action.action):
             logger.warning(
                 "[MODERATION ENGINE] Action %s not allowed in guild %s",
                 action.action.value,
-                guild_id
+                guild_id.to_int()
             )
             return False
 
@@ -334,8 +344,9 @@ async def execute_moderation_notification(
     user: discord.Member,
     guild: discord.Guild,
     reason: str,
+    channel: discord.TextChannel,
+    bot_user: discord.User | discord.ClientUser,
     duration: datetime.timedelta | None = None,
-    channel: discord.TextChannel | None = None,
 ) -> None:
     """
     Send moderation notification embed to user via DM and optionally to channel.
@@ -347,8 +358,15 @@ async def execute_moderation_notification(
         reason: Reason for action
         duration: Optional duration timedelta (for timeout/ban)
         channel: Optional channel to post embed in
+        bot_user: Optional bot user for footer attribution
     """
-    embed = await create_punishment_embed(action_type, user, guild, reason, duration)
+    embed = await create_punishment_embed(
+        action_type,
+        user,
+        guild,
+        reason,
+        admin=bot_user,
+        duration=duration)
     
     # Try to send DM
     try:
@@ -358,7 +376,8 @@ async def execute_moderation_notification(
     except Exception as e:
         logger.error(f"Error sending DM to {user.id}: {e}")
     
-    # Post to channel if provided
+
+    # Post to channel if the channel exists
     if channel:
         try:
             await channel.send(embed=embed)
@@ -373,7 +392,7 @@ async def apply_action_decision(
     member: discord.Member,
     guild: discord.Guild,
     bot_client: discord.Bot,
-    channel: discord.TextChannel | None = None,
+    channel: discord.TextChannel | None,
 ) -> bool:
     """
     Apply a moderation action decision to a user.
@@ -392,6 +411,14 @@ async def apply_action_decision(
     if action.message_ids:
         await discord_utils.delete_messages_by_ids(guild, action.message_ids)
     
+    if bot_client is None or bot_client.user is None:
+        logger.error("Bot client is None or bot user is None, cannot apply moderation action")
+        return False
+    
+    if channel is None:
+        logger.error("Channel is None or missing, cannot apply moderation action")
+        return False
+    
     # Apply action
     try:
         if action.action == ActionType.WARN:
@@ -400,7 +427,8 @@ async def apply_action_decision(
                 user=member,
                 guild=guild,
                 reason=action.reason,
-                channel=channel
+                channel=channel,
+                bot_user=bot_client.user,
             )
             await get_db().log_moderation_action(action)
             return True
@@ -424,7 +452,8 @@ async def apply_action_decision(
                 guild=guild,
                 reason=action.reason,
                 duration=duration,
-                channel=channel
+                channel=channel,
+                bot_user=bot_client.user
             )
             await get_db().log_moderation_action(action)
             return True
@@ -436,7 +465,8 @@ async def apply_action_decision(
                 user=member,
                 guild=guild,
                 reason=action.reason,
-                channel=channel
+                channel=channel,
+                bot_user=bot_client.user,
             )
             await get_db().log_moderation_action(action)
             return True
@@ -468,7 +498,8 @@ async def apply_action_decision(
                 guild=guild,
                 reason=action.reason,
                 duration=duration,
-                channel=channel
+                channel=channel,
+                bot_user=bot_client.user,
             )
             await get_db().log_moderation_action(action)
             return True

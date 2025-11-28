@@ -12,7 +12,6 @@ from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
 from modcord.datatypes.moderation_datatypes import ModerationMessage, ModerationUser
-from modcord.moderation.moderation_helper import apply_action_decision
 from modcord.moderation.human_review_manager import HumanReviewManager
 
 logger = get_logger("debug_commands")
