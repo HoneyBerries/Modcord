@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any, Dict, List
 from jsonschema import ValidationError
-
-from modcord.moderation.moderation_datatypes import ActionData, ActionType
+from modcord.datatypes.action_datatypes import ActionData, ActionType
+from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
 import jsonschema
+from modcord.util.logger import get_logger
 
-logger = logging.getLogger("moderation_parsing")
+logger = get_logger("moderation_parsing")
 
 
 def build_dynamic_moderation_schema(
-    user_message_map: Dict[str, List[str]], 
-    channel_id: str
+    user_message_map: Dict[UserID, List[MessageID]], 
+    channel_id: ChannelID
 ) -> dict:
     """Build a dynamic JSON schema that requires an action for each specific user.
     
@@ -25,7 +25,7 @@ def build_dynamic_moderation_schema(
     
     Args:
         user_message_map: Dict mapping user_id -> list of their message IDs (non-history only)
-        channel_id: The channel ID string
+        channel_id: The channel ID
         
     Returns:
         JSON schema dict with per-user message ID constraints
@@ -35,12 +35,13 @@ def build_dynamic_moderation_schema(
         return {
             "type": "object",
             "properties": {
-                "channel_id": {"type": "string", "enum": [channel_id]},
+                "channel_id": {"type": "integer", "enum": [channel_id.to_int()]},
                 "users": {"type": "array", "items": {}, "minItems": 0, "maxItems": 0}
             },
             "required": ["channel_id", "users"],
             "additionalProperties": False
         }
+    
     
     user_ids = list(user_message_map.keys())
     
@@ -51,15 +52,15 @@ def build_dynamic_moderation_schema(
         user_schemas.append({
             "type": "object",
             "properties": {
-                "user_id": {"type": "string", "enum": [user_id]},
-                "action": {"type": "string", "enum": ["null", "delete", "warn", "timeout", "kick", "ban"]},
+                "user_id": {"type": "integer", "enum": [user_id.to_int()]},
+                "action": {"type": "string", "enum": ["null", "delete", "warn", "timeout", "kick", "ban", "review"]},
                 "reason": {"type": "string"},
                 "message_ids_to_delete": {
                     "type": "array",
-                    "items": {"type": "string", "enum": message_ids if message_ids else []}
+                    "items": {"type": "integer", "enum": [mid.to_int() for mid in message_ids] if message_ids else []}
                 },
-                "timeout_duration": {"type": "integer", "minimum": 0},
-                "ban_duration": {"type": "integer", "minimum": -1},
+                "timeout_duration": {"type": "integer", "minimum": 0, "maximum": 60*24*7},  # up to 7 days
+                "ban_duration": {"type": "integer", "minimum": -1, "maximum": 60*24*365},  # up to 1 year or permanent
             },
             "required": ["user_id", "action", "reason", "message_ids_to_delete", "timeout_duration", "ban_duration"],
             "additionalProperties": False
@@ -68,7 +69,7 @@ def build_dynamic_moderation_schema(
     return {
         "type": "object",
         "properties": {
-            "channel_id": {"type": "string", "enum": [channel_id]},
+            "channel_id": {"type": "integer", "enum": [channel_id.to_int()]},
             "users": {
                 "type": "array",
                 "items": {"oneOf": user_schemas},
@@ -91,7 +92,8 @@ def _extract_json_payload(raw: str) -> Any:
 
 def parse_batch_actions(
     response: str,
-    channel_id: int,
+    channel_id: ChannelID,
+    guild_id: GuildID,
     expected_schema: dict
 ) -> List[ActionData]:
     """Parse AI moderation response into ActionData objects.
@@ -102,11 +104,14 @@ def parse_batch_actions(
     Args:
         response: Model response text containing JSON
         channel_id: Expected channel identifier
+        guild_id: Guild ID to include in ActionData
         expected_schema: JSON schema used for validation
         
     Returns:
         List of ActionData objects parsed from response
     """
+    channel_id = ChannelID(channel_id)
+    guild_id = GuildID(guild_id) if guild_id is not None else GuildID(0)
     logger.debug("[PARSE] Parsing batch response (%d chars)", len(response))
     
     # Extract JSON
@@ -152,7 +157,7 @@ def parse_batch_actions(
                 
         # Extract message IDs
         raw_msg_ids = item.get("message_ids_to_delete") or []
-        message_ids = [str(mid).strip() for mid in raw_msg_ids if mid] if isinstance(raw_msg_ids, list) else []
+        message_ids = [MessageID(mid) for mid in raw_msg_ids if mid] if isinstance(raw_msg_ids, list) else []
         
         # Extract durations (may be 0 or -1)
         try:
@@ -172,16 +177,15 @@ def parse_batch_actions(
         action_type = ActionType(action_str)
         actions.append(
             ActionData(
-                user_id=user_id,
+                guild_id=guild_id,
+                user_id=UserID(user_id),
                 action=action_type,
                 reason=reason,
-                message_ids=message_ids,
                 timeout_duration=timeout_dur,
                 ban_duration=ban_dur,
+                message_ids=message_ids,
             )
         )
     
     logger.debug("[PARSE] Successfully parsed %d actions", len(actions))
     return actions
-
-

@@ -8,14 +8,14 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from modcord.util.logger import get_logger, _get_log_filepath
+from modcord.util.logger import get_logger, get_log_filepath
 
 def test_single_log_file():
     """Test that multiple loggers use the same file."""
     print("Testing logging fix...")
     
     # Get the initial log file path
-    initial_path = _get_log_filepath()
+    initial_path = get_log_filepath()
     print(f"Initial log file path: {initial_path}")
     
     # Create multiple loggers
@@ -29,9 +29,9 @@ def test_single_log_file():
     logger3.info("Message from logger 3")
     
     # Verify all loggers use the same file
-    path1 = _get_log_filepath()
-    path2 = _get_log_filepath()
-    path3 = _get_log_filepath()
+    path1 = get_log_filepath()
+    path2 = get_log_filepath()
+    path3 = get_log_filepath()
     
     assert path1 == path2 == path3 == initial_path, "All loggers should use the same file!"
     

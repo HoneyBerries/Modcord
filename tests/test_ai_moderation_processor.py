@@ -5,13 +5,13 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from datetime import datetime, timezone
 from modcord.ai.ai_moderation_processor import ModerationProcessor
 from modcord.ai.ai_core import InferenceProcessor, ModelState
-from modcord.moderation.moderation_datatypes import (
+from modcord.datatypes.action_datatypes import ActionData, ActionType
+from modcord.datatypes.discord_datatypes import UserID, DiscordUsername, GuildID, ImageURL
+from modcord.datatypes.moderation_datatypes import (
     ModerationChannelBatch,
     ModerationUser,
     ModerationMessage,
     ModerationImage,
-    ActionData,
-    ActionType,
 )
 
 
@@ -105,16 +105,16 @@ class TestModerationProcessor:
         timestamp = datetime.now(timezone.utc).isoformat()
         msg = ModerationMessage(
             message_id="123",
-            user_id="456",
+            user_id=UserID("456"),
             content="Test message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
         user = ModerationUser(
-            user_id="456",
-            username="TestUser",
+            user_id=UserID("456"),
+            username=DiscordUsername("TestUser"),
             messages=[msg]
         )
         
@@ -132,7 +132,7 @@ class TestModerationProcessor:
         assert payload["unique_user_count"] == 1
         assert payload["total_images"] == 0
         assert len(payload["users"]) == 1
-        assert payload["users"][0]["user_id"] == "456"
+        assert payload["users"][0]["user_id"] == 456
         assert len(pil_images) == 0
 
     def test_batch_to_json_with_images_with_history(self):
@@ -140,24 +140,24 @@ class TestModerationProcessor:
         timestamp = datetime.now(timezone.utc).isoformat()
         msg1 = ModerationMessage(
             message_id="123",
-            user_id="456",
+            user_id=UserID("456"),
             content="Current message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
         msg2 = ModerationMessage(
             message_id="124",
-            user_id="457",
+            user_id=UserID("457"),
             content="History message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
-        user1 = ModerationUser(user_id="456", username="User1", messages=[msg1])
-        user2 = ModerationUser(user_id="457", username="User2", messages=[msg2])
+        user1 = ModerationUser(user_id=UserID("456"), username=DiscordUsername("User1"), messages=[msg1])
+        user2 = ModerationUser(user_id=UserID("457"), username=DiscordUsername("User2"), messages=[msg2])
         
         batch = ModerationChannelBatch(
             channel_id=111,
@@ -175,23 +175,25 @@ class TestModerationProcessor:
     def test_batch_to_json_with_images_with_pil_images(self):
         """Test batch.to_multimodal_payload handles PIL images."""
         mock_pil = MagicMock()
+        image_url = ImageURL.from_url("https://example.com/image123.png")
         img = ModerationImage(
             image_id="img123",
+            image_url=image_url,
             pil_image=mock_pil
         )
         
         timestamp = datetime.now(timezone.utc).isoformat()
         msg = ModerationMessage(
             message_id="123",
-            user_id="456",
+            user_id=UserID("456"),
             content="",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111,
             images=[img]
         )
         
-        user = ModerationUser(user_id="456", username="User", messages=[msg])
+        user = ModerationUser(user_id=UserID("456"), username=DiscordUsername("User"), messages=[msg])
         batch = ModerationChannelBatch(channel_id=111, channel_name="general", users=[user])
         
         payload, pil_images, image_map = batch.to_multimodal_payload()
@@ -210,23 +212,25 @@ class TestModerationProcessor:
     def test_batch_to_json_with_images_empty_content(self):
         """Test batch.to_multimodal_payload handles empty content with images."""
         mock_pil = MagicMock()
+        image_url = ImageURL.from_url("https://example.com/image1.png")
         img = ModerationImage(
             image_id="img1",
+            image_url=image_url,
             pil_image=mock_pil
         )
         
         timestamp = datetime.now(timezone.utc).isoformat()
         msg = ModerationMessage(
             message_id="123",
-            user_id="456",
+            user_id=UserID("456"),
             content="",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111,
             images=[img]
         )
         
-        user = ModerationUser(user_id="456", username="User", messages=[msg])
+        user = ModerationUser(user_id=UserID("456"), username=DiscordUsername("User"), messages=[msg])
         batch = ModerationChannelBatch(channel_id=111, channel_name="general", users=[user])
         
         payload, _, _ = batch.to_multimodal_payload()
@@ -318,32 +322,32 @@ class TestModerationProcessor:
         # Same user appears in both current and history
         current_msg = ModerationMessage(
             message_id="123",
-            user_id="456",
+            user_id=UserID("456"),
             content="Current message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
         history_msg = ModerationMessage(
             message_id="124",
-            user_id="456",
+            user_id=UserID("456"),
             content="History message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
         current_user = ModerationUser(
-            user_id="456",
-            username="TestUser",
+            user_id=UserID("456"),
+            username=DiscordUsername("TestUser"),
             roles=["Member"],
             messages=[current_msg]
         )
         
         history_user = ModerationUser(
-            user_id="456",
-            username="TestUser",
+            user_id=UserID("456"),
+            username=DiscordUsername("TestUser"),
             messages=[history_msg]
         )
         
@@ -363,7 +367,7 @@ class TestModerationProcessor:
         # Should have both messages
         assert payload["message_count"] == 2
         user_data = payload["users"][0]
-        assert user_data["user_id"] == "456"
+        assert user_data["user_id"] == 456
         assert len(user_data["messages"]) == 2
 
     def test_batch_to_json_correct_is_history_flags(self):
@@ -373,24 +377,24 @@ class TestModerationProcessor:
         # Same user with current and historical messages
         current_msg = ModerationMessage(
             message_id="123",
-            user_id="456",
+            user_id=UserID("456"),
             content="Current",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
         history_msg = ModerationMessage(
             message_id="124",
-            user_id="456",
+            user_id=UserID("456"),
             content="History",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
-        current_user = ModerationUser(user_id="456", username="User", messages=[current_msg])
-        history_user = ModerationUser(user_id="456", username="User", messages=[history_msg])
+        current_user = ModerationUser(user_id=UserID("456"), username=DiscordUsername("User"), messages=[current_msg])
+        history_user = ModerationUser(user_id=UserID("456"), username=DiscordUsername("User"), messages=[history_msg])
         
         batch = ModerationChannelBatch(
             channel_id=111,
@@ -405,8 +409,8 @@ class TestModerationProcessor:
         messages = user_data["messages"]
         
         # Find which message is which by message_id
-        current_msg_data = next(m for m in messages if m["message_id"] == "123")
-        history_msg_data = next(m for m in messages if m["message_id"] == "124")
+        current_msg_data = next(m for m in messages if m["message_id"] == 123)
+        history_msg_data = next(m for m in messages if m["message_id"] == 124)
         
         # Current message should have is_history=False
         assert current_msg_data["is_history"] is False
@@ -421,25 +425,25 @@ class TestModerationProcessor:
         msg_id = "123"
         current_msg = ModerationMessage(
             message_id=msg_id,
-            user_id="456",
+            user_id=UserID("456"),
             content="Message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
         # Create a duplicate with same message_id
         history_msg = ModerationMessage(
             message_id=msg_id,
-            user_id="456",
+            user_id=UserID("456"),
             content="Message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
-        current_user = ModerationUser(user_id="456", username="User", messages=[current_msg])
-        history_user = ModerationUser(user_id="456", username="User", messages=[history_msg])
+        current_user = ModerationUser(user_id=UserID("456"), username=DiscordUsername("User"), messages=[current_msg])
+        history_user = ModerationUser(user_id=UserID("456"), username=DiscordUsername("User"), messages=[history_msg])
         
         batch = ModerationChannelBatch(
             channel_id=111,
@@ -464,24 +468,24 @@ class TestModerationProcessor:
         
         msg1 = ModerationMessage(
             message_id="123",
-            user_id="456",
+            user_id=UserID("456"),
             content="User 1 message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
         msg2 = ModerationMessage(
             message_id="124",
-            user_id="789",
+            user_id=UserID("789"),
             content="User 2 message",
             timestamp=timestamp,
-            guild_id=789,
+            guild_id=GuildID(789),
             channel_id=111
         )
         
-        user1 = ModerationUser(user_id="456", username="User1", messages=[msg1])
-        user2 = ModerationUser(user_id="789", username="User2", messages=[msg2])
+        user1 = ModerationUser(user_id=UserID("456"), username=DiscordUsername("User1"), messages=[msg1])
+        user2 = ModerationUser(user_id=UserID("789"), username=DiscordUsername("User2"), messages=[msg2])
         
         batch = ModerationChannelBatch(
             channel_id=111,
@@ -499,5 +503,5 @@ class TestModerationProcessor:
         
         # Check user IDs are distinct
         user_ids = {u["user_id"] for u in payload["users"]}
-        assert user_ids == {"456", "789"}
+        assert user_ids == {456, 789}
 

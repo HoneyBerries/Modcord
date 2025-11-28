@@ -4,22 +4,22 @@ import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from modcord.scheduler.unban_scheduler import (
-    ScheduledUnban,
+    UnbanData,
     UnbanScheduler,
     UNBAN_SCHEDULER,
 )
 
 
-class TestScheduledUnban:
-    """Tests for ScheduledUnban dataclass."""
+class TestUnbanData:
+    """Tests for UnbanData dataclass."""
 
     def test_scheduled_unban_initialization(self):
-        """Test ScheduledUnban initialization with required fields."""
+        """Test UnbanData initialization with required fields."""
         mock_guild = Mock()
         mock_channel = Mock()
         mock_bot = Mock()
         
-        unban = ScheduledUnban(
+        unban = UnbanData(
             guild=mock_guild,
             user_id=12345,
             channel=mock_channel,
@@ -34,10 +34,10 @@ class TestScheduledUnban:
         assert unban.reason == "Test reason"
 
     def test_scheduled_unban_default_reason(self):
-        """Test ScheduledUnban uses default reason."""
+        """Test UnbanData uses default reason."""
         mock_guild = Mock()
         
-        unban = ScheduledUnban(
+        unban = UnbanData(
             guild=mock_guild,
             user_id=12345,
             channel=None,
@@ -126,7 +126,7 @@ class TestUnbanScheduler:
             
             mock_execute.assert_called_once()
             call_args = mock_execute.call_args[0][0]
-            assert isinstance(call_args, ScheduledUnban)
+            assert isinstance(call_args, UnbanData)
             assert call_args.user_id == 456
 
     @pytest.mark.asyncio
@@ -274,7 +274,7 @@ class TestUnbanScheduler:
         mock_bot = Mock()
         mock_bot.fetch_user = AsyncMock(return_value=mock_user)
         
-        payload = ScheduledUnban(
+        payload = UnbanData(
             guild=mock_guild,
             user_id=456,
             channel=None,
@@ -310,7 +310,7 @@ class TestUnbanScheduler:
         mock_channel = Mock(spec=TextChannel)
         mock_channel.send = AsyncMock()
         
-        payload = ScheduledUnban(
+        payload = UnbanData(
             guild=mock_guild,
             user_id=456,
             channel=mock_channel,
@@ -334,7 +334,7 @@ class TestUnbanScheduler:
         mock_guild.unban = AsyncMock(side_effect=Exception("Unban failed"))
         mock_guild.name = "Test Guild"
         
-        payload = ScheduledUnban(
+        payload = UnbanData(
             guild=mock_guild,
             user_id=456,
             channel=None,

@@ -8,10 +8,7 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from modcord.database.database import (
-    init_database,
-    get_connection,
-    log_moderation_action,
-    get_past_actions,
+    get_db,
     DB_PATH,
 )
 
@@ -30,7 +27,7 @@ async def temp_db():
     database.DB_PATH = Path(temp_file.name)
     
     # Initialize database
-    await database.init_database()
+    await get_db().initialize_database()
     
     yield database.DB_PATH
     
@@ -43,11 +40,11 @@ async def temp_db():
 
 
 class TestInitDatabase:
-    """Tests for init_database function."""
+    """Tests for Database.initialize_database method."""
 
     async def test_init_creates_tables(self, temp_db):
-        """Test that init_database creates required tables."""
-        async with get_connection() as db:
+        """Test that initialize_database creates required tables."""
+        async with get_db().get_connection() as db:
             # Check guild_settings table
             cursor = await db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='guild_settings'"
@@ -71,7 +68,7 @@ class TestInitDatabase:
 
     async def test_init_creates_moderation_actions_table(self, temp_db):
         """Test that moderation_actions table is created."""
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             # Create the table (since it's created on first log_moderation_action call)
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
@@ -94,7 +91,7 @@ class TestInitDatabase:
 
     async def test_init_sets_schema_version(self, temp_db):
         """Test that schema version is set."""
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             cursor = await db.execute("SELECT version FROM schema_version")
             result = await cursor.fetchone()
             assert result is not None
@@ -102,12 +99,12 @@ class TestInitDatabase:
 
 
 class TestLogModerationAction:
-    """Tests for log_moderation_action function."""
+    """Tests for Database.log_moderation_action method."""
 
     async def test_log_simple_action(self, temp_db):
         """Test logging a simple moderation action."""
         # Create moderation_actions table
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,7 +118,7 @@ class TestLogModerationAction:
             """)
             await db.commit()
         
-        await log_moderation_action(
+        await get_db().log_moderation_action(
             guild_id=123456,
             user_id="789012",
             action_type="warn",
@@ -129,7 +126,7 @@ class TestLogModerationAction:
         )
         
         # Verify the action was logged
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             cursor = await db.execute(
                 "SELECT * FROM moderation_actions WHERE user_id = ?",
                 ("789012",)
@@ -144,7 +141,7 @@ class TestLogModerationAction:
     async def test_log_action_with_metadata(self, temp_db):
         """Test logging action with metadata."""
         # Create table
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,7 +160,7 @@ class TestLogModerationAction:
             "message_ids": ["msg1", "msg2"]
         }
         
-        await log_moderation_action(
+        await get_db().log_moderation_action(
             guild_id=123456,
             user_id="789012",
             action_type="ban",
@@ -172,7 +169,7 @@ class TestLogModerationAction:
         )
         
         # Verify metadata was stored
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             cursor = await db.execute(
                 "SELECT metadata FROM moderation_actions WHERE action_type = ?",
                 ("ban",)
@@ -186,7 +183,7 @@ class TestLogModerationAction:
     async def test_log_action_without_metadata(self, temp_db):
         """Test logging action without metadata."""
         # Create table
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +197,7 @@ class TestLogModerationAction:
             """)
             await db.commit()
         
-        await log_moderation_action(
+        await get_db().log_moderation_action(
             guild_id=123456,
             user_id="789012",
             action_type="kick",
@@ -208,7 +205,7 @@ class TestLogModerationAction:
             metadata=None
         )
         
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             cursor = await db.execute(
                 "SELECT metadata FROM moderation_actions WHERE action_type = ?",
                 ("kick",)
@@ -219,12 +216,12 @@ class TestLogModerationAction:
 
 
 class TestGetPastActions:
-    """Tests for get_past_actions function."""
+    """Tests for Database.get_past_actions method."""
 
     async def test_get_past_actions_within_window(self, temp_db):
         """Test retrieving past actions within time window."""
         # Create table and insert test data
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,7 +244,7 @@ class TestGetPastActions:
             )
             await db.commit()
         
-        actions = await get_past_actions(123, "user1", lookback_minutes=10)
+        actions = await get_db().get_past_actions(123, "user1", lookback_minutes=10)
         
         assert len(actions) == 1
         assert actions[0]["action_type"] == "warn"
@@ -255,7 +252,7 @@ class TestGetPastActions:
 
     async def test_get_past_actions_outside_window(self, temp_db):
         """Test that old actions are not retrieved."""
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -279,13 +276,13 @@ class TestGetPastActions:
             await db.commit()
         
         # Look back only 10 minutes
-        actions = await get_past_actions(123, "user1", lookback_minutes=10)
+        actions = await get_db().get_past_actions(123, "user1", lookback_minutes=10)
         
         assert len(actions) == 0
 
     async def test_get_past_actions_multiple(self, temp_db):
         """Test retrieving multiple past actions."""
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -309,13 +306,13 @@ class TestGetPastActions:
                 )
             await db.commit()
         
-        actions = await get_past_actions(123, "user1", lookback_minutes=60)
+        actions = await get_db().get_past_actions(123, "user1", lookback_minutes=60)
         
         assert len(actions) == 3
 
     async def test_get_past_actions_wrong_user(self, temp_db):
         """Test that actions for different user are not retrieved."""
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -337,13 +334,13 @@ class TestGetPastActions:
             )
             await db.commit()
         
-        actions = await get_past_actions(123, "user1", lookback_minutes=60)
+        actions = await get_db().get_past_actions(123, "user1", lookback_minutes=60)
         
         assert len(actions) == 0
 
     async def test_get_past_actions_with_metadata(self, temp_db):
         """Test retrieving actions with metadata."""
-        async with get_connection() as db:
+        async with get_db().get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS moderation_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -366,7 +363,7 @@ class TestGetPastActions:
             )
             await db.commit()
         
-        actions = await get_past_actions(123, "user1", lookback_minutes=60)
+        actions = await get_db().get_past_actions(123, "user1", lookback_minutes=60)
         
         assert len(actions) == 1
         assert actions[0]["metadata"]["duration"] == 60
