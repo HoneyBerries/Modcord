@@ -18,10 +18,8 @@ import json
 from typing import Any, Dict, List
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
-from modcord.moderation.moderation_datatypes import (
-    ActionData,
-    ModerationChannelBatch,
-)
+from modcord.datatypes.action_datatypes import ActionData
+from modcord.datatypes.moderation_datatypes import ModerationChannelBatch
 import modcord.moderation.moderation_parsing as moderation_parsing
 from modcord.configuration.app_configuration import app_config
 from xgrammar.grammar import Grammar
@@ -159,11 +157,17 @@ class ModerationProcessor:
 
         # Parse responses and group actions by channel
         actions_by_channel: Dict[int, List[ActionData]] = {}
-        for (channel_id, _, dynamic_schema), response_text in zip(channel_mapping, responses):
+        for (channel_id, batch, dynamic_schema), response_text in zip(channel_mapping, responses):
+            # Get guild_id from the batch
+            guild_id = None
+            if batch.users and batch.users[0].messages:
+                guild_id = batch.users[0].messages[0].guild_id
+            
             # Parse response into actions
             actions = moderation_parsing.parse_batch_actions(
                 response_text,
                 channel_id,
+                guild_id or 0,  # Fallback to 0 if no guild_id found
                 dynamic_schema
             )
             actions_by_channel[channel_id] = actions
@@ -171,7 +175,7 @@ class ModerationProcessor:
             # Log summary: channel ID, action count, and response sample
             action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != "null")
             logger.debug(
-                "[RESULT] Channel %d: %d actions [%s] | Response: \n%s",
+                "[RESULT] Channel %s: %d actions [%s] | Response: \n%s",
                 channel_id,
                 len([a for a in actions if a.action != "null"]),
                 action_summary or "none",

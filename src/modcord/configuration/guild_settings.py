@@ -13,8 +13,9 @@ import collections
 import asyncio
 from typing import Dict, DefaultDict, List, Set
 from dataclasses import dataclass, field
+from modcord.datatypes.discord_datatypes import ChannelID, GuildID
+from modcord.datatypes.action_datatypes import ActionType
 from modcord.util.logger import get_logger
-from modcord.moderation.moderation_datatypes import ActionType
 from modcord.database.database import get_db
 import discord
 
@@ -25,7 +26,7 @@ logger = get_logger("guild_settings_manager")
 class GuildSettings:
     """Persistent per-guild configuration values."""
 
-    guild_id: int
+    guild_id: GuildID
     ai_enabled: bool = True
     rules: str = ""
     auto_warn_enabled: bool = True
@@ -35,7 +36,7 @@ class GuildSettings:
     auto_ban_enabled: bool = True
     auto_review_enabled: bool = True
     moderator_role_ids: List[int] = field(default_factory=list)
-    review_channel_ids: List[int] = field(default_factory=list)
+    review_channel_ids: List[ChannelID] = field(default_factory=list)
 
 
 ACTION_FLAG_FIELDS: dict[ActionType, str] = {
@@ -80,15 +81,17 @@ class GuildSettingsManager:
             self._db_initialized = True
             logger.info("[GUILD SETTINGS MANAGER] Database initialized and settings loaded")
 
-    def ensure_guild(self, guild_id: int) -> GuildSettings:
+    def ensure_guild(self, guild_id: GuildID | int) -> GuildSettings:
         """Create default settings for a guild if none exist and return the record."""
-        settings = self.guilds.get(guild_id)
+        # Normalize to int for dictionary key
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        settings = self.guilds.get(guild_id_int)
         if settings is None:
-            settings = GuildSettings(guild_id=guild_id)
-            self.guilds[guild_id] = settings
+            settings = GuildSettings(guild_id=GuildID.from_int(guild_id_int))
+            self.guilds[guild_id_int] = settings
         return settings
 
-    def get_guild_settings(self, guild_id: int) -> GuildSettings:
+    def get_guild_settings(self, guild_id: GuildID | int) -> GuildSettings:
         """Fetch the cached :class:`GuildSettings` instance for the given guild."""
         return self.ensure_guild(guild_id)
 
@@ -96,12 +99,13 @@ class GuildSettingsManager:
         """Return a snapshot list of guild IDs currently cached in memory."""
         return list(self.guilds.keys())
 
-    def get_server_rules(self, guild_id: int) -> str:
+    def get_server_rules(self, guild_id: GuildID | int) -> str:
         """Return cached rules for a guild or an empty string."""
-        settings = self.guilds.get(guild_id)
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        settings = self.guilds.get(guild_id_int)
         return settings.rules if settings else ""
 
-    def set_server_rules(self, guild_id: int, rules: str) -> None:
+    def set_server_rules(self, guild_id: GuildID | int, rules: str) -> None:
         """
         Cache and persist rules for the given guild.
 
@@ -110,17 +114,20 @@ class GuildSettingsManager:
         if rules is None:
             rules = ""
 
-        settings = self.ensure_guild(guild_id)
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        settings = self.ensure_guild(guild_id_int)
         settings.rules = rules
-        logger.debug(f"[GUILD SETTINGS MANAGER] Updated rules cache for guild {guild_id} (len={len(rules)})")
+        logger.debug(f"[GUILD SETTINGS MANAGER] Updated rules cache for guild {guild_id_int} (len={len(rules)})")
 
-        self._trigger_persist(guild_id)
+        self._trigger_persist(guild_id_int)
 
-    def get_channel_guidelines(self, guild_id: int, channel_id: int) -> str:
+    def get_channel_guidelines(self, guild_id: GuildID | int, channel_id: ChannelID | int) -> str:
         """Return cached channel-specific guidelines or an empty string."""
-        return self.channel_guidelines.get(guild_id, {}).get(channel_id, "")
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        channel_id_int = channel_id.to_int() if isinstance(channel_id, ChannelID) else channel_id
+        return self.channel_guidelines.get(guild_id_int, {}).get(channel_id_int, "")
 
-    def set_channel_guidelines(self, guild_id: int, channel_id: int, guidelines: str) -> None:
+    def set_channel_guidelines(self, guild_id: GuildID | int, channel_id: ChannelID | int, guidelines: str) -> None:
         """
         Cache and persist channel-specific guidelines.
 
@@ -129,16 +136,19 @@ class GuildSettingsManager:
         if guidelines is None:
             guidelines = ""
 
-        if guild_id not in self.channel_guidelines:
-            self.channel_guidelines[guild_id] = {}
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        channel_id_int = channel_id.to_int() if isinstance(channel_id, ChannelID) else channel_id
+
+        if guild_id_int not in self.channel_guidelines:
+            self.channel_guidelines[guild_id_int] = {}
         
-        self.channel_guidelines[guild_id][channel_id] = guidelines
+        self.channel_guidelines[guild_id_int][channel_id_int] = guidelines
         logger.debug(
             "[GUILD SETTINGS MANAGER] Updated channel guidelines cache for guild %s, channel %s (len=%d)",
-            guild_id, channel_id, len(guidelines)
+            guild_id_int, channel_id_int, len(guidelines)
         )
 
-        self._trigger_persist_channel_guidelines(guild_id, channel_id)
+        self._trigger_persist_channel_guidelines(guild_id_int, channel_id_int)
 
     def _trigger_persist(self, guild_id: int) -> None:
         """Schedule a best-effort persist of a single guild's settings to database."""
@@ -204,48 +214,52 @@ class GuildSettingsManager:
         logger.info("[GUILD SETTINGS MANAGER] Guild settings manager shutdown complete")
 
     # --- AI moderation enable/disable ---
-    def is_ai_enabled(self, guild_id: int) -> bool:
+    def is_ai_enabled(self, guild_id: GuildID | int) -> bool:
         """Return True if AI moderation is enabled for the guild (default True)."""
-        settings = self.guilds.get(guild_id)
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        settings = self.guilds.get(guild_id_int)
         return settings.ai_enabled if settings else True
 
-    def set_ai_enabled(self, guild_id: int, enabled: bool) -> bool:
+    def set_ai_enabled(self, guild_id: GuildID | int, enabled: bool) -> bool:
         """
         Set and persist the AI moderation enabled state for a guild.
         Return whether scheduling the persist was successful or not.
         """
-        settings = self.ensure_guild(guild_id)
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        settings = self.ensure_guild(guild_id_int)
         settings.ai_enabled = bool(enabled)
         state = "enabled" if enabled else "disabled"
-        logger.debug("[GUILD SETTINGS MANAGER] AI moderation %s for guild %s", state, guild_id)
-        self._trigger_persist(guild_id)
+        logger.debug("[GUILD SETTINGS MANAGER] AI moderation %s for guild %s", state, guild_id_int)
+        self._trigger_persist(guild_id_int)
         return True
 
-    def is_action_allowed(self, guild_id: int, action: ActionType) -> bool:
+    def is_action_allowed(self, guild_id: GuildID | int, action: ActionType) -> bool:
         """Return whether the specified AI action is allowed for the guild."""
-        settings = self.ensure_guild(guild_id)
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        settings = self.ensure_guild(guild_id_int)
         field_name = ACTION_FLAG_FIELDS.get(action)
         if field_name is None:
             return True
         return bool(getattr(settings, field_name, True))
     
 
-    def set_action_allowed(self, guild_id: int, action: ActionType, enabled: bool) -> bool:
+    def set_action_allowed(self, guild_id: GuildID | int, action: ActionType, enabled: bool) -> bool:
         """Enable or disable an AI action for the guild and persist the change."""
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
         field_name = ACTION_FLAG_FIELDS.get(action)
         if field_name is None:
-            logger.warning("[GUILD SETTINGS MANAGER] Attempted to toggle unsupported action %s for guild %s", action, guild_id)
+            logger.warning("[GUILD SETTINGS MANAGER] Attempted to toggle unsupported action %s for guild %s", action, guild_id_int)
             return False
 
-        settings = self.ensure_guild(guild_id)
+        settings = self.ensure_guild(guild_id_int)
         setattr(settings, field_name, bool(enabled))
         logger.debug(
             "[GUILD SETTINGS MANAGER] Set %s to %s for guild %s",
             field_name,
             enabled,
-            guild_id,
+            guild_id_int,
         )
-        self._trigger_persist(guild_id)
+        self._trigger_persist(guild_id_int)
         return True
 
     # --- Persistence helpers ---
@@ -307,9 +321,10 @@ class GuildSettingsManager:
                     # Persist review channels - delete and reinsert for simplicity
                     await db.execute("DELETE FROM guild_review_channels WHERE guild_id = ?", (guild_id,))
                     for channel_id in settings.review_channel_ids:
+                        channel_id_int = channel_id.to_int() if isinstance(channel_id, ChannelID) else channel_id
                         await db.execute(
                             "INSERT INTO guild_review_channels (guild_id, channel_id) VALUES (?, ?)",
-                            (guild_id, channel_id)
+                            (guild_id, channel_id_int)
                         )
                     
                     await db.commit()
@@ -383,7 +398,7 @@ class GuildSettingsManager:
                     guild_id = row[0]
                     
                     settings = GuildSettings(
-                        guild_id=guild_id,
+                        guild_id=GuildID.from_int(guild_id),
                         ai_enabled=bool(row[1]),
                         rules=row[2] or "",
                         auto_warn_enabled=bool(row[3]),
@@ -416,7 +431,7 @@ class GuildSettingsManager:
                     guild_id = row[0]
                     channel_id = row[1]
                     if guild_id in self.guilds:
-                        self.guilds[guild_id].review_channel_ids.append(channel_id)
+                        self.guilds[guild_id].review_channel_ids.append(ChannelID.from_int(channel_id))
                 
                 # Load channel guidelines
                 async with db.execute("SELECT guild_id, channel_id, guidelines FROM channel_guidelines") as cursor:
@@ -442,7 +457,7 @@ class GuildSettingsManager:
             logger.exception("[GUILD SETTINGS MANAGER] Failed to load guild settings from database")
             return False
 
-    async def persist_guild(self, guild_id: int) -> bool:
+    async def persist_guild(self, guild_id: GuildID | int) -> bool:
         """
         Persist a single guild's settings to database asynchronously.
 
@@ -451,7 +466,8 @@ class GuildSettingsManager:
         This version performs only asynchronous writes. Callers must invoke
         and await this coroutine from an active event loop.
         """
-        return await self._persist_guild_async(guild_id)
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        return await self._persist_guild_async(guild_id_int)
 
 
 # Global guild settings manager instance

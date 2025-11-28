@@ -10,7 +10,7 @@ from modcord.configuration.guild_settings import (
     GuildSettingsManager,
     ACTION_FLAG_FIELDS,
 )
-from modcord.moderation.moderation_datatypes import ActionType
+from modcord.datatypes.action_datatypes import ActionType
 
 
 @pytest.fixture

@@ -11,20 +11,18 @@ Key Functions:
 """
 
 from __future__ import annotations
+from uuid import UUID
 
 import discord
-from typing import TYPE_CHECKING, List
+from typing import List
 from datetime import datetime, timezone
-
-if TYPE_CHECKING:
-    from modcord.moderation.human_review_manager import HumanReviewData
-    from modcord.configuration.guild_settings import GuildSettings
+from modcord.datatypes.human_review_datatypes import HumanReviewData
+from modcord.configuration.guild_settings import GuildSettings
 
 
 def build_review_embed(
     review_items: List[HumanReviewData],
-    batch_id: str,
-    bot_user: discord.ClientUser | None = None
+    batch_id: UUID,
 ) -> discord.Embed:
     """
     Build a consolidated embed containing all review items.
@@ -32,7 +30,6 @@ def build_review_embed(
     Args:
         review_items: List of review items to include in the embed
         batch_id: Unique identifier for this review batch
-        bot_user: Optional bot user for footer labeling
     
     Returns:
         discord.Embed: Formatted embed with all review information
@@ -70,7 +67,7 @@ def build_review_embed(
 
         # Add past actions context
         if item.past_actions:
-            past_actions_str = ", ".join(act.get("action", "?") for act in item.past_actions[:3])
+            past_actions_str = ", ".join(act.action.value for act in item.past_actions[:3])
             if len(item.past_actions) > 3:
                 past_actions_str += f" (+{len(item.past_actions) - 3} more)"
             user_info += f"\n**History (7d):** {past_actions_str}"
@@ -83,11 +80,8 @@ def build_review_embed(
             inline=False
         )
     
-    # Add footer with batch ID and bot info
-    if bot_user:
-        embed.set_footer(text=f"Bot: {bot_user.name} | Batch: {batch_id[:8]}")
-    else:
-        embed.set_footer(text=f"Batch: {batch_id[:8]}")
+    # Add footer with batch ID
+    embed.set_footer(text=f"ModCord | Batch: {str(batch_id)[:8]}")
     
     return embed
 

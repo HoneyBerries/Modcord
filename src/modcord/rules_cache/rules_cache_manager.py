@@ -11,13 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Dict, List
-
+from typing import List
 import discord
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.configuration.app_configuration import app_config
 from modcord.util.logger import get_logger
+from modcord.util.discord_utils import extract_embed_text_from_message
 
 logger = get_logger("rules_cache_manager")
 
@@ -56,28 +56,7 @@ class RulesCacheManager:
         logger.info("[RULES CACHE MANAGER] Rules cache manager initialized")
 
     @staticmethod
-    def _extract_embed_text(embed: discord.Embed) -> List[str]:
-        """
-        Extract all text content from a Discord embed.
-        
-        Extracts text from embed description and all fields, combining field
-        names and values into formatted strings.
-        
-        Args:
-            embed (discord.Embed): The embed to extract text from.
-        
-        Returns:
-            List[str]: List of text strings extracted from the embed.
-        """
-        texts = []
-        if embed.description and isinstance(embed.description, str):
-            texts.append(embed.description.strip())
-        texts.extend(
-            f"{field.name}: {field.value}".strip() if field.name else field.value.strip()
-            for field in embed.fields
-            if isinstance(field.value, str) and field.value.strip()
-        )
-        return texts
+    
 
     @staticmethod
     def _is_rules_channel(channel: discord.abc.GuildChannel) -> bool:
@@ -114,11 +93,12 @@ class RulesCacheManager:
         """
         messages = []
         try:
-            async for message in channel.history(oldest_first=True, limit=100):
+            async for message in channel.history(oldest_first=True):
                 if message.content and isinstance(message.content, str) and (text := message.content.strip()):
                     messages.append(text)
                 for embed in message.embeds:
-                    messages.extend(self._extract_embed_text(embed))
+                    messages.extend(extract_embed_text_from_message(embed))
+                    
         except discord.Forbidden:
             logger.warning("[RULES CACHE MANAGER] No permission to read channel: %s", channel.name)
         except asyncio.CancelledError:

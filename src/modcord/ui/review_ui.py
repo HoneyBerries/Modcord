@@ -13,10 +13,12 @@ Key Features:
 
 from __future__ import annotations
 import discord
+from uuid import UUID
 from modcord.util.logger import get_logger
 from modcord.util.discord_utils import has_review_permission
-from modcord.util.review_embeds import build_resolved_review_embed
-from modcord.moderation.moderation_datatypes import ActionType
+from modcord.datatypes.discord_datatypes import GuildID
+from modcord.util.review_embed_helper import build_resolved_review_embed
+from modcord.datatypes.action_datatypes import ActionType
 
 logger = get_logger("review_ui")
 
@@ -38,7 +40,7 @@ class HumanReviewResolutionView(discord.ui.View):
     - Five quick-action buttons that populate Discord commands
     """
     
-    def __init__(self, batch_id: str, guild_id: int, bot: discord.Bot | None = None):
+    def __init__(self, batch_id: UUID, guild_id: GuildID, bot: discord.Bot):
         """
         Initialize the review resolution view.
         
@@ -231,7 +233,7 @@ class HumanReviewResolutionView(discord.ui.View):
             )
 
 
-def create_review_view(batch_id: str, guild_id: int, bot: discord.Bot | None = None) -> HumanReviewResolutionView:
+def create_review_view(batch_id: UUID, guild_id: GuildID, bot: discord.Bot) -> HumanReviewResolutionView:
     """
     Factory function to create a review resolution view.
     

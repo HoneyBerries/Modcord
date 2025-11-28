@@ -5,13 +5,13 @@ from unittest.mock import Mock, MagicMock, AsyncMock, patch
 import discord
 from datetime import datetime, timezone, timedelta
 
+from modcord.moderation.moderation_embed import create_punishment_embed
 from modcord.util.discord_utils import (
-    create_punishment_embed,
     delete_recent_messages,
     delete_messages_background,
     DURATIONS,
 )
-from modcord.moderation.moderation_datatypes import ActionType
+from modcord.datatypes.action_datatypes import ActionType
 
 
 class TestCreatePunishmentEmbed:
@@ -20,193 +20,151 @@ class TestCreatePunishmentEmbed:
     @pytest.mark.asyncio
     async def test_create_ban_embed(self):
         """Test creating ban punishment embed."""
-        user = MagicMock(spec=discord.User)
+        user = MagicMock(spec=discord.Member)
         user.mention = "<@123>"
         user.id = 123
+        user.name = "testuser"
+        
+        guild = MagicMock(spec=discord.Guild)
+        guild.name = "Test Guild"
         
         embed = await create_punishment_embed(
             ActionType.BAN,
             user,
-            "Spam",
-            "1 day",
-            bot_user=None
+            guild,
+            "Spam"
         )
         
         assert embed is not None
         assert isinstance(embed, discord.Embed)
-        assert "Ban" in embed.title
+        assert "BAN" in embed.title
         assert embed.color == discord.Color.red()
 
     @pytest.mark.asyncio
     async def test_create_kick_embed(self):
         """Test creating kick punishment embed."""
-        user = MagicMock(spec=discord.User)
+        user = MagicMock(spec=discord.Member)
         user.mention = "<@123>"
         user.id = 123
+        user.name = "testuser"
+        
+        guild = MagicMock(spec=discord.Guild)
+        guild.name = "Test Guild"
         
         embed = await create_punishment_embed(
             ActionType.KICK,
             user,
+            guild,
             "Rule violation"
         )
         
-        assert "Kick" in embed.title
-        assert embed.color == discord.Color.orange()
+        assert "KICK" in embed.title
+        assert embed.color == discord.Color.red()
 
     @pytest.mark.asyncio
     async def test_create_warn_embed(self):
         """Test creating warn punishment embed."""
-        user = MagicMock(spec=discord.User)
+        user = MagicMock(spec=discord.Member)
         user.mention = "<@123>"
         user.id = 123
+        user.name = "testuser"
+        
+        guild = MagicMock(spec=discord.Guild)
+        guild.name = "Test Guild"
         
         embed = await create_punishment_embed(
             ActionType.WARN,
             user,
+            guild,
             "Minor issue"
         )
         
-        assert "Warn" in embed.title
-        assert embed.color == discord.Color.yellow()
+        assert "WARN" in embed.title
+        assert embed.color == discord.Color.red()
 
     @pytest.mark.asyncio
     async def test_create_timeout_embed(self):
         """Test creating timeout punishment embed."""
-        user = MagicMock(spec=discord.User)
+        user = MagicMock(spec=discord.Member)
         user.mention = "<@123>"
         user.id = 123
+        user.name = "testuser"
+        
+        guild = MagicMock(spec=discord.Guild)
+        guild.name = "Test Guild"
         
         embed = await create_punishment_embed(
             ActionType.TIMEOUT,
             user,
-            "Harassment",
-            "30 mins"
+            guild,
+            "Harassment"
         )
         
-        assert "Timeout" in embed.title
-        assert embed.color == discord.Color.blue()
+        assert "TIMEOUT" in embed.title
+        assert embed.color == discord.Color.red()
 
     @pytest.mark.asyncio
     async def test_create_delete_embed(self):
         """Test creating delete punishment embed."""
-        user = MagicMock(spec=discord.User)
+        user = MagicMock(spec=discord.Member)
         user.mention = "<@123>"
         user.id = 123
+        user.name = "testuser"
+        
+        guild = MagicMock(spec=discord.Guild)
+        guild.name = "Test Guild"
         
         embed = await create_punishment_embed(
             ActionType.DELETE,
             user,
+            guild,
             "Inappropriate content"
         )
         
-        assert "Delete" in embed.title
-
-    @pytest.mark.asyncio
-    async def test_create_unban_embed(self):
-        """Test creating unban embed."""
-        user = MagicMock(spec=discord.User)
-        user.mention = "<@123>"
-        user.id = 123
-        
-        embed = await create_punishment_embed(
-            ActionType.UNBAN,
-            user,
-            "Ban expired"
-        )
-        
-        assert "Unban" in embed.title
-        assert embed.color == discord.Color.green()
-
-    @pytest.mark.asyncio
-    async def test_create_embed_with_issuer(self):
-        """Test creating embed with issuer information."""
-        user = MagicMock(spec=discord.User)
-        user.mention = "<@123>"
-        user.id = 123
-        
-        issuer = MagicMock(spec=discord.User)
-        issuer.mention = "<@456>"
-        
-        embed = await create_punishment_embed(
-            ActionType.WARN,
-            user,
-            "Test",
-            issuer=issuer
-        )
-        
-        # Check that moderator field exists
-        field_names = [f.name for f in embed.fields]
-        assert "Moderator" in field_names
+        assert "DELETE" in embed.title
 
     @pytest.mark.asyncio
     async def test_create_embed_with_duration(self):
         """Test creating embed with duration."""
-        user = MagicMock(spec=discord.User)
+        user = MagicMock(spec=discord.Member)
         user.mention = "<@123>"
         user.id = 123
+        user.name = "testuser"
         
+        guild = MagicMock(spec=discord.Guild)
+        guild.name = "Test Guild"
+        
+        duration = timedelta(hours=1)
         embed = await create_punishment_embed(
             ActionType.BAN,
             user,
+            guild,
             "Test",
-            "1 day"
+            duration=duration
         )
         
         field_names = [f.name for f in embed.fields]
         assert "Duration" in field_names
 
     @pytest.mark.asyncio
-    async def test_create_embed_permanent_duration(self):
-        """Test creating embed with permanent duration."""
-        from modcord.util.discord_utils import PERMANENT_DURATION
-        
-        user = MagicMock(spec=discord.User)
+    async def test_footer_contains_modcord(self):
+        """Test that footer contains ModCord text."""
+        user = MagicMock(spec=discord.Member)
         user.mention = "<@123>"
         user.id = 123
+        user.name = "testuser"
         
-        embed = await create_punishment_embed(
-            ActionType.BAN,
-            user,
-            "Test",
-            PERMANENT_DURATION
-        )
-        
-        field_names = [f.name for f in embed.fields]
-        assert "Duration" in field_names
-
-    @pytest.mark.asyncio
-    async def test_create_embed_with_bot_user(self):
-        """Test creating embed with bot user in footer."""
-        user = MagicMock(spec=discord.User)
-        user.mention = "<@123>"
-        user.id = 123
-        
-        bot_user = MagicMock(spec=discord.ClientUser)
-        bot_user.name = "ModBot"
+        guild = MagicMock(spec=discord.Guild)
+        guild.name = "Test Guild"
         
         embed = await create_punishment_embed(
             ActionType.WARN,
             user,
-            "Test",
-            bot_user=bot_user
+            guild,
+            "Test"
         )
         
-        assert "ModBot" in embed.footer.text
-
-    @pytest.mark.asyncio
-    async def test_create_null_action_embed(self):
-        """Test creating embed for null action."""
-        user = MagicMock(spec=discord.User)
-        user.mention = "<@123>"
-        user.id = 123
-        
-        embed = await create_punishment_embed(
-            ActionType.NULL,
-            user,
-            "No action"
-        )
-        
-        assert "No Action" in embed.title
+        assert "ModCord" in embed.footer.text
 
 
 class TestDeleteRecentMessages:

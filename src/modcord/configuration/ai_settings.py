@@ -65,4 +65,4 @@ class AISettings:
     @property
     def history_context_messages(self) -> int:
         """Return the number of recent messages to fetch for context."""
-        return int(self.data.get("history_context_messages", 20))
+        return int(self.data.get("history_context_messages", 0))

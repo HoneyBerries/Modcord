@@ -15,12 +15,9 @@ from datetime import datetime, timezone
 import uuid
 
 from modcord.moderation.human_review_manager import HumanReviewManager
-from modcord.moderation.moderation_datatypes import (
-    ActionData,
-    ActionType,
-    ModerationMessage,
-    ModerationUser,
-)
+from modcord.datatypes.action_datatypes import ActionData, ActionType
+from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
+from modcord.datatypes.moderation_datatypes import ModerationMessage, ModerationUser
 from modcord.database.database import get_db
 
 
@@ -93,21 +90,21 @@ def mock_guild_settings():
 def build_moderation_entities(member, message, guild):
     """Helper to build ModerationUser and ModerationMessage for tests."""
     timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    channel_id = getattr(message.channel, "id", None)
+    channel_id = ChannelID(message.channel.id) if hasattr(message.channel, "id") else None
 
     pivot_message = ModerationMessage(
-        message_id=str(message.id),
-        user_id=str(member.id),
+        message_id=MessageID(message.id),
+        user_id=UserID.from_int(member.id),
         content=message.content,
         timestamp=timestamp,
-        guild_id=guild.id,
+        guild_id=GuildID.from_int(guild.id),
         channel_id=channel_id,
         discord_message=message,
     )
 
     moderation_user = ModerationUser(
-        user_id=str(member.id),
-        username=member.display_name,
+        user_id=UserID.from_int(member.id),
+        username=DiscordUsername(member.display_name),
         roles=[],
         join_date=None,
         messages=[pivot_message],
@@ -125,7 +122,7 @@ class TestHumanReviewManager:
         """Test adding a review item to the batch."""
         manager = HumanReviewManager(mock_bot)
         action = ActionData(
-            user_id="111222333",
+            user_id=UserID("111222333"),
             action=ActionType.REVIEW,
             reason="Spam detected by AI",
             timeout_duration=0,
@@ -171,7 +168,7 @@ class TestHumanReviewManager:
             message.channel.id = 9000 + i
             
             action = ActionData(
-                user_id=str(100000 + i),
+                user_id=UserID(str(100000 + i)),
                 action=ActionType.REVIEW,
                 reason=f"Reason {i}",
                 timeout_duration=0,
@@ -222,7 +219,7 @@ class TestHumanReviewManager:
             message.channel.id = 8000 + i
             
             action = ActionData(
-                user_id=str(100000 + i),
+                user_id=UserID(str(100000 + i)),
                 action=ActionType.REVIEW,
                 reason=f"Reason {i}",
                 timeout_duration=0,
@@ -265,7 +262,7 @@ class TestHumanReviewManager:
     @pytest.mark.asyncio
     async def test_build_role_mentions(self, test_db, mock_bot, mock_guild, mock_guild_settings):
         """Test building moderator role mentions."""
-        from modcord.util.review_embeds import build_role_mentions
+        from modcord.util.review_embed_helper import build_role_mentions
         
         # Mock role
         mock_role = MagicMock()
@@ -278,7 +275,7 @@ class TestHumanReviewManager:
     @pytest.mark.asyncio
     async def test_build_role_mentions_no_roles(self, test_db, mock_bot, mock_guild):
         """Test building role mentions with no configured roles."""
-        from modcord.util.review_embeds import build_role_mentions
+        from modcord.util.review_embed_helper import build_role_mentions
         
         from modcord.configuration.guild_settings import GuildSettings
         settings = GuildSettings(guild_id=987654321)
@@ -294,7 +291,7 @@ class TestReviewUI:
     @pytest.mark.asyncio
     async def test_resolve_button_permission_check(self):
         """Test that resolve button checks moderator permissions."""
-        from modcord.bot.review_ui import HumanReviewResolutionView
+        from modcord.ui.review_ui import HumanReviewResolutionView
         
         batch_id = str(uuid.uuid4())
         guild_id = 987654321
@@ -321,7 +318,7 @@ class TestReviewUI:
     @pytest.mark.asyncio
     async def test_command_suggestion_buttons(self):
         """Test that quick-action buttons send command suggestions."""
-        from modcord.bot.review_ui import HumanReviewResolutionView
+        from modcord.ui.review_ui import HumanReviewResolutionView
         
         batch_id = str(uuid.uuid4())
         guild_id = 987654321

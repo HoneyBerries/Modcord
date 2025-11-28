@@ -355,7 +355,14 @@ class InferenceProcessor:
                 results = []
                 for batch_output in all_outputs:
                     if hasattr(batch_output, 'outputs') and batch_output.outputs:
-                        result_text = batch_output.outputs[0].text.strip()
+                        output = batch_output.outputs[0]
+                        result_text = output.text.strip()
+                        finish_reason = getattr(output, 'finish_reason', 'unknown')
+                        token_count = len(output.token_ids) if hasattr(output, 'token_ids') else 0
+                        logger.debug(
+                            "[GENERATE_MULTI_CHAT] Output: finish_reason=%s, tokens=%d, text_len=%d",
+                            finish_reason, token_count, len(result_text)
+                        )
                         results.append(result_text)
                     else:
                         logger.warning("[GENERATE_MULTI_CHAT] No output for conversation")

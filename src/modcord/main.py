@@ -1,4 +1,5 @@
 """
+======================
 Discord Moderation Bot
 ======================
 
@@ -10,6 +11,8 @@ banning, kicking, and timing out users.
 import os
 import sys
 from pathlib import Path
+
+from modcord.listener import events_listener
 
 def resolve_base_dir() -> Path:
     """
@@ -52,7 +55,6 @@ from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.rules_cache.rules_cache_manager import rules_cache_manager
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
 from modcord.util.logger import get_logger, handle_exception
-from modcord.moderation.message_batch_manager import message_batch_manager
 
 
 logger = get_logger("main")
@@ -116,7 +118,8 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
     Args:
         discord_bot_instance (discord.Bot): The bot instance to attach cogs to.
     """
-    from modcord.bot import debug_cmds, guild_settings_cmds, moderation_cmds, events_listener, message_listener
+    from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
+    from modcord.listener import message_listener
 
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
@@ -157,7 +160,6 @@ async def initialize_ai_model() -> None:
             logger.critical("AI model failed to initialize: %s", detail)
     except Exception as exc:
         logger.critical("Unexpected error during AI initialization: %s", exc)
-        raise
 
 
 async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
@@ -228,11 +230,6 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
     except Exception as exc:
         logger.exception("Error during rules cache manager shutdown: %s", exc)
 
-    try:
-        await message_batch_manager.shutdown()
-    except Exception as exc:
-        logger.exception("Error during message batch manager shutdown: %s", exc)
-
     # Shutdown AI engine (heavy resource cleanup)
     try:
         await shutdown_engine()
@@ -254,8 +251,6 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
     
     # This should be the absolute last log message before exit
     logger.info("[MAIN] Shutdown complete.")
-
-
 
 
 async def async_main() -> int:
@@ -288,13 +283,6 @@ async def async_main() -> int:
     except Exception as exc:
         logger.critical("Failed to initialize Discord bot: %s", exc)
         return 1
-    
-    # Auto-populate guild settings now that bot is initialized
-    try:
-        logger.info("[MAIN] Auto-populating guild moderator settings...")
-        await guild_settings_manager._auto_populate_all_guilds(bot)
-    except Exception as exc:
-        logger.warning("Failed to auto-populate guild settings: %s", exc)
 
     try:
         await initialize_ai_model()

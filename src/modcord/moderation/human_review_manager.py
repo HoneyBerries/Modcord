@@ -15,34 +15,17 @@ Key Features:
 from __future__ import annotations
 
 import discord
-from typing import List
-from dataclasses import dataclass
 import uuid
-
 from modcord.util.logger import get_logger
-from modcord.moderation.moderation_datatypes import (
-    ActionData,
-    ModerationUser,
-    format_past_actions,
-)
-from modcord.bot.review_ui import HumanReviewResolutionView
-from modcord.util.review_embeds import build_review_embed, build_role_mentions
+from modcord.datatypes.action_datatypes import ActionData
+from modcord.datatypes.discord_datatypes import UserID, GuildID
+from modcord.datatypes.moderation_datatypes import ModerationUser
+from modcord.datatypes.human_review_datatypes import HumanReviewData
+from modcord.ui.review_ui import HumanReviewResolutionView
+from modcord.util.review_embed_helper import build_review_embed, build_role_mentions
 from modcord.configuration.guild_settings import GuildSettings
 
 logger = get_logger("human_review_manager")
-
-
-@dataclass
-class HumanReviewData:
-    """User-centric review item for human moderator review.
-    
-    Represents a single user flagged for review with their complete context.
-    Admins review the user's overall behavior pattern rather than individual messages.
-    """
-
-    action: ActionData
-    user: ModerationUser
-    past_actions: List[dict]
 
 
 class HumanReviewManager:
@@ -61,7 +44,7 @@ class HumanReviewManager:
             bot: Discord bot instance for accessing guilds and channels
         """
         self.bot = bot
-        self._active_batches: dict[int, dict[str, HumanReviewData]] = {}  # guild_id -> {user_id -> HumanReviewData}
+        self._active_batches: dict[GuildID, dict[UserID, HumanReviewData]] = {}
     
     async def add_item_for_review(
         self,
@@ -80,25 +63,22 @@ class HumanReviewManager:
             user: ModerationUser containing complete user context and all their messages
             action: ActionData containing the review reason
         """
-        if guild.id not in self._active_batches:
-            self._active_batches[guild.id] = {}
-        
-        # Deduplicate by user_id - only add if not already present
-        if user.user_id in self._active_batches[guild.id]:
+        batch = self._active_batches.setdefault(GuildID.from_guild(guild), {})
+        if UserID.from_user(user.discord_member) in batch:
             logger.debug(
-                "[REVIEW] User %s already in review batch for guild %s, skipping duplicate",
-                user.user_id,
-                guild.id,
+            "[REVIEW] User %s already in review batch for guild %s, skipping duplicate",
+            user.user_id,
+            guild.id,
             )
             return
 
         review_item = HumanReviewData(
             action=action,
             user=user,
-            past_actions=format_past_actions(user.past_actions),
+            past_actions=user.past_actions,
         )
         
-        self._active_batches[guild.id][user.user_id] = review_item
+        self._active_batches[GuildID.from_guild(guild)][UserID.from_user(user.discord_member)] = review_item
         logger.debug(
             "[REVIEW] Added review item for user %s in guild %s (reason: %s)",
             user.user_id,
@@ -120,25 +100,26 @@ class HumanReviewManager:
         Returns:
             bool: True if review was successfully sent, False otherwise
         """
-        if guild.id not in self._active_batches or not self._active_batches[guild.id]:
+        guild_key = GuildID.from_guild(guild)
+        if guild_key not in self._active_batches or not self._active_batches[guild_key]:
             logger.debug("[REVIEW] No review items to finalize for guild %s", guild.id)
             return False
         
         # Convert dict values to list for embed builder
-        review_items = list(self._active_batches[guild.id].values())
-        batch_id = str(uuid.uuid4())
+        review_items = list(self._active_batches[guild_key].values())
+        batch_id = uuid.uuid4()
         
         # Build consolidated embed using utility function
-        embed = build_review_embed(review_items, batch_id, self.bot.user)
+        embed = build_review_embed(review_items, batch_id)
         
         # Send to all review channels
         sent_messages = []
         
         for channel_id in settings.review_channel_ids:
-            review_channel = guild.get_channel(channel_id)
+            review_channel = guild.get_channel(channel_id.to_int())
             if review_channel and isinstance(review_channel, (discord.TextChannel, discord.Thread)):
                 try:
-                    view = HumanReviewResolutionView(batch_id=batch_id, guild_id=guild.id, bot=self.bot)
+                    view = HumanReviewResolutionView(batch_id=batch_id, guild_id=GuildID.from_guild(guild), bot=self.bot)
                     mention_content = build_role_mentions(guild, settings)
                     
                     sent_message = await review_channel.send(
@@ -146,8 +127,10 @@ class HumanReviewManager:
                         embed=embed,
                         view=view
                     )
+
                     sent_messages.append((channel_id, sent_message.id))
                     logger.info("[REVIEW] Sent review batch %s to channel %s", batch_id, channel_id)
+
                 except Exception as e:
                     logger.error("[REVIEW] Failed to send review to channel %s: %s", channel_id, e)
         
@@ -156,7 +139,7 @@ class HumanReviewManager:
         else:
             logger.warning("[REVIEW] Review batch generated but no review channels responded for guild %s", guild.id)
         
-        self._active_batches.pop(guild.id, None)
+        self._active_batches.pop(GuildID.from_guild(guild))
         return len(sent_messages) > 0
     
     

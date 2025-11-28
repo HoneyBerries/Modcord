@@ -4,8 +4,9 @@ from typing import Any
 import discord
 
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.moderation.moderation_datatypes import ActionType
+from modcord.datatypes.action_datatypes import ActionType
 
+from modcord.datatypes.discord_datatypes import GuildID
 from modcord.util.logger import get_logger
 
 logger = get_logger("guild_settings_ui")
@@ -38,7 +39,7 @@ ACTION_UI_EMOJIS: dict[ActionType, str] = {
 }
 
 
-def build_settings_embed(guild_id: int) -> discord.Embed:
+def build_settings_embed(guild_id: GuildID) -> discord.Embed:
     """
     Create a Discord embed summarizing current guild moderation settings.
     
