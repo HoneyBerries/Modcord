@@ -15,6 +15,7 @@ All blocking operations are wrapped in asyncio.to_thread() to avoid blocking the
 from __future__ import annotations
 
 import asyncio
+import gc
 import os
 from dataclasses import dataclass
 from typing import Any, List, Dict
@@ -187,7 +188,7 @@ class InferenceProcessor:
         gpu_mem_util = vram_percentage if cuda_available else 0.0
         
         try:
-            # Initialize LLM instance
+            # Initialize LLM with multimodal limits
             self.llm = LLM(
                 model=model_id,
                 dtype=chosen_dtype,
@@ -319,13 +320,13 @@ class InferenceProcessor:
             List[str]: Generated output strings for each conversation.
         """
         from vllm import SamplingParams
-        from vllm.sampling_params import StructuredOutputsParams
+        from vllm.sampling_params import GuidedDecodingParams
         
         # Build sampling params list (one per conversation)
         sampling_params_list = []
         for grammar_str in grammar_strings:
             if grammar_str and self.sampling_params:
-                structured_outputs = StructuredOutputsParams(
+                guided_params = GuidedDecodingParams(
                     grammar=grammar_str,
                     disable_fallback=True,
                 )
@@ -334,7 +335,7 @@ class InferenceProcessor:
                     max_tokens=self.sampling_params.max_tokens,
                     top_p=self.sampling_params.top_p,
                     top_k=self.sampling_params.top_k,
-                    structured_outputs=structured_outputs,
+                    guided_decoding=guided_params,
                 )
             else:
                 sp = self.sampling_params
@@ -355,14 +356,7 @@ class InferenceProcessor:
                 results = []
                 for batch_output in all_outputs:
                     if hasattr(batch_output, 'outputs') and batch_output.outputs:
-                        output = batch_output.outputs[0]
-                        result_text = output.text.strip()
-                        finish_reason = getattr(output, 'finish_reason', 'unknown')
-                        token_count = len(output.token_ids) if hasattr(output, 'token_ids') else 0
-                        logger.debug(
-                            "[GENERATE_MULTI_CHAT] Output: finish_reason=%s, tokens=%d, text_len=%d",
-                            finish_reason, token_count, len(result_text)
-                        )
+                        result_text = batch_output.outputs[0].text.strip()
                         results.append(result_text)
                     else:
                         logger.warning("[GENERATE_MULTI_CHAT] No output for conversation")
@@ -388,7 +382,7 @@ class InferenceProcessor:
 
     async def unload_model(self) -> None:
         """
-        Asynchronously unload the model and clean up resources, including GPU memory.
+        Asynchronously unload the model and clean up resources.
 
         Resets state attributes and clears GPU memory in a thread-safe manner.
         """
@@ -399,38 +393,28 @@ class InferenceProcessor:
             self.state.init_started = False
             self.state.init_error = None
 
-        def cleanup_gpu_sync() -> None:
-            """
-            Synchronously clean up GPU memory (runs in a separate thread).
-            """
-            try:
-                import torch
-                if torch.distributed.is_initialized():
-                    torch.distributed.destroy_process_group()
-                    logger.info("[AI MODEL] Distributed process group destroyed")
-            except ImportError:
-                # Handle case where torch is not installed
-                logger.debug("[AI MODEL] PyTorch not available for distributed cleanup.")
-            except Exception as exc:
-                logger.debug("[AI MODEL] Distributed cleanup failed: %s", exc)
-
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    # Clear the cached memory for the current device
-                    torch.cuda.empty_cache()
-                    logger.info("[AI MODEL] CUDA cache cleared")
-                        
-            except ImportError:
-                # Handle case where torch is not installed
-                logger.debug("[AI MODEL] PyTorch not available for cleanup.")
-            except Exception as exc:
-                logger.debug("[AI MODEL] CUDA cache cleanup failed: %s", exc)
-
-        # Run the synchronous cleanup code in a separate thread
-        await asyncio.to_thread(cleanup_gpu_sync)
+        # Run cleanup in thread
+        await asyncio.to_thread(self._cleanup_gpu)
         
         logger.info("[AI MODEL] Model unloaded")
+
+    def _cleanup_gpu(self) -> None:
+        """
+        Synchronously clean up GPU memory and run garbage collection (runs in a thread).
+
+        Calls torch.cuda.empty_cache() if available and runs Python garbage collection.
+        """
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+        except Exception as exc:
+            logger.debug("[AI MODEL] CUDA cache cleanup failed: %s", exc)
+
+        gc.collect()
+
 
 inference_processor = InferenceProcessor()
 model_state = inference_processor.state

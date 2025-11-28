@@ -38,27 +38,10 @@
 - Actions marked as `NULL` are filtered out before Discord-facing work begins.
 
 ## Enforcement & Discord Integration
-- `moderation_helper.apply_batch_action` cross-checks each action against guild policy toggles (warn/delete/timeout/kick/ban). It also ensures the message still exists, the author is a moderatable member, and that the target isn't a privileged user or the guild owner.
-- **REVIEW actions** are handled separately through the `HumanReviewManager` to consolidate multiple review requests into a single embed per guild per batch. This prevents notification spam and provides moderators with a clean overview of flagged content.
+- `moderation_helper.apply_batch_action` cross-checks each action against guild policy toggles (warn/delete/timeout/kick/ban). It also ensures the message still exists, the author is a moderatable member, and that the target isn’t a privileged user or the guild owner.
 - Actual enforcement is delegated to `discord_utils.apply_action_decision`, which handles message deletion, DMs, embeds, and Discord API operations. Deleted message IDs are resolved via a lookup map built from the batch; any remaining IDs are retried through direct channel fetches.
 - Actions that ban for a finite duration automatically register with `unban_scheduler`, which maintains a heap-based schedule and posts a notification when the unban occurs.
 - All enforcement steps are surrounded by Discord-specific error handling so a single failure (e.g., missing permissions on one channel) does not derail the rest of the pipeline.
-
-## Human Moderator Review System
-- When the AI model returns a `REVIEW` action, it indicates content that requires human judgment before enforcement. The review system provides a streamlined workflow for moderators to assess flagged content and take appropriate action.
-- **Batch consolidation**: Multiple review actions per guild are aggregated by `HumanReviewManager` during batch processing. Instead of sending one embed per flagged user, the system creates a single consolidated embed containing all users requiring review, preventing channel spam.
-- **Persistent tracking**: Each review batch is assigned a unique batch ID and stored in the `review_requests` database table with status tracking (`pending`, `resolved`, `dismissed`). This enables audit trails and prevents duplicate reviews.
-- **Interactive UI**: Review embeds include interactive buttons via `HumanReviewResolutionView`:
-  - **Mark as Resolved**: Updates the embed to show resolved status, disables all buttons, and records the resolving moderator in the database
-  - **Quick action buttons**: Five buttons (Warn, Timeout, Kick, Ban, Delete) provide command suggestions to moderators, pre-populating Discord commands with user IDs from the review
-- **Context enrichment**: Review embeds automatically include the flagged user's moderation history (past 7 days), message content, jump links, and attached images to give moderators complete context for their decision
-- **Role mentions**: Configured moderator roles are mentioned when review embeds are sent to ensure timely human oversight
-- **Permission checks**: Only users with manage guild permissions or configured moderator roles can resolve reviews, preventing unauthorized dismissal
-- The review system architecture is modular:
-  - `review_notifications.py`: Core `HumanReviewManager` class for batch aggregation and embed creation
-  - `review_ui.py`: Discord UI components (`HumanReviewResolutionView`) for button interactions
-  - `database.py`: `review_requests` table schema with proper indexes and foreign keys
-  - `moderation_helper.py`: Integration point where REVIEW actions are intercepted and routed to the manager
 
 ## Configuration & Data Flow
 - `app_config` is a thread-safe reader around `config/app_config.yml`. It exposes default server rules, the moderation prompt template, and AI settings (including batching windows and history depth).

@@ -11,14 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import List
+from typing import Dict, List
+
 import discord
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.configuration.app_configuration import app_config
-from modcord.datatypes.discord_datatypes import GuildID, ChannelID
 from modcord.util.logger import get_logger
-from modcord.util.discord_utils import extract_embed_text_from_message
 
 logger = get_logger("rules_cache_manager")
 
@@ -54,10 +53,31 @@ class RulesCacheManager:
         """Initialize the rules cache manager."""
         self._refresh_task: asyncio.Task | None = None
         self._bot: discord.Bot | None = None
-        logger.info("[RULES CACHE MANAGER] Rules cache manager initialized")
+        logger.info("Rules cache manager initialized")
 
     @staticmethod
-    
+    def _extract_embed_text(embed: discord.Embed) -> List[str]:
+        """
+        Extract all text content from a Discord embed.
+        
+        Extracts text from embed description and all fields, combining field
+        names and values into formatted strings.
+        
+        Args:
+            embed (discord.Embed): The embed to extract text from.
+        
+        Returns:
+            List[str]: List of text strings extracted from the embed.
+        """
+        texts = []
+        if embed.description and isinstance(embed.description, str):
+            texts.append(embed.description.strip())
+        texts.extend(
+            f"{field.name}: {field.value}".strip() if field.name else field.value.strip()
+            for field in embed.fields
+            if isinstance(field.value, str) and field.value.strip()
+        )
+        return texts
 
     @staticmethod
     def _is_rules_channel(channel: discord.abc.GuildChannel) -> bool:
@@ -94,18 +114,17 @@ class RulesCacheManager:
         """
         messages = []
         try:
-            async for message in channel.history(oldest_first=True):
+            async for message in channel.history(oldest_first=True, limit=100):
                 if message.content and isinstance(message.content, str) and (text := message.content.strip()):
                     messages.append(text)
                 for embed in message.embeds:
-                    messages.extend(extract_embed_text_from_message(embed))
-                    
+                    messages.extend(self._extract_embed_text(embed))
         except discord.Forbidden:
-            logger.warning("[RULES CACHE MANAGER] No permission to read channel: %s", channel.name)
+            logger.warning("No permission to read channel: %s", channel.name)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.warning("[RULES CACHE MANAGER] Error fetching messages from channel %s: %s", channel.name, exc)
+            logger.warning("Error fetching messages from channel %s: %s", channel.name, exc)
         return messages
 
     async def collect_server_rules(self, guild: discord.Guild) -> str:
@@ -128,10 +147,10 @@ class RulesCacheManager:
                 all_messages.extend(await self._collect_channel_messages(channel))
         
         if not all_messages:
-            logger.debug("[RULES CACHE MANAGER] No rule-like content discovered in guild %s", guild.name)
+            logger.debug("No rule-like content discovered in guild %s", guild.name)
             return ""
         
-        logger.debug("[RULES CACHE MANAGER] Collected %d rule messages in guild %s", len(all_messages), guild.name)
+        logger.debug("Collected %d rule messages in guild %s", len(all_messages), guild.name)
         return "\n\n".join(all_messages)
 
     async def collect_channel_guidelines(self, channel: discord.TextChannel) -> str:
@@ -160,7 +179,7 @@ class RulesCacheManager:
                 )
                 return topic_text
 
-        logger.debug("[RULES CACHE MANAGER] No channel topic found for channel %s (%s)", channel.name, channel.id)
+        logger.debug("No channel topic found for channel %s (%s)", channel.name, channel.id)
         return ""
 
     async def refresh_guild_rules(self, guild: discord.Guild) -> str:
@@ -186,8 +205,8 @@ class RulesCacheManager:
             logger.exception("Failed to collect rules for guild %s", guild.name)
             raise
 
-        guild_settings_manager.set_server_rules(GuildID(guild.id), rules_text)
-        logger.debug("[RULES CACHE MANAGER] Cached %d characters of rules for guild %s", len(rules_text), guild.name)
+        guild_settings_manager.set_server_rules(guild.id, rules_text)
+        logger.debug("Cached %d characters of rules for guild %s", len(rules_text), guild.name)
         return rules_text
 
     async def refresh_channel_guidelines(self, channel: discord.TextChannel) -> str:
@@ -209,7 +228,7 @@ class RulesCacheManager:
         """
         guild = channel.guild
         if not guild:
-            logger.warning("[RULES CACHE MANAGER] Channel %s has no guild", channel.name)
+            logger.warning("Channel %s has no guild", channel.name)
             return ""
 
         try:
@@ -222,9 +241,9 @@ class RulesCacheManager:
             )
             raise
 
-        guild_settings_manager.set_channel_guidelines(GuildID(guild.id), ChannelID(channel.id), guidelines_text)
+        guild_settings_manager.set_channel_guidelines(guild.id, channel.id, guidelines_text)
         logger.debug(
-            "[RULES CACHE MANAGER] Cached %d characters of guidelines for channel %s (%s) in guild %s",
+            "Cached %d characters of guidelines for channel %s (%s) in guild %s",
             len(guidelines_text),
             channel.name,
             channel.id,
@@ -243,7 +262,7 @@ class RulesCacheManager:
         Args:
             guild (discord.Guild): The guild to refresh rules and guidelines for.
         """
-        logger.debug("[RULES CACHE MANAGER] Refreshing rules and guidelines for guild %s", guild.name)
+        logger.debug("Refreshing rules and guidelines for guild %s", guild.name)
 
         # Refresh server rules
         try:
@@ -251,7 +270,7 @@ class RulesCacheManager:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.warning("[RULES CACHE MANAGER] Failed to refresh rules for guild %s: %s", guild.name, exc)
+            logger.warning("Failed to refresh rules for guild %s: %s", guild.name, exc)
 
         # Refresh channel guidelines for all text channels
         for channel in guild.text_channels:
@@ -261,7 +280,7 @@ class RulesCacheManager:
                 raise
             except Exception as exc:
                 logger.warning(
-                    "[RULES CACHE MANAGER] Failed to refresh guidelines for channel %s in guild %s: %s",
+                    "Failed to refresh guidelines for channel %s in guild %s: %s",
                     channel.name,
                     guild.name,
                     exc
@@ -277,14 +296,14 @@ class RulesCacheManager:
         Args:
             bot (discord.Bot): The Discord bot instance providing guild access.
         """
-        logger.debug("[RULES CACHE MANAGER] Refreshing rules/guidelines cache for %d guilds", len(bot.guilds))
+        logger.debug("Refreshing rules/guidelines cache for %d guilds", len(bot.guilds))
         for guild in bot.guilds:
             try:
                 await self.refresh_guild_rules_and_guidelines(guild)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning("[RULES CACHE MANAGER] Failed to refresh guild %s: %s", guild.name, exc)
+                logger.warning("Failed to refresh guild %s: %s", guild.name, exc)
 
     async def run_periodic_refresh(
         self,
@@ -307,7 +326,7 @@ class RulesCacheManager:
         """
         self._bot = bot
         logger.info(
-            "[RULES CACHE MANAGER] Starting periodic rules/guidelines refresh (interval=%.1fs) for %d guilds",
+            "Starting periodic rules/guidelines refresh (interval=%.1fs) for %d guilds",
             interval_seconds,
             len(bot.guilds),
         )
@@ -318,10 +337,10 @@ class RulesCacheManager:
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    logger.error("[RULES CACHE MANAGER] Unexpected error during rules/guidelines refresh: %s", exc)
+                    logger.error("Unexpected error during rules/guidelines refresh: %s", exc)
                 await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
-            logger.info("[RULES CACHE MANAGER] Periodic rules/guidelines refresh cancelled")
+            logger.info("Periodic rules/guidelines refresh cancelled")
             raise
 
     async def refresh_if_rules_channel(self, channel: discord.abc.GuildChannel) -> None:
@@ -343,9 +362,9 @@ class RulesCacheManager:
 
         try:
             await self.refresh_guild_rules(guild)
-            logger.debug("[RULES CACHE MANAGER] Rules refreshed from channel: %s", channel.name)
+            logger.debug("Rules refreshed from channel: %s", channel.name)
         except Exception as exc:
-            logger.error("[RULES CACHE MANAGER] Failed to refresh rules from channel %s: %s", channel.name, exc)
+            logger.error("Failed to refresh rules from channel %s: %s", channel.name, exc)
 
     async def start_periodic_task(self, bot: discord.Bot, interval_seconds: float | None = None) -> None:
         """
@@ -360,16 +379,16 @@ class RulesCacheManager:
                 reads from app_config rules_cache_refresh.interval_seconds.
         """
         if interval_seconds is None:
-            interval_seconds = app_config.rules_cache_refresh_interval
+            interval_seconds = float(app_config.get("rules_cache_refresh", {}).get("interval_seconds", 600.0))
 
         if self._refresh_task and not self._refresh_task.done():
-            logger.warning("[RULES CACHE MANAGER] Periodic refresh task already running")
+            logger.warning("Periodic refresh task already running")
             return
 
         self._refresh_task = asyncio.create_task(
             self.run_periodic_refresh(bot, interval_seconds=interval_seconds)
         )
-        logger.info("[RULES CACHE MANAGER] Started periodic rules/guidelines refresh task")
+        logger.info("Started periodic rules/guidelines refresh task")
 
     async def stop_periodic_task(self) -> None:
         """
@@ -384,19 +403,7 @@ class RulesCacheManager:
                 await self._refresh_task
             except asyncio.CancelledError:
                 pass
-            logger.info("[RULES CACHE MANAGER] Stopped periodic rules/guidelines refresh task")
-
-    async def shutdown(self) -> None:
-        """
-        Cleanly shutdown the rules cache manager.
-        
-        Stops the periodic refresh task if running and cleans up resources.
-        This method should be called during bot shutdown to ensure proper cleanup.
-        """
-        await self.stop_periodic_task()
-        self._bot = None
-        self._refresh_task = None
-        logger.info("[RULES CACHE MANAGER] Rules cache manager shutdown complete")
+            logger.info("Stopped periodic rules/guidelines refresh task")
 
 
 # Global instance

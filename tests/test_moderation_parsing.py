@@ -6,8 +6,7 @@ from modcord.moderation.moderation_parsing import (
     build_dynamic_moderation_schema,
     parse_batch_actions,
 )
-from modcord.datatypes.action_datatypes import ActionType
-from modcord.datatypes.discord_datatypes import UserID, MessageID
+from modcord.moderation.moderation_datatypes import ActionType
 
 
 class TestBuildDynamicModerationSchema:
@@ -25,7 +24,7 @@ class TestBuildDynamicModerationSchema:
     def test_single_user_schema(self):
         """Test schema with single user."""
         user_message_map = {
-            UserID("111"): [MessageID("1001"), MessageID("1002")]
+            "user1": ["msg1", "msg2"]
         }
         schema = build_dynamic_moderation_schema(user_message_map, "channel123")
         
@@ -38,15 +37,15 @@ class TestBuildDynamicModerationSchema:
         # Check user schema structure
         user_schemas = schema["properties"]["users"]["items"]["oneOf"]
         assert len(user_schemas) == 1
-        assert user_schemas[0]["properties"]["user_id"]["enum"] == [111]
-        assert user_schemas[0]["properties"]["message_ids_to_delete"]["items"]["enum"] == [1001, 1002]
+        assert user_schemas[0]["properties"]["user_id"]["enum"] == ["user1"]
+        assert user_schemas[0]["properties"]["message_ids_to_delete"]["items"]["enum"] == ["msg1", "msg2"]
 
     def test_multiple_users_schema(self):
         """Test schema with multiple users."""
         user_message_map = {
-            UserID("111"): [MessageID("1001"), MessageID("1002")],
-            UserID("222"): [MessageID("2001")],
-            UserID("333"): []
+            "user1": ["msg1", "msg2"],
+            "user2": ["msg3"],
+            "user3": []
         }
         schema = build_dynamic_moderation_schema(user_message_map, "channel456")
         
@@ -58,7 +57,7 @@ class TestBuildDynamicModerationSchema:
 
     def test_schema_action_types(self):
         """Test that schema includes all action types."""
-        user_message_map = {UserID("111"): [MessageID("1001")]}
+        user_message_map = {"user1": ["msg1"]}
         schema = build_dynamic_moderation_schema(user_message_map, "channel1")
         
         user_schema = schema["properties"]["users"]["items"]["oneOf"][0]
@@ -73,7 +72,7 @@ class TestBuildDynamicModerationSchema:
 
     def test_schema_required_fields(self):
         """Test that schema has all required fields."""
-        user_message_map = {UserID("111"): []}
+        user_message_map = {"user1": []}
         schema = build_dynamic_moderation_schema(user_message_map, "channel1")
         
         assert "channel_id" in schema["required"]
@@ -90,7 +89,7 @@ class TestBuildDynamicModerationSchema:
 
     def test_schema_no_additional_properties(self):
         """Test that schema disallows additional properties."""
-        user_message_map = {UserID("111"): []}
+        user_message_map = {"user1": []}
         schema = build_dynamic_moderation_schema(user_message_map, "channel1")
         
         assert schema["additionalProperties"] is False
@@ -104,8 +103,8 @@ class TestParseBatchActions:
     def test_parse_valid_response(self):
         """Test parsing valid moderation response."""
         user_message_map = {
-            UserID("111222333444"): [MessageID("1001"), MessageID("1002")],
-            UserID("555666777888"): [MessageID("2001")]
+            "user1": ["msg1", "msg2"],
+            "user2": ["msg3"]
         }
         schema = build_dynamic_moderation_schema(user_message_map, "123")
         
@@ -113,15 +112,15 @@ class TestParseBatchActions:
             "channel_id": "123",
             "users": [
                 {
-                    "user_id": "111222333444",
+                    "user_id": "user1",
                     "action": "warn",
                     "reason": "Spam",
-                    "message_ids_to_delete": ["1001"],
+                    "message_ids_to_delete": ["msg1"],
                     "timeout_duration": 0,
                     "ban_duration": 0
                 },
                 {
-                    "user_id": "555666777888",
+                    "user_id": "user2",
                     "action": "null",
                     "reason": "No issues",
                     "message_ids_to_delete": [],
@@ -133,26 +132,26 @@ class TestParseBatchActions:
         
         actions = parse_batch_actions(response, 123, schema)
         assert len(actions) == 2
-        assert actions[0].user_id == UserID("111222333444")
+        assert actions[0].user_id == "user1"
         assert actions[0].action == ActionType.WARN
         assert actions[0].reason == "Spam"
-        assert actions[0].message_ids == [MessageID("1001")]
-        assert actions[1].user_id == UserID("555666777888")
+        assert actions[0].message_ids == ["msg1"]
+        assert actions[1].user_id == "user2"
         assert actions[1].action == ActionType.NULL
 
     def test_parse_timeout_action(self):
         """Test parsing timeout action with duration."""
-        user_message_map = {UserID("111222333444"): [MessageID("1001")]}
+        user_message_map = {"user1": ["msg1"]}
         schema = build_dynamic_moderation_schema(user_message_map, "123")
         
         response = json.dumps({
             "channel_id": "123",
             "users": [
                 {
-                    "user_id": "111222333444",
+                    "user_id": "user1",
                     "action": "timeout",
                     "reason": "Harassment",
-                    "message_ids_to_delete": ["1001"],
+                    "message_ids_to_delete": ["msg1"],
                     "timeout_duration": 30,
                     "ban_duration": 0
                 }
@@ -166,14 +165,14 @@ class TestParseBatchActions:
 
     def test_parse_ban_action(self):
         """Test parsing ban action with duration."""
-        user_message_map = {UserID("111222333444"): []}
+        user_message_map = {"user1": []}
         schema = build_dynamic_moderation_schema(user_message_map, "123")
         
         response = json.dumps({
             "channel_id": "123",
             "users": [
                 {
-                    "user_id": "111222333444",
+                    "user_id": "user1",
                     "action": "ban",
                     "reason": "Serious violation",
                     "message_ids_to_delete": [],
@@ -190,14 +189,14 @@ class TestParseBatchActions:
 
     def test_parse_permanent_ban(self):
         """Test parsing permanent ban (ban_duration = -1)."""
-        user_message_map = {UserID("111222333444"): []}
+        user_message_map = {"user1": []}
         schema = build_dynamic_moderation_schema(user_message_map, "123")
         
         response = json.dumps({
             "channel_id": "123",
             "users": [
                 {
-                    "user_id": "111222333444",
+                    "user_id": "user1",
                     "action": "ban",
                     "reason": "Permanent ban",
                     "message_ids_to_delete": [],
@@ -213,7 +212,7 @@ class TestParseBatchActions:
 
     def test_parse_invalid_json(self):
         """Test parsing invalid JSON returns empty list."""
-        schema = build_dynamic_moderation_schema({UserID("111222333444"): []}, "123")
+        schema = build_dynamic_moderation_schema({"user1": []}, "123")
         response = "not valid json"
         
         actions = parse_batch_actions(response, 123, schema)
@@ -221,7 +220,7 @@ class TestParseBatchActions:
 
     def test_parse_non_dict_payload(self):
         """Test parsing non-dict payload returns empty list."""
-        schema = build_dynamic_moderation_schema({UserID("111222333444"): []}, "123")
+        schema = build_dynamic_moderation_schema({"user1": []}, "123")
         response = json.dumps(["not", "a", "dict"])
         
         actions = parse_batch_actions(response, 123, schema)
@@ -229,14 +228,14 @@ class TestParseBatchActions:
 
     def test_parse_wrong_channel_id(self):
         """Test parsing with wrong channel ID returns empty list."""
-        user_message_map = {UserID("111222333444"): []}
+        user_message_map = {"user1": []}
         schema = build_dynamic_moderation_schema(user_message_map, "123")
         
         response = json.dumps({
             "channel_id": "456",  # Wrong channel ID
             "users": [
                 {
-                    "user_id": "111222333444",
+                    "user_id": "user1",
                     "action": "null",
                     "reason": "",
                     "message_ids_to_delete": [],
@@ -251,7 +250,7 @@ class TestParseBatchActions:
 
     def test_parse_missing_users_field(self):
         """Test parsing with missing users field returns empty list."""
-        schema = build_dynamic_moderation_schema({UserID("111222333444"): []}, "123")
+        schema = build_dynamic_moderation_schema({"user1": []}, "123")
         response = json.dumps({"channel_id": "123"})
         
         actions = parse_batch_actions(response, 123, schema)
@@ -259,14 +258,14 @@ class TestParseBatchActions:
 
     def test_parse_empty_reason(self):
         """Test parsing with empty reason string."""
-        user_message_map = {UserID("111222333444"): []}
+        user_message_map = {"user1": []}
         schema = build_dynamic_moderation_schema(user_message_map, "123")
         
         response = json.dumps({
             "channel_id": "123",
             "users": [
                 {
-                    "user_id": "111222333444",
+                    "user_id": "user1",
                     "action": "null",
                     "reason": "",
                     "message_ids_to_delete": [],
@@ -283,9 +282,9 @@ class TestParseBatchActions:
     def test_parse_multiple_actions(self):
         """Test parsing response with multiple different actions."""
         user_message_map = {
-            UserID("111222333444"): [MessageID("1001")],
-            UserID("555666777888"): [MessageID("2001")],
-            UserID("999000111222"): []
+            "user1": ["msg1"],
+            "user2": ["msg2"],
+            "user3": []
         }
         schema = build_dynamic_moderation_schema(user_message_map, "123")
         
@@ -293,15 +292,15 @@ class TestParseBatchActions:
             "channel_id": "123",
             "users": [
                 {
-                    "user_id": "111222333444",
+                    "user_id": "user1",
                     "action": "delete",
                     "reason": "Spam",
-                    "message_ids_to_delete": ["1001"],
+                    "message_ids_to_delete": ["msg1"],
                     "timeout_duration": 0,
                     "ban_duration": 0
                 },
                 {
-                    "user_id": "555666777888",
+                    "user_id": "user2",
                     "action": "kick",
                     "reason": "Rule violation",
                     "message_ids_to_delete": [],
@@ -309,7 +308,7 @@ class TestParseBatchActions:
                     "ban_duration": 0
                 },
                 {
-                    "user_id": "999000111222",
+                    "user_id": "user3",
                     "action": "null",
                     "reason": "OK",
                     "message_ids_to_delete": [],
@@ -327,14 +326,14 @@ class TestParseBatchActions:
 
     def test_parse_zero_duration(self):
         """Test parsing with zero duration."""
-        user_message_map = {UserID("111222333444"): []}
+        user_message_map = {"user1": []}
         schema = build_dynamic_moderation_schema(user_message_map, "123")
         
         response = json.dumps({
             "channel_id": "123",
             "users": [
                 {
-                    "user_id": "111222333444",
+                    "user_id": "user1",
                     "action": "warn",
                     "reason": "Test",
                     "message_ids_to_delete": [],
