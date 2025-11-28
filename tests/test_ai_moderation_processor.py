@@ -132,7 +132,7 @@ class TestModerationProcessor:
         assert payload["unique_user_count"] == 1
         assert payload["total_images"] == 0
         assert len(payload["users"]) == 1
-        assert payload["users"][0]["user_id"] == "456"
+        assert payload["users"][0]["user_id"] == 456
         assert len(pil_images) == 0
 
     def test_batch_to_json_with_images_with_history(self):
@@ -367,7 +367,7 @@ class TestModerationProcessor:
         # Should have both messages
         assert payload["message_count"] == 2
         user_data = payload["users"][0]
-        assert user_data["user_id"] == "456"
+        assert user_data["user_id"] == 456
         assert len(user_data["messages"]) == 2
 
     def test_batch_to_json_correct_is_history_flags(self):
@@ -409,8 +409,8 @@ class TestModerationProcessor:
         messages = user_data["messages"]
         
         # Find which message is which by message_id
-        current_msg_data = next(m for m in messages if m["message_id"] == "123")
-        history_msg_data = next(m for m in messages if m["message_id"] == "124")
+        current_msg_data = next(m for m in messages if m["message_id"] == 123)
+        history_msg_data = next(m for m in messages if m["message_id"] == 124)
         
         # Current message should have is_history=False
         assert current_msg_data["is_history"] is False
@@ -503,5 +503,5 @@ class TestModerationProcessor:
         
         # Check user IDs are distinct
         user_ids = {u["user_id"] for u in payload["users"]}
-        assert user_ids == {"456", "789"}
+        assert user_ids == {456, 789}
 

@@ -138,7 +138,7 @@ ai_settings:
       - "delete" → remove specific current messages that violate rules
       - "timeout" → repeated violations (must set timeout_duration in minutes)
       - "kick" → serious violation
-      - "ban" → repeated serious violations (set ban_duration; -1 = permanent)
+      - "ban" → repeated serious violations (set ban_duration; -1 = permanent, in minutes)
       - "review" → ambiguity or uncertain decision requiring moderator review (DMs moderators with context)
 
     STRICT RULE:  
@@ -156,15 +156,15 @@ ai_settings:
 
     OUTPUT FORMAT:
     {
-      "channel_id": "string",
+      "channel_id": <integer>,
       "users": [
         {
-          "user_id": "string",
+          "user_id": <integer>,
           "action": "null|warn|delete|timeout|kick|ban|review",
           "reason": "factual, concise",
-          "message_ids": ["current message IDs only"],
-          "timeout_duration": 0,
-          "ban_duration": 0
+          "message_ids_to_delete": [<integers only>],
+          "timeout_duration": <integer: 0 for no timeout or a positive duration in minutes>,
+          "ban_duration": <integer: -1 for permanent, 0 for no ban, or a positive duration in minutes>
         }
       ]
     }

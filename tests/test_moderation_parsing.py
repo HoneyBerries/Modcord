@@ -38,8 +38,8 @@ class TestBuildDynamicModerationSchema:
         # Check user schema structure
         user_schemas = schema["properties"]["users"]["items"]["oneOf"]
         assert len(user_schemas) == 1
-        assert user_schemas[0]["properties"]["user_id"]["enum"] == ["111"]
-        assert user_schemas[0]["properties"]["message_ids_to_delete"]["items"]["enum"] == ["1001", "1002"]
+        assert user_schemas[0]["properties"]["user_id"]["enum"] == [111]
+        assert user_schemas[0]["properties"]["message_ids_to_delete"]["items"]["enum"] == [1001, 1002]
 
     def test_multiple_users_schema(self):
         """Test schema with multiple users."""

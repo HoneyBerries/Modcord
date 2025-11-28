@@ -73,10 +73,9 @@ class ModerationEngine:
             return
 
         valid_batches = []
-        server_rules_map = {}
-        channel_guidelines_map = {}
+        guild_id = None
 
-        # Filter batches based on AI moderation settings and prepare rules/guidelines
+        # Filter batches based on AI moderation settings and prepare guild context
         for batch in batches:
             if batch.is_empty():
                 continue
@@ -85,10 +84,6 @@ class ModerationEngine:
             guild_id = first_message.guild_id if first_message and first_message.guild_id else None
             if not first_message or (guild_id and not guild_settings_manager.is_ai_enabled(guild_id)):
                 continue
-
-            # Prepare server rules and channel guidelines
-            server_rules_map[batch.channel_id] = guild_settings_manager.get_server_rules(guild_id) if guild_id else ""
-            channel_guidelines_map[batch.channel_id] = guild_settings_manager.get_channel_guidelines(guild_id, batch.channel_id) if guild_id else ""
             valid_batches.append(batch)
 
         if not valid_batches:
@@ -96,8 +91,7 @@ class ModerationEngine:
 
         actions_by_channel = await moderation_processor.get_multi_batch_moderation_actions(
             batches=valid_batches,
-            server_rules_map=server_rules_map,
-            channel_guidelines_map=channel_guidelines_map,
+            guild_id=guild_id,
         )
 
         # Initialize review notification manager
@@ -254,9 +248,17 @@ class ModerationEngine:
             # Fetch the Discord channel to pass to action execution
             channel = None
             try:
-                channel = guild.get_channel(int(batch.channel_id))
-            except (ValueError, TypeError):
-                logger.debug(f"Could not fetch channel {batch.channel_id}")
+                channel = guild.get_channel(batch.channel_id.to_int())
+            except (ValueError, TypeError, AttributeError):
+                logger.warning(f"Could not fetch channel {batch.channel_id}")
+            
+            if channel is None or not isinstance(channel, discord.TextChannel):
+                logger.warning(
+                    "[MODERATION ENGINE] Channel %s not found or invalid in guild %s",
+                    batch.channel_id,
+                    guild_id
+                )
+                return False
             
             result = await apply_action_decision(
                 action=action,

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any, Dict, List
 from jsonschema import ValidationError
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
 import jsonschema
+from modcord.util.logger import get_logger
 
-logger = logging.getLogger("moderation_parsing")
+logger = get_logger("moderation_parsing")
 
 
 def build_dynamic_moderation_schema(
@@ -30,13 +30,12 @@ def build_dynamic_moderation_schema(
     Returns:
         JSON schema dict with per-user message ID constraints
     """
-    channel_id_str = str(channel_id)
     if not user_message_map:
         # Fallback for empty batch (shouldn't happen in practice)
         return {
             "type": "object",
             "properties": {
-                "channel_id": {"type": "string", "enum": [channel_id_str]},
+                "channel_id": {"type": "integer", "enum": [channel_id.to_int()]},
                 "users": {"type": "array", "items": {}, "minItems": 0, "maxItems": 0}
             },
             "required": ["channel_id", "users"],
@@ -50,28 +49,27 @@ def build_dynamic_moderation_schema(
     # Use oneOf to enforce different message ID constraints per user
     user_schemas = []
     for user_id, message_ids in user_message_map.items():
-        message_id_strs = [str(mid) for mid in message_ids]
         user_schemas.append({
             "type": "object",
             "properties": {
-                "user_id": {"type": "string", "enum": [str(user_id)]},
+                "user_id": {"type": "integer", "enum": [user_id.to_int()]},
                 "action": {"type": "string", "enum": ["null", "delete", "warn", "timeout", "kick", "ban", "review"]},
                 "reason": {"type": "string"},
-                "message_ids": {
+                "message_ids_to_delete": {
                     "type": "array",
-                    "items": {"type": "string", "enum": message_id_strs if message_id_strs else []}
+                    "items": {"type": "integer", "enum": [mid.to_int() for mid in message_ids] if message_ids else []}
                 },
-                "timeout_duration": {"type": "integer", "minimum": 0, "maximum": 43800},
-                "ban_duration": {"type": "integer", "minimum": -1, "maximum": 43800},
+                "timeout_duration": {"type": "integer", "minimum": 0, "maximum": 60*24*7},  # up to 7 days
+                "ban_duration": {"type": "integer", "minimum": -1, "maximum": 60*24*365},  # up to 1 year or permanent
             },
-            "required": ["user_id", "action", "reason", "message_ids", "timeout_duration", "ban_duration"],
+            "required": ["user_id", "action", "reason", "message_ids_to_delete", "timeout_duration", "ban_duration"],
             "additionalProperties": False
         })
     
     return {
         "type": "object",
         "properties": {
-            "channel_id": {"type": "string", "enum": [channel_id_str]},
+            "channel_id": {"type": "integer", "enum": [channel_id.to_int()]},
             "users": {
                 "type": "array",
                 "items": {"oneOf": user_schemas},
@@ -94,8 +92,8 @@ def _extract_json_payload(raw: str) -> Any:
 
 def parse_batch_actions(
     response: str,
-    channel_id: ChannelID | int,
-    guild_id: GuildID | int,
+    channel_id: ChannelID,
+    guild_id: GuildID,
     expected_schema: dict
 ) -> List[ActionData]:
     """Parse AI moderation response into ActionData objects.
@@ -113,7 +111,7 @@ def parse_batch_actions(
         List of ActionData objects parsed from response
     """
     channel_id = ChannelID(channel_id)
-    guild_id = GuildID(guild_id)
+    guild_id = GuildID(guild_id) if guild_id is not None else GuildID(0)
     logger.debug("[PARSE] Parsing batch response (%d chars)", len(response))
     
     # Extract JSON
@@ -158,7 +156,7 @@ def parse_batch_actions(
         action_str = str(item.get("action", "null")).lower()
                 
         # Extract message IDs
-        raw_msg_ids = item.get("message_ids") or []
+        raw_msg_ids = item.get("message_ids_to_delete") or []
         message_ids = [MessageID(mid) for mid in raw_msg_ids if mid] if isinstance(raw_msg_ids, list) else []
         
         # Extract durations (may be 0 or -1)

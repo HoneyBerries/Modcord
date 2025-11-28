@@ -100,7 +100,7 @@ class DebugCog(commands.Cog):
                 await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
-            rules = guild_settings_manager.get_server_rules(guild.id)
+            rules = guild_settings_manager.get_server_rules(GuildID(guild.id))
             if not rules:
                 embed = discord.Embed(
                     title="📋 Server Rules",

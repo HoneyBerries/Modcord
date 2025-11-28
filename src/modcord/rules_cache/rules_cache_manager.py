@@ -16,6 +16,7 @@ import discord
 
 from modcord.configuration.guild_settings import guild_settings_manager
 from modcord.configuration.app_configuration import app_config
+from modcord.datatypes.discord_datatypes import GuildID, ChannelID
 from modcord.util.logger import get_logger
 from modcord.util.discord_utils import extract_embed_text_from_message
 
@@ -185,7 +186,7 @@ class RulesCacheManager:
             logger.exception("Failed to collect rules for guild %s", guild.name)
             raise
 
-        guild_settings_manager.set_server_rules(guild.id, rules_text)
+        guild_settings_manager.set_server_rules(GuildID(guild.id), rules_text)
         logger.debug("[RULES CACHE MANAGER] Cached %d characters of rules for guild %s", len(rules_text), guild.name)
         return rules_text
 
@@ -221,7 +222,7 @@ class RulesCacheManager:
             )
             raise
 
-        guild_settings_manager.set_channel_guidelines(guild.id, channel.id, guidelines_text)
+        guild_settings_manager.set_channel_guidelines(GuildID(guild.id), ChannelID(channel.id), guidelines_text)
         logger.debug(
             "[RULES CACHE MANAGER] Cached %d characters of guidelines for channel %s (%s) in guild %s",
             len(guidelines_text),

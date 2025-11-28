@@ -8,7 +8,8 @@ import pytest
 from datetime import datetime, timezone
 
 from modcord.datatypes.action_datatypes import ActionType, ActionData
-from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID, ImageURL
+from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
+from modcord.datatypes.image_datatypes import ImageURL
 from modcord.datatypes.moderation_datatypes import (
     ModerationImage,
     ModerationMessage,
@@ -462,11 +463,11 @@ class TestModerationUser:
         messages_payload = [msg.to_model_payload(is_history=False, image_id_map={})]
         payload = user.to_model_payload(messages_payload=messages_payload)
         
-        assert payload["user_id"] == "123"
+        assert payload["user_id"] == 123
         assert payload["username"] == "TestUser"
         assert payload["message_count"] == 1
         assert len(payload["messages"]) == 1
-        assert payload["messages"][0]["message_id"] == "1"
+        assert payload["messages"][0]["message_id"] == 1
 
     def test_to_model_payload_with_past_actions(self):
         """Test conversion to model payload with past actions."""
@@ -512,7 +513,7 @@ class TestModerationUser:
         messages_payload = [msg.to_model_payload(is_history=False, image_id_map={})]
         payload = user.to_model_payload(messages_payload=messages_payload)
         
-        assert payload["user_id"] == "123"
+        assert payload["user_id"] == 123
         assert len(payload["past_actions"]) == 3
         
         # Check warn action formatting
@@ -697,7 +698,7 @@ class TestModerationChannelBatch:
         payload, images, image_map = batch.to_multimodal_payload()
         
         assert len(payload["users"]) == 1
-        assert payload["users"][0]["user_id"] == "1"
+        assert payload["users"][0]["user_id"] == 1
         assert len(images) == 0
         assert len(image_map) == 0
 

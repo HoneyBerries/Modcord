@@ -60,7 +60,7 @@ class DiscordHistoryFetcher:
         already in the current batch.
         
         Args:
-            channel_id (ChannelID | int): The Discord channel ID to fetch history from.
+            channel_id (ChannelID): The Discord channel ID to fetch history from.
             exclude_message_ids (Set[MessageID]): Set of message IDs to skip (current batch messages).
             history_limit (int | None): Maximum number of historical messages to fetch.
                 If None, uses the value from ai_settings.history_context_messages.

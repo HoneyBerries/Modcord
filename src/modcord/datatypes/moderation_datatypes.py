@@ -90,7 +90,7 @@ class ModerationMessage:
                         msg_image_ids.append(img_id_str)
         
         return {
-            "message_id": str(self.message_id),
+            "message_id": self.message_id.to_int(),
             "timestamp": humanize_timestamp(self.timestamp),
             "content": self.content or ("[Images only]" if msg_image_ids else ""),
             "image_ids": msg_image_ids,
@@ -152,7 +152,7 @@ class ModerationUser:
             dict: JSON-serializable representation of the user.
         """
         return {
-            "user_id": str(self.user_id),
+            "user_id": self.user_id.to_int(),
             "username": str(self.username),
             "roles": self.roles,
             "join_date": humanize_timestamp(self.join_date),
@@ -291,7 +291,7 @@ class ModerationChannelBatch:
             users_list.append(user_dict)
         
         payload = {
-            "channel_id": str(self.channel_id),
+            "channel_id": self.channel_id.to_int(),
             "channel_name": self.channel_name,
             "message_count": total_messages,
             "unique_user_count": len(user_map),
