@@ -24,7 +24,7 @@ logger = get_logger("rules_cache_manager")
 
 
 RULE_CHANNEL_PATTERN = re.compile(
-    r"(?<!moderationr[_-]?only)(rules?|guidelines?|regulations?|policy|policies|code[-_ ]?of[-_ ]?conduct|server[-_ ]?(rules?|guidelines?)|mod[-_ ]?(rule?|guidelines?)|law|expectations?|standards?)",
+    r"^(?:(?!moderation[_-]?only).)*(rules?|guidelines?|regulations?|policy|policies|code[-_ ]?of[-_ ]?conduct|server[-_ ]?(rules?|guidelines?)|mod[-_ ]?(rules?|guidelines?)|law|expectations?|standards?)",
     re.IGNORECASE,
 )
 """Heuristic regex used to discover channels that likely contain server rules."""
