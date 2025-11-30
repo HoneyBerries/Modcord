@@ -8,10 +8,10 @@
 # ========================================
 cache:
   # Refresh interval (seconds) for server rules cache.
-  rules_cache_refresh: 3600
+  rules_cache_refresh: 60
 
   # Refresh interval (seconds) for channel guidelines cache.
-  channel_guidelines_cache_refresh: 3600
+  channel_guidelines_cache_refresh: 60
 
 
 moderation:
