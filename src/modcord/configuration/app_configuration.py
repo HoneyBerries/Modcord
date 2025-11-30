@@ -131,10 +131,40 @@ class AppConfig:
 
         This is the interval at which server rules and channel guidelines
         are refreshed from Discord. Default is 600 seconds (10 minutes).
+
+        .. deprecated::
+            Use :attr:`rules_sync_interval` instead.
         """
+        return self.rules_sync_interval
+
+    @property
+    def rules_sync_interval(self) -> float:
+        """Return the server rules sync interval in seconds.
+
+        This is the interval at which server rules are synced from Discord.
+        Default is 600 seconds (10 minutes).
+        """
+        # Check new config key first, fall back to legacy key
+        sync_config = self._data.get("rules_sync", {})
+        if isinstance(sync_config, dict) and "interval_seconds" in sync_config:
+            return float(sync_config.get("interval_seconds", 600.0))
+
+        # Fall back to legacy config key
         refresh_config = self._data.get("rules_cache_refresh", {})
         if isinstance(refresh_config, dict):
             return float(refresh_config.get("interval_seconds", 600.0))
+        return 600.0
+
+    @property
+    def guidelines_sync_interval(self) -> float:
+        """Return the channel guidelines sync interval in seconds.
+
+        This is the interval at which channel guidelines are synced from Discord.
+        Default is 600 seconds (10 minutes).
+        """
+        sync_config = self._data.get("guidelines_sync", {})
+        if isinstance(sync_config, dict):
+            return float(sync_config.get("interval_seconds", 600.0))
         return 600.0
 
 

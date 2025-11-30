@@ -9,9 +9,9 @@ import json
 import discord
 from discord.ext import commands
 
-from modcord.configuration.app_configuration import app_config
 from modcord.ai.ai_moderation_processor import model_state
-from modcord.rules_cache.rules_cache_manager import rules_cache_manager
+from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
+from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
 from modcord.util.logger import get_logger
 
 logger = get_logger("events_listener_cog")
@@ -49,10 +49,12 @@ class EventsListenerCog(commands.Cog):
         else:
             logger.warning("[EVENTS LISTENER] Bot partially connected, but user information not yet available.")
 
-        # Start the rules and guidelines cache refresh task
-        logger.info("[EVENTS LISTENER] Starting server rules and channel guidelines cache refresh task...")
-        interval_seconds = app_config.rules_cache_refresh_interval
-        asyncio.create_task(rules_cache_manager.start_periodic_task(self.bot, interval_seconds))
+        # Start the rules and guidelines sync tasks (running in parallel with separate intervals)
+        logger.info("[EVENTS LISTENER] Starting server rules sync task...")
+        asyncio.create_task(rules_sync_scheduler.start_periodic_task(self.bot))
+        
+        logger.info("[EVENTS LISTENER] Starting channel guidelines sync task...")
+        asyncio.create_task(guidelines_sync_scheduler.start_periodic_task(self.bot))
 
         commands = await self.bot.http.get_global_commands(self.bot.user.id)
 

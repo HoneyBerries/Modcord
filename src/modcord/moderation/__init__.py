@@ -15,4 +15,12 @@ This package coordinates the entire moderation pipeline:
 - **moderation_helper.py**: High-level batch processing orchestrator. Applies
   server rules and channel guidelines per-guild, executes moderation actions,
   handles permission checks and error recovery.
+
+- **rules_injection_engine.py**: Engine for discovering and injecting server
+  rules into the moderation context. Identifies rule channels by naming
+  conventions and extracts their content.
+
+- **channel_guidelines_injection_engine.py**: Engine for collecting and
+  injecting channel-specific guidelines from channel topics into the
+  moderation context.
 """

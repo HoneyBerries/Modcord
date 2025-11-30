@@ -52,7 +52,8 @@ from modcord.ai.ai_moderation_processor import (
     shutdown_engine,
 )
 from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.rules_cache.rules_cache_manager import rules_cache_manager
+from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
+from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
 from modcord.util.logger import get_logger, handle_exception
 
@@ -226,9 +227,14 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
 
     # Stop background tasks in proper order
     try:
-        await rules_cache_manager.shutdown()
+        await rules_sync_scheduler.shutdown()
     except Exception as exc:
-        logger.exception("Error during rules cache manager shutdown: %s", exc)
+        logger.exception("Error during rules sync scheduler shutdown: %s", exc)
+
+    try:
+        await guidelines_sync_scheduler.shutdown()
+    except Exception as exc:
+        logger.exception("Error during guidelines sync scheduler shutdown: %s", exc)
 
     # Shutdown AI engine (heavy resource cleanup)
     try:

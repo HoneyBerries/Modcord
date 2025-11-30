@@ -42,7 +42,10 @@ These modules require full Discord bot integration and are not suitable for unit
 - `ai/ai_core.py` - AI model integration
 - `ai/ai_moderation_processor.py` - AI processing pipeline
 - `history/discord_history_fetcher.py` - Discord API integration
-- `rules_cache/rules_cache_manager.py` - Caching layer
+- `moderation/rules_injection_engine.py` - Server rules discovery and injection
+- `moderation/channel_guidelines_injection_engine.py` - Channel guidelines injection
+- `scheduler/rules_sync_scheduler.py` - Server rules sync scheduling
+- `scheduler/guidelines_sync_scheduler.py` - Channel guidelines sync scheduling
 - `ui/console.py` - Terminal UI
 - `ui/guild_settings_ui.py` - Interactive settings UI
 - `scheduler/unban_scheduler.py` - Async task scheduling

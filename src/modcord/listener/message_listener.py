@@ -29,7 +29,7 @@ from modcord.datatypes.moderation_datatypes import (
 )
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
 from modcord.moderation.moderation_helper import ModerationEngine
-from modcord.rules_cache.rules_cache_manager import rules_cache_manager
+from modcord.moderation.rules_injection_engine import rules_injection_engine
 from modcord.util import discord_utils
 from modcord.util.image_utils import download_images_for_moderation
 from modcord.util.logger import get_logger
@@ -74,9 +74,9 @@ class MessageListenerCog(commands.Cog):
 
         logger.debug(f"Received message from {message.author}: {message.clean_content[:80] if message.clean_content else '[no text]'}")
 
-        # Refresh rules cache if this was posted in a rules channel
+        # Sync rules cache if this was posted in a rules channel
         if isinstance(message.channel, discord.TextChannel):
-            await rules_cache_manager.refresh_if_rules_channel(message.channel)
+            await rules_injection_engine.sync_if_rules_channel(message.channel)
 
         # Queue message for moderation processing
         await self._queue_message_for_moderation(message)
@@ -90,9 +90,9 @@ class MessageListenerCog(commands.Cog):
         if not discord_utils.should_process_message(after):
             return
 
-        # Refresh rules cache if this edit occurred in a rules channel
+        # Sync rules cache if this edit occurred in a rules channel
         if isinstance(after.channel, discord.abc.GuildChannel):
-            await rules_cache_manager.refresh_if_rules_channel(after.channel)
+            await rules_injection_engine.sync_if_rules_channel(after.channel)
 
     async def _queue_message_for_moderation(self, message: discord.Message) -> None:
         """
