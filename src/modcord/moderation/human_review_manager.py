@@ -18,7 +18,7 @@ import discord
 import uuid
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData
-from modcord.datatypes.discord_datatypes import UserID, GuildID
+from modcord.datatypes.discord_datatypes import UserID, GuildID, ChannelID
 from modcord.datatypes.moderation_datatypes import ModerationUser
 from modcord.datatypes.human_review_datatypes import HumanReviewData
 from modcord.ui.review_ui import HumanReviewResolutionView
@@ -116,7 +116,8 @@ class HumanReviewManager:
         sent_messages = []
         
         for channel_id in settings.review_channel_ids:
-            review_channel = guild.get_channel(channel_id.to_int())
+            channel_obj = ChannelID(channel_id)
+            review_channel = guild.get_channel(channel_obj.to_int())
             if review_channel and isinstance(review_channel, (discord.TextChannel, discord.Thread)):
                 try:
                     view = HumanReviewResolutionView(batch_id=batch_id, guild_id=GuildID.from_guild(guild), bot=self.bot)
@@ -128,11 +129,11 @@ class HumanReviewManager:
                         view=view
                     )
 
-                    sent_messages.append((channel_id, sent_message.id))
-                    logger.info("[REVIEW] Sent review batch %s to channel %s", batch_id, channel_id)
+                    sent_messages.append((channel_obj, sent_message.id))
+                    logger.info("[REVIEW] Sent review batch %s to channel %s", batch_id, channel_obj.to_int())
 
                 except Exception as e:
-                    logger.error("[REVIEW] Failed to send review to channel %s: %s", channel_id, e)
+                    logger.error("[REVIEW] Failed to send review to channel %s: %s", channel_obj.to_int(), e)
         
         if sent_messages:
             logger.info("[REVIEW] Review batch %s sent to %d channel(s) in guild %s", batch_id, len(sent_messages), guild.id)

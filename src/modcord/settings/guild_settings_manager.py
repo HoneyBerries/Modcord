@@ -329,9 +329,10 @@ class GuildSettingsManager:
                         (guild_id.to_int(),)
                     )
                     for channel_id in settings.review_channel_ids:
+                        channel_obj = ChannelID(channel_id)
                         await conn.execute(
                             "INSERT INTO guild_review_channels (guild_id, channel_id) VALUES (?, ?)",
-                            (guild_id.to_int(), channel_id.to_int())
+                            (guild_id.to_int(), channel_obj.to_int())
                         )
 
                     # Persist channel guidelines
@@ -340,9 +341,10 @@ class GuildSettingsManager:
                         (guild_id.to_int(),)
                     )
                     for channel_id, guidelines in settings.channel_guidelines.items():
+                        channel_obj = ChannelID(channel_id)
                         await conn.execute(
                             "INSERT INTO channel_guidelines (guild_id, channel_id, guidelines) VALUES (?, ?, ?)",
-                            (guild_id.to_int(), channel_id.to_int(), guidelines)
+                            (guild_id.to_int(), channel_obj.to_int(), guidelines)
                         )
 
                     await conn.commit()

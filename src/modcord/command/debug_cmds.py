@@ -239,7 +239,8 @@ class DebugCog(commands.Cog):
                 # List review channels
                 channel_mentions = []
                 for channel_id in settings.review_channel_ids:
-                    review_channel = guild.get_channel(channel_id)
+                    channel_obj = ChannelID(channel_id)
+                    review_channel = guild.get_channel(channel_obj.to_int())
                     if review_channel:
                         channel_mentions.append(review_channel.mention)
                 

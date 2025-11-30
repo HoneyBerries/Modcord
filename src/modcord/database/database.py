@@ -27,6 +27,25 @@ logger = get_logger("database")
 DB_PATH = Path("./data/app.db").resolve()
 
 
+class _DatabaseConnectionContext:
+    """Async context manager that initializes connection with pragmas."""
+    
+    def __init__(self, db_path: Path):
+        self._db_path = db_path
+        self._conn: aiosqlite.Connection | None = None
+    
+    async def __aenter__(self) -> aiosqlite.Connection:
+        self._conn = await aiosqlite.connect(self._db_path)
+        # Enable foreign keys and WAL mode on every new connection
+        await self._conn.execute("PRAGMA foreign_keys = ON")
+        await self._conn.execute("PRAGMA journal_mode = WAL")
+        return self._conn
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._conn:
+            await self._conn.close()
+
+
 class Database:
     """
     Central database management class for all moderation and guild configuration operations.
@@ -95,15 +114,17 @@ class Database:
         except Exception as e:
             logger.error("[DATABASE] Failed to release lock: %s", e)
     
-    def get_connection(self) -> aiosqlite.Connection:
+    def get_connection(self) -> _DatabaseConnectionContext:
         """
         Get an async database connection for use in a context manager.
         
+        The returned connection automatically enables foreign keys and WAL mode.
+        
         Returns:
-            aiosqlite.Connection: Async database connection object.
+            _DatabaseConnectionContext: Async context manager yielding a connection.
         """
-        return aiosqlite.connect(self.db_path)
-    
+        return _DatabaseConnectionContext(self.db_path)
+
     async def initialize(self) -> bool:
         """
         Initialize the database: acquire lock and create schema.
@@ -128,8 +149,7 @@ class Database:
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             async with self.get_connection() as db:
-                await db.execute("PRAGMA foreign_keys = ON")
-                await db.execute("PRAGMA journal_mode = WAL")
+                # Foreign keys and WAL mode are now enabled by get_connection()
                 
                 # Guild settings table
                 await db.execute("""
@@ -352,6 +372,7 @@ class Database:
             ))
         
         return actions
+
 
 # Global Database instance
 database = Database()

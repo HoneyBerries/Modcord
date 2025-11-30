@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from modcord.util.logger import get_logger
-from modcord.datatypes.action_datatypes import ActionData
+from modcord.datatypes.action_datatypes import ActionData, ActionType
 
 logger = get_logger("format_utils")
 
@@ -62,12 +62,10 @@ def format_past_actions(past_actions: List[ActionData]) -> List[dict]:
                 formatted_action["duration"] = f"{action.timeout_duration} minutes"
         
         # Include duration for ban actions
-        elif action.ban_duration:
-            if action.ban_duration == -1:
+        elif action.action == ActionType.BAN:
+            if action.ban_duration in (-1, 0):
                 formatted_action["duration"] = "permanent"
-            elif action.ban_duration == 0:
-                formatted_action["duration"] = "permanent"
-            else:
+            elif action.ban_duration:
                 formatted_action["duration"] = f"{action.ban_duration} minutes"
         
         formatted_past_actions.append(formatted_action)

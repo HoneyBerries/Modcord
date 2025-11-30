@@ -21,6 +21,7 @@ from discord.ext import commands
 from modcord.util.logger import get_logger
 from modcord.ui.guild_settings_ui import build_settings_embed, GuildSettingsView
 from modcord.settings.guild_settings_manager import guild_settings_manager
+from modcord.datatypes.discord_datatypes import ChannelID
 
 logger = get_logger("settings_cog")
 
@@ -120,8 +121,9 @@ class GuildSettingsCog(commands.Cog):
             return
         
         settings = guild_settings_manager.get(ctx.guild_id)
-        if channel.id not in settings.review_channel_ids:
-            settings.review_channel_ids.append(channel.id)
+        channel_id = ChannelID.from_channel(channel)
+        if channel_id not in settings.review_channel_ids:
+            settings.review_channel_ids.append(channel_id)
             guild_settings_manager.save(ctx.guild_id)
             await ctx.respond(f"✅ Added {channel.mention} to review channels.", ephemeral=True)
         else:
@@ -133,8 +135,9 @@ class GuildSettingsCog(commands.Cog):
             return
         
         settings = guild_settings_manager.get(ctx.guild_id)
-        if channel.id in settings.review_channel_ids:
-            settings.review_channel_ids.remove(channel.id)
+        channel_id = ChannelID.from_channel(channel)
+        if channel_id in settings.review_channel_ids:
+            settings.review_channel_ids.remove(channel_id)
             guild_settings_manager.save(ctx.guild_id)
             await ctx.respond(f"✅ Removed {channel.mention} from review channels.", ephemeral=True)
         else:
@@ -148,7 +151,7 @@ class GuildSettingsCog(commands.Cog):
         settings = guild_settings_manager.get(ctx.guild_id)
         
         roles = [f"<@&{rid}>" for rid in settings.moderator_role_ids]
-        channels = [f"<#{cid}>" for cid in settings.review_channel_ids]
+        channels = [f"<#{ChannelID(cid).to_int()}>" for cid in settings.review_channel_ids]
         
         embed = discord.Embed(title="Moderator Settings", color=discord.Color.blue())
         embed.add_field(name="Moderator Roles", value=", ".join(roles) or "None", inline=False)
