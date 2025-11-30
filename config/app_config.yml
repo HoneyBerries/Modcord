@@ -33,7 +33,7 @@ moderation:
 
 ai_settings:
   # Enable/disable AI-based moderation. Set to false to use basic (non-AI) moderation.
-  enabled: false
+  enabled: true
 
   # Path to local model dir or Hugging Face model identifier (e.g., "Qwen/Qwen3-VL-4B-Instruct").
   model_id: "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit"
