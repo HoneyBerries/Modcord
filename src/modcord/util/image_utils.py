@@ -78,8 +78,6 @@ def download_image_to_pil(url: str) -> Image.Image | None:
         return None
 
 
-
-
 def is_image_attachment(attachment: discord.Attachment) -> bool:
     """
     Determine if a Discord attachment is an image.
@@ -128,12 +126,12 @@ async def download_images_for_moderation(message: discord.Message) -> list[Moder
             continue
         
         image_url = ImageURL.from_url(attachment.url)
-        image_id = generate_image_hash_id(attachment.url)
+        image_id = generate_image_hash_id(image_url)
         
         mod_image = ModerationImage(
             image_id=image_id,
             image_url=image_url,
-            pil_image=None,
+            pil_image=Image.new("RGB", (512, 512)),  # Placeholder, will be replaced
         )
         image_tuples.append((attachment.url, mod_image))
     

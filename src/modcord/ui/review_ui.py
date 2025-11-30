@@ -15,9 +15,9 @@ from __future__ import annotations
 import discord
 from uuid import UUID
 from modcord.util.logger import get_logger
-from modcord.util.discord_utils import has_review_permission
+from modcord.util.discord.discord_utils import has_review_permission
 from modcord.datatypes.discord_datatypes import GuildID
-from modcord.util.review_embed_helper import build_resolved_review_embed
+from modcord.ui.review_embed_helper import build_resolved_review_embed
 from modcord.datatypes.action_datatypes import ActionType
 
 logger = get_logger("review_ui")

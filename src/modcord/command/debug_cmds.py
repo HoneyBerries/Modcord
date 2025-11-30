@@ -7,7 +7,7 @@ import datetime
 import discord
 from discord.ext import commands
 
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
@@ -75,7 +75,7 @@ class DebugCog(commands.Cog):
                 await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
-            settings = guild_settings_manager.get_guild_settings(guild.id)
+            settings = guild_settings_manager.get(guild.id)
             embed = discord.Embed(
                 title="✅ Rules Cache Refreshed",
                 description=f"Rules for {guild.name} have been refreshed from the database.",
@@ -99,7 +99,7 @@ class DebugCog(commands.Cog):
                 await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
-            rules = guild_settings_manager.get_server_rules(GuildID(guild.id))
+            rules = guild_settings_manager.get(GuildID(guild.id)).rules
             if not rules:
                 embed = discord.Embed(
                     title="📋 Server Rules",
@@ -134,7 +134,7 @@ class DebugCog(commands.Cog):
                 return
 
             # Check if guild has review channels configured
-            settings = guild_settings_manager.get_guild_settings(guild.id)
+            settings = guild_settings_manager.get(guild.id)
             if not HumanReviewManager.validate_review_channels(settings):
                 await application_context.followup.send(
                     content="❌ No review channels configured for this guild. Use `/config set_review_channel` first.",

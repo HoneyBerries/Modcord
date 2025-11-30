@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands
 
 from modcord.configuration.app_configuration import app_config
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.database.database import get_db
 from modcord.datatypes.action_datatypes import ActionData
 from modcord.datatypes.discord_datatypes import (
@@ -29,8 +29,8 @@ from modcord.datatypes.moderation_datatypes import (
 )
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
 from modcord.moderation.moderation_helper import ModerationEngine
-from modcord.moderation.rules_injection_engine import rules_injection_engine
-from modcord.util import discord_utils
+from modcord.util.discord import collector
+from modcord.util.discord import discord_utils
 from modcord.util.image_utils import download_images_for_moderation
 from modcord.util.logger import get_logger
 
@@ -75,8 +75,9 @@ class MessageListenerCog(commands.Cog):
         logger.debug(f"Received message from {message.author}: {message.clean_content[:80] if message.clean_content else '[no text]'}")
 
         # Sync rules cache if this was posted in a rules channel
-        if isinstance(message.channel, discord.TextChannel):
-            await rules_injection_engine.sync_if_rules_channel(message.channel)
+        if isinstance(message.channel, discord.TextChannel) and collector.is_rules_channel(message.channel):
+            from modcord.scheduler.rules_sync_scheduler import sync_rules
+            await sync_rules(message.channel.guild)
 
         # Queue message for moderation processing
         await self._queue_message_for_moderation(message)
@@ -91,8 +92,9 @@ class MessageListenerCog(commands.Cog):
             return
 
         # Sync rules cache if this edit occurred in a rules channel
-        if isinstance(after.channel, discord.abc.GuildChannel):
-            await rules_injection_engine.sync_if_rules_channel(after.channel)
+        if isinstance(after.channel, discord.TextChannel) and collector.is_rules_channel(after.channel):
+            from modcord.scheduler.rules_sync_scheduler import sync_rules
+            await sync_rules(after.channel.guild)
 
     async def _queue_message_for_moderation(self, message: discord.Message) -> None:
         """
@@ -105,7 +107,7 @@ class MessageListenerCog(commands.Cog):
             return
         
         guild_id = GuildID.from_guild(message.guild)
-        if not guild_settings_manager.is_ai_enabled(guild_id):
+        if not guild_settings_manager.get(guild_id).ai_enabled:
             logger.debug(f"AI moderation disabled for guild {guild_id}, skipping message")
             return
 

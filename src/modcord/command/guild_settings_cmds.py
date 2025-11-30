@@ -20,7 +20,7 @@ from discord.ext import commands
 
 from modcord.util.logger import get_logger
 from modcord.ui.guild_settings_ui import build_settings_embed, GuildSettingsView
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 
 logger = get_logger("settings_cog")
 
@@ -93,10 +93,10 @@ class GuildSettingsCog(commands.Cog):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get_guild_settings(ctx.guild_id)
+        settings = guild_settings_manager.get(ctx.guild_id)
         if role.id not in settings.moderator_role_ids:
             settings.moderator_role_ids.append(role.id)
-            guild_settings_manager._trigger_persist(ctx.guild_id)
+            guild_settings_manager.save(ctx.guild_id)
             await ctx.respond(f"✅ Added {role.mention} to moderator roles.", ephemeral=True)
         else:
             await ctx.respond(f"{role.mention} is already a moderator role.", ephemeral=True)
@@ -106,10 +106,10 @@ class GuildSettingsCog(commands.Cog):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get_guild_settings(ctx.guild_id)
+        settings = guild_settings_manager.get(ctx.guild_id)
         if role.id in settings.moderator_role_ids:
             settings.moderator_role_ids.remove(role.id)
-            guild_settings_manager._trigger_persist(ctx.guild_id)
+            guild_settings_manager.save(ctx.guild_id)
             await ctx.respond(f"✅ Removed {role.mention} from moderator roles.", ephemeral=True)
         else:
             await ctx.respond(f"{role.mention} is not a moderator role.", ephemeral=True)
@@ -119,10 +119,10 @@ class GuildSettingsCog(commands.Cog):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get_guild_settings(ctx.guild_id)
+        settings = guild_settings_manager.get(ctx.guild_id)
         if channel.id not in settings.review_channel_ids:
             settings.review_channel_ids.append(channel.id)
-            guild_settings_manager._trigger_persist(ctx.guild_id)
+            guild_settings_manager.save(ctx.guild_id)
             await ctx.respond(f"✅ Added {channel.mention} to review channels.", ephemeral=True)
         else:
             await ctx.respond(f"{channel.mention} is already a review channel.", ephemeral=True)
@@ -132,10 +132,10 @@ class GuildSettingsCog(commands.Cog):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get_guild_settings(ctx.guild_id)
+        settings = guild_settings_manager.get(ctx.guild_id)
         if channel.id in settings.review_channel_ids:
             settings.review_channel_ids.remove(channel.id)
-            guild_settings_manager._trigger_persist(ctx.guild_id)
+            guild_settings_manager.save(ctx.guild_id)
             await ctx.respond(f"✅ Removed {channel.mention} from review channels.", ephemeral=True)
         else:
             await ctx.respond(f"{channel.mention} is not a review channel.", ephemeral=True)
@@ -145,7 +145,7 @@ class GuildSettingsCog(commands.Cog):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get_guild_settings(ctx.guild_id)
+        settings = guild_settings_manager.get(ctx.guild_id)
         
         roles = [f"<@&{rid}>" for rid in settings.moderator_role_ids]
         channels = [f"<#{cid}>" for cid in settings.review_channel_ids]

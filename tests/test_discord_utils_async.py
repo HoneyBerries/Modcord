@@ -5,7 +5,7 @@ from unittest.mock import Mock, MagicMock, AsyncMock, patch
 import discord
 from datetime import datetime, timezone
 
-from modcord.util.discord_utils import (
+from modcord.util.discord.discord_utils import (
     delete_message,
     has_permissions,
     iter_moderatable_channels,

@@ -23,7 +23,7 @@ from modcord.datatypes.moderation_datatypes import ModerationChannelBatch
 from modcord.datatypes.discord_datatypes import UserID, MessageID, ChannelID, GuildID
 import modcord.moderation.moderation_parsing as moderation_parsing
 from modcord.configuration.app_configuration import app_config
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from xgrammar.grammar import Grammar
 
 logger = get_logger("ai_moderation_processor")
@@ -129,8 +129,9 @@ class ModerationProcessor:
             # Resolve and apply server rules and channel guidelines per channel
             if guild_id:
                 # Fetch from guild_settings_manager using proper ID types
-                server_rules = guild_settings_manager.get_server_rules(guild_id)
-                channel_guidelines = guild_settings_manager.get_channel_guidelines(guild_id, batch.channel_id)
+                settings = guild_settings_manager.get(guild_id)
+                server_rules = settings.rules
+                channel_guidelines = settings.channel_guidelines.get(batch.channel_id, "")
 
             else:
                 # Fall back to app_config defaults

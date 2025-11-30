@@ -16,7 +16,7 @@ from typing import List
 import discord
 
 from modcord.ai.ai_moderation_processor import moderation_processor, model_state
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.database.database import get_db
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import GuildID, UserID
@@ -24,7 +24,7 @@ from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, Moder
 from modcord.moderation.human_review_manager import HumanReviewManager
 from modcord.ui.action_embed import create_punishment_embed
 from modcord.scheduler.unban_scheduler import UNBAN_SCHEDULER
-from modcord.util import discord_utils
+from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
 
@@ -85,7 +85,7 @@ class ModerationEngine:
 
             guild_id = first_message.guild_id
 
-            if not first_message or (guild_id and not guild_settings_manager.is_ai_enabled(guild_id)):
+            if not first_message or (guild_id and not guild_settings_manager.get(guild_id).ai_enabled):
                 continue
 
             valid_batches.append(batch)
@@ -129,7 +129,7 @@ class ModerationEngine:
         for guild_id in guilds_with_reviews:
             guild = self._bot.get_guild(guild_id)
             if guild:
-                settings = guild_settings_manager.get_guild_settings(guild_id)
+                settings = guild_settings_manager.get(guild_id)
                 if settings:
                     await review_manager.send_review_embed(guild, settings)
 

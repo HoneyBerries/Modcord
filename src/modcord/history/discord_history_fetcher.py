@@ -14,7 +14,7 @@ from modcord.configuration.app_configuration import app_config
 from modcord.datatypes.discord_datatypes import UserID, MessageID, ChannelID, GuildID
 from modcord.datatypes.moderation_datatypes import ModerationMessage
 from modcord.util.logger import get_logger
-from modcord.util import discord_utils
+from modcord.util.discord import discord_utils
 
 logger = get_logger("discord_history_fetcher")
 

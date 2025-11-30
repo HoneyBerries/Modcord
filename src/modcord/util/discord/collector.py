@@ -13,7 +13,7 @@ from typing import List
 
 import discord
 
-from modcord.util import discord_utils
+from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
 logger = get_logger("collector")

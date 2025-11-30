@@ -29,7 +29,7 @@ import discord
 from discord import Option
 from discord.ext import commands
 
-from modcord.util.discord_utils import (
+from modcord.util.discord.discord_utils import (
     has_permissions,
     PERMANENT_DURATION,
     DURATION_CHOICES,

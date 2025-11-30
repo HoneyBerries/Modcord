@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, MagicMock
-from modcord.util.discord_utils import (
+from modcord.util.discord.discord_utils import (
     PERMANENT_DURATION,
     DURATIONS,
     DURATION_CHOICES,

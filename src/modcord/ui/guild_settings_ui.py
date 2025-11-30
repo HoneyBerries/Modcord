@@ -3,7 +3,7 @@ from typing import Any
 
 import discord
 
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.action_datatypes import ActionType
 
 from modcord.datatypes.discord_datatypes import GuildID
@@ -52,7 +52,7 @@ def build_settings_embed(guild_id: GuildID) -> discord.Embed:
     Returns:
         discord.Embed: A formatted embed with current settings information.
     """
-    settings = guild_settings_manager.get_guild_settings(guild_id)
+    settings = guild_settings_manager.get(guild_id)
     ai_status = "Enabled ✅" if settings.ai_enabled else "Disabled ❌"
 
     auto_actions_lines: list[str] = []
@@ -129,7 +129,7 @@ class GuildSettingsView(discord.ui.View):
 
         self.clear_items()
 
-        ai_enabled = guild_settings_manager.is_ai_enabled(self.guild_id)
+        ai_enabled = guild_settings_manager.get(self.guild_id).ai_enabled
         self.add_item(ToggleAIButton(ai_enabled))
 
         for index, action in enumerate(ACTION_UI_ORDER, start=1):
@@ -236,9 +236,9 @@ class ToggleAIButton(discord.ui.Button):
             )
             return
 
-        current = guild_settings_manager.is_ai_enabled(view.guild_id)
+        current = guild_settings_manager.get(view.guild_id).ai_enabled
         new_state = not current
-        guild_settings_manager.set_ai_enabled(view.guild_id, new_state)
+        guild_settings_manager.update(view.guild_id, ai_enabled=new_state)
         await view.refresh_message(
             interaction,
             flash=f"AI moderation is now {'enabled' if new_state else 'disabled'}.",

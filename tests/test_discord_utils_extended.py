@@ -6,7 +6,7 @@ import discord
 from datetime import datetime, timezone, timedelta
 
 from modcord.ui.action_embed import create_punishment_embed
-from modcord.util.discord_utils import (
+from modcord.util.discord.discord_utils import (
     delete_recent_messages,
     delete_messages_background,
     DURATIONS,

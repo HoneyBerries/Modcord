@@ -12,8 +12,6 @@ import os
 import sys
 from pathlib import Path
 
-from modcord.listener import events_listener
-
 def resolve_base_dir() -> Path:
     """
     Determine the base directory of the Modcord project.
@@ -42,16 +40,25 @@ def resolve_base_dir() -> Path:
 BASE_DIR = resolve_base_dir()
 os.chdir(BASE_DIR)
 
+# ______________________________________________________________
+# Now that the base directory is set, import the rest of 
+# Modcord and run the program
+# ______________________________________________________________
+
 import asyncio
 import discord
 from dotenv import load_dotenv
 
+from modcord.listener import events_listener
+from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
+from modcord.listener import message_listener
+from modcord.database import database as db
 from modcord.ai.ai_moderation_processor import (
     model_state,
     initialize_engine,
     shutdown_engine,
 )
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
 from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
@@ -119,9 +126,6 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
     Args:
         discord_bot_instance (discord.Bot): The bot instance to attach cogs to.
     """
-    from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
-    from modcord.listener import message_listener
-
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
     message_listener.setup(discord_bot_instance)
@@ -259,6 +263,12 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
         await guild_settings_manager.shutdown()
     except Exception as exc:
         logger.exception("Error during guild settings shutdown: %s", exc)
+
+    # Release database lock
+    try:
+        db.database.shutdown()
+    except Exception as exc:
+        logger.exception("Error during database shutdown: %s", exc)
 
     # Final cleanup
     try:

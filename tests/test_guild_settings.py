@@ -5,7 +5,7 @@ import tempfile
 import os
 from pathlib import Path
 
-from modcord.configuration.guild_settings import (
+from modcord.datatypes.guild_settings import (
     GuildSettings,
     GuildSettingsManager,
     ACTION_FLAG_FIELDS,
@@ -23,11 +23,12 @@ async def temp_db():
     
     # For testing, we'll use the default temp DB path
     # The fixture just needs to ensure database is initialized
-    await original_db.initialize_database()
+    await original_db.initialize()
     
     yield original_db
     
-    # Cleanup would happen automatically
+    # Cleanup
+    original_db.shutdown()
 
 
 class TestGuildSettings:
@@ -311,13 +312,13 @@ class TestGuildSettingsManager:
         assert manager._db_initialized is True
 
     async def test_async_init_only_once(self, temp_db):
-        """Test async initialize_database only happens once."""
+        """Test async initialize only happens once."""
         manager = GuildSettingsManager()
         
         await manager.async_init()
         await manager.async_init()
         
-        # Should not raise error, just skip second initialize_database
+        # Should not raise error, just skip second init
         assert manager._db_initialized is True
 
     async def test_review_channel_ids_persistence(self, temp_db):

@@ -22,8 +22,8 @@ from modcord.datatypes.discord_datatypes import UserID, GuildID
 from modcord.datatypes.moderation_datatypes import ModerationUser
 from modcord.datatypes.human_review_datatypes import HumanReviewData
 from modcord.ui.review_ui import HumanReviewResolutionView
-from modcord.util.review_embed_helper import build_review_embed, build_role_mentions
-from modcord.configuration.guild_settings import GuildSettings
+from modcord.ui.review_embed_helper import build_review_embed, build_role_mentions
+from modcord.datatypes.guild_settings import GuildSettings
 
 logger = get_logger("human_review_manager")
 

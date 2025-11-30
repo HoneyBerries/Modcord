@@ -27,11 +27,12 @@ async def temp_db():
     database.DB_PATH = Path(temp_file.name)
     
     # Initialize database
-    await get_db().initialize_database()
+    await get_db().initialize()
     
     yield database.DB_PATH
     
     # Cleanup
+    get_db().shutdown()
     database.DB_PATH = original_path
     try:
         os.unlink(temp_file.name)
@@ -40,10 +41,10 @@ async def temp_db():
 
 
 class TestInitDatabase:
-    """Tests for Database.initialize_database method."""
+    """Tests for Database.initialize method."""
 
     async def test_init_creates_tables(self, temp_db):
-        """Test that initialize_database creates required tables."""
+        """Test that initialize creates required tables."""
         async with get_db().get_connection() as db:
             # Check guild_settings table
             cursor = await db.execute(

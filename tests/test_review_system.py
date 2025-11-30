@@ -24,9 +24,10 @@ from modcord.database.database import get_db
 @pytest.fixture
 async def test_db():
     """Initialize test database."""
-    await get_db().initialize_database()
+    await get_db().initialize()
     yield
-    # Cleanup happens automatically with test database
+    # Cleanup
+    get_db().shutdown()
 
 
 @pytest.fixture
@@ -80,7 +81,7 @@ def mock_message():
 @pytest.fixture
 def mock_guild_settings():
     """Create mock guild settings."""
-    from modcord.configuration.guild_settings import GuildSettings
+    from modcord.datatypes.guild_settings import GuildSettings
     settings = GuildSettings(guild_id=987654321)
     settings.review_channel_ids = [555666777]
     settings.moderator_role_ids = [888999000]
@@ -262,7 +263,7 @@ class TestHumanReviewManager:
     @pytest.mark.asyncio
     async def test_build_role_mentions(self, test_db, mock_bot, mock_guild, mock_guild_settings):
         """Test building moderator role mentions."""
-        from modcord.util.review_embed_helper import build_role_mentions
+        from modcord.ui.review_embed_helper import build_role_mentions
         
         # Mock role
         mock_role = MagicMock()
@@ -275,9 +276,9 @@ class TestHumanReviewManager:
     @pytest.mark.asyncio
     async def test_build_role_mentions_no_roles(self, test_db, mock_bot, mock_guild):
         """Test building role mentions with no configured roles."""
-        from modcord.util.review_embed_helper import build_role_mentions
+        from modcord.ui.review_embed_helper import build_role_mentions
         
-        from modcord.configuration.guild_settings import GuildSettings
+        from modcord.datatypes.guild_settings import GuildSettings
         settings = GuildSettings(guild_id=987654321)
         settings.moderator_role_ids = []
         

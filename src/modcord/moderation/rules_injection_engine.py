@@ -4,21 +4,21 @@ from __future__ import annotations
 
 import discord
 
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.discord_datatypes import GuildID
-from modcord.util import collector
+from modcord.util.discord import collector
 from modcord.util.logger import get_logger
 
 logger = get_logger("rules_engine")
 
 
-class RulesInjectionEngine:
+class RulesCollection:
     """Engine for collecting server rules and persisting them to guild settings."""
 
     async def sync_guild_rules(self, guild: discord.Guild) -> str:
         """Collect rules from rule-like channels and persist to guild settings."""
         rules_text = await collector.collect_rules(guild)
-        guild_settings_manager.set_server_rules(GuildID(guild.id), rules_text)
+        guild_settings_manager.update(GuildID(guild.id), rules=rules_text)
         logger.debug("Cached %d chars of rules for guild %s", len(rules_text), guild.name)
         return rules_text
 

@@ -8,7 +8,7 @@ import datetime
 import discord
 from modcord.datatypes.action_datatypes import ActionType
 from modcord.util.logger import get_logger
-from modcord.util import discord_utils
+from modcord.util.discord import discord_utils
 
 logger = get_logger("action_embed")
 

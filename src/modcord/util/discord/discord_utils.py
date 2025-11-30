@@ -9,7 +9,7 @@ import asyncio
 import datetime
 from typing import List, Union
 import discord
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.logger import get_logger
 from modcord.datatypes.discord_datatypes import MessageID, UserID, GuildID, ChannelID
 from modcord.util.image_utils import is_image_attachment
@@ -273,7 +273,7 @@ def has_review_permission(guild_id: GuildID, user: discord.Member) -> bool:
         return True
     
     # Check if user has any of the configured moderator roles
-    settings = guild_settings_manager.get_guild_settings(guild_id)
+    settings = guild_settings_manager.get(guild_id)
     if settings and settings.moderator_role_ids:
         user_role_ids = {role.id for role in user.roles}
         if any(role_id in user_role_ids for role_id in settings.moderator_role_ids):

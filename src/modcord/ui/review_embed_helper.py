@@ -17,7 +17,7 @@ import discord
 from typing import List
 from datetime import datetime, timezone
 from modcord.datatypes.human_review_datatypes import HumanReviewData
-from modcord.configuration.guild_settings import GuildSettings
+from modcord.datatypes.guild_settings import GuildSettings
 
 
 def build_review_embed(
