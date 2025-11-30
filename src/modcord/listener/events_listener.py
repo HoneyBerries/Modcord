@@ -4,14 +4,11 @@ This cog handles bot lifecycle events (on_ready) and command error handling.
 Message-related events are handled by the MessageListenerCog.
 """
 
-import asyncio
 import json
 import discord
 from discord.ext import commands
 
 from modcord.ai.ai_moderation_processor import model_state
-from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
-from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
 from modcord.util.logger import get_logger
 
 logger = get_logger("events_listener_cog")
@@ -36,25 +33,17 @@ class EventsListenerCog(commands.Cog):
     @commands.Cog.listener(name='on_ready')
     async def on_ready(self):
         """
-        Handle bot startup: initialize presence, rules cache.
+        Handle bot startup: initialize presence.
 
         This method:
         1. Updates the bot's Discord presence based on AI model state
-        2. Starts the periodic rules cache refresh task
-        3. Puts all registered commands into a file called commands.json for reference
+        2. Puts all registered commands into a file called commands.json for reference
         """
         if self.bot.user:
             await self._update_presence()
             logger.info(f"Bot connected as {self.bot.user} (ID: {self.bot.user.id})")
         else:
             logger.warning("[EVENTS LISTENER] Bot partially connected, but user information not yet available.")
-
-        # Start the rules and guidelines sync tasks (running in parallel with separate intervals)
-        logger.info("[EVENTS LISTENER] Starting server rules sync task...")
-        asyncio.create_task(rules_sync_scheduler.start_periodic_task(self.bot))
-        
-        logger.info("[EVENTS LISTENER] Starting channel guidelines sync task...")
-        asyncio.create_task(guidelines_sync_scheduler.start_periodic_task(self.bot))
 
         commands = await self.bot.http.get_global_commands(self.bot.user.id)
 

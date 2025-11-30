@@ -159,7 +159,7 @@ class MessageListenerCog(commands.Cog):
 
     async def _batch_timer_task(self) -> None:
         """Wait for the batch interval, then process all pending messages."""
-        interval = app_config.ai_settings.moderation_batch_seconds
+        interval = app_config.moderation_batch_seconds
         logger.debug(f"Batch timer sleeping for {interval} seconds")
         await asyncio.sleep(interval)
 

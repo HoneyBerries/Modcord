@@ -12,6 +12,8 @@ logger = get_logger("app_configuration")
 
 CONFIG_PATH = Path("./config/app_config.yml").resolve()
 
+INFINITY = float("inf")
+
 
 class AppConfig:
     """File-lock based accessor around the YAML-based application configuration.
@@ -85,8 +87,7 @@ class AppConfig:
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        value = self._data.get("server_rules") or self._data.get("default_server_rules", "")
-        return str(value or "")
+        return str(self._data.get("server_rules") or self._data.get("default_server_rules", "") or "")
 
     @property
     def channel_guidelines(self) -> str:
@@ -95,8 +96,7 @@ class AppConfig:
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        value = self._data.get("channel_guidelines") or self._data.get("default_channel_guidelines", "")
-        return str(value or "")
+        return str(self._data.get("channel_guidelines") or self._data.get("default_channel_guidelines", "") or "")
 
     @property
     def system_prompt_template(self) -> str:
@@ -107,11 +107,7 @@ class AppConfig:
         """
         # Check ai_settings.system_prompt
         ai_settings = self._data.get("ai_settings", {})
-        value = ""
-        if isinstance(ai_settings, dict):
-            value = ai_settings.get("system_prompt", "")
-
-        return str(value or "")
+        return str(ai_settings.get("system_prompt", "")) if isinstance(ai_settings, dict) else ""
 
     @property
     def ai_settings(self) -> AISettings:
@@ -121,51 +117,63 @@ class AppConfig:
         mapping semantics for backward compatibility.
         """
         settings = self._data.get("ai_settings", {})
-        if not isinstance(settings, dict):
-            settings = {}
-        return AISettings(settings)
-
-    @property
-    def rules_cache_refresh_interval(self) -> float:
-        """Return the rules cache refresh interval in seconds.
-
-        This is the interval at which server rules and channel guidelines
-        are refreshed from Discord. Default is 600 seconds (10 minutes).
-
-        .. deprecated::
-            Use :attr:`rules_sync_interval` instead.
-        """
-        return self.rules_sync_interval
+        return AISettings(settings if isinstance(settings, dict) else {})
 
     @property
     def rules_sync_interval(self) -> float:
         """Return the server rules sync interval in seconds.
 
         This is the interval at which server rules are synced from Discord.
-        Default is 600 seconds (10 minutes).
+        Default is never (INFINITY).
         """
-        # Check new config key first, fall back to legacy key
-        sync_config = self._data.get("rules_sync", {})
-        if isinstance(sync_config, dict) and "interval_seconds" in sync_config:
-            return float(sync_config.get("interval_seconds", 600.0))
-
-        # Fall back to legacy config key
-        refresh_config = self._data.get("rules_cache_refresh", {})
-        if isinstance(refresh_config, dict):
-            return float(refresh_config.get("interval_seconds", 600.0))
-        return 600.0
+        cache_config = self._data.get("cache", {})
+        return float(cache_config.get("rules_cache_refresh", INFINITY)) if isinstance(cache_config, dict) else INFINITY
 
     @property
     def guidelines_sync_interval(self) -> float:
         """Return the channel guidelines sync interval in seconds.
 
         This is the interval at which channel guidelines are synced from Discord.
-        Default is 600 seconds (10 minutes).
+        Default is never (INFINITY).
         """
-        sync_config = self._data.get("guidelines_sync", {})
-        if isinstance(sync_config, dict):
-            return float(sync_config.get("interval_seconds", 600.0))
-        return 600.0
+        cache_config = self._data.get("cache", {})
+        return float(cache_config.get("channel_guidelines_cache_refresh", INFINITY)) if isinstance(cache_config, dict) else INFINITY
+
+    @property
+    def moderation_batch_seconds(self) -> float:
+        """Return the moderation batch window in seconds.
+
+        Messages received within this window are grouped for batch moderation.
+        Default is 15 seconds.
+        """
+        moderation_config = self._data.get("moderation", {})
+        return float(moderation_config.get("moderation_batch_seconds", INFINITY)) if isinstance(moderation_config, dict) else INFINITY
+
+    @property
+    def past_actions_lookback_days(self) -> int:
+        """Return the historical context lookback in days.
+
+        Used by AI to determine punishment escalation.
+        Default is 7 days.
+        """
+        moderation_config = self._data.get("moderation", {})
+        return int(moderation_config.get("past_actions_lookback_days", 0)) if isinstance(moderation_config, dict) else 0
+
+    @property
+    def past_actions_lookback_minutes(self) -> int:
+        """Return the historical context lookback converted to minutes."""
+        return self.past_actions_lookback_days * 24 * 60
+
+    @property
+    def history_context_messages(self) -> int:
+        """Return the number of recent messages to fetch for context.
+
+        Provides context for violations. Default is 8 messages.
+        """
+        moderation_config = self._data.get("moderation", {})
+        if isinstance(moderation_config, dict):
+            return int(moderation_config.get("history_context_messages", 8))
+        return 8
 
 
 # Shared application-wide configuration instance

@@ -1,114 +1,82 @@
 # ========================================
 # MODCORD CONFIGURATION
 # ========================================
-# This configuration file defines all settings for Modcord, including AI/LLM tuning,
-# moderation behavior, and cache refresh intervals.
-#
-# Sections:
-#   1. Cache & Performance Settings
-#   2. AI Model & Inference Settings
-#   3. Moderation System Prompt
-#   4. Default Rules & Guidelines
+# Modcord's core configuration for AI tuning, moderation logic, and caching.
 
 # ========================================
 # 1. CACHE & PERFORMANCE SETTINGS
 # ========================================
+cache:
+  # Refresh interval (seconds) for server rules cache.
+  rules_cache_refresh: 3600
 
-rules_cache_refresh:
-  # Interval (seconds) to refresh server rules and channel guidelines from Discord.
-  # Recommended: 3600 (60 minutes). Lower values increase API calls and latency.
-  # Higher values reduce API load but may miss fast rule updates.
-  interval_seconds: 3600
+  # Refresh interval (seconds) for channel guidelines cache.
+  channel_guidelines_cache_refresh: 3600
+
+
+moderation:
+  # Messages received within this window (seconds) are grouped for batch moderation.
+  # Lower = faster response, higher = better API efficiency.
+  moderation_batch_seconds: 15
+
+  # Historical lookback (days) for past moderation actions.
+  # Used by AI to determine punishment escalation. Set to 0 to disable.
+  past_actions_lookback_days: 7
+
+  # Number of recent messages to fetch for context (including historical messages).
+  # Provides context for violations. Recommended: 8-20.
+  history_context_messages: 8
 
 # ========================================
 # 2. AI MODEL & INFERENCE SETTINGS
 # ========================================
 
 ai_settings:
-  # Enable/disable AI-based moderation. Set to false to use basic moderation.
-  enabled: true
+  # Enable/disable AI-based moderation. Set to false to use basic (non-AI) moderation.
+  enabled: false
 
-  # Path to your local model directory or Hugging Face model identifier.
-  # Examples:
-  #   - Local: "./modcord_custom_models/qwen3-vl-4b-instruct-nf4"
-  #   - HuggingFace: "Qwen/Qwen3-VL-4B-Instruct"
+  # Path to local model dir or Hugging Face model identifier (e.g., "Qwen/Qwen3-VL-4B-Instruct").
   model_id: "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit"
 
-  # GPU memory utilization (0.0 to 1.0).
-  # 0.86 = use 86% of GPU VRAM. Reduce if running out of memory.
+  # GPU memory utilization (0.0 to 1.0). Reduce if running out of VRAM.
   vram_percentage: 0.86
 
-  # CPU offload size in GB (used when model exceeds available GPU memory).
-  # Set to 0 to disable offloading. Increase if model doesn't fit in VRAM.
+  # CPU offload size (GB). Set to 0 to disable.
   cpu_offload_gb: 0
 
-  # Moderation batch window (seconds).
-  # Messages received within this window are grouped for batch moderation.
-  # Lower values = faster response (more API calls), higher values = better efficiency.
-  moderation_batch_seconds: 15
-
-  # Historical context lookback (days) for past moderation actions.
-  # When processing current violations, include actions from the past N days.
-  # Default: 7 (7 days). Set to 0 to disable context lookback.
-  # This helps the AI understand a user's moderation history when making decisions.
-  past_actions_lookback_days: 7
-
-  # Number of recent messages to fetch for context when building message history.
-  # Higher values provide more context for violations but increase processing time.
-  # Recommended: 8-20. Adjust based on channel activity level.
-  history_context_messages: 8
-
-  # Sampling parameters for text generation.
-  # These control model behavior, creativity, and output quality.
+  # Sampling parameters for text generation. Controls output creativity and quality.
   sampling_parameters:
-    # Data type for model computation.
-    # Options: "auto" (default), "float32", "float16" (half), "bfloat16" (better than float16).
+    # Computation data type: "auto", "float32", "float16", "bfloat16".
     dtype: "bfloat16"
 
-    # Maximum number of tokens to generate in a single inference.
-    # Higher = more verbose output but slower. Moderation typically needs ~512-1024 tokens.
+    # Maximum new tokens to generate in one inference. Moderation typically needs ~512-1024.
     max_new_tokens: 1024
 
     # Maximum total model context length (input + output tokens).
-    # Ensure this is <= model's actual context window.
-    # Qwen3-VL-4B: 4096-8192 tokens recommended.
+    # Must be <= model's actual context window (e.g., 4096-8192 for Qwen3-VL-4B).
     max_model_length: 4096
 
-    # Temperature (0.0-1.5): Controls randomness/creativity.
-    # 0.0 = deterministic (guranteed same output every time)
-    # 0.3 = balanced (default)
-    # 0.7 = more creative/random
-    # For moderation: 0.3 (somewhat deterministic) is recommended.
+    # Temperature (0.0-1.5): Controls randomness (0.0=deterministic, 0.3=balanced, 0.7=creative).
+    # Recommended for moderation: 0.3.
     temperature: 0.3
 
-    # Top-P (nucleus sampling): Keep only top P% probability mass.
-    # 0.9 = keep top 90% of probable tokens, drop bottom 10%.
-    # Higher values = more diverse output, lower = more focused.
+    # Top-P (nucleus sampling): Keep only top P% probability mass. 0.9 = keep top 90%.
     top_p: 0.9
 
-    # Top-K: Keep only top K most probable tokens.
-    # 40 = consider only top 40 tokens at each step.
-    # Lower = more focused, higher = more diverse.
+    # Top-K: Keep only top K most probable tokens (e.g., 40).
     top_k: 40
 
-    # Repetition penalty: Penalizes repeated tokens.
-    # 1.0 = no penalty, >1.0 = penalize repetition.
-    # 1.1 is good for avoiding repetitive/spam-like output.
+    # Repetition penalty: Penalizes repeated tokens (>1.0 = penalize). 1.1 avoids spam-like output.
     repetition_penalty: 1.1
 
-    # Presence penalty: Penalizes tokens that have already appeared.
-    # 0.0 = disabled, >0.0 = penalize already-used tokens.
-    presence_penalty: 0.0
+    # Presence penalty: Penalizes tokens that have already appeared (>0.0 = penalize).
+    presence_penalty: 0.1
 
-    # Frequency penalty: Penalizes tokens proportional to their frequency.
-    # 0.0 = disabled, >0.0 = penalize high-frequency tokens.
+    # Frequency penalty: Penalizes tokens proportional to their frequency (>0.0 = penalize).
     frequency_penalty: 0.0
 
-  # System prompt for the AI moderation model.
-  # This guides the model to make moderation decisions in JSON format.
-  # Injected placeholders:
-  #   <|SERVER_RULES_INJECT|> → Replaced with server_rules or default_server_rules
-  #   <|CHANNEL_GUIDELINES_INJECT|> → Replaced with channel-specific guidelines
+  # System prompt for the AI moderation model. Guides the model to output a JSON decision.
+  # Placeholders: <|SERVER_RULES_INJECT|>, <|CHANNEL_GUIDELINES_INJECT|>.
   system_prompt: |
     ROLE: You are a Discord moderation AI. Output ONLY valid JSON. No explanations, no extra text.
 
@@ -188,12 +156,9 @@ ai_settings:
 # ========================================
 # 4. DEFAULT RULES & GUIDELINES
 # ========================================
-# These are template rules that apply to all servers unless overridden per-guild.
-# To customize per-guild, use the Discord bot commands to set server-specific rules.
+# These template rules apply to all servers unless overridden via bot commands.
 
-# Default server rules for all servers.
-# Used when a server hasn't defined custom rules via the bot.
-# Rules are displayed to users and used by the AI moderation model.
+# Default server rules for all servers. Used if no server-specific rules are defined.
 default_server_rules: |
   1. Be respectful to all members and moderators.
   2. No spamming, flooding, or excessive use of caps/emoji. (Minor: occasional caps/emoji; Major: repeated spamming)
@@ -206,6 +171,5 @@ default_server_rules: |
   9. Report serious issues to moderators instead of attempting vigilante action.
   10. Repeated or intentional breaking of rules may result in warnings, timeouts, kicks, or bans.
 
-# Default channel guidelines for all channels.
-# Used when a channel hasn't defined custom guidelines via the bot.
+# Default channel guidelines for all channels. Used if no channel-specific guidelines are defined.
 default_channel_guidelines: ""

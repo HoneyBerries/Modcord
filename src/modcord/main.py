@@ -163,6 +163,14 @@ async def initialize_ai_model() -> None:
         logger.critical("Unexpected error during AI initialization: %s", exc)
 
 
+async def _start_schedulers_when_ready(bot: discord.Bot) -> None:
+    """Wait for bot to be ready, then start background sync schedulers."""
+    await bot.wait_until_ready()
+    logger.info("[MAIN] Bot ready, starting background schedulers…")
+    rules_sync_scheduler.start(bot)
+    guidelines_sync_scheduler.start(bot)
+
+
 async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
     """
     Run the Discord bot within the console session and return an exit code.
@@ -184,6 +192,8 @@ async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
 
     try:
         async with console_session(control):
+            # Start scheduler initialization task (runs after bot.wait_until_ready())
+            scheduler_task = asyncio.create_task(_start_schedulers_when_ready(bot))
             try:
                 await bot.start(token)
             except asyncio.CancelledError:
@@ -191,6 +201,8 @@ async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
             except Exception as exc:
                 logger.critical("Discord bot runtime error: %s", exc)
                 exit_code = 1
+            finally:
+                scheduler_task.cancel()
     finally:
         control.set_bot(None)
         await shutdown_runtime(bot)

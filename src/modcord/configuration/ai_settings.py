@@ -46,23 +46,3 @@ class AISettings:
     @property
     def cpu_offload_gb(self) -> int:
         return int(self.data.get("cpu_offload_gb", 0))
-
-    @property
-    def moderation_batch_seconds(self) -> float:
-        """Return the moderation batch window in seconds."""
-        return float(self.data.get("moderation_batch_seconds", 10.0))
-
-    @property
-    def past_actions_lookback_days(self) -> int:
-        """Return the historical context lookback in days."""
-        return int(self.data.get("past_actions_lookback_days", 7))
-
-    @property
-    def past_actions_lookback_minutes(self) -> int:
-        """Return the historical context lookback converted to minutes."""
-        return self.past_actions_lookback_days * 24 * 60
-
-    @property
-    def history_context_messages(self) -> int:
-        """Return the number of recent messages to fetch for context."""
-        return int(self.data.get("history_context_messages", 0))
