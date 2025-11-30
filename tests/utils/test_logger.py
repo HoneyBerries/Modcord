@@ -1,6 +1,5 @@
 import logging
-import pytest
-from modcord.util.logger import get_logger, setup_logger, ColorFormatter, PromptToolkitHandler, get_log_filepath, should_use_color, handle_exception
+from modcord.util.logger import get_logger, setup_logger, ColorFormatter, get_log_filepath, should_use_color, handle_exception
 
 class DummyStream:
     def __init__(self):
