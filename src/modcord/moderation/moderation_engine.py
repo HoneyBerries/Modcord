@@ -267,13 +267,22 @@ class ModerationEngine:
                 )
                 return False
             
-            result = await moderation_helper.apply_action_decision(
-                action=action,
-                member=member,
-                guild=guild,
-                bot_client=self._bot,
-                channel=channel
+            action_data = ActionData(
+                guild_id=action.guild_id,
+                channel_id=batch.channel_id,
+                user_id=action.user_id,
+                action=action.action,
+                reason=action.reason,
+                timeout_duration=action.timeout_duration,
+                ban_duration=action.ban_duration,
+                message_ids_to_delete=action.message_ids_to_delete,
             )
+            
+            result = await moderation_helper.apply_action_decision(
+                action=action_data,
+                member=member,
+                bot=self._bot)
+            
             logger.info(
                 "[MODERATION ENGINE] Applied action %s for user %s: %s",
                 action.action.value,
@@ -281,6 +290,7 @@ class ModerationEngine:
                 result
             )
             return result
+        
         except discord.Forbidden:
             logger.warning(
                 "Permission error applying action %s for user %s",
@@ -288,12 +298,12 @@ class ModerationEngine:
                 action.user_id
             )
             return False
+        
         except Exception as e:
             logger.error(
                 "Error applying action %s for user %s: %s",
                 action.action.value,
                 action.user_id,
                 e,
-                exc_info=True
-            )
+                exc_info=True)
             return False

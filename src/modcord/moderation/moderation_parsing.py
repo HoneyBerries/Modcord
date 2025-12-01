@@ -149,7 +149,7 @@ def parse_batch_actions(
     actions: List[ActionData] = []
     
     for item in entries:
-        if not isinstance(item, dict):
+        if type(item) is not dict:
             continue
         
         user_id = str(item.get("user_id", "")).strip()
@@ -184,7 +184,7 @@ def parse_batch_actions(
                 reason=reason,
                 timeout_duration=timeout_dur,
                 ban_duration=ban_dur,
-                message_ids=message_ids,
+                message_ids_to_delete=message_ids,
             )
         )
     

@@ -19,7 +19,6 @@ from modcord.datatypes.discord_datatypes import ChannelID, GuildID
 from modcord.datatypes.action_datatypes import ActionType
 from modcord.datatypes.guild_settings import GuildSettings, ACTION_FLAG_FIELDS
 from modcord.util.logger import get_logger
-from modcord.database import database as db
 from modcord.database.database import get_db
 
 logger = get_logger("guild_settings_manager")
@@ -48,7 +47,7 @@ class GuildSettingsManager:
     async def async_init(self) -> None:
         """Initialize the database and load settings from disk."""
         if not self._db_initialized:
-            await db.database.initialize()
+            await get_db().initialize()
             await self._load_from_disk()
             self._db_initialized = True
             logger.info("[GUILD SETTINGS MANAGER] Database initialized and settings loaded")

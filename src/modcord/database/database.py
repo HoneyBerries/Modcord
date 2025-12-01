@@ -295,7 +295,7 @@ class Database:
         Args:
             action: ActionData object containing all action details
         """
-        message_ids = [mid.to_int() for mid in action.message_ids_to_delete] if action.message_ids_to_delete else []
+        message_ids = ",".join(str(mid.to_int()) for mid in (action.message_ids_to_delete or []))
         
         async with self.get_connection() as db:
             await db.execute(

@@ -1,12 +1,10 @@
 import datetime
-from typing import Any
 
 import discord
 
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.action_datatypes import ActionType
-
-from modcord.datatypes.discord_datatypes import GuildID
+from modcord.datatypes.discord_datatypes import GuildID, UserID
 from modcord.util.logger import get_logger
 
 logger = get_logger("guild_settings_ui")
@@ -47,7 +45,7 @@ def build_settings_embed(guild_id: GuildID) -> discord.Embed:
     moderation actions are enabled for the specified guild.
     
     Args:
-        guild_id (int): The Discord guild ID to fetch settings for.
+        guild_id (GuildID): The Discord guild ID to fetch settings for.
     
     Returns:
         discord.Embed: A formatted embed with current settings information.
@@ -93,8 +91,8 @@ class GuildSettingsView(discord.ui.View):
     the Manage Server permission can interact with the controls.
     
     Attributes:
-        guild_id (int): The Discord guild ID this view manages settings for.
-        invoker_id (int | None): The user ID who invoked the settings panel.
+        guild_id (GuildID): The Discord guild ID this view manages settings for.
+        invoker_id (UserID | None): The user ID who invoked the settings panel.
         timeout_seconds (int): How long the view remains active before timing out.
     
     Methods:
@@ -104,7 +102,7 @@ class GuildSettingsView(discord.ui.View):
         on_timeout: Disable all buttons when the view times out.
     """
 
-    def __init__(self, guild_id: int, invoker_id: int | None, *, timeout_seconds: int = 300):
+    def __init__(self, guild_id: GuildID, invoker_id: UserID, timeout_seconds: int = 300):
         super().__init__(timeout=timeout_seconds)
         self.guild_id = guild_id
         self.invoker_id = invoker_id
@@ -197,7 +195,7 @@ class GuildSettingsView(discord.ui.View):
             # Handle any other Discord API errors gracefully
             pass
 
-    async def on_timeout(self) -> None:  # pragma: no cover - relies on Discord timers
+    async def on_timeout(self) -> None:
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True

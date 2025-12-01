@@ -22,7 +22,7 @@ from modcord.datatypes.discord_datatypes import UserID, GuildID, ChannelID
 from modcord.datatypes.moderation_datatypes import ModerationUser
 from modcord.datatypes.human_review_datatypes import HumanReviewData
 from modcord.ui.review_ui import HumanReviewResolutionView
-from modcord.ui.review_embed_helper import build_review_embed, build_role_mentions
+from modcord.ui import review_embed_helper
 from modcord.datatypes.guild_settings import GuildSettings
 
 logger = get_logger("human_review_manager")
@@ -110,7 +110,7 @@ class HumanReviewManager:
         batch_id = uuid.uuid4()
         
         # Build consolidated embed using utility function
-        embed = build_review_embed(review_items, batch_id)
+        embed = review_embed_helper.build_review_embed(review_items, batch_id)
         
         # Send to all review channels
         sent_messages = []
@@ -121,7 +121,7 @@ class HumanReviewManager:
             if review_channel and isinstance(review_channel, (discord.TextChannel, discord.Thread)):
                 try:
                     view = HumanReviewResolutionView(batch_id=batch_id, guild_id=GuildID.from_guild(guild), bot=self.bot)
-                    mention_content = build_role_mentions(guild, settings)
+                    mention_content = review_embed_helper.build_role_mentions(guild, settings)
                     
                     sent_message = await review_channel.send(
                         content=mention_content,

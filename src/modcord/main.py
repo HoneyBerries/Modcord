@@ -53,11 +53,7 @@ from modcord.listener import events_listener
 from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
 from modcord.listener import message_listener
 from modcord.database import database as db
-from modcord.ai.ai_moderation_processor import (
-    model_state,
-    initialize_engine,
-    shutdown_engine,
-)
+from modcord.ai import ai_moderation_processor
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
 from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
@@ -160,7 +156,7 @@ async def initialize_ai_model() -> None:
     """
     try:
         logger.info("[MAIN] Initializing AI moderation engine before bot startup…")
-        available, detail = await initialize_engine()
+        available, detail = await ai_moderation_processor.initialize_engine()
         if detail and not available:
             logger.critical("AI model failed to initialize: %s", detail)
     except Exception as exc:
@@ -254,7 +250,7 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
 
     # Shutdown AI engine (heavy resource cleanup)
     try:
-        await shutdown_engine()
+        await ai_moderation_processor.shutdown_engine()
     except Exception as exc:
         logger.exception("Error during moderation processor shutdown: %s", exc)
 
@@ -313,17 +309,17 @@ async def async_main() -> int:
         return 1
 
     try:
-        await initialize_ai_model()
+        await ai_moderation_processor.initialize_engine()
     except Exception:
-        if model_state.init_error:
-            logger.critical("AI initialization failed irrecoverably: %s", model_state.init_error)
+        if ai_moderation_processor.model_state.init_error:
+            logger.critical("AI initialization failed irrecoverably: %s", ai_moderation_processor.model_state.init_error)
         await shutdown_runtime(bot)
         return 1
 
-    if not model_state.available:
+    if not ai_moderation_processor.model_state.available:
         logger.warning(
             "AI model is unavailable (%s). Continuing without automated moderation.",
-            model_state.init_error or "no details",
+            ai_moderation_processor.model_state.init_error or "no details",
         )
 
     control = ConsoleControl()

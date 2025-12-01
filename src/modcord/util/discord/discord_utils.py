@@ -11,8 +11,8 @@ from typing import List, Union
 import discord
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.logger import get_logger
-from modcord.datatypes.discord_datatypes import MessageID, UserID, GuildID, ChannelID
-from modcord.util.image_utils import is_image_attachment
+from modcord.datatypes.discord_datatypes import MessageID, GuildID
+from modcord.util import image_utils
 
 logger = get_logger("discord_utils")
 
@@ -167,7 +167,7 @@ def should_process_message(
     
     # Check if message has text content or image attachments
     has_text = bool((message.clean_content or "").strip())
-    has_images = any(is_image_attachment(att) for att in message.attachments)
+    has_images = any(image_utils.is_image_attachment(att) for att in message.attachments)
     
     return has_text or has_images
 

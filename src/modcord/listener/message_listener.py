@@ -14,19 +14,9 @@ from modcord.configuration.app_configuration import app_config
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.database.database import get_db
 from modcord.datatypes.action_datatypes import ActionData
-from modcord.datatypes.discord_datatypes import (
-    ChannelID,
-    DiscordUsername,
-    GuildID,
-    MessageID,
-    UserID,
-)
+from modcord.datatypes.discord_datatypes import ChannelID, GuildID, DiscordUsername, MessageID, UserID
 from modcord.scheduler import rules_sync_scheduler
-from modcord.datatypes.moderation_datatypes import (
-    ModerationChannelBatch,
-    ModerationMessage,
-    ModerationUser,
-)
+from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationMessage, ModerationUser
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
 from modcord.moderation.moderation_engine import ModerationEngine
 from modcord.util.discord import collector, discord_utils

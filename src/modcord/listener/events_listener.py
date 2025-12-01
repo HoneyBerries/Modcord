@@ -11,7 +11,7 @@ from discord.ext import commands
 from modcord.ai.ai_moderation_processor import model_state
 from modcord.util.logger import get_logger
 
-logger = get_logger("events_listener_cog")
+logger = get_logger("events_listener")
 
 
 class EventsListenerCog(commands.Cog):
