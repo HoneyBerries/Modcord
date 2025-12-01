@@ -4,7 +4,7 @@
 # Modcord's core configuration for AI tuning, moderation logic, and caching.
 
 # ========================================
-# 1. CACHE & PERFORMANCE SETTINGS
+# 1. CACHE SETTINGS
 # ========================================
 cache:
   # Refresh interval (seconds) for server rules cache.
@@ -13,6 +13,9 @@ cache:
   # Refresh interval (seconds) for channel guidelines cache.
   channel_guidelines_cache_refresh: 60
 
+# ========================================
+# 2. MODERATION SETTINGS
+# ========================================
 
 moderation:
   # Messages received within this window (seconds) are grouped for batch moderation.
@@ -28,7 +31,7 @@ moderation:
   history_context_messages: 8
 
 # ========================================
-# 2. AI MODEL & INFERENCE SETTINGS
+# 3. AI MODEL & INFERENCE SETTINGS
 # ========================================
 
 ai_settings:
@@ -75,8 +78,11 @@ ai_settings:
     # Frequency penalty: Penalizes tokens proportional to their frequency (>0.0 = penalize).
     frequency_penalty: 0.0
 
+  # =======================================
   # System prompt for the AI moderation model. Guides the model to output a JSON decision.
-  # Placeholders: <|SERVER_RULES_INJECT|>, <|CHANNEL_GUIDELINES_INJECT|>.
+  # Placeholders: 
+  # <|SERVER_RULES_INJECT|>, <|CHANNEL_GUIDELINES_INJECT|>
+  # =======================================
   system_prompt: |
     ROLE: You are a Discord moderation AI. Output ONLY valid JSON. No explanations, no extra text.
 
@@ -130,7 +136,7 @@ ai_settings:
           "user_id": <integer>,
           "action": "null|warn|delete|timeout|kick|ban|review",
           "reason": "factual, concise",
-          "message_ids_to_delete": [<integers only>],
+          "message_ids_to_delete": [<message ids to delete, integers only>],
           "timeout_duration": <integer: 0 for no timeout or a positive duration in minutes>,
           "ban_duration": <integer: -1 for permanent, 0 for no ban, or a positive duration in minutes>
         }
