@@ -15,52 +15,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.12.11"
 
-      - name: Free up disk space and show usage
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Create virtualenv and install dependencies
         run: |
-          echo "Before cleanup"
-          df -h || true
-          # Remove common large preinstalled SDKs (safe on hosted runners)
-          sudo rm -rf /usr/share/dotnet || true
-          sudo rm -rf /opt/ghc || true
-          sudo rm -rf /usr/local/lib/android || true
-          # Purge pip cache and wheel caches
-          python -m pip cache purge || true
-          sudo rm -rf /home/runner/.cache/pip || true
-          echo "After cleanup"
-          df -h || true
-
-      - name: Create virtualenv and upgrade pip
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          python -m pip install --upgrade pip setuptools wheel
-
-      - name: Install test dependencies (no pip cache)
+          uv venv .venv
+          uv pip install -r requirements.txt
         env:
-          PIP_NO_CACHE_DIR: "1"
-        run: |
-          source .venv/bin/activate
-          # Prefer a small test-only requirements file for CI if present
-          if [ -f tests/ci-requirements.txt ]; then
-            echo "Installing tests/ci-requirements.txt"
-            python -m pip install --prefer-binary --no-cache-dir -r tests/ci-requirements.txt
-          else
-            echo "Installing requirements.txt (fallback)"
-            python -m pip install --prefer-binary --no-cache-dir -r requirements.txt
-          fi
-          df -h || true
+          UV_CACHE_DIR: /tmp/.uv-cache
 
       - name: Run tests
         run: |
           source .venv/bin/activate
           pytest -q
-
-      - name: Final disk usage
-        run: df -h || true

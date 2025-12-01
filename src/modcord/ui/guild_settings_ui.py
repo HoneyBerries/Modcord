@@ -1,11 +1,13 @@
 import datetime
-from typing import Any
 
 import discord
 
-from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.moderation.moderation_datatypes import ActionType
+from modcord.settings.guild_settings_manager import guild_settings_manager
+from modcord.datatypes.action_datatypes import ActionType
+from modcord.datatypes.discord_datatypes import GuildID, UserID
+from modcord.util.logger import get_logger
 
+logger = get_logger("guild_settings_ui")
 
 ACTION_UI_ORDER: tuple[ActionType, ...] = (
     ActionType.WARN,
@@ -13,6 +15,7 @@ ACTION_UI_ORDER: tuple[ActionType, ...] = (
     ActionType.TIMEOUT,
     ActionType.KICK,
     ActionType.BAN,
+    ActionType.REVIEW,
 )
 
 ACTION_UI_LABELS: dict[ActionType, str] = {
@@ -21,6 +24,7 @@ ACTION_UI_LABELS: dict[ActionType, str] = {
     ActionType.TIMEOUT: "Timeout",
     ActionType.KICK: "Kick",
     ActionType.BAN: "Ban",
+    ActionType.REVIEW: "Review",
 }
 
 ACTION_UI_EMOJIS: dict[ActionType, str] = {
@@ -29,10 +33,11 @@ ACTION_UI_EMOJIS: dict[ActionType, str] = {
     ActionType.TIMEOUT: "⏲️",
     ActionType.KICK: "👢",
     ActionType.BAN: "🔨",
+    ActionType.REVIEW: "🛡️",
 }
 
 
-def build_settings_embed(guild_id: int) -> discord.Embed:
+def build_settings_embed(guild_id: GuildID) -> discord.Embed:
     """
     Create a Discord embed summarizing current guild moderation settings.
     
@@ -40,12 +45,12 @@ def build_settings_embed(guild_id: int) -> discord.Embed:
     moderation actions are enabled for the specified guild.
     
     Args:
-        guild_id (int): The Discord guild ID to fetch settings for.
+        guild_id (GuildID): The Discord guild ID to fetch settings for.
     
     Returns:
         discord.Embed: A formatted embed with current settings information.
     """
-    settings = guild_settings_manager.get_guild_settings(guild_id)
+    settings = guild_settings_manager.get(guild_id)
     ai_status = "Enabled ✅" if settings.ai_enabled else "Disabled ❌"
 
     auto_actions_lines: list[str] = []
@@ -86,8 +91,8 @@ class GuildSettingsView(discord.ui.View):
     the Manage Server permission can interact with the controls.
     
     Attributes:
-        guild_id (int): The Discord guild ID this view manages settings for.
-        invoker_id (int | None): The user ID who invoked the settings panel.
+        guild_id (GuildID): The Discord guild ID this view manages settings for.
+        invoker_id (UserID | None): The user ID who invoked the settings panel.
         timeout_seconds (int): How long the view remains active before timing out.
     
     Methods:
@@ -97,7 +102,7 @@ class GuildSettingsView(discord.ui.View):
         on_timeout: Disable all buttons when the view times out.
     """
 
-    def __init__(self, guild_id: int, invoker_id: int | None, *, timeout_seconds: int = 300):
+    def __init__(self, guild_id: GuildID, invoker_id: UserID, timeout_seconds: int = 300):
         super().__init__(timeout=timeout_seconds)
         self.guild_id = guild_id
         self.invoker_id = invoker_id
@@ -122,7 +127,7 @@ class GuildSettingsView(discord.ui.View):
 
         self.clear_items()
 
-        ai_enabled = guild_settings_manager.is_ai_enabled(self.guild_id)
+        ai_enabled = guild_settings_manager.get(self.guild_id).ai_enabled
         self.add_item(ToggleAIButton(ai_enabled))
 
         for index, action in enumerate(ACTION_UI_ORDER, start=1):
@@ -190,15 +195,15 @@ class GuildSettingsView(discord.ui.View):
             # Handle any other Discord API errors gracefully
             pass
 
-    async def on_timeout(self) -> None:  # pragma: no cover - relies on Discord timers
+    async def on_timeout(self) -> None:
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
         if self._message is not None:
             try:
                 await self._message.edit(view=self)
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as e:
+                logger.debug("[GUILD SETTINGS UI] Failed to edit message on timeout: %s", e)
 
 
 class ToggleAIButton(discord.ui.Button):
@@ -229,9 +234,9 @@ class ToggleAIButton(discord.ui.Button):
             )
             return
 
-        current = guild_settings_manager.is_ai_enabled(view.guild_id)
+        current = guild_settings_manager.get(view.guild_id).ai_enabled
         new_state = not current
-        guild_settings_manager.set_ai_enabled(view.guild_id, new_state)
+        guild_settings_manager.update(view.guild_id, ai_enabled=new_state)
         await view.refresh_message(
             interaction,
             flash=f"AI moderation is now {'enabled' if new_state else 'disabled'}.",

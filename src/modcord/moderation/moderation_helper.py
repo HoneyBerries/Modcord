@@ -1,172 +1,245 @@
 """
-Moderation helper functions for global, multi-channel AI moderation.
+Moderation helper functions for applying actions and sending notifications.
 
-This module orchestrates batching and processing of messages from multiple Discord channels, applies per-channel server rules and dynamic JSON schemas/grammars, and routes AI moderation actions back to the appropriate Discord channels.
-
-Features:
-- Groups messages per channel, processes all channels together in a global batch for throughput
-- Dynamically builds and applies per-channel guided decoding schemas (JSON schema/grammar)
-- Applies moderation actions back to Discord contexts
+This module provides utility functions for:
+- Finding users in moderation batches
+- Sending moderation notifications using ActionData
+- Applying moderation actions from ActionData objects
 """
 
-from typing import Dict, List
-
+import datetime
 import discord
 
-from modcord.ai.ai_moderation_processor import moderation_processor, model_state
-from modcord.configuration.guild_settings import guild_settings_manager
-from modcord.moderation.moderation_datatypes import ActionData, ActionType, ModerationChannelBatch
-from modcord.util import discord_utils
+from modcord.database.database import get_db
+from modcord.datatypes.action_datatypes import ActionData, ActionType
+from modcord.datatypes.discord_datatypes import UserID
+from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationUser
+from modcord.ui import action_embed
+from modcord.scheduler import unban_scheduler
+from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_helper")
 
 
-async def process_message_batches(self, batches: List[ModerationChannelBatch]) -> None:
+# ---------------------------------------------------------------------------
+# Utility functions (stateless)
+# ---------------------------------------------------------------------------
+
+def find_target_user_in_batch(
+    batch: ModerationChannelBatch,
+    user_id: UserID
+) -> ModerationUser | None:
     """
-    Process multiple channel batches through the AI moderation pipeline in a global batch.
-    """
-    if not batches or not model_state.available:
-        return
-
-    valid_batches = []
-    server_rules_map = {}
-    channel_guidelines_map = {}
-
-    # Filter batches based on AI moderation settings and prepare rules/guidelines
-    for batch in batches:
-        if batch.is_empty():
-            continue
-        first_user = batch.users[0] if batch.users else None
-        first_message = first_user.messages[0] if first_user and first_user.messages else None
-        guild_id = first_message.guild_id if first_message else None
-        if not first_message or (guild_id and not guild_settings_manager.is_ai_enabled(guild_id)):
-            continue
-
-        # Prepare server rules and channel guidelines
-        server_rules_map[batch.channel_id] = guild_settings_manager.get_server_rules(guild_id) if guild_id else ""
-        channel_guidelines_map[batch.channel_id] = guild_settings_manager.get_channel_guidelines(guild_id, batch.channel_id) if guild_id else ""
-        valid_batches.append(batch)
-
-    if not valid_batches:
-        return
-
-    actions_by_channel = await moderation_processor.get_multi_batch_moderation_actions(
-        batches=valid_batches,
-        server_rules_map=server_rules_map,
-        channel_guidelines_map=channel_guidelines_map,
-    )
-
-    for batch in valid_batches:
-        actions = actions_by_channel.get(batch.channel_id, [])
-        for action in actions:
-            if action.action is not ActionType.NULL:
-                await apply_batch_action(self, action, batch)
-
-
-async def apply_batch_action(self, action: ActionData, batch: ModerationChannelBatch) -> bool:
-    """
-    Apply a moderation action to a user in the batch, ensuring permissions and context.
-    """
-    logger.debug(
-        "[APPLY_ACTION] Attempting to apply action %s for user %s in channel %s",
-        action.action.value,
-        action.user_id,
-        batch.channel_id
-    )
+    Find a target user in a batch by user ID.
     
-    if action.action is ActionType.NULL or not action.user_id:
-        logger.debug("[APPLY_ACTION] Skipping: action is NULL or no user_id")
-        return False
-
-    # Normalize user_id for comparison
-    target_user_id = str(action.user_id).strip()
-    target_user = next((u for u in batch.users if str(u.user_id).strip() == target_user_id), None)
+    Args:
+        batch: ModerationChannelBatch to search.
+        user_id: UserID to find.
+    
+    Returns:
+        ModerationUser if found with valid Discord context, None otherwise.
+    """
+    target_user = next((u for u in batch.users if u.user_id == user_id), None)
+    
     if not target_user or not target_user.messages:
         logger.warning(
-            "[APPLY_ACTION] Cannot apply action: target user %s not found in batch or has no messages. Batch has %d users: %s",
-            action.user_id,
-            len(batch.users),
-            [str(u.user_id).strip() for u in batch.users]
+            "[MODERATION HELPER] Target user %s not found in batch or has no messages",
+            user_id
         )
-        return False
+        return None
+    
+    if not target_user.discord_member or not target_user.discord_guild:
+        logger.warning(
+            "[MODERATION HELPER] Target user %s missing Discord context",
+            user_id
+        )
+        return None
+    
+    return target_user
 
-    logger.debug(
-        "[APPLY_ACTION] Found target user %s with %d messages",
-        target_user_id,
-        len(target_user.messages)
+
+def compute_action_duration(action: ActionData) -> datetime.timedelta | None:
+    """
+    Compute the duration timedelta from an ActionData object.
+    
+    Args:
+        action: ActionData containing timeout_duration or ban_duration
+        
+    Returns:
+        timedelta if action has a duration, None otherwise
+    """
+    if action.action == ActionType.TIMEOUT:
+        duration_minutes = action.timeout_duration or 10
+        if duration_minutes == -1:
+            duration_minutes = 28 * 24 * 60  # Cap to Discord's max
+        return datetime.timedelta(minutes=duration_minutes)
+    elif action.action == ActionType.BAN:
+        duration_minutes = action.ban_duration or 0
+        if duration_minutes <= 0:
+            return None  # Permanent ban
+        return datetime.timedelta(minutes=duration_minutes)
+    return None
+
+
+async def send_action_notification(
+    action: ActionData,
+    user: discord.Member,
+    guild: discord.Guild,
+    channel: discord.TextChannel,
+    bot_user: discord.User | discord.ClientUser,
+) -> None:
+    """
+    Send moderation notification embed to user via DM and to channel.
+    
+    This is the single notification function that extracts all needed info
+    from ActionData - the canonical representation throughout the pipeline.
+    
+    Args:
+        action: ActionData containing action type, reason, and duration info
+        user: Target user
+        guild: Guild context
+        channel: Channel to post embed in
+        bot_user: Bot user for footer attribution
+    """
+    duration = compute_action_duration(action)
+    
+    embed = await action_embed.create_action_embed(
+        action=action,
+        user=user,
+        guild=guild,
+        admin=bot_user,
+        duration=duration,
     )
-
-    pivot = next((m for m in reversed(target_user.messages) if m.discord_message), None)
-    if not pivot or not pivot.discord_message:
-        logger.warning(
-            "[APPLY_ACTION] Cannot apply action: no discord_message reference found for user %s (has %d messages, none with discord_message)",
-            action.user_id,
-            len(target_user.messages)
-        )
-        return False
-
-    logger.debug(
-        "[APPLY_ACTION] Found pivot message %s with discord_message reference",
-        pivot.message_id
-    )
-
-    guild_id = pivot.guild_id
-    if guild_id and not guild_settings_manager.is_action_allowed(guild_id, action.action):
-        logger.warning(
-            "[APPLY_ACTION] Action %s not allowed in guild %s",
-            action.action.value,
-            guild_id
-        )
-        return False
-
-    msg = pivot.discord_message
-    guild = msg.guild
-    author = msg.author
-    if not guild or not isinstance(author, discord.Member):
-        logger.warning(
-            "[APPLY_ACTION] Cannot apply action: no guild or author is not a member (guild=%s, author type=%s)",
-            guild,
-            type(author).__name__
-        )
-        return False
-    if guild.owner_id == author.id or discord_utils.has_elevated_permissions(author):
-        logger.debug(
-            "[APPLY_ACTION] Skipping action for user %s: user is owner or has elevated permissions",
-            action.user_id
-        )
-        return False
-
-    # Build message lookup dict with optimized comprehension
-    # Cache str() and strip() results, filter None values efficiently
-    msg_lookup = {
-        str(m.message_id).strip(): m.discord_message
-        for user in batch.users 
-        for m in user.messages 
-        if m.discord_message is not None
-    }
-
+    
+    # Try to send DM
     try:
-        logger.debug(
-            "[APPLY_ACTION] Executing action %s for user %s in guild %s (reason: %s)",
-            action.action.value,
-            action.user_id,
-            guild_id,
-            action.reason[:50] if action.reason else "N/A"
-        )
-        result = await discord_utils.apply_action_decision(
-            action=action, pivot=pivot, bot_user=self.bot.user, bot_client=self.bot, message_lookup=msg_lookup
-        )
-        logger.info(
-            "[APPLY_ACTION] Successfully applied action %s for user %s: %s",
-            action.action.value,
-            action.user_id,
-            result
-        )
-        return result
+        await user.send(embed=embed)
     except discord.Forbidden:
-        logger.warning(f"Permission error applying action {action.action.value} for user {action.user_id}")
+        logger.debug(f"Cannot send DM to user {user.id}: DMs disabled")
+    except Exception as e:
+        logger.error(f"Error sending DM to {user.id}: {e}")
+
+    # Post to channel if it exists
+    if channel:
+        try:
+            await channel.send(embed=embed)
+        except discord.Forbidden:
+            logger.warning(f"Cannot post to channel {channel.id}: missing permissions")
+        except Exception as e:
+            logger.error(f"Error posting to channel {channel.id}: {e}")
+
+
+async def apply_action(
+    action: ActionData,
+    member: discord.Member,
+    bot: discord.Bot,
+) -> bool:
+    """
+    Apply a moderation action to a user using the ActionData object.
+    
+    This is the single entry point for executing moderation actions. It:
+    1. Deletes messages if specified in ActionData
+    2. Applies the moderation action (timeout, kick, ban, etc.)
+    3. Sends notifications via DM and channel
+    4. Logs the action to the database
+    5. Schedules follow-up tasks (e.g., unban for temp bans)
+    
+    Args:
+        action: ActionData containing all action parameters
+        member: Discord member to apply action to
+        guild: Discord guild context
+        bot: Bot instance for API calls
+        channel: Discord channel to post notification embed to
+    
+    Returns:
+        bool: True if action was successfully applied
+    """
+    # Validate required objects
+    if bot is None or bot.user is None:
+        logger.error("Bot client is None or bot user is None, cannot apply moderation action")
+        return False
+    
+    guild = bot.get_guild(action.guild_id.to_int())
+    channel = guild.get_channel(action.channel_id.to_int()) if guild else None
+    
+    if guild is None or channel is None:
+        logger.error("Guild or Channel is None or missing, cannot apply moderation action")
+        return False
+
+    if type(channel) is not discord.TextChannel:
+        logger.error("Channel %s is not a TextChannel, cannot post moderation notification", channel.id)
+        return False
+    
+    # now do actual stuff
+    if len(action.message_ids_to_delete) > 0:
+        # Delete specified messages
+        await discord_utils.delete_messages_by_ids(guild, action.message_ids_to_delete)
+    
+    
+    try:
+        match action.action:
+            case ActionType.WARN:
+                await send_action_notification(action, member, guild, channel, bot.user)
+                await get_db().log_moderation_action(action)
+                return True
+            
+            case ActionType.DELETE:
+                # Messages already deleted above
+                await get_db().log_moderation_action(action)
+                return True
+            
+            case ActionType.TIMEOUT:
+                duration = compute_action_duration(action)
+                if duration is None:
+                    duration = datetime.timedelta(seconds=0) # Default to no timeout
+                until = discord.utils.utcnow() + duration
+                
+                await member.timeout(until, reason=f"ModCord: {action.reason}")
+                await send_action_notification(action, member, guild, channel, bot.user)
+                await get_db().log_moderation_action(action)
+                return True
+            
+            case ActionType.KICK:
+                await guild.kick(member, reason=f"ModCord: {action.reason}")
+                await send_action_notification(action, member, guild, channel, bot.user)
+                await get_db().log_moderation_action(action)
+                return True
+            
+            case ActionType.BAN:
+                duration = compute_action_duration(action)
+                
+                await guild.ban(member, reason=f"ModCord: {action.reason}")
+                
+                # Schedule unban if not permanent
+                if duration is not None:
+                    try:
+                        await unban_scheduler.UNBAN_SCHEDULER.schedule(
+                            guild=guild,
+                            user_id=action.user_id,
+                            channel=channel,
+                            duration_seconds=int(duration.total_seconds()),
+                            bot=bot,
+                            reason="Ban duration expired.",
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to schedule unban for user {member.id}: {e}")
+                
+                await send_action_notification(action, member, guild, channel, bot.user)
+                await get_db().log_moderation_action(action)
+                return True
+            
+            case _:
+                logger.warning(f"Unknown action type: {action.action}")
+                return False
+    
+    except discord.Forbidden:
+        logger.warning(f"Permission denied applying {action.action.value} to {member.id} in {guild.id}")
         return False
     except Exception as e:
-        logger.error(f"Error applying action {action.action.value} for user {action.user_id}: {e}", exc_info=True)
+        logger.error(f"Error applying {action.action.value}: {e}", exc_info=True)
         return False
+
+
+# Backwards compatibility alias - will be removed in future versions
+apply_action_decision = apply_action

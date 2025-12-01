@@ -15,7 +15,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.shortcuts import PromptSession
 
 
-from modcord.ai.ai_moderation_processor import model_state
+from modcord.ai import ai_moderation_processor
 from modcord.util.logger import get_logger
 
 
@@ -163,7 +163,7 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
         await bot.change_presence(status=discord.Status.offline)
         await bot.close()
         if log_close:
-            logger.info("Discord bot connection closed.")
+            logger.info("[CONSOLE] Discord bot connection closed.")
     except Exception as exc:
         logger.exception("Error while closing Discord bot: %s", exc)
 
@@ -225,8 +225,8 @@ async def cmd_status(control: ConsoleControl, args: list[str]) -> None:
     print_boxed_title("Bot Status", "ansimagenta")
 
     # AI Status
-    ai_status = "🟢 Available" if model_state.available else "🔴 Unavailable"
-    ai_detail = model_state.init_error or "ready"
+    ai_status = "🟢 Available" if ai_moderation_processor.model_state.available else "🔴 Unavailable"
+    ai_detail = ai_moderation_processor.model_state.init_error or "ready"
     console_print(f"  AI Engine:  {ai_status} ({ai_detail})")
     
     # Bot connection status

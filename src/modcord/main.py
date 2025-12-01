@@ -1,4 +1,5 @@
 """
+======================
 Discord Moderation Bot
 ======================
 
@@ -39,19 +40,25 @@ def resolve_base_dir() -> Path:
 BASE_DIR = resolve_base_dir()
 os.chdir(BASE_DIR)
 
+# ______________________________________________________________
+# Now that the base directory is set, import the rest of 
+# Modcord and run the program
+# ______________________________________________________________
+
 import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.ai.ai_moderation_processor import (
-    model_state,
-    initialize_engine,
-    shutdown_engine,
-)
-from modcord.configuration.guild_settings import guild_settings_manager
+from modcord.listener import events_listener
+from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
+from modcord.listener import message_listener
+from modcord.database import database as db
+from modcord.ai import ai_moderation_processor
+from modcord.settings.guild_settings_manager import guild_settings_manager
+from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
+from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
 from modcord.util.logger import get_logger, handle_exception
-from modcord.moderation.message_batch_manager import message_batch_manager
 
 
 logger = get_logger("main")
@@ -115,15 +122,13 @@ def load_cogs(discord_bot_instance: discord.Bot) -> None:
     Args:
         discord_bot_instance (discord.Bot): The bot instance to attach cogs to.
     """
-    from modcord.bot import debug_cmds, guild_settings_cmds, moderation_cmds, events_listener, message_listener
-
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
     message_listener.setup(discord_bot_instance)
     guild_settings_cmds.setup(discord_bot_instance)
     moderation_cmds.setup(discord_bot_instance)
 
-    logger.info("All cogs loaded successfully.")
+    logger.info("[MAIN] All cogs loaded successfully.")
 
 
 def create_bot() -> discord.Bot:
@@ -150,13 +155,20 @@ async def initialize_ai_model() -> None:
         Exception: Re-raises any unexpected initialization failures.
     """
     try:
-        logger.info("Initializing AI moderation engine before bot startup…")
-        available, detail = await initialize_engine()
+        logger.info("[MAIN] Initializing AI moderation engine before bot startup…")
+        available, detail = await ai_moderation_processor.initialize_engine()
         if detail and not available:
             logger.critical("AI model failed to initialize: %s", detail)
     except Exception as exc:
         logger.critical("Unexpected error during AI initialization: %s", exc)
-        raise
+
+
+async def _start_schedulers_when_ready(bot: discord.Bot) -> None:
+    """Wait for bot to be ready, then start background sync schedulers."""
+    await bot.wait_until_ready()
+    logger.info("[MAIN] Bot ready, starting background schedulers…")
+    rules_sync_scheduler.start(bot)
+    guidelines_sync_scheduler.start(bot)
 
 
 async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
@@ -174,19 +186,23 @@ async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
     Returns:
         int: Exit code (0 for success, 1 for error).
     """
-    logger.info("Attempting to run Discord bot with console control…")
+    logger.info("[MAIN] Attempting to run Discord bot with console control…")
     control.set_bot(bot)
     exit_code = 0
 
     try:
         async with console_session(control):
+            # Start scheduler initialization task (runs after bot.wait_until_ready())
+            scheduler_task = asyncio.create_task(_start_schedulers_when_ready(bot))
             try:
                 await bot.start(token)
             except asyncio.CancelledError:
-                logger.info("Discord bot start cancelled; shutting down")
+                logger.info("[MAIN] Discord bot start cancelled; shutting down")
             except Exception as exc:
                 logger.critical("Discord bot runtime error: %s", exc)
                 exit_code = 1
+            finally:
+                scheduler_task.cancel()
     finally:
         control.set_bot(None)
         await shutdown_runtime(bot)
@@ -201,9 +217,11 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
     Performs cleanup in the following order:
     1. Close Discord bot connection
     2. Close HTTP client session
-    3. Shutdown AI moderation engine
-    4. Shutdown guild settings manager
-    5. Shutdown message batch manager
+    3. Shutdown rules cache manager (stops periodic refresh)
+    4. Shutdown message batch manager (stops batch processing)
+    5. Shutdown AI moderation engine
+    6. Shutdown guild settings manager (persist pending changes)
+    7. Run garbage collection
     
     Args:
         bot (discord.Bot): The bot instance to shut down.
@@ -212,28 +230,51 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
         All exceptions during shutdown are caught and logged to ensure
         cleanup continues even if individual subsystems fail.
     """
-    await close_bot_instance(bot, log_close=True)
-    await bot.http.close() # type: ignore
+    # First, close Discord connection to stop receiving events
+    try:
+        await close_bot_instance(bot, log_close=True)
+        await bot.http.close()
+    except Exception as exc:
+        logger.exception("Error during discord http connection shutdown: %s", exc)
+
+    # Stop background tasks in proper order
+    try:
+        await rules_sync_scheduler.shutdown()
+    except Exception as exc:
+        logger.exception("Error during rules sync scheduler shutdown: %s", exc)
 
     try:
-        await shutdown_engine()
+        await guidelines_sync_scheduler.shutdown()
+    except Exception as exc:
+        logger.exception("Error during guidelines sync scheduler shutdown: %s", exc)
+
+    # Shutdown AI engine (heavy resource cleanup)
+    try:
+        await ai_moderation_processor.shutdown_engine()
     except Exception as exc:
         logger.exception("Error during moderation processor shutdown: %s", exc)
 
+    # Persist any pending guild settings
     try:
         await guild_settings_manager.shutdown()
     except Exception as exc:
         logger.exception("Error during guild settings shutdown: %s", exc)
 
+    # Release database lock
     try:
-        await message_batch_manager.shutdown()
+        db.database.shutdown()
     except Exception as exc:
-        logger.exception("Error during message batch manager shutdown: %s", exc)
+        logger.exception("Error during database shutdown: %s", exc)
+
+    # Final cleanup
+    try:
+        import gc
+        gc.collect()
+    except Exception as exc:
+        logger.exception("Garbage collection during shutdown failed: %s", exc)
     
-    logger.info("Shutdown complete.")
-
-
-# (run_bot consolidated above)
+    # This should be the absolute last log message before exit
+    logger.info("[MAIN] Shutdown complete.")
 
 
 async def async_main() -> int:
@@ -249,13 +290,13 @@ async def async_main() -> int:
     6. Handle restart requests
     
     Returns:
-        int: Process exit code (0 for normal exit, 1 for error, 42 for restart).
+        int: Process exit code (0 for normal exit, 1 for error, -1 for restart).
     """
     token = load_environment()
 
-    # Initialize database and load guild settings
+    # Initialize database and load guild settings (bot will be passed later for auto-population)
     try:
-        logger.info("Initializing database and loading guild settings...")
+        logger.info("[MAIN] Initializing database and loading guild settings...")
         await guild_settings_manager.async_init()
     except Exception as exc:
         logger.critical("Failed to initialize database: %s", exc)
@@ -268,25 +309,25 @@ async def async_main() -> int:
         return 1
 
     try:
-        await initialize_ai_model()
+        await ai_moderation_processor.initialize_engine()
     except Exception:
-        if model_state.init_error:
-            logger.critical("AI initialization failed irrecoverably: %s", model_state.init_error)
+        if ai_moderation_processor.model_state.init_error:
+            logger.critical("AI initialization failed irrecoverably: %s", ai_moderation_processor.model_state.init_error)
         await shutdown_runtime(bot)
         return 1
 
-    if not model_state.available:
+    if not ai_moderation_processor.model_state.available:
         logger.warning(
             "AI model is unavailable (%s). Continuing without automated moderation.",
-            model_state.init_error or "no details",
+            ai_moderation_processor.model_state.init_error or "no details",
         )
 
     control = ConsoleControl()
     exit_code = await run_bot(bot, token, control)
 
     if control.is_restart_requested():
-        logger.info("Restart requested, returning exit code 42 to trigger restart")
-        return 42
+        logger.info("[MAIN] Restart requested, returning exit code -1 to trigger restart")
+        return -1
 
     return exit_code
 
@@ -296,7 +337,7 @@ def main() -> int:
     Main entry point that runs the async event loop and handles process lifecycle.
     
     Executes the async_main coroutine and handles special exit codes:
-    - Exit code 42 triggers a process restart using os.execv
+    - Exit code -1 triggers a process restart using os.execv
     - Other exit codes are returned normally
     
     Handles KeyboardInterrupt for graceful shutdown and SystemExit for
@@ -305,21 +346,20 @@ def main() -> int:
     Returns:
         int: Process exit code to return to the operating system.
     """
-    logger.info("Starting Discord Moderation Bot…")
+    logger.info("[MAIN] Starting Discord Moderation Bot…")
     try:
         exit_code = asyncio.run(async_main())
 
-        if exit_code == 42:
-            logger.info("Restart requested; replacing current process with new instance.")
+        if exit_code == -1:
+            logger.info("[MAIN] Restart requested; replacing current process with new instance.")
             # Use os.execv to replace the current process, preserving stdin/stdout/stderr
             # This ensures the interactive console continues working after restart
             os.execv(sys.executable, [sys.executable] + sys.argv)
-            # execv never returns; the following is unreachable but satisfies type checkers
             return 0
 
         return exit_code
     except KeyboardInterrupt:
-        logger.info("Shutdown requested by user.")
+        logger.info("[MAIN] Shutdown requested by user.")
         return 0
     except SystemExit as exit_exc:
         code = exit_exc.code
@@ -330,7 +370,7 @@ def main() -> int:
         try:
             return int(code)
         except (ValueError, TypeError):
-            logger.warning("SystemExit.code is not an int (%r); defaulting to 1", code)
+            logger.warning("[MAIN] SystemExit.code is not an int (%r); defaulting to 1", code)
             return 1
     except Exception as exc:
         logger.critical("An unexpected error occurred while running the bot: %s", exc)

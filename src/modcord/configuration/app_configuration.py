@@ -1,57 +1,30 @@
-"""Centralized configuration management for Modcord.
-
-This module provides a small, thread-safe helper around a YAML
-configuration file (default: config/config.yml) so that the application can
-read configuration values from a single shared source without re-parsing the
-file repeatedly.
-
-Primary exports
-- AppConfig: a thread-safe accessor and loader for application config.
-- AISettings: a lightweight, dict-backed wrapper exposing common AI tuning
-  fields with attribute accessors while remaining mapping-compatible.
-- app_config: a module-global AppConfig instance that callers should reuse.
-
-Usage example:
-    from modcord.configuration.app_configuration import app_config
-
-    # Read a value with a default
-    value = app_config.get('some_key', 'default')
-
-    # Use the typed AI settings wrapper
-    ai = app_config.ai_settings
-    if ai.enabled:
-        model = ai.model_id
-
-The implementation favors safety and predictable fallbacks: if the YAML file
-is missing, malformed, or doesn't contain a top-level mapping, the loader
-logs an appropriate message and falls back to an empty configuration.
-"""
 from __future__ import annotations
 from pathlib import Path
-from threading import RLock
-from typing import Any, Dict, Optional, Iterator
-from collections.abc import Mapping
-
+import fcntl
+from typing import Any, Dict
 import yaml
 
+from modcord.configuration.ai_settings import AISettings
 from modcord.util.logger import get_logger
 
 logger = get_logger("app_configuration")
 
-# Default path to the YAML configuration file (root-level config/config.yml)
-CONFIG_PATH = Path("config/app_config.yml").resolve()
+
+CONFIG_PATH = Path("./config/app_config.yml").resolve()
+
+INFINITY = float("inf")
 
 
 class AppConfig:
-    """Thread-safe accessor around the YAML-based application configuration.
+    """File-lock based accessor around the YAML-based application configuration.
 
-    The class caches contents of ``config/app_config.yml``, exposes dictionary-like
+    The class caches contents of ``./config/app_config.yml``, exposes dictionary-like
     access helpers, and resolves AI-specific settings through :class:`AISettings`.
+    Uses fcntl file locks for safe concurrent access across processes.
     """
 
     def __init__(self, config_path: Path) -> None:
         self.config_path = config_path
-        self.lock = RLock()
         self._data: Dict[str, Any] = {}
         self.reload()
 
@@ -61,15 +34,17 @@ class AppConfig:
     def load_from_disk(self) -> Dict[str, Any]:
         try:
             with self.config_path.open("r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            if not isinstance(data, dict):
-                logger.warning("Config file %s must contain a mapping at the top level; ignoring.", self.config_path)
-                return {}
-            return data
+                # Acquire a shared lock for reading
+                fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                data = yaml.safe_load(f)
+
+                # Release the lock
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                return data
         except FileNotFoundError:
-            logger.error("Config file %s not found.", self.config_path)
+            logger.error("[APP CONFIGURATION] Config file %s not found.", self.config_path)
         except Exception as exc:
-            logger.error("Failed to load config %s: %s", self.config_path, exc)
+            logger.error("[APP CONFIGURATION] Failed to load config %s: %s", self.config_path, exc)
         return {}
 
     # --------------------------
@@ -78,13 +53,12 @@ class AppConfig:
     def reload(self) -> Dict[str, Any]:
         """Reload configuration from disk and return the loaded mapping.
 
-        This method grabs the internal lock, re-reads the YAML file, and
-        replaces the in-memory cache. It returns the raw mapping that was
-        loaded (which will be an empty dict on error).
+        Re-reads the YAML file and replaces the in-memory cache.
+        The load_from_disk method uses fcntl locking for safe file access.
+        Returns the raw mapping that was loaded (which will be an empty dict on error).
         """
-        with self.lock:
-            self._data = self.load_from_disk()
-            return self._data
+        self._data = self.load_from_disk()
+        return self._data
 
     @property
     def data(self) -> Dict[str, Any]:
@@ -94,16 +68,14 @@ class AppConfig:
         should not mutate it; use get(...) or the provided convenience
         properties instead.
         """
-        with self.lock:
-            return self._data
+        return self._data
 
     def get(self, key: str, default: Any = None) -> Any:
         """Safe lookup for top-level configuration keys.
 
         Returns the value for `key` if present, otherwise `default`.
         """
-        with self.lock:
-            return self._data.get(key, default)
+        return self._data.get(key, default)
 
     # --------------------------
     # High-level shortcuts
@@ -115,9 +87,7 @@ class AppConfig:
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        with self.lock:
-            value = self._data.get("server_rules") or self._data.get("default_server_rules", "")
-        return str(value or "")
+        return str(self._data.get("server_rules") or self._data.get("default_server_rules", "") or "")
 
     @property
     def channel_guidelines(self) -> str:
@@ -126,9 +96,7 @@ class AppConfig:
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        with self.lock:
-            value = self._data.get("channel_guidelines") or self._data.get("default_channel_guidelines", "")
-        return str(value or "")
+        return str(self._data.get("channel_guidelines") or self._data.get("default_channel_guidelines", "") or "")
 
     @property
     def system_prompt_template(self) -> str:
@@ -137,14 +105,9 @@ class AppConfig:
         Templates are expected to use Python format placeholders. Use
         format_system_prompt(...) to render with server rules inserted.
         """
-        with self.lock:
-            # Check ai_settings.system_prompt
-            ai_settings = self._data.get("ai_settings", {})
-            value = ""
-            if isinstance(ai_settings, dict):
-                value = ai_settings.get("system_prompt", "")
-
-        return str(value or "")
+        # Check ai_settings.system_prompt
+        ai_settings = self._data.get("ai_settings", {})
+        return str(ai_settings.get("system_prompt", "")) if isinstance(ai_settings, dict) else ""
 
     @property
     def ai_settings(self) -> AISettings:
@@ -153,61 +116,64 @@ class AppConfig:
         The wrapper provides both attribute-style access for common fields and
         mapping semantics for backward compatibility.
         """
-        with self.lock:
-            settings = self._data.get("ai_settings", {})
-            if not isinstance(settings, dict):
-                settings = {}
-            
-            return AISettings(settings)
-
-
-
-class AISettings:
-    """Helper exposing typed accessors for AI tuning configuration.
-
-    This class intentionally provides a minimal, explicit API (`get`,
-    `as_dict`, and convenience properties) and does not implement the full
-    mapping protocol. Callers that previously relied on mapping behavior
-    should use the explicit helpers.
-    """
-
-    def __init__(self, data: Dict[str, Any] | None = None) -> None:
-        self.data: Dict[str, Any] = data or {}
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """Return the value for `key` or `default` if missing."""
-        return self.data.get(key, default)
-
-    def as_dict(self) -> Dict[str, Any]:
-        """Return the underlying mapping (shallow copy recommended by callers)."""
-        return self.data
-
-    # Commonly used fields exposed as properties for convenience
-    @property
-    def enabled(self) -> bool:
-        return bool(self.data.get("enabled", False))
+        settings = self._data.get("ai_settings", {})
+        return AISettings(settings if isinstance(settings, dict) else {})
 
     @property
-    def allow_gpu(self) -> bool:
-        return bool(self.data.get("allow_gpu", False))
+    def rules_sync_interval(self) -> float:
+        """Return the server rules sync interval in seconds.
+
+        This is the interval at which server rules are synced from Discord.
+        Default is never (INFINITY).
+        """
+        cache_config = self._data.get("cache", {})
+        return float(cache_config.get("rules_cache_refresh", INFINITY)) if isinstance(cache_config, dict) else INFINITY
 
     @property
-    def vram_percentage(self) -> float:
-        return float(self.data.get("vram_percentage", 0.5))
+    def guidelines_sync_interval(self) -> float:
+        """Return the channel guidelines sync interval in seconds.
+
+        This is the interval at which channel guidelines are synced from Discord.
+        Default is never (INFINITY).
+        """
+        cache_config = self._data.get("cache", {})
+        return float(cache_config.get("channel_guidelines_cache_refresh", INFINITY)) if isinstance(cache_config, dict) else INFINITY
 
     @property
-    def model_id(self) -> str | None:
-        val = self.data.get("model_id")
-        return str(val) if val else None
+    def moderation_batch_seconds(self) -> float:
+        """Return the moderation batch window in seconds.
+
+        Messages received within this window are grouped for batch moderation.
+        Default is 15 seconds.
+        """
+        moderation_config = self._data.get("moderation", {})
+        return float(moderation_config.get("moderation_batch_seconds", INFINITY)) if isinstance(moderation_config, dict) else INFINITY
 
     @property
-    def sampling_parameters(self) -> Dict[str, Any]:
-        k = self.data.get("sampling_parameters", {})
-        return k if isinstance(k, dict) else {}
+    def past_actions_lookback_days(self) -> int:
+        """Return the historical context lookback in days.
+
+        Used by AI to determine punishment escalation.
+        Default is 7 days.
+        """
+        moderation_config = self._data.get("moderation", {})
+        return int(moderation_config.get("past_actions_lookback_days", 0)) if isinstance(moderation_config, dict) else 0
 
     @property
-    def cpu_offload_gb(self) -> int:
-        return int(self.data.get("cpu_offload_gb", 0))
+    def past_actions_lookback_minutes(self) -> int:
+        """Return the historical context lookback converted to minutes."""
+        return self.past_actions_lookback_days * 24 * 60
+
+    @property
+    def history_context_messages(self) -> int:
+        """Return the number of recent messages to fetch for context.
+
+        Provides context for violations. Default is 8 messages.
+        """
+        moderation_config = self._data.get("moderation", {})
+        if isinstance(moderation_config, dict):
+            return int(moderation_config.get("history_context_messages", 8))
+        return 8
 
 
 # Shared application-wide configuration instance
