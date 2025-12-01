@@ -1,12 +1,13 @@
 """
 Embed creation utilities for moderation notifications.
 
-This module provides utilities for creating Discord embeds for moderation actions.
+This module provides utilities for creating Discord embeds for moderation actions,
+using ActionData as the canonical input.
 """
 
 import datetime
 import discord
-from modcord.datatypes.action_datatypes import ActionType
+from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.util.logger import get_logger
 from modcord.util.discord import discord_utils
 
@@ -34,30 +35,29 @@ ACTION_COLORS = {
 }
 
 
-async def create_punishment_embed(
-    action_type: ActionType,
+async def create_action_embed(
+    action: ActionData,
     user: discord.Member,
     guild: discord.Guild,
-    reason: str,
     admin: discord.User | discord.ClientUser | discord.Member,
-    duration: datetime.timedelta | None,
+    duration: datetime.timedelta | None = None,
 ) -> discord.Embed:
     """
-    Create an embed for a moderation action.
+    Create an embed for a moderation action using ActionData.
     
     Args:
-        action_type: Type of moderation action
+        action: ActionData containing action type, reason, and other details
         user: Target user
         guild: Guild context
-        reason: Reason for action
-        duration: Optional duration timedelta (for timeout/ban)
+        admin: Admin/bot user for footer attribution
+        duration: Optional duration timedelta (computed from action if not provided)
     
     Returns:
         discord.Embed: Formatted embed with action details, duration, and expiry time
     """
-    emoji = ACTION_EMOJIS.get(action_type, "⚙️")
-    color = ACTION_COLORS.get(action_type, discord.Color.red())
-    action_name = action_type.value.capitalize()
+    emoji = ACTION_EMOJIS.get(action.action, "⚙️")
+    color = ACTION_COLORS.get(action.action, discord.Color.red())
+    action_name = action.action.value.capitalize()
     
     embed = discord.Embed(
         title=f"{emoji} {action_name} Issued",
@@ -73,7 +73,7 @@ async def create_punishment_embed(
     )
     
     # Reason field
-    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="Reason", value=action.reason, inline=False)
     
     # Duration and expiry for timeout/ban actions
     if duration and duration.total_seconds() > 0:

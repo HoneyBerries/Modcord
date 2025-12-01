@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from modcord.datatypes.discord_datatypes import GuildID, UserID
+from modcord.datatypes.discord_datatypes import GuildID, UserID, ChannelID
 import modcord.util.format_utils as format_utils
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 
@@ -39,6 +39,7 @@ def test_format_past_actions_handles_timeout_durations():
     actions = [
         ActionData(
             guild_id=GuildID.from_int(1),
+            channel_id=ChannelID.from_int(100),
             user_id=UserID.from_int(10),
             action=ActionType.TIMEOUT,
             reason="spam",
@@ -46,6 +47,7 @@ def test_format_past_actions_handles_timeout_durations():
         ),
         ActionData(
             guild_id=GuildID.from_int(1),
+            channel_id=ChannelID.from_int(100),
             user_id=UserID.from_int(11),
             action=ActionType.TIMEOUT,
             reason="harassment",
@@ -67,6 +69,7 @@ def test_format_past_actions_handles_ban_durations_and_omits_duration_when_absen
     actions = [
         ActionData(
             guild_id=GuildID.from_int(1),
+            channel_id=ChannelID.from_int(100),
             user_id=UserID.from_int(20),
             action=ActionType.BAN,
             reason="severe abuse",
@@ -74,6 +77,7 @@ def test_format_past_actions_handles_ban_durations_and_omits_duration_when_absen
         ),
         ActionData(
             guild_id=GuildID.from_int(1),
+            channel_id=ChannelID.from_int(100),
             user_id=UserID.from_int(21),
             action=ActionType.BAN,
             reason="alts",
@@ -81,6 +85,7 @@ def test_format_past_actions_handles_ban_durations_and_omits_duration_when_absen
         ),
         ActionData(
             guild_id=GuildID.from_int(1),
+            channel_id=ChannelID.from_int(100),
             user_id=UserID.from_int(22),
             action=ActionType.BAN,
             reason="temporary block",
@@ -88,6 +93,7 @@ def test_format_past_actions_handles_ban_durations_and_omits_duration_when_absen
         ),
         ActionData(
             guild_id=GuildID.from_int(1),
+            channel_id=ChannelID.from_int(100),
             user_id=UserID.from_int(23),
             action=ActionType.WARN,
             reason="reminder only",

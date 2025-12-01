@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List
 
-from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID
+from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
 
 
 class ActionType(Enum):
@@ -44,9 +44,10 @@ class ActionData:
         message_ids: List of message IDs to delete (for delete actions)
     """
     guild_id: GuildID
+    channel_id: ChannelID
     user_id: UserID
     action: ActionType
     reason: str
     timeout_duration: int = 0
     ban_duration: int = 0
-    message_ids: List[MessageID] = field(default_factory=list)
+    message_ids_to_delete: List[MessageID] = field(default_factory=list)

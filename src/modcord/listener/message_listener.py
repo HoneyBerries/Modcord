@@ -3,7 +3,6 @@
 This cog handles all message-related Discord events (on_message, on_message_edit)
 and processes messages through the AI moderation pipeline.
 """
-
 import asyncio
 from datetime import datetime, timezone
 from typing import List
@@ -22,16 +21,16 @@ from modcord.datatypes.discord_datatypes import (
     MessageID,
     UserID,
 )
+from modcord.scheduler import rules_sync_scheduler
 from modcord.datatypes.moderation_datatypes import (
     ModerationChannelBatch,
     ModerationMessage,
     ModerationUser,
 )
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
-from modcord.moderation.moderation_helper import ModerationEngine
-from modcord.util.discord import collector
-from modcord.util.discord import discord_utils
-from modcord.util.image_utils import download_images_for_moderation
+from modcord.moderation.moderation_engine import ModerationEngine
+from modcord.util.discord import collector, discord_utils
+from modcord.util import image_utils
 from modcord.util.logger import get_logger
 
 logger = get_logger("message_listener_cog")
@@ -51,7 +50,7 @@ class MessageListenerCog(commands.Cog):
         """
         self.bot = discord_bot_instance
         self.discord_bot_instance = discord_bot_instance
-        self._moderation_engine = ModerationEngine(discord_bot_instance)
+        self.ai_moderation_engine = ModerationEngine(discord_bot_instance)
         self._history_fetcher = DiscordHistoryFetcher(discord_bot_instance)
         self._pending_messages: dict[ChannelID, List[ModerationMessage]] = {}
         self._batch_timer: asyncio.Task | None = None
@@ -76,8 +75,7 @@ class MessageListenerCog(commands.Cog):
 
         # Sync rules cache if this was posted in a rules channel
         if isinstance(message.channel, discord.TextChannel) and collector.is_rules_channel(message.channel):
-            from modcord.scheduler.rules_sync_scheduler import sync_rules
-            await sync_rules(message.channel.guild)
+            await rules_sync_scheduler.sync_rules(message.channel.guild)
 
         # Queue message for moderation processing
         await self._queue_message_for_moderation(message)
@@ -141,7 +139,7 @@ class MessageListenerCog(commands.Cog):
             return None
         
         # Download images from attachments
-        images = await download_images_for_moderation(message)
+        images = await image_utils.download_images_for_moderation(message)
         
         return ModerationMessage(
             message_id=MessageID.from_message(message),
@@ -178,7 +176,7 @@ class MessageListenerCog(commands.Cog):
         try:
             batches = await self._assemble_batches(pending)
             if batches:
-                await self._moderation_engine.process_batches(batches)
+                await self.ai_moderation_engine.process_batches(batches)
         except Exception:
             logger.exception("Exception while processing moderation batches")
         
@@ -246,7 +244,7 @@ class MessageListenerCog(commands.Cog):
             return []
 
         guild_id = GuildID.from_guild(guild)
-        lookback = app_config.ai_settings.past_actions_lookback_minutes
+        lookback = app_config.past_actions_lookback_minutes
 
         users: List[ModerationUser] = []
         for uid, msgs in user_msgs.items():

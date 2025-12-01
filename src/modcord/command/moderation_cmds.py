@@ -289,7 +289,7 @@ class ModerationActionCog(commands.Cog):
             return
 
         ban_minutes = parse_duration_to_minutes(duration) if duration != PERMANENT_DURATION else 0
-        action = BanCommand(reason=reason, duration_minutes=ban_minutes)
+        action = BanCommand(duration_minutes=ban_minutes, reason=reason)
         await self.execute_command_action(
             ctx, user, action, delete_message_minutes=delete_message_minutes
         )

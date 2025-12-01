@@ -173,11 +173,12 @@ def parse_batch_actions(
         # Extract reason
         reason = str(item.get("reason", "")).strip()
 
-        # Create action
+        # Create action with channel_id included
         action_type = ActionType(action_str)
         actions.append(
             ActionData(
                 guild_id=guild_id,
+                channel_id=channel_id,
                 user_id=UserID(user_id),
                 action=action_type,
                 reason=reason,
