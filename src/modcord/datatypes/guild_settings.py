@@ -2,10 +2,10 @@
 Persistent per-guild configuration storage for the moderation bot.
 
 Database schema:
-- guild_settings table with columns: guild_id, ai_enabled, rules, auto_*_enabled flags
+- guild_settings table with columns: guild_id, ai_enabled, rules, rules_channel_id, auto_*_enabled flags
 - channel_guidelines table with columns: guild_id, channel_id, guidelines
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from modcord.datatypes.discord_datatypes import ChannelID, GuildID
 from modcord.datatypes.action_datatypes import ActionType
@@ -29,6 +29,7 @@ class GuildSettings:
     guild_id: GuildID
     ai_enabled: bool = False
     rules: str = ""
+    rules_channel_id: Optional[ChannelID] = None
     auto_warn_enabled: bool = False
     auto_delete_enabled: bool = False
     auto_timeout_enabled: bool = False

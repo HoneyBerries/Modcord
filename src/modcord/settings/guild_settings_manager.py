@@ -204,7 +204,7 @@ class GuildSettingsManager:
             async with get_db().get_connection() as conn:
                 async with conn.execute("""
                     SELECT 
-                        gs.guild_id, gs.ai_enabled, gs.rules,
+                        gs.guild_id, gs.ai_enabled, gs.rules, gs.rules_channel_id,
                         gs.auto_warn_enabled, gs.auto_delete_enabled,
                         gs.auto_timeout_enabled, gs.auto_kick_enabled, gs.auto_ban_enabled,
                         gs.auto_review_enabled,
@@ -226,16 +226,18 @@ class GuildSettingsManager:
                     guild_id = GuildID.from_int(row[0])
                     
                     if guild_id not in guild_seen:
+                        rules_channel_id = ChannelID.from_int(row[3]) if row[3] is not None else None
                         settings = GuildSettings(
                             guild_id=guild_id,
                             ai_enabled=bool(row[1]),
                             rules=row[2] or "",
-                            auto_warn_enabled=bool(row[3]),
-                            auto_delete_enabled=bool(row[4]),
-                            auto_timeout_enabled=bool(row[5]),
-                            auto_kick_enabled=bool(row[6]),
-                            auto_ban_enabled=bool(row[7]),
-                            auto_review_enabled=bool(row[8]) if row[8] is not None else True,
+                            rules_channel_id=rules_channel_id,
+                            auto_warn_enabled=bool(row[4]),
+                            auto_delete_enabled=bool(row[5]),
+                            auto_timeout_enabled=bool(row[6]),
+                            auto_kick_enabled=bool(row[7]),
+                            auto_ban_enabled=bool(row[8]),
+                            auto_review_enabled=bool(row[9]) if row[9] is not None else True,
                             moderator_role_ids=[],
                             review_channel_ids=[],
                             channel_guidelines={},
@@ -246,19 +248,19 @@ class GuildSettingsManager:
                     settings = self._guilds[guild_id]
 
                     # Add moderator role if present
-                    if row[9] is not None and row[9] not in settings.moderator_role_ids:
-                        settings.moderator_role_ids.append(row[9])
+                    if row[10] is not None and row[10] not in settings.moderator_role_ids:
+                        settings.moderator_role_ids.append(row[10])
 
                     # Add review channel if present
-                    if row[10] is not None:
-                        channel_obj = ChannelID.from_int(row[10])
+                    if row[11] is not None:
+                        channel_obj = ChannelID.from_int(row[11])
                         if channel_obj not in settings.review_channel_ids:
                             settings.review_channel_ids.append(channel_obj)
 
                     # Add channel guidelines if present
-                    if row[11] is not None and row[12] is not None:
-                        channel_obj = ChannelID.from_int(row[11])
-                        settings.channel_guidelines[channel_obj] = row[12]
+                    if row[12] is not None and row[13] is not None:
+                        channel_obj = ChannelID.from_int(row[12])
+                        settings.channel_guidelines[channel_obj] = row[13]
 
                 logger.info(
                     "[GUILD SETTINGS MANAGER] Loaded %d guild settings from database",
@@ -283,16 +285,18 @@ class GuildSettingsManager:
             try:
                 async with get_db().get_connection() as conn:
                     # Persist main guild settings
+                    rules_channel_id_int = settings.rules_channel_id.to_int() if settings.rules_channel_id else None
                     await conn.execute("""
                         INSERT INTO guild_settings (
-                            guild_id, ai_enabled, rules,
+                            guild_id, ai_enabled, rules, rules_channel_id,
                             auto_warn_enabled, auto_delete_enabled,
                             auto_timeout_enabled, auto_kick_enabled, auto_ban_enabled,
                             auto_review_enabled
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(guild_id) DO UPDATE SET
                             ai_enabled = excluded.ai_enabled,
                             rules = excluded.rules,
+                            rules_channel_id = excluded.rules_channel_id,
                             auto_warn_enabled = excluded.auto_warn_enabled,
                             auto_delete_enabled = excluded.auto_delete_enabled,
                             auto_timeout_enabled = excluded.auto_timeout_enabled,
@@ -303,6 +307,7 @@ class GuildSettingsManager:
                         guild_id.to_int(),
                         1 if settings.ai_enabled else 0,
                         settings.rules,
+                        rules_channel_id_int,
                         1 if settings.auto_warn_enabled else 0,
                         1 if settings.auto_delete_enabled else 0,
                         1 if settings.auto_timeout_enabled else 0,

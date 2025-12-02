@@ -157,6 +157,7 @@ class Database:
                         guild_id INTEGER PRIMARY KEY,
                         ai_enabled INTEGER NOT NULL DEFAULT 1,
                         rules TEXT NOT NULL DEFAULT '',
+                        rules_channel_id INTEGER DEFAULT NULL,
                         auto_warn_enabled INTEGER NOT NULL DEFAULT 1,
                         auto_delete_enabled INTEGER NOT NULL DEFAULT 1,
                         auto_timeout_enabled INTEGER NOT NULL DEFAULT 1,
@@ -172,6 +173,13 @@ class Database:
                 try:
                     await db.execute("ALTER TABLE guild_settings ADD COLUMN auto_review_enabled INTEGER NOT NULL DEFAULT 1")
                     logger.info("[DATABASE] Added auto_review_enabled column to guild_settings")
+                except Exception:
+                    pass  # Column already exists
+                
+                # Migration: add rules_channel_id if missing
+                try:
+                    await db.execute("ALTER TABLE guild_settings ADD COLUMN rules_channel_id INTEGER DEFAULT NULL")
+                    logger.info("[DATABASE] Added rules_channel_id column to guild_settings")
                 except Exception:
                     pass  # Column already exists
                 

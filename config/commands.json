@@ -438,12 +438,12 @@
   {
     "id": "1425943171254194257",
     "application_id": "1387903423592005663",
-    "version": "1425943171254194258",
+    "version": "1445264481486770238",
     "default_member_permissions": null,
     "type": 1,
     "name": "settings",
     "name_localizations": null,
-    "description": "Open an interactive panel to configure Modcord for this server.",
+    "description": "Open the full settings panel to configure Modcord for this server.",
     "description_localizations": null,
     "dm_permission": true,
     "contexts": [
@@ -515,14 +515,14 @@
     "nsfw": false
   },
   {
-    "id": "1441556305876746423",
+    "id": "1445264481486770236",
     "application_id": "1387903423592005663",
-    "version": "1441560245481766922",
+    "version": "1445264481486770237",
     "default_member_permissions": null,
     "type": 1,
-    "name": "mods",
+    "name": "setup",
     "name_localizations": null,
-    "description": "Manage moderator settings for AI reviews",
+    "description": "Initial setup wizard for Modcord - configure AI moderation and rules channel.",
     "description_localizations": null,
     "dm_permission": true,
     "contexts": [
@@ -532,89 +532,6 @@
     ],
     "integration_types": [
       0
-    ],
-    "options": [
-      {
-        "type": 1,
-        "name": "add-role",
-        "name_localizations": null,
-        "description": "Add a role to receive AI review alerts",
-        "description_localizations": null,
-        "options": [
-          {
-            "type": 8,
-            "name": "role",
-            "name_localizations": null,
-            "description": "No description provided",
-            "description_localizations": null,
-            "required": true
-          }
-        ]
-      },
-      {
-        "type": 1,
-        "name": "remove-role",
-        "name_localizations": null,
-        "description": "Remove a role from receiving AI review alerts",
-        "description_localizations": null,
-        "options": [
-          {
-            "type": 8,
-            "name": "role",
-            "name_localizations": null,
-            "description": "No description provided",
-            "description_localizations": null,
-            "required": true
-          }
-        ]
-      },
-      {
-        "type": 1,
-        "name": "add-channel",
-        "name_localizations": null,
-        "description": "Add a channel to receive AI review alerts",
-        "description_localizations": null,
-        "options": [
-          {
-            "type": 7,
-            "name": "channel",
-            "name_localizations": null,
-            "description": "No description provided",
-            "description_localizations": null,
-            "required": true,
-            "channel_types": [
-              0
-            ]
-          }
-        ]
-      },
-      {
-        "type": 1,
-        "name": "remove-channel",
-        "name_localizations": null,
-        "description": "Remove a channel from receiving AI review alerts",
-        "description_localizations": null,
-        "options": [
-          {
-            "type": 7,
-            "name": "channel",
-            "name_localizations": null,
-            "description": "No description provided",
-            "description_localizations": null,
-            "required": true,
-            "channel_types": [
-              0
-            ]
-          }
-        ]
-      },
-      {
-        "type": 1,
-        "name": "list",
-        "name_localizations": null,
-        "description": "List current moderator settings",
-        "description_localizations": null
-      }
     ],
     "nsfw": false
   }
