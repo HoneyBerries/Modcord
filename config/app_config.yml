@@ -49,8 +49,8 @@ ai_settings:
 
   # Sampling parameters for text generation. Controls output creativity and quality.
   sampling_parameters:
-    # Computation data type: "auto", "float32", "float16", "bfloat16".
-    dtype: "bfloat16"
+    # Computation data type: "auto", "float32", "float16", "bfloat16". Leave blank for auto.
+    #dtype: "auto"
 
     # Maximum new tokens to generate in one inference. Moderation typically needs ~512-1024.
     max_new_tokens: 1024
