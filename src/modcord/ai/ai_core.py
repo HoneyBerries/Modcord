@@ -180,9 +180,6 @@ class InferenceProcessor:
         tensor_parallel = torch.cuda.device_count() if cuda_available else 1
         
         chosen_dtype = sampling_parameters.get("dtype", "auto")
-        if not cuda_available and str(chosen_dtype).lower() in {"half", "float16", "bfloat16", "bf16"}:
-            logger.info("[AI MODEL] Forcing dtype to 'float32' (GPU unavailable)")
-            chosen_dtype = "float32"
         
         gpu_mem_util = vram_percentage if cuda_available else 0.0
         
