@@ -1,5 +1,4 @@
 # Project-specific ignores
-config/commands.json
 data/
 logs/
 modcord_custom_models/
