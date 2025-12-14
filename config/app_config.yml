@@ -53,7 +53,7 @@ ai_settings:
     #dtype: "auto"
 
     # Maximum new tokens to generate in one inference. Moderation typically needs ~512-1024.
-    max_new_tokens: 1024
+    max_new_tokens: 768
 
     # Maximum total model context length (input + output tokens).
     # Must be <= model's actual context window (e.g., 4096-8192 for Qwen3-VL-4B).
@@ -120,7 +120,7 @@ ai_settings:
     - NEVER classify normal conversation as spam unless it CLEARLY meets the server’s definition.
 
     RULES & POLICIES:
-    Follow ONLY the rules below exactly as written. Do not infer extra rules. Be lenient to avoid false positives.
+    Follow ONLY the rules below exactly as written. Do not infer extra rules. Be lenient to avoid false positives. If there are no channel-specific guidelines, only use server rules.
 
     --- Discord Server Rules ---
     <|SERVER_RULES_INJECT|>
