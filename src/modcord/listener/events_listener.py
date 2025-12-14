@@ -47,7 +47,7 @@ class EventsListenerCog(commands.Cog):
 
         commands = await self.bot.http.get_global_commands(self.bot.user.id)
 
-        with open("config/commands.json", "w") as f:
+        with open("data/commands.json", "w") as f:
             f.write(json.dumps(commands, indent=2))
 
     async def _update_presence(self) -> None:
