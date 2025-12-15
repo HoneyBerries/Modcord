@@ -58,7 +58,7 @@ else
 
     # Install dependencies using uv
     echo "Installing dependencies..."
-    uv pip install -r requirements.txt
+    uv pip install -r requirements.txt --index-strategy unsafe-best-match
 
     if [ $? -ne 0 ]; then
         echo "Failed to install dependencies with uv"
