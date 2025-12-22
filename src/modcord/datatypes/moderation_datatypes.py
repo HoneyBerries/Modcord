@@ -214,7 +214,7 @@ class ModerationChannelBatch:
         return not self.users or all(not user.messages for user in self.users)
     
     
-    def to_multimodal_payload(self) -> tuple[Dict[str, Any], List[Any], Dict[str, int]]:
+    def convert_batch_to_mm_llm_payload(self) -> tuple[Dict[str, Any], List[Any], Dict[str, int]]:
         """Convert batch to complete multimodal AI payload with images and deduplication.
         
         This is the primary method for preparing batches for AI inference. It handles:
@@ -227,7 +227,6 @@ class ModerationChannelBatch:
         Returns:
             Tuple of (json_payload, pil_images_list, image_id_map).
         """
-        from collections import defaultdict
         
         pil_images: List[Any] = []
         image_id_map: Dict[str, int] = {}

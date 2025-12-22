@@ -15,6 +15,7 @@ Key Features:
 from __future__ import annotations
 
 import json
+from PIL import Image
 from typing import Any, Dict, List
 from modcord.ai.ai_core import InferenceProcessor, inference_processor
 from modcord.util.logger import get_logger
@@ -110,7 +111,7 @@ class ModerationProcessor:
 
         for batch in batches:
             # Convert batch to JSON payload with image IDs
-            json_payload, pil_images, _ = batch.to_multimodal_payload()
+            json_payload, pil_images, _ = batch.convert_batch_to_mm_llm_payload()
 
             # Build user->message_ids map for non-history users
             user_message_map: Dict[UserID, List[MessageID]] = {}
@@ -126,6 +127,7 @@ class ModerationProcessor:
             grammar = Grammar.from_json_schema(dynamic_schema, strict_mode=True)
             grammar_str = str(grammar)
 
+
             # Resolve and apply server rules and channel guidelines per channel
             if guild_id:
                 # Fetch from guild_settings_manager using proper ID types
@@ -138,9 +140,12 @@ class ModerationProcessor:
                 server_rules = app_config.server_rules
                 channel_guidelines = app_config.channel_guidelines
             
+
+            # Merge rules and guidelines
             merged_rules = self._resolve_server_rules(server_rules)
             merged_guidelines = self._resolve_channel_guidelines(channel_guidelines)
             
+            # Get system prompt with merged rules and guidelines
             system_prompt = self.inference_processor.get_system_prompt(merged_rules, merged_guidelines)
 
             # Format messages for vLLM
@@ -198,14 +203,15 @@ class ModerationProcessor:
         return actions_by_channel
 
 
+
     def _format_multimodal_messages(
         self,
         system_prompt: str,
         json_payload: Dict[str, Any],
-        pil_images: List[Any]
+        pil_images: List[Image.Image]
     ) -> List[Dict[str, Any]]:
         """
-        Build vLLM-compatible messages with multimodal content.
+        Build vLLM-compatible messages with multimodal content in the proper chat format the model expects.
 
         Args:
             system_prompt: The system prompt text.
@@ -213,10 +219,10 @@ class ModerationProcessor:
             pil_images: List of PIL Image objects.
 
         Returns:
-            List of vLLM messages with multimodal content.
+            List of vLLM messages with multimodal content in the proper chat format the model expects.
         """
         # Build user message content as list with text + images
-        user_content = [
+        user_content: List[Dict[str, str | Image.Image]] = [
             {
                 "type": "text",
                 "text": json.dumps(json_payload, separators=(",", ":"))
@@ -241,6 +247,8 @@ class ModerationProcessor:
             {"role": "user", "content": user_content},
         ]
 
+
+
     async def _run_multi_inference(
         self,
         conversations: List[List[Dict[str, Any]]],
@@ -258,58 +266,66 @@ class ModerationProcessor:
         Returns:
             List of response strings (one per conversation).
         """
+        # Check if model is shutting down
         if self._shutdown:
             logger.warning("[INFERENCE] Processor is shutting down")
             return [self._null_response("shutting down") for _ in conversations]
         
-        if not self.inference_processor.is_model_available():
+        # Ensure model is available
+        elif not self.inference_processor.is_model_available():
             reason = self.inference_processor.get_model_init_error()
             logger.warning("[INFERENCE] Model not available: %s", reason)
             return [self._null_response(reason or "unavailable") for _ in conversations]
         
-        try:
-            # DEBUG: Log the full input going into the LLM in readable format
-            def format_msg(msg):
-                if msg["role"] == "system":
-                    return None
-                content = msg["content"]
-                if isinstance(content, str):
-                    return {"role": msg["role"], "content": content}
-                formatted_content = []
-                image_count = 0
-                for item in content:
-                    if item.get("type") == "text":
-                        try:
-                            data = json.loads(item["text"])
-                            formatted_content.append({"type": "text_json", "data": data})
-                        except Exception:
-                            formatted_content.append(item)
-                    elif item.get("type") == "image_pil":
-                        # Show image placeholder with count (actual image IDs are in the JSON data above)
-                        formatted_content.append({"type": "image_pil", "placeholder": f"<PIL Image #{image_count + 1}>"})
-                        image_count += 1
-                    else:
-                        formatted_content.append(item)
-                return {"role": msg["role"], "content": formatted_content}
 
-            formatted_convos = [
-                [fm for fm in (format_msg(msg) for msg in conv) if fm]
-                for conv in conversations
-            ]
-            logger.debug(
-                "[LLM INPUT] Submitting %d conversations to model:\n%s",
-                len(conversations),
-                json.dumps(formatted_convos, indent=2, ensure_ascii=False)[:10000]
-            )
-            
+        # DEBUG: Log the full input going into the LLM in readable format. Note: This is not necessary whatsoever for actual inference.
+        def format_msg(msg):
+            if msg["role"] == "system":
+                return None
+            content = msg["content"]
+            if isinstance(content, str):
+                return {"role": msg["role"], "content": content}
+            formatted_content = []
+            image_count = 0
+            for item in content:
+                if item.get("type") == "text":
+                    try:
+                        data = json.loads(item["text"])
+                        formatted_content.append({"type": "text_json", "data": data})
+                    except Exception:
+                        formatted_content.append(item)
+                elif item.get("type") == "image_pil":
+                    # Show image placeholder with count (actual image IDs are in the JSON data above)
+                    formatted_content.append({"type": "image_pil", "placeholder": f"<PIL Image #{image_count + 1}>"})
+                    image_count += 1
+                else:
+                    formatted_content.append(item)
+            return {"role": msg["role"], "content": formatted_content}
+
+        formatted_convos = [
+            [fm for fm in (format_msg(msg) for msg in conv) if fm]
+            for conv in conversations
+        ]
+        logger.debug(
+            "[LLM INPUT] Submitting %d conversations to model:\n%s",
+            len(conversations),
+            json.dumps(formatted_convos, indent=2, ensure_ascii=False)[:10000]
+        )
+
+        
+        # Run multi-conversation inference
+        try:
             results = await self.inference_processor.generate_multi_chat(
                 conversations,
                 grammar_strings
             )
             return [r.strip() if r else self._null_response("no response") for r in results]
+        
         except Exception as exc:
             logger.error("[INFERENCE] Multi-batch inference error: %s", exc, exc_info=True)
             return [self._null_response("inference error") for _ in conversations]
+
+
 
     async def _ensure_model_initialized(self) -> bool:
         """Ensure the model has been initialized at least once.
@@ -319,6 +335,8 @@ class ModerationProcessor:
         if not self.inference_processor.state.init_started:
             return await self.init_model()
         return True
+
+
 
     def _resolve_server_rules(self, server_rules: str = "") -> str:
         """Pick guild-specific rules when provided, otherwise fall back to global defaults."""
@@ -333,6 +351,8 @@ class ModerationProcessor:
         )
         return resolved
 
+
+
     def _resolve_channel_guidelines(self, channel_guidelines: str = "") -> str:
         """Pick channel-specific guidelines when provided, otherwise fall back to global defaults."""
         base_guidelines = (app_config.channel_guidelines or "").strip()
@@ -345,6 +365,8 @@ class ModerationProcessor:
             "channel_specific" if channel_specific else "base"
         )
         return resolved
+
+
 
     async def shutdown(self) -> None:
         """Gracefully stop the moderation processor and unload the AI model."""
@@ -369,7 +391,7 @@ moderation_processor = ModerationProcessor()
 model_state = inference_processor.state
 
 
-# Direct API functions (eliminates ai_lifecycle abstraction layer)
+# Direct API functions (eliminates ai_lifecycle abstraction layer). This is deprecated but kept for backward compatibility.
 async def initialize_engine(model: str | None = None) -> tuple[bool, str | None]:
     """Initialize the moderation engine. Returns (success, error_message)."""
     logger.info("[ENGINE] Initializing moderation engine...")
