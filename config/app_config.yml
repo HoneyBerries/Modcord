@@ -31,53 +31,19 @@ moderation:
   history_context_messages: 8
 
 # ========================================
-# 3. AI MODEL & INFERENCE SETTINGS
+# 3. AI API & INFERENCE SETTINGS
 # ========================================
 
 ai_settings:
-  # Enable/disable AI-based moderation. Set to false to use basic (non-AI) moderation.
-  enabled: true
-
-  # Path to local model dir or Hugging Face model identifier (e.g., "Qwen/Qwen3-VL-4B-Instruct").
-  model_id: "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit"
-
-  # GPU memory utilization (0.0 to 1.0). Reduce if running out of VRAM.
-  vram_percentage: 0.86
-
-  # CPU offload size (GB). Set to 0 to disable.
-  cpu_offload_gb: 0
-
-  # Sampling parameters for text generation. Controls output creativity and quality.
-  sampling_parameters:
-    # Computation data type: "auto", "float32", "float16", "bfloat16". Leave blank for auto.
-    #dtype: "auto"
-
-    # Maximum new tokens to generate in one inference. Moderation typically needs ~512-1024.
-    max_new_tokens: 768
-
-    # Maximum total model context length (input + output tokens).
-    # Must be <= model's actual context window (e.g., 4096-8192 for Qwen3-VL-4B).
-    max_model_length: 4096
-
-    # Temperature (0.0-1.5): Controls randomness (0.0=deterministic, 0.3=balanced, 0.7=creative).
-    # Recommended for moderation: 0.3.
-    temperature: 0.3
-
-    # Top-P (nucleus sampling): Keep only top P% probability mass. 0.9 = keep top 90%.
-    top_p: 0.9
-
-    # Top-K: Keep only top K most probable tokens (e.g., 40).
-    top_k: 40
-
-    # Repetition penalty: Penalizes repeated tokens (>1.0 = penalize). 1.1 avoids spam-like output.
-    repetition_penalty: 1.1
-
-    # Presence penalty: Penalizes tokens that have already appeared (>0.0 = penalize).
-    presence_penalty: 0.1
-
-    # Frequency penalty: Penalizes tokens proportional to their frequency (>0.0 = penalize).
-    frequency_penalty: 0.0
-
+  # OpenAI-compatible API endpoint (vLLM, LM Studio, Ollama, etc.)
+  base_url: "http://localhost:8000/v1"
+  
+  # API key for authentication (use "EMPTY" for local servers without auth)
+  api_key: "EMPTY"
+  
+  # Model name/identifier to use for inference
+  model_name: "cyankiwi/Qwen3-VL-4B-Instruct-AWQ-4bit"
+  
   # =======================================
   # System prompt for the AI moderation model. Guides the model to output a JSON decision.
   # Placeholders: 

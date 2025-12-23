@@ -14,11 +14,11 @@ Key Features:
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Sequence, Set
 
-import PIL.Image
 import discord
 
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
@@ -32,17 +32,15 @@ logger = get_logger("moderation_datatypes")
 
 @dataclass(slots=True)
 class ModerationImage:
-    """Simplified image representation with SHA256 hash ID, URL, and optional PIL image.
+    """Simplified image representation with SHA256 hash ID and URL.
 
     Attributes:
         image_id (ImageID): First 8 characters of the SHA256 hash.
-        image_url (ImageURL): URL of the image for downloading.
-        pil_image (PIL.Image.Image): PIL.Image.Image object representing the image.
+        image_url (ImageURL): URL of the image.
     """
 
     image_id: ImageID
     image_url: ImageURL
-    pil_image: PIL.Image.Image
 
 
 @dataclass(slots=True)
@@ -176,6 +174,7 @@ class ModerationChannelBatch:
         history_users (List[ModerationUser]): Historical users for context.
     """
 
+    guild_id: GuildID
     channel_id: ChannelID
     channel_name: str
     users: List[ModerationUser] = field(default_factory=list)
@@ -225,10 +224,10 @@ class ModerationChannelBatch:
         - Complete payload construction
         
         Returns:
-            Tuple of (json_payload, pil_images_list, image_id_map).
+            Tuple of (json_payload, image_urls_list, image_id_map).
         """
         
-        pil_images: List[Any] = []
+        image_urls: List[str] = []
         image_id_map: Dict[str, int] = {}
         
         # Build sets of message IDs to determine which messages are historical
@@ -271,14 +270,14 @@ class ModerationChannelBatch:
             
             user_messages = []
             for msg, is_history in messages_with_flags:
-                # Collect PIL images and build image ID map
+                # Collect image URLs and build image ID map
                 if msg.images:
                     for img in msg.images:
-                        if img.pil_image and img.image_id:
+                        if img.image_url and img.image_id:
                             img_id_str = str(img.image_id)
                             if img_id_str not in image_id_map:
-                                image_id_map[img_id_str] = len(pil_images)
-                                pil_images.append(img.pil_image)
+                                image_id_map[img_id_str] = len(image_urls)
+                                image_urls.append(str(img.image_url))
                 
                 # Convert message to payload
                 msg_dict = msg.convert_message_to_model_payload(is_history=is_history, image_id_map=image_id_map)
@@ -294,8 +293,8 @@ class ModerationChannelBatch:
             "channel_name": self.channel_name,
             "message_count": total_messages,
             "unique_user_count": len(user_map),
-            "total_images": len(pil_images),
+            "total_images": len(image_urls),
             "users": users_list,
         }
         
-        return payload, pil_images, image_id_map
+        return payload, image_urls, image_id_map

@@ -23,7 +23,7 @@ Follow these steps to get Modcord running on your local machine for development 
 
 - Python 3.12.x
 - A Discord bot token (create one at the [Discord Developer Portal](https://discord.com/developers/applications))
-- Linux (required for vLLM)
+- An OpenAI-compatible API key and model endpoint
 
 ### Quick Start
 
@@ -47,7 +47,6 @@ Follow these steps to get Modcord running on your local machine for development 
 The `start.sh` script will automatically:
 - Detect or create a Python virtual environment
 - Install all required dependencies from `requirements.txt`
-- Apply necessary patches (e.g., vLLM workaround)
 - Launch the bot
 
 No manual setup of a virtual environment or dependency installation is requiredâ€”just run `./start.sh` and follow the prompts.
@@ -56,7 +55,7 @@ No manual setup of a virtual environment or dependency installation is requiredâ
 
 ## Features
 
-- **AI-Powered Moderation**: Uses a local or hosted Large Language Model to analyze messages and suggest moderation actions.
+- **AI-Powered Moderation**: Uses an OpenAI-compatible API to analyze messages and suggest moderation actions.
 - **Manual Slash Commands**: A full suite of commands for manual moderation (`warn`, `timeout`, `kick`, `ban`) and other management commands.
 - **Contextual Analysis**: Pulls per-channel message history on demand to keep moderation context up to date.
 - **Temporary Actions**: Supports temporary bans and timeouts.
@@ -68,10 +67,10 @@ No manual setup of a virtual environment or dependency installation is requiredâ
 
 ## Configuration & Architecture
 
-- **AI Lifecycle**: `modcord.ai.ai_lifecycle` (initialize/restart/shutdown).
+- **AI Calls**: `modcord.ai.ai_moderation_processor` sends OpenAI-compatible chat requests (no local model lifecycle).
 - **Configuration & Persistence**: `modcord.configuration.guild_settings` (using SQLite database at `data/app.db`).
 - **Database**: Guild settings are stored in SQLite database for reliability and performance.
-- **Moderation Orchestration**: `modcord.ai.ai_moderation_processor` and `modcord.ai.ai_core`.
+- **Moderation Orchestration**: `modcord.ai.ai_moderation_processor`.
 - **Cogs**: Located under `src/modcord/bot/cogs`.
 
 ---

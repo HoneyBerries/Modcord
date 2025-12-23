@@ -14,7 +14,7 @@ Features:
 from typing import List
 import discord
 
-from modcord.ai.ai_moderation_processor import moderation_processor, model_state
+from modcord.ai.ai_moderation_processor import moderation_processor
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import GuildID
@@ -66,38 +66,30 @@ class ModerationEngine:
         Args:
             batches: List of ModerationChannelBatch objects to process.
         """
-        if not batches or not model_state.available:
+        if not batches:
             return
 
         valid_batches = []
-        guild_id = None
 
-        # Filter batches based on AI moderation settings and prepare guild context
+        # Filter out empty batches and those where AI moderation is disabled
         for batch in batches:
-            if batch.is_empty():
+            if batch.is_empty() or not batch.users or not batch.users[0].messages:
                 continue
-            
-            first_user = batch.users[0]
-            first_message = first_user.messages[0]
 
+            first_message = batch.users[0].messages[0]
             guild_id = first_message.guild_id
-
-            if not first_message or (guild_id and not guild_settings_manager.get(guild_id).ai_enabled):
+            settings = guild_settings_manager.get(guild_id) if guild_id else None
+            if settings and not settings.ai_enabled:
                 continue
 
             valid_batches.append(batch)
 
         if not valid_batches:
-            logger.error("No valid batches to process for moderation.")
-            return
-
-        if guild_id is None:
-            logger.error("No valid guild_id found for moderation batch processing.")
+            logger.info("No valid batches to process for moderation.")
             return
 
         actions_by_channel = await moderation_processor.get_multi_batch_moderation_actions(
-            batches=valid_batches,
-            guild_id=guild_id
+            batches=valid_batches
         )
 
         # Initialize review notification manager
@@ -129,6 +121,7 @@ class ModerationEngine:
                 settings = guild_settings_manager.get(guild_id)
                 if settings:
                     await review_manager.send_review_embed(guild, settings)
+
 
     async def _handle_review_action(
         self,

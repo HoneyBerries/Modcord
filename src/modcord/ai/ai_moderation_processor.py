@@ -1,117 +1,142 @@
 """High-level orchestration logic for AI-driven moderation workflows.
 
-This module coordinates the entire moderation pipeline, including:
-- Converting channel batches into vLLM-compatible conversations.
-- Dynamically building JSON schemas and guided decoding grammars for each channel.
-- Submitting all conversations in a single batch to the AI model for inference.
+This module coordinates the entire moderation pipeline using an OpenAI-compatible API:
+- Converting channel batches into chat completion requests with multimodal content.
+- Dynamically building JSON schemas for structured outputs.
+- Submitting concurrent requests to the API using asyncio.gather().
 - Parsing responses and applying moderation actions per channel.
 
 Key Features:
-- Supports multimodal inputs (text + images).
+- Uses AsyncOpenAI client for inference (compatible with vLLM, LM Studio, etc.).
+- Supports multimodal inputs (text + images via URLs).
 - Handles per-channel server rules dynamically.
-- Ensures efficient batch processing for high throughput.
+- Ensures efficient concurrent processing for high throughput.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
-from PIL import Image
-from typing import Any, Dict, List
-from modcord.ai.ai_core import InferenceProcessor, inference_processor
+
+from typing import Any, Dict, List, Tuple
+from openai import AsyncOpenAI
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionContentPartParam,
+    ChatCompletionContentPartImageParam,
+    ChatCompletionContentPartTextParam,
+)
+from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
+
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData
 from modcord.datatypes.moderation_datatypes import ModerationChannelBatch
 from modcord.datatypes.discord_datatypes import UserID, MessageID, ChannelID, GuildID
-import modcord.moderation.moderation_parsing as moderation_parsing
+from modcord.moderation import moderation_parsing
 from modcord.configuration.app_configuration import app_config
 from modcord.settings.guild_settings_manager import guild_settings_manager
-from xgrammar.grammar import Grammar
+
+
 
 logger = get_logger("ai_moderation_processor")
-
 
 class ModerationProcessor:
     """
     Coordinate moderation prompts, inference, and response parsing.
 
-    This class manages the lifecycle of the moderation engine, including:
-    - Initializing the AI model and ensuring availability.
-    - Converting channel batches into vLLM-compatible inputs.
-    - Dynamically generating JSON schemas and grammars for guided decoding.
-    - Submitting all conversations in a single batch to the AI model.
+    This class manages the moderation pipeline using an OpenAI-compatible API:
+    - Initializing the AsyncOpenAI client from configuration.
+    - Converting channel batches into chat completion requests.
+    - Dynamically generating JSON schemas for structured outputs.
+    - Submitting concurrent requests using asyncio.gather().
     - Parsing responses and grouping actions by channel.
-
-    Attributes:
-        inference_processor (InferenceProcessor): The AI inference engine.
-        _shutdown (bool): Tracks whether the processor is shutting down.
     """
 
-    def __init__(self, engine: InferenceProcessor | None = None) -> None:
-        self.inference_processor = engine or inference_processor
-        self._shutdown = False
+    def __init__(self) -> None:
+        """Initialize the ModerationProcessor with AsyncOpenAI client."""
+        ai_settings = app_config.ai_settings
+        self._client = AsyncOpenAI(
+            api_key=ai_settings.api_key,
+            base_url=ai_settings.base_url,
+        )
+        self._model_name = ai_settings.model_name
+        self._base_system_prompt = app_config.system_prompt_template
+        logger.info(
+            "[MODERATION] Initialized with base_url=%s, model=%s",
+            ai_settings.base_url,
+            self._model_name,
+        )
 
-    # ======== Engine Lifecycle ========
-    async def init_model(self, model: str | None = None) -> bool:
-        """Initialize the inference engine and report availability."""
-        self._shutdown = False
-        result = await self.inference_processor.init_model(model)
-        if not result:
-            logger.warning(
-                "init_model: model not available (%s)",
-                self.inference_processor.state.init_error,
-            )
-        return result
+    def generate_dynamic_system_prompt(self, guild_id: GuildID, channel_id: ChannelID) -> str:
+        """Build the system prompt with guild-specific and channel-specific rules and guidelines.
 
-    async def start_batch_worker(self) -> bool:
-        """Start background worker tasks for batch processing."""
-        if not await self._ensure_model_initialized():
-            return False
-        return True
+        This method handles all the logic for resolving and injecting rules and guidelines:
+        1. Fetches guild settings and channel guidelines from guild_settings_manager.
+        2. Falls back to global defaults if guild/channel-specific settings are not set.
+        3. Injects them into the system prompt template.
 
-    # ======== Main Business Logic ========
+        Args:
+            guild_id: The guild ID to fetch rules from.
+            channel_id: The channel ID to fetch channel-specific guidelines from.
+
+        Returns:
+            Formatted system prompt string with injected rules and guidelines.
+        """
+        template = self._base_system_prompt or ""
+        settings = guild_settings_manager.get(guild_id)
+        
+        guild_rules = (settings.rules or "").strip() or (app_config.server_rules or "").strip()
+        channel_guidelines = (settings.channel_guidelines.get(channel_id, "") or "").strip() or (app_config.channel_guidelines or "").strip()
+        
+        # Inject into template
+        template = template.replace("<|SERVER_RULES_INJECT|>", guild_rules) if guild_rules else template
+        template = template.replace("<|CHANNEL_GUIDELINES_INJECT|>", channel_guidelines) if channel_guidelines else template
+        
+        if guild_rules and "<|SERVER_RULES_INJECT|>" not in self._base_system_prompt:
+            template += f"\n\nServer rules:\n{guild_rules}"
+        if channel_guidelines and "<|CHANNEL_GUIDELINES_INJECT|>" not in self._base_system_prompt:
+            template += f"\n\nChannel-specific guidelines:\n{channel_guidelines}"
+        
+        return template
+
     async def get_multi_batch_moderation_actions(
         self,
-        batches: List[ModerationChannelBatch],
-        guild_id: GuildID,
-    ) -> Dict[int, List[ActionData]]:
+        batches: List[ModerationChannelBatch]) -> Dict[int, List[ActionData]]:
         """
-        Process multiple channel batches in a single global inference call.
+        Process multiple channel batches using concurrent API requests.
 
-        This is the global batch processing entry point. It:
-        1. Converts all batches to vLLM conversations (one per channel).
-        2. Dynamically builds JSON schemas and guided decoding grammars for each channel.
-        3. Submits all conversations to vLLM in one call for efficient inference.
+        This is the main entry point for batch moderation. It:
+        1. Converts all batches to chat completion requests (one per channel).
+        2. Dynamically builds JSON schemas for structured outputs per channel.
+        3. Submits all requests concurrently using asyncio.gather() to the OpenAI API.
         4. Parses responses and groups actions by channel.
 
         Args:
-            batches: List of ModerationChannelBatch objects from different channels.
-            guild_id: Optional GuildID or int to fetch rules from guild_settings_manager.
-                     If provided, uses configured server rules and channel guidelines.
-                     If not provided, uses app_config defaults.
+            batches: List of ModerationChannelBatch objects. Each batch includes its own guild_id.
+            guild_id: (Optional) Fallback guild_id if a batch's guild_id is not set.
 
         Returns:
             Dictionary mapping channel_id (as int) to list of ActionData objects.
         """
-        logger.debug(
-            "[MODERATION] Processing global batch: %d channels",
-            len(batches)
-        )
+        logger.debug("[MODERATION] Processing batch: %d channels", len(batches))
 
         if not batches:
             return {}
-        
-        # Normalize guild_id
-        if guild_id is not None:
-            guild_id = GuildID(guild_id) if not isinstance(guild_id, GuildID) else guild_id
-        
-        # Build conversations for each channel batch
-        conversations = []
-        grammar_strings: List[str] = []
-        channel_mapping = []  # Maps conversation index to channel_id and batch
+
+        # Prepare all requests
+        request_data: List[
+            Tuple[
+                ChannelID,
+                ModerationChannelBatch,
+                Dict[str, Any],
+                List[ChatCompletionMessageParam],
+                ResponseFormatJSONSchema,
+            ]
+        ] = []
 
         for batch in batches:
             # Convert batch to JSON payload with image IDs
-            json_payload, pil_images, _ = batch.convert_batch_to_mm_llm_payload()
+            json_payload, image_urls, image_id_map = batch.convert_batch_to_mm_llm_payload()
 
             # Build user->message_ids map for non-history users
             user_message_map: Dict[UserID, List[MessageID]] = {}
@@ -123,69 +148,97 @@ class ModerationProcessor:
                 user_message_map, batch.channel_id
             )
 
-            # Compile grammar for guided decoding
-            grammar = Grammar.from_json_schema(dynamic_schema, strict_mode=True)
-            grammar_str = str(grammar)
+            # Build system prompt with resolved rules and guidelines
+            system_prompt = self.generate_dynamic_system_prompt(batch.guild_id, batch.channel_id)
 
+            # Build OpenAI messages directly from the batch payload
+            user_content: List[ChatCompletionContentPartParam] = [
+                ChatCompletionContentPartTextParam(
+                    type="text",
+                    text=json.dumps(json_payload, separators=(",", ":"))
+                )
+            ]
 
-            # Resolve and apply server rules and channel guidelines per channel
-            if guild_id:
-                # Fetch from guild_settings_manager using proper ID types
-                settings = guild_settings_manager.get(guild_id)
-                server_rules = settings.rules
-                channel_guidelines = settings.channel_guidelines.get(batch.channel_id, "")
+            # Use hashed image IDs (already in payload) and map to URLs
+            for image_id, idx in sorted(image_id_map.items()):
+                if idx < len(image_urls):
+                    user_content.append(
+                        ChatCompletionContentPartTextParam(
+                            type="text",
+                            text=f"Image (ID: {image_id}):"
+                        )
+                    )
+                    user_content.append(
+                        ChatCompletionContentPartImageParam(
+                            type="image_url",
+                            image_url={"url": image_urls[idx]}
+                        )
+                    )
 
-            else:
-                # Fall back to app_config defaults
-                server_rules = app_config.server_rules
-                channel_guidelines = app_config.channel_guidelines
-            
+            messages: List[ChatCompletionMessageParam] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ]
 
-            # Merge rules and guidelines
-            merged_rules = self._resolve_server_rules(server_rules)
-            merged_guidelines = self._resolve_channel_guidelines(channel_guidelines)
-            
-            # Get system prompt with merged rules and guidelines
-            system_prompt = self.inference_processor.get_system_prompt(merged_rules, merged_guidelines)
-
-            # Format messages for vLLM
-            llm_messages = self._format_multimodal_messages(
-                system_prompt,
-                json_payload,
-                pil_images
+            # Convert schema to OpenAI format
+            response_format = ResponseFormatJSONSchema(
+                type="json_schema",
+                json_schema={
+                    "name": "moderation_response",
+                    "strict": True,
+                    "schema": dynamic_schema
+                }
             )
 
-            conversations.append(llm_messages)
-            grammar_strings.append(grammar_str)
-            channel_mapping.append((batch.channel_id, batch, dynamic_schema))
-        
-        # Submit all conversations to vLLM in one call
-        responses = await self._run_multi_inference(conversations, grammar_strings)
+            request_data.append((batch.channel_id, batch, dynamic_schema, messages, response_format))
 
-        if len(responses) != len(channel_mapping):
-            logger.warning(
-                "[MODERATION] Response count mismatch: %d responses for %d channels",
-                len(responses),
-                len(channel_mapping),
-            )
+
+        # Submit all requests concurrently
+        async def make_concurrent_request(
+                channel_id: ChannelID,
+                messages: List[ChatCompletionMessageParam],
+                response_format: ResponseFormatJSONSchema
+            ) -> Tuple[ChannelID, str]:
+                """Make a single API request and return the response."""
+                try:
+                    response = await self._client.chat.completions.create(
+                        model=self._model_name,
+                        messages=messages,
+                        response_format=response_format,
+                    )
+                    content = response.choices[0].message.content or ""
+                    return (channel_id, content.strip())
+                except Exception as exc:
+                    logger.error("[MODERATION] API request failed for channel %s: %s", channel_id, exc)
+                    return (channel_id, self._null_response(str(exc)))
+
+        # Create tasks for all requests
+        tasks = [
+            make_concurrent_request(channel_id, messages, response_format)
+            for channel_id, _, _, messages, response_format in request_data
+        ]
+
+        # Run all requests concurrently
+        results = await asyncio.gather(*tasks)
+
+        # Build response lookup
+        response_lookup: Dict[ChannelID, str] = {channel_id: response for channel_id, response in results}
 
         # Parse responses and group actions by channel
         actions_by_channel: Dict[int, List[ActionData]] = {}
-        for (channel_id, batch, dynamic_schema), response_text in zip(channel_mapping, responses):
-            # Get guild_id from the batch
-            if batch.users and batch.users[0].messages:
-                guild_id = batch.users[0].messages[0].guild_id
-            
-            # Parse response into actions
+        for channel_id, batch, dynamic_schema, _, _ in request_data:
+            response_text = response_lookup.get(channel_id, self._null_response("no response"))
+
+            # Parse response into actions using batch's guild_id
             actions = moderation_parsing.parse_batch_actions(
                 response_text,
                 channel_id,
-                guild_id,
+                batch.guild_id,
                 dynamic_schema
             )
-            actions_by_channel[channel_id] = actions
-            
-            # Log summary: channel ID, action count, and response sample
+            actions_by_channel[channel_id.to_int()] = actions
+
+            # Log summary
             action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != "null")
             logger.debug(
                 "[RESULT] Channel %s: %d actions [%s] | Response: \n%s",
@@ -194,229 +247,15 @@ class ModerationProcessor:
                 action_summary or "none",
                 response_text
             )
-        
-        if len(channel_mapping) > len(responses):
-            for channel_id, _, _ in channel_mapping[len(responses):]:
-                logger.warning("[RESULT] Missing response for channel %d", channel_id)
-                actions_by_channel.setdefault(channel_id, [])
 
         return actions_by_channel
 
 
-
-    def _format_multimodal_messages(
-        self,
-        system_prompt: str,
-        json_payload: Dict[str, Any],
-        pil_images: List[Image.Image]
-    ) -> List[Dict[str, Any]]:
-        """
-        Build vLLM-compatible messages with multimodal content in the proper chat format the model expects.
-
-        Args:
-            system_prompt: The system prompt text.
-            json_payload: JSON dict with message data and image IDs.
-            pil_images: List of PIL Image objects.
-
-        Returns:
-            List of vLLM messages with multimodal content in the proper chat format the model expects.
-        """
-        # Build user message content as list with text + images
-        user_content: List[Dict[str, str | Image.Image]] = [
-            {
-                "type": "text",
-                "text": json.dumps(json_payload, separators=(",", ":"))
-            }
-        ]
-        
-        # Add all PIL images
-        for pil_img in pil_images:
-            user_content.append({
-                "type": "image_pil",
-                "image_pil": pil_img
-            })
-        
-        logger.debug(
-            "[FORMAT_MESSAGES] Built multimodal message: %d text + %d images",
-            1,
-            len(pil_images)
-        )
-        
-        return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ]
-
-
-
-    async def _run_multi_inference(
-        self,
-        conversations: List[List[Dict[str, Any]]],
-        grammar_strings: List[str]
-    ) -> List[str]:
-        """
-        Submit multiple vLLM-formatted conversations to AI model and return responses.
-
-        This method processes multiple conversations in a single vLLM call for efficiency.
-
-        Args:
-            conversations: List of conversation message lists (one per channel).
-            grammar_strings: List of grammar strings (one per conversation).
-
-        Returns:
-            List of response strings (one per conversation).
-        """
-        # Check if model is shutting down
-        if self._shutdown:
-            logger.warning("[INFERENCE] Processor is shutting down")
-            return [self._null_response("shutting down") for _ in conversations]
-        
-        # Ensure model is available
-        elif not self.inference_processor.is_model_available():
-            reason = self.inference_processor.get_model_init_error()
-            logger.warning("[INFERENCE] Model not available: %s", reason)
-            return [self._null_response(reason or "unavailable") for _ in conversations]
-        
-
-        # DEBUG: Log the full input going into the LLM in readable format. Note: This is not necessary whatsoever for actual inference.
-        def format_msg(msg):
-            if msg["role"] == "system":
-                return None
-            content = msg["content"]
-            if isinstance(content, str):
-                return {"role": msg["role"], "content": content}
-            formatted_content = []
-            image_count = 0
-            for item in content:
-                if item.get("type") == "text":
-                    try:
-                        data = json.loads(item["text"])
-                        formatted_content.append({"type": "text_json", "data": data})
-                    except Exception:
-                        formatted_content.append(item)
-                elif item.get("type") == "image_pil":
-                    # Show image placeholder with count (actual image IDs are in the JSON data above)
-                    formatted_content.append({"type": "image_pil", "placeholder": f"<PIL Image #{image_count + 1}>"})
-                    image_count += 1
-                else:
-                    formatted_content.append(item)
-            return {"role": msg["role"], "content": formatted_content}
-
-        formatted_convos = [
-            [fm for fm in (format_msg(msg) for msg in conv) if fm]
-            for conv in conversations
-        ]
-        logger.debug(
-            "[LLM INPUT] Submitting %d conversations to model:\n%s",
-            len(conversations),
-            json.dumps(formatted_convos, indent=2, ensure_ascii=False)[:10000]
-        )
-
-        
-        # Run multi-conversation inference
-        try:
-            results = await self.inference_processor.generate_multi_chat(
-                conversations,
-                grammar_strings
-            )
-            return [r.strip() if r else self._null_response("no response") for r in results]
-        
-        except Exception as exc:
-            logger.error("[INFERENCE] Multi-batch inference error: %s", exc, exc_info=True)
-            return [self._null_response("inference error") for _ in conversations]
-
-
-
-    async def _ensure_model_initialized(self) -> bool:
-        """Ensure the model has been initialized at least once.
-        
-        Returns:
-            bool: True if the model is initialized and available, False otherwise."""
-        if not self.inference_processor.state.init_started:
-            return await self.init_model()
-        return True
-
-
-
-    def _resolve_server_rules(self, server_rules: str = "") -> str:
-        """Pick guild-specific rules when provided, otherwise fall back to global defaults."""
-        base_rules = (app_config.server_rules or "").strip()
-        guild_rules = (server_rules or "").strip()
-        resolved = guild_rules or base_rules
-        logger.debug(
-            "Resolved server rules: guild_rules_len=%d, base_rules_len=%d, using=%s",
-            len(guild_rules),
-            len(base_rules),
-            "guild" if guild_rules else "base"
-        )
-        return resolved
-
-
-
-    def _resolve_channel_guidelines(self, channel_guidelines: str = "") -> str:
-        """Pick channel-specific guidelines when provided, otherwise fall back to global defaults."""
-        base_guidelines = (app_config.channel_guidelines or "").strip()
-        channel_specific = (channel_guidelines or "").strip()
-        resolved = channel_specific or base_guidelines
-        logger.debug(
-            "Resolved channel guidelines: channel_specific_len=%d, base_guidelines_len=%d, using=%s",
-            len(channel_specific),
-            len(base_guidelines),
-            "channel_specific" if channel_specific else "base"
-        )
-        return resolved
-
-
-
-    async def shutdown(self) -> None:
-        """Gracefully stop the moderation processor and unload the AI model."""
-        if self._shutdown:
-            logger.debug("[AI MODERATION PROCESSOR] ModerationProcessor.shutdown called multiple times")
-            return
-
-        self._shutdown = True
-
-        try:
-            await self.inference_processor.unload_model()
-        except Exception as exc:
-            logger.warning("[AI MODERATION PROCESSOR] Failed to unload AI model cleanly: %s", exc)
-
     @staticmethod
     def _null_response(reason: str) -> str:
+        """Return a null response string for error cases."""
         return f"null: {reason}"
 
 
-# Module-level instances
+# Module-level instance
 moderation_processor = ModerationProcessor()
-model_state = inference_processor.state
-
-
-# Direct API functions (eliminates ai_lifecycle abstraction layer). This is deprecated but kept for backward compatibility.
-async def initialize_engine(model: str | None = None) -> tuple[bool, str | None]:
-    """Initialize the moderation engine. Returns (success, error_message)."""
-    logger.info("[ENGINE] Initializing moderation engine...")
-    await moderation_processor.init_model(model)
-    await moderation_processor.start_batch_worker()
-    return model_state.available, model_state.init_error
-
-
-async def restart_engine(model: str | None = None) -> tuple[bool, str | None]:
-    """Restart the moderation engine. Returns (success, error_message)."""
-    logger.info("[ENGINE] Restarting moderation engine...")
-    try:
-        await moderation_processor.shutdown()
-    except Exception as exc:
-        logger.warning("[ENGINE] Shutdown during restart failed: %s", exc)
-
-    model_state.available = False
-    model_state.init_error = None
-
-    await moderation_processor.init_model(model)
-    await moderation_processor.start_batch_worker()
-    return model_state.available, model_state.init_error
-
-
-async def shutdown_engine() -> None:
-    """Shutdown the moderation engine."""
-    logger.info("[ENGINE] Shutting down moderation engine...")
-    await moderation_processor.shutdown()

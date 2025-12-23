@@ -123,13 +123,13 @@ class MessageListenerCog(commands.Cog):
         """
         Convert a Discord message to a ModerationMessage.
         
-        Downloads any image attachments and includes them in the ModerationMessage.
+        Extracts image information from any image attachments and includes them in the ModerationMessage.
         """
         if not message.guild:
             return None
         
-        # Download images from attachments
-        images = await image_utils.download_images_for_moderation(message)
+        # Extract image info from attachments
+        images = image_utils.extract_images_for_moderation(message)
         
         return ModerationMessage(
             message_id=MessageID.from_message(message),
@@ -196,12 +196,15 @@ class MessageListenerCog(commands.Cog):
             history_messages = await self._history_fetcher.fetch_history_context(channel_id, exclude_ids)
             history_users = await self._group_messages_by_user(history_messages, channel) if history_messages else []
 
+            guild_id = GuildID.from_guild(channel.guild)
+            
             logger.debug(
-                f"Prepared batch for channel {channel_id}: {len(users)} users, {len(history_users)} history users"
+                f"Prepared batch for guild {guild_id}, channel {channel_id}: {len(users)} users, {len(history_users)} history users"
             )
 
             batches.append(
                 ModerationChannelBatch(
+                    guild_id=guild_id,
                     channel_id=channel_id,
                     channel_name=getattr(channel, "name", str(channel_id)),
                     users=users,

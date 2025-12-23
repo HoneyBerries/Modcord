@@ -92,10 +92,6 @@ class GuildSettingsManager:
         for field_name, value in kwargs.items():
             if hasattr(settings, field_name):
                 setattr(settings, field_name, value)
-                logger.debug(
-                    "[GUILD SETTINGS MANAGER] Updated %s=%r for guild %s",
-                    field_name, value, guild_id.to_int()
-                )
             else:
                 logger.warning(
                     "[GUILD SETTINGS MANAGER] Unknown field %s for guild %s",
