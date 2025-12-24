@@ -206,8 +206,10 @@ class ModerationProcessor:
                         messages=messages,
                         response_format=response_format,
                     )
-                    content = response.choices[0].message.content or ""
+
+                    content = response.choices[0].message.content or "no response for some reason"
                     return (channel_id, content.strip())
+                
                 except Exception as exc:
                     logger.error("[MODERATION] API request failed for channel %s: %s", channel_id, exc)
                     return (channel_id, self._null_response(str(exc)))

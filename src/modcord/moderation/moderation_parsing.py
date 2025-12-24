@@ -20,8 +20,7 @@ def build_dynamic_moderation_schema(
     """Build a dynamic JSON schema that requires an action for each specific user.
     
     Constrains AI outputs to valid user IDs, channel ID, and per-user message IDs.
-    This prevents hallucination and cross-user deletion since xgrammar enforces 
-    the schema at generation time.
+    This prevents hallucination and cross-user deletion since the schema enforces that only the provided message IDs can be referenced.
     
     Args:
         user_message_map: Dict mapping user_id -> list of their message IDs (non-history only)
@@ -87,7 +86,8 @@ def _extract_json_payload(raw: str) -> Any:
     try:
         return json.loads(raw.strip())
     except json.JSONDecodeError as exc:
-        raise ValueError("Unable to decode JSON payload") from exc
+        logger.warning("[EXTRACT] Parsing failed: %s", exc)
+        raise ValueError("Failed to extract JSON payload") from exc
 
 
 def parse_batch_actions(
@@ -98,7 +98,7 @@ def parse_batch_actions(
 ) -> List[ActionData]:
     """Parse AI moderation response into ActionData objects.
     
-    Assumes response is valid according to the schema (enforced by xgrammar at generation).
+    Assumes response is valid according to the schema.
     Performs only JSON extraction and basic parsing - no reconciliation.
     
     Args:
@@ -110,10 +110,7 @@ def parse_batch_actions(
     Returns:
         List of ActionData objects parsed from response
     """
-    channel_id = ChannelID(channel_id)
-    guild_id = GuildID(guild_id) if guild_id is not None else GuildID(0)
     logger.debug("[PARSE] Parsing batch response (%d chars)", len(response))
-    
     # Extract JSON
     try:
         payload = _extract_json_payload(response)

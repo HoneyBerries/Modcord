@@ -99,7 +99,8 @@ class ModerationEngine:
         guilds_with_reviews = set()
 
         for batch in valid_batches:
-            actions = actions_by_channel.get(batch.channel_id, [])
+            # Keys in actions_by_channel are ints (ChannelID.to_int()); normalize lookup
+            actions = actions_by_channel.get(batch.channel_id.to_int(), [])
             for action in actions:
                 if action.action is ActionType.NULL:
                     continue

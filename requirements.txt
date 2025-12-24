@@ -6,9 +6,6 @@
 # Install the current directory as an editable package
 -e .
 
-# vLLM
-vllm>=0.13.0
-
 # --- OpenAI API Client ---
 openai
 
