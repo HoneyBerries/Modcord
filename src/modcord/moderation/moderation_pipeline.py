@@ -14,7 +14,7 @@ Features:
 from typing import List
 import discord
 
-from modcord.ai.ai_moderation_processor import moderation_processor
+from modcord.ai.llm_engine import LLMEngine
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import GuildID
@@ -27,8 +27,10 @@ from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_engine")
 
+llm_engine = LLMEngine()
 
-class ModerationEngine:
+
+class ModerationPipeline:
     """
     Engine for processing moderation batches through the AI pipeline.
     
@@ -53,49 +55,58 @@ class ModerationEngine:
         """Get the Discord bot instance."""
         return self._bot
     
-    async def process_batches(self, batches: List[ModerationChannelBatch]) -> None:
-        """
-        Process multiple channel batches through the AI moderation pipeline.
-        
-        This is the main entry point for batch processing. It:
-        1. Filters batches based on AI moderation settings
-        2. Prepares server rules and channel guidelines for each batch
-        3. Sends all batches to the AI for inference
-        4. Routes resulting actions to appropriate handlers
+    def _filter_valid_batches(self, batches: List[ModerationChannelBatch]) -> List[ModerationChannelBatch]:
+        """Filter out empty batches and those with AI moderation disabled.
         
         Args:
-            batches: List of ModerationChannelBatch objects to process.
+            batches: List of batches to filter.
+            
+        Returns:
+            List of valid batches ready for AI processing.
         """
-        if not batches:
-            return
-
-        valid_batches = []
-
-        # Filter out empty batches and those where AI moderation is disabled
+        valid = []
         for batch in batches:
+            # Skip empty batches
             if batch.is_empty() or not batch.users or not batch.users[0].messages:
                 continue
-
+            
+            # Check if AI moderation is enabled for this guild
             first_message = batch.users[0].messages[0]
             guild_id = first_message.guild_id
             settings = guild_settings_manager.get(guild_id) if guild_id else None
             if settings and not settings.ai_enabled:
                 continue
-
-            valid_batches.append(batch)
-
-        if not valid_batches:
-            logger.info("No valid batches to process for moderation.")
+            
+            valid.append(batch)
+        
+        return valid
+    
+    async def execute_moderation_pipeline(self, batches: List[ModerationChannelBatch]) -> None:
+        """
+        Execute the full moderation pipeline: AI inference + action application.
+        
+        Flow:
+        1. Filter valid batches (non-empty, AI enabled)
+        2. Get AI moderation decisions via LLMEngine
+        3. Apply actions (delete, timeout, kick, ban) or queue for review
+        
+        Args:
+            batches: List of ModerationChannelBatch objects to moderate.
+        """
+        if not batches:
             return
 
-        actions_by_channel = await moderation_processor.get_multi_batch_moderation_actions(
-            batches=valid_batches
-        )
+        # Filter valid batches
+        valid_batches = self._filter_valid_batches(batches)
+        if not valid_batches:
+            logger.info("No valid batches to moderate")
+            return
 
-        # Initialize review notification manager
+        # Get AI moderation decisions
+        actions_by_channel = await llm_engine.get_moderation_actions(valid_batches)
+
+        # Apply actions and handle reviews
         review_manager = HumanReviewManager(self._bot)
-        
-        # Track guilds that have review actions for batch finalization
         guilds_with_reviews = set()
 
         for batch in valid_batches:

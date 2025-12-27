@@ -4,7 +4,7 @@
 - Modcord runs as an asynchronous Py-Cord application that layers an AI-driven moderation workflow on top of Discord events. The moderation system is composed of message ingestion, channel batching, AI inference, structured response parsing, and Discord-facing enforcement steps.
 - Core services live under `modcord.ai`, `modcord.util`, and `modcord.bot`. They are wired together during startup in `modcord.main` and further orchestrated by bot cogs once the Discord client is connected.
 - The AI layer calls an OpenAI-compatible API directly via `ai_moderation_processor` (no local model lifecycle). It builds messages, sends them to the API, and validates JSON-mode responses.
-- `ModerationProcessor` translates Discord batches into API-ready payloads, submits prompts, and reconciles AI outputs with real Discord message metadata before any action is taken.
+- `LLMEngine` translates Discord batches into API-ready payloads, submits prompts, and reconciles AI outputs with real Discord message metadata before any action is taken.
 
 ## Bootstrapping & Lifecycle Control
 - When the process starts, `main.async_main` loads environment variables, constructs the Py-Cord bot, and initializes persistence. There is no AI warm-up step because the OpenAI API is invoked per request.
@@ -22,7 +22,7 @@
 - **Key advantage**: All channel batches are processed together in a single vLLM inference call, maximizing GPU utilization and throughput compared to processing each channel individually.
 
 ## AI Prompt Composition & Inference
-- `ModerationProcessor.get_multi_batch_moderation_actions` transforms **multiple channel batches** into OpenAI API-ready conversations in a single operation. Each batch becomes one conversation in the list:
+- `LLMEngine.get_multi_batch_moderation_actions` transforms **multiple channel batches** into OpenAI API-ready conversations in a single operation. Each batch becomes one conversation in the list:
   - Messages are grouped by user with ordering and message IDs preserved
   - A dynamic JSON schema is built per-channel to constrain AI outputs to valid user IDs and message IDs for that channel
   - Each conversation uses the OpenAI `response_format` JSON schema enforcement (no grammar compilation)
@@ -32,7 +32,7 @@
 
 ## Response Parsing & Normalization
 - Model outputs from each conversation are validated in `moderation_parsing`. Code fences and surrounding text are stripped, payloads are decoded, and JSON schemas are enforced. Channel mismatches, missing fields, or invalid actions result in empty action sets to prevent undefined behavior.
-- Parsed actions are normalized into `ActionData` structures. `ModerationProcessor` reconciles AI-provided message IDs against the actual Discord batch so that downstream enforcement is guaranteed to refer to real messages. Missing or mismatched IDs fall back to the most recent known messages for the user to avoid incorrect deletes.
+- Parsed actions are normalized into `ActionData` structures. `LLMEngine` reconciles AI-provided message IDs against the actual Discord batch so that downstream enforcement is guaranteed to refer to real messages. Missing or mismatched IDs fall back to the most recent known messages for the user to avoid incorrect deletes.
 - Actions from all channels are grouped by channel_id and returned as a dictionary. Each channel's action list is then processed independently to apply moderation actions in the correct context.
 - Actions marked as `NULL` are filtered out before Discord-facing work begins.
 

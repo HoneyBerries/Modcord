@@ -10,20 +10,20 @@ Key Features:
 - `ModerationMessage`: Normalized representation of a Discord message.
 - `ModerationUser`: User with their messages and metadata.
 - `ModerationChannelBatch`: Container for batched messages and historical context.
+
+Note: Serialization to AI payloads is handled by modcord.moderation.moderation_serialization.
 """
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Sequence, Set
+from typing import TYPE_CHECKING, List, Sequence
 
 import discord
 
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
 from modcord.datatypes.image_datatypes import ImageURL, ImageID
-from modcord.util.format_utils import humanize_timestamp, format_past_actions
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData
 
@@ -68,32 +68,6 @@ class ModerationMessage:
     channel_id: ChannelID
     images: List[ModerationImage] = field(default_factory=list)
 
-    def convert_message_to_model_payload(self, is_history: bool, image_id_map: Dict[str, int]) -> dict[str, Any]:
-        """Convert message to AI model payload format.
-        
-        Args:
-            is_history: Whether this message is historical context (not for action).
-            image_id_map: Mapping of image_id string -> index for PIL images list.
-        
-        Returns:
-            dict: JSON-serializable message representation.
-        """
-        # Collect image IDs for this message
-        msg_image_ids: List[str] = []
-        if self.images and image_id_map is not None:
-            for img in self.images:
-                if img.image_id:
-                    img_id_str = str(img.image_id)
-                    if img_id_str in image_id_map:
-                        msg_image_ids.append(img_id_str)
-        
-        return {
-            "message_id": self.message_id.to_int(),
-            "timestamp": humanize_timestamp(self.timestamp),
-            "content": self.content or ("[Images only]" if msg_image_ids else ""),
-            "image_ids": msg_image_ids,
-            "is_history": is_history,
-        }
 
 @dataclass(slots=True)
 class ModerationUser:
@@ -139,25 +113,6 @@ class ModerationUser:
             message (ModerationMessage): The message to add.
         """
         self.messages.append(message)
-
-    def convert_user_to_model_payload(self, messages_payload: List[dict]) -> dict[str, Any]:
-        """Convert user to AI model payload format with pre-formatted messages.
-        
-        Args:
-            messages_payload: Pre-formatted messages list from message.convert_message_to_model_payload().
-        
-        Returns:
-            dict: JSON-serializable representation of the user.
-        """
-        return {
-            "user_id": self.user_id.to_int(),
-            "username": str(self.username),
-            "roles": self.roles,
-            "join_date": humanize_timestamp(self.join_date),
-            "message_count": len(messages_payload),
-            "messages": messages_payload,
-            "past_actions": format_past_actions(self.past_actions),
-        }
 
 
 @dataclass(slots=True)
@@ -211,90 +166,3 @@ class ModerationChannelBatch:
             bool: True if the batch is empty, False otherwise.
         """
         return not self.users or all(not user.messages for user in self.users)
-    
-    
-    def convert_batch_to_mm_llm_payload(self) -> tuple[Dict[str, Any], List[Any], Dict[str, int]]:
-        """Convert batch to complete multimodal AI payload with images and deduplication.
-        
-        This is the primary method for preparing batches for AI inference. It handles:
-        - User deduplication (merging current and history)
-        - Message deduplication
-        - Image collection and ID mapping
-        - is_history flag setting
-        - Complete payload construction
-        
-        Returns:
-            Tuple of (json_payload, image_urls_list, image_id_map).
-        """
-        
-        image_urls: List[str] = []
-        image_id_map: Dict[str, int] = {}
-        
-        # Build sets of message IDs to determine which messages are historical
-        current_message_ids: Set[str] = set()
-        for user in self.users:
-            for msg in user.messages:
-                current_message_ids.add(str(msg.message_id))
-        
-        # Merge users by user_id, combining current and historical messages
-        user_map: Dict[str, ModerationUser] = {}
-        all_messages_by_user: Dict[str, List[tuple[ModerationMessage, bool]]] = defaultdict(list)
-        
-        # First, process current batch users (is_history=False for their messages)
-        for user in self.users:
-            user_id = str(user.user_id)
-            if user_id not in user_map:
-                user_map[user_id] = user
-            for msg in user.messages:
-                all_messages_by_user[user_id].append((msg, False))
-        
-        # Then, process history users (is_history=True for their messages)
-        for user in self.history_users:
-            user_id = str(user.user_id)
-            if user_id not in user_map:
-                # User only exists in history, use their data
-                user_map[user_id] = user
-            # Add historical messages (those not in current batch)
-            for msg in user.messages:
-                msg_id = str(msg.message_id)
-                if msg_id not in current_message_ids:
-                    all_messages_by_user[user_id].append((msg, True))
-        
-        total_messages = 0
-        users_list = []
-        
-        # Process each unique user
-        for user_id in sorted(user_map.keys()):
-            user = user_map[user_id]
-            messages_with_flags = all_messages_by_user[user_id]
-            
-            user_messages = []
-            for msg, is_history in messages_with_flags:
-                # Collect image URLs and build image ID map
-                if msg.images:
-                    for img in msg.images:
-                        if img.image_url and img.image_id:
-                            img_id_str = str(img.image_id)
-                            if img_id_str not in image_id_map:
-                                image_id_map[img_id_str] = len(image_urls)
-                                image_urls.append(str(img.image_url))
-                
-                # Convert message to payload
-                msg_dict = msg.convert_message_to_model_payload(is_history=is_history, image_id_map=image_id_map)
-                user_messages.append(msg_dict)
-                total_messages += 1
-            
-            # Convert user to payload with formatted messages
-            user_dict = user.convert_user_to_model_payload(messages_payload=user_messages)
-            users_list.append(user_dict)
-        
-        payload = {
-            "channel_id": self.channel_id.to_int(),
-            "channel_name": self.channel_name,
-            "message_count": total_messages,
-            "unique_user_count": len(user_map),
-            "total_images": len(image_urls),
-            "users": users_list,
-        }
-        
-        return payload, image_urls, image_id_map

@@ -18,7 +18,7 @@ from modcord.datatypes.discord_datatypes import ChannelID, GuildID, DiscordUsern
 from modcord.scheduler import rules_sync_scheduler
 from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationMessage, ModerationUser
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
-from modcord.moderation.moderation_engine import ModerationEngine
+from modcord.moderation.moderation_pipeline import ModerationPipeline
 from modcord.util.discord import collector, discord_utils
 from modcord.util import image_utils
 from modcord.util.logger import get_logger
@@ -40,7 +40,7 @@ class MessageListenerCog(commands.Cog):
         """
         self.bot = discord_bot_instance
         self.discord_bot_instance = discord_bot_instance
-        self.ai_moderation_engine = ModerationEngine(discord_bot_instance)
+        self.ai_moderation_engine = ModerationPipeline(discord_bot_instance)
         self._history_fetcher = DiscordHistoryFetcher(discord_bot_instance)
         self._pending_messages: dict[ChannelID, List[ModerationMessage]] = {}
         self._batch_timer: asyncio.Task | None = None
@@ -166,7 +166,7 @@ class MessageListenerCog(commands.Cog):
         try:
             batches = await self._assemble_batches(pending)
             if batches:
-                await self.ai_moderation_engine.process_batches(batches)
+                await self.ai_moderation_engine.execute_moderation_pipeline(batches)
         except Exception:
             logger.exception("Exception while processing moderation batches")
         

@@ -6,6 +6,7 @@ from modcord.datatypes.action_datatypes import ActionData, ActionType
 
 logger = get_logger("format_utils")
 
+
 def humanize_timestamp(value: datetime) -> str:
     """Return a human-readable timestamp (YYYY-MM-DD HH:MM:SS) in UTC.
     
@@ -36,6 +37,7 @@ def humanize_timestamp(value: datetime) -> str:
         value = now_utc
     
     return value.strftime("%Y-%m-%d %H:%M:%S UTC")
+
 
 
 def format_past_actions(past_actions: List[ActionData]) -> List[dict]:

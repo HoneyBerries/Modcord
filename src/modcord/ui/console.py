@@ -14,8 +14,6 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.shortcuts import PromptSession
 
-
-from modcord.ai import ai_moderation_processor
 from modcord.util.logger import get_logger
 
 

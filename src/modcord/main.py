@@ -53,7 +53,6 @@ from modcord.listener import events_listener
 from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
 from modcord.listener import message_listener
 from modcord.database import database as db
-from modcord.ai import ai_moderation_processor
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
 from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
