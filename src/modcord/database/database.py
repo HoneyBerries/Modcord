@@ -15,7 +15,7 @@ import aiosqlite
 import fcntl
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Dict
 
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID, ChannelID
@@ -378,6 +378,76 @@ class Database:
             actions.append(action_data_to_add)
         
         return actions
+
+    async def get_bulk_past_actions(
+        self,
+        guild_id: GuildID,
+        user_ids: List[UserID],
+        lookback_minutes: int
+    ) -> Dict[UserID, List[ActionData]]:
+        """
+        Query past moderation actions for multiple users within a time window.
+        
+        This is more efficient than calling get_past_actions() multiple times
+        as it makes a single database query with IN clause.
+        
+        Args:
+            guild_id: ID of the guild to query actions from
+            user_ids: List of user IDs to query history for
+            lookback_minutes: How many minutes back to query
+        
+        Returns:
+            Dictionary mapping user_id to list of ActionData objects
+        """
+        if not user_ids:
+            return {}
+        
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
+        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        
+        # Create placeholders for IN clause
+        user_id_strs = [str(user_id) for user_id in user_ids]
+        placeholders = ','.join('?' * len(user_id_strs))
+        
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                f"""
+                SELECT guild_id, channel_id, user_id, action, reason, timeout_duration, ban_duration, message_ids, timestamp
+                FROM moderation_actions
+                WHERE guild_id = ? AND user_id IN ({placeholders}) AND timestamp >= ?
+                ORDER BY timestamp DESC
+                """,
+                [guild_id_int] + user_id_strs + [cutoff_time.isoformat()]
+            )
+            rows = await cursor.fetchall()
+        
+        # Group actions by user_id
+        actions_by_user: Dict[UserID, List[ActionData]] = {user_id: [] for user_id in user_ids}
+        
+        for row in rows:
+            db_guild_id, db_channel_id, db_user_id, action_str, reason, timeout_dur, ban_dur, message_ids_str, _ = row
+            
+            message_ids: List[MessageID] = []
+            if message_ids_str:
+                message_ids = [MessageID(mid) for mid in message_ids_str.split(",") if mid]
+            
+            action_data = ActionData(
+                guild_id=GuildID(db_guild_id),
+                channel_id=ChannelID(db_channel_id),
+                user_id=UserID(db_user_id),
+                action=ActionType(action_str),
+                reason=reason,
+                timeout_duration=timeout_dur,
+                ban_duration=ban_dur,
+                message_ids_to_delete=message_ids
+            )
+            
+            # Group by user_id
+            user_id_key = UserID(db_user_id)
+            if user_id_key in actions_by_user:
+                actions_by_user[user_id_key].append(action_data)
+        
+        return actions_by_user
 
 
 # Global Database instance

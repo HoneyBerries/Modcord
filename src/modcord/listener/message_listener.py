@@ -70,6 +70,7 @@ class MessageListenerCog(commands.Cog):
         # Queue message for moderation processing
         await self._queue_message_for_moderation(message)
 
+
     @commands.Cog.listener(name='on_message_edit')
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         """
@@ -193,7 +194,8 @@ class MessageListenerCog(commands.Cog):
 
             # Fetch historical context
             exclude_ids = {m.message_id for m in messages}
-            history_messages = await self._history_fetcher.fetch_history_context(channel_id, exclude_ids)
+            history_limit = app_config.history_context_messages
+            history_messages = await self._history_fetcher.fetch_history_context(channel_id, exclude_ids, history_limit)
             history_users = await self._group_messages_by_user(history_messages, channel) if history_messages else []
 
             guild_id = GuildID.from_guild(channel.guild)
@@ -239,6 +241,10 @@ class MessageListenerCog(commands.Cog):
         guild_id = GuildID.from_guild(guild)
         lookback = app_config.past_actions_lookback_minutes
 
+        # Batch query all user actions at once instead of individual queries
+        all_user_ids = list(user_msgs.keys())
+        bulk_past_actions = await get_db().get_bulk_past_actions(guild_id, all_user_ids, lookback)
+
         users: List[ModerationUser] = []
         for uid, msgs in user_msgs.items():
             member = guild.get_member(uid.to_int())
@@ -251,7 +257,8 @@ class MessageListenerCog(commands.Cog):
             else:
                 join_date = member.joined_at
 
-            past_actions: List[ActionData] = await get_db().get_past_actions(guild_id, uid, lookback)
+            # Get past actions from bulk query results
+            past_actions = bulk_past_actions.get(uid, [])
 
             users.append(
                 ModerationUser(

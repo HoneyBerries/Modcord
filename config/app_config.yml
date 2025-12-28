@@ -13,6 +13,11 @@ cache:
   # Refresh interval (seconds) for channel guidelines cache.
   channel_guidelines_cache_refresh: 600
 
+  # Message caching settings to reduce Discord API calls for historical context
+  message_cache_enabled: true
+  message_cache_size_per_channel: 100  # Maximum messages to cache per channel
+  message_cache_ttl_seconds: 300       # 5 minutes TTL for cached messages
+
 # ========================================
 # 2. MODERATION SETTINGS
 # ========================================

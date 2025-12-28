@@ -50,7 +50,7 @@ class DiscordHistoryFetcher:
         self,
         channel_id: ChannelID,
         exclude_message_ids: Set[MessageID],
-        history_limit: int = 100,
+        history_limit: int | None = None,
     ) -> List[ModerationMessage]:
         """
         Fetch recent message history from a Discord channel for moderation context.
@@ -84,7 +84,7 @@ class DiscordHistoryFetcher:
             try:
                 history_limit = app_config.history_context_messages
             except Exception:
-                history_limit = 20
+                history_limit = 8
 
         results: List[ModerationMessage] = []
         results_count = 0
