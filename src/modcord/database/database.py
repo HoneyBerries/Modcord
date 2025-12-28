@@ -17,8 +17,7 @@ import time
 import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional, Tuple
-from functools import lru_cache
+from typing import List, Dict, Optional, Tuple, Any
 
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID, ChannelID
@@ -33,7 +32,7 @@ DB_PATH = Path("./data/app.db").resolve()
 _query_stats: Dict[str, Dict[str, float]] = {}
 
 # Task #3: Query result caching
-_query_cache: Dict[str, Tuple[float, any]] = {}
+_query_cache: Dict[str, Tuple[float, Any]] = {}
 _cache_ttl_seconds = 60  # 1 minute TTL for cached queries
 
 
@@ -99,7 +98,7 @@ def get_query_statistics() -> Dict[str, Dict[str, float]]:
     return result
 
 
-def _get_cached_query(cache_key: str) -> Optional[any]:
+def _get_cached_query(cache_key: str) -> Optional[Any]:
     """Task #3: Get cached query result if still valid."""
     if cache_key in _query_cache:
         timestamp, result = _query_cache[cache_key]
@@ -111,7 +110,7 @@ def _get_cached_query(cache_key: str) -> Optional[any]:
     return None
 
 
-def _set_cached_query(cache_key: str, result: any) -> None:
+def _set_cached_query(cache_key: str, result: Any) -> None:
     """Task #3: Cache a query result with timestamp."""
     _query_cache[cache_key] = (time.time(), result)
 
