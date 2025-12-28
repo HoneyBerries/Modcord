@@ -14,9 +14,10 @@ import atexit
 import aiosqlite
 import fcntl
 import time
+import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from functools import lru_cache
 
 from modcord.datatypes.action_datatypes import ActionData, ActionType
@@ -30,6 +31,10 @@ DB_PATH = Path("./data/app.db").resolve()
 
 # Performance monitoring (#6)
 _query_stats: Dict[str, Dict[str, float]] = {}
+
+# Task #3: Query result caching
+_query_cache: Dict[str, Tuple[float, any]] = {}
+_cache_ttl_seconds = 60  # 1 minute TTL for cached queries
 
 
 class _DatabaseConnectionContext:
@@ -92,6 +97,36 @@ def get_query_statistics() -> Dict[str, Dict[str, float]]:
             'max_time': stats['max_time']
         }
     return result
+
+
+def _get_cached_query(cache_key: str) -> Optional[any]:
+    """Task #3: Get cached query result if still valid."""
+    if cache_key in _query_cache:
+        timestamp, result = _query_cache[cache_key]
+        if time.time() - timestamp < _cache_ttl_seconds:
+            return result
+        else:
+            # Cache expired, remove it
+            del _query_cache[cache_key]
+    return None
+
+
+def _set_cached_query(cache_key: str, result: any) -> None:
+    """Task #3: Cache a query result with timestamp."""
+    _query_cache[cache_key] = (time.time(), result)
+
+
+def _invalidate_cache(pattern: Optional[str] = None) -> None:
+    """Task #3: Invalidate cache entries matching a pattern."""
+    if pattern is None:
+        _query_cache.clear()
+        logger.debug("[DATABASE] All cache entries cleared")
+    else:
+        keys_to_delete = [k for k in _query_cache.keys() if pattern in k]
+        for key in keys_to_delete:
+            del _query_cache[key]
+        logger.debug("[DATABASE] Cleared %d cache entries matching '%s'", len(keys_to_delete), pattern)
+
 
 
 class Database:
@@ -459,6 +494,9 @@ class Database:
         duration = time.time() - start_time
         _track_query_performance("log_moderation_action", duration)
         
+        # Task #3: Invalidate cache for this guild
+        _invalidate_cache(f"action_count:{action.guild_id.to_int()}")
+        
         logger.debug(
             "[DATABASE] Logged moderation action: %s on user %s in guild %s channel %s",
             action.action.value,
@@ -514,6 +552,11 @@ class Database:
             
             duration = time.time() - start_time
             _track_query_performance("log_moderation_actions_batch", duration)
+            
+            # Task #3: Invalidate cache for affected guilds
+            guild_ids_affected = set(action.guild_id.to_int() for action in actions)
+            for guild_id in guild_ids_affected:
+                _invalidate_cache(f"action_count:{guild_id}")
             
             logger.debug(
                 "[DATABASE] Batch logged %d moderation actions in %.2fms",
@@ -620,6 +663,57 @@ class Database:
         global _query_stats
         _query_stats.clear()
         logger.info("[DATABASE] Performance statistics reset")
+    
+    def clear_query_cache(self, pattern: Optional[str] = None) -> None:
+        """
+        Task #3: Clear query result cache.
+        
+        Args:
+            pattern: Optional pattern to match for selective clearing
+        """
+        _invalidate_cache(pattern)
+    
+    async def get_cached_guild_action_count(self, guild_id: GuildID, days: int = 7) -> int:
+        """
+        Task #3: Get total action count for a guild with caching.
+        
+        This demonstrates the caching mechanism for frequently accessed queries.
+        Results are cached for 60 seconds.
+        
+        Args:
+            guild_id: Guild ID to query
+            days: Number of days to look back
+        
+        Returns:
+            Total number of actions in the time period
+        """
+        cache_key = f"action_count:{guild_id.to_int()}:{days}"
+        
+        # Check cache first
+        cached_result = _get_cached_query(cache_key)
+        if cached_result is not None:
+            logger.debug("[DATABASE] Cache hit for %s", cache_key)
+            return cached_result
+        
+        # Query database
+        start_time = time.time()
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM moderation_actions WHERE guild_id = ? AND timestamp >= ?",
+                (guild_id.to_int(), cutoff_date.isoformat())
+            )
+            row = await cursor.fetchone()
+            count = row[0] if row else 0
+        
+        duration = time.time() - start_time
+        _track_query_performance("get_cached_guild_action_count", duration)
+        
+        # Cache the result
+        _set_cached_query(cache_key, count)
+        
+        return count
 
 
 # Global Database instance
