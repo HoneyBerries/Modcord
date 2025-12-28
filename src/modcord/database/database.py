@@ -335,9 +335,6 @@ class Database:
         """
         Query past moderation actions for multiple users within a time window.
         
-        This is more efficient than calling get_past_actions() multiple times
-        as it makes a single database query with IN clause.
-        
         Args:
             guild_id: ID of the guild to query actions from
             user_ids: List of user IDs to query history for
