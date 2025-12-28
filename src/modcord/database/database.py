@@ -288,6 +288,7 @@ class Database:
         self._initialized = False
         logger.info("[DATABASE] Database shutdown complete")
     
+    
     async def log_moderation_action(self, action: ActionData) -> None:
         """
         Log a moderation action to the database.
@@ -324,60 +325,6 @@ class Database:
             action.channel_id
         )
     
-    async def get_past_actions(
-        self,
-        guild_id: GuildID,
-        user_id: UserID,
-        lookback_minutes: int
-    ) -> List[ActionData]:
-        """
-        Query past moderation actions for a user within a time window.
-        
-        Args:
-            guild_id: ID of the guild to query actions from
-            user_id: Snowflake ID of the user to query history for
-            lookback_minutes: How many minutes back to query
-        
-        Returns:
-            List of ActionData objects sorted by timestamp (newest first)
-        """
-        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
-        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
-        
-        async with self.get_connection() as db:
-            cursor = await db.execute(
-                """
-                SELECT guild_id, channel_id, user_id, action, reason, timeout_duration, ban_duration, message_ids, timestamp
-                FROM moderation_actions
-                WHERE guild_id = ? AND user_id = ? AND timestamp >= ?
-                ORDER BY timestamp DESC
-                """,
-                (guild_id_int, str(user_id), cutoff_time.isoformat())
-            )
-            rows = await cursor.fetchall()
-        
-        actions: List[ActionData] = []
-        for row in rows:
-            db_guild_id, db_channel_id, db_user_id, action_str, reason, timeout_dur, ban_dur, message_ids_str, _ = row
-            
-            message_ids: List[MessageID] = []
-            if message_ids_str:
-                message_ids = [MessageID(mid) for mid in message_ids_str.split(",") if mid]
-            
-            action_data_to_add = ActionData(
-                guild_id=GuildID(db_guild_id),
-                channel_id=ChannelID(db_channel_id),
-                user_id=UserID(db_user_id),
-                action=ActionType(action_str),
-                reason=reason,
-                timeout_duration=timeout_dur,
-                ban_duration=ban_dur,
-                message_ids_to_delete=message_ids
-            )
-
-            actions.append(action_data_to_add)
-        
-        return actions
 
     async def get_bulk_past_actions(
         self,
