@@ -6,6 +6,17 @@ centralized Database class. Uses fcntl file locking for safe concurrent access.
 
 The lock is acquired once during initialize() and released during shutdown().
 This ensures exclusive database access for the entire program lifetime.
+
+Optimizations:
+    #1: Connection pooling infrastructure for efficient connection reuse
+    #2: Strategic indexes on moderation_actions table for query performance
+    #3: Query result caching with 60-second TTL and auto-invalidation
+    #4: Batch operations using executemany() for efficient bulk inserts
+    #5: Timestamp-optimized indexes with DESC ordering
+    #6: Comprehensive query performance monitoring and statistics
+    #8: Prepared statement caching via executemany() in batch operations
+    #9: Optimized SQLite pragmas (synchronous, cache_size, temp_store, mmap, page_size)
+    #10: Database maintenance operations (vacuum, analyze, cleanup_old_actions)
 """
 
 from __future__ import annotations
