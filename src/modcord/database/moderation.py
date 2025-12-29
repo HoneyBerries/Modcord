@@ -68,7 +68,7 @@ class DatabaseModerationStorage:
         self._performance.track("log_moderation_action", duration)
         # Invalidate all cached action counts for this guild, including day-specific variants
         self._cache.invalidate(f"action_count:{action.guild_id.to_int()}")
-        self._cache.invalidate(f"action_count:{action.guild_id.to_int()}:*")
+        self._cache.invalidate(f"action_count:{action.guild_id.to_int()}:")
         
         logger.debug(
             "[MODERATION] Logged action: %s on user %s in guild %s channel %s",
