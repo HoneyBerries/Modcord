@@ -109,7 +109,7 @@ class LLMEngine:
 
     async def get_moderation_actions(
         self,
-        batches: List[ModerationChannelBatch]) -> Dict[int, List[ActionData]]:
+        batches: List[ModerationChannelBatch]) -> Dict[ChannelID, List[ActionData]]:
         """
         Get moderation actions from AI for multiple batches.
 
@@ -122,7 +122,7 @@ class LLMEngine:
             batches: List of ModerationChannelBatch objects to analyze.
 
         Returns:
-            Dictionary mapping channel_id (as int) to list of ActionData objects.
+            Dictionary mapping channel_id (ChannelID) to list of ActionData objects.
         """
         logger.debug("[MODERATION] Processing %d batches", len(batches))
 
@@ -173,8 +173,8 @@ class LLMEngine:
         results = await asyncio.gather(*tasks)
         
         # Group actions by channel
-        actions_by_channel: Dict[int, List[ActionData]] = {
-            channel_id.to_int(): actions
+        actions_by_channel: Dict[ChannelID, List[ActionData]] = {
+            channel_id: actions
             for channel_id, actions in results
         }
 

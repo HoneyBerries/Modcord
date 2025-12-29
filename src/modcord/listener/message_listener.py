@@ -167,7 +167,7 @@ class MessageListenerCog(commands.Cog):
         try:
             batches = await self._assemble_batches(pending)
             if batches:
-                await self.ai_moderation_engine.execute_moderation_pipeline(batches)
+                await self.ai_moderation_engine.execute(batches)
         except Exception:
             logger.exception("Exception while processing moderation batches")
         

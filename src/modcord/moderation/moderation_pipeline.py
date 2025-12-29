@@ -81,7 +81,7 @@ class ModerationPipeline:
         
         return valid
     
-    async def execute_moderation_pipeline(self, batches: List[ModerationChannelBatch]) -> None:
+    async def execute(self, batches: List[ModerationChannelBatch]) -> None:
         """
         Execute the full moderation pipeline: AI inference + action application.
         
@@ -110,8 +110,7 @@ class ModerationPipeline:
         guilds_with_reviews = set()
 
         for batch in valid_batches:
-            # Keys in actions_by_channel are ints (ChannelID.to_int()); normalize lookup
-            actions = actions_by_channel.get(batch.channel_id.to_int(), [])
+            actions = actions_by_channel.get(batch.channel_id, [])
             for action in actions:
                 if action.action is ActionType.NULL:
                     continue
