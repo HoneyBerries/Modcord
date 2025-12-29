@@ -12,13 +12,13 @@ from discord.ext import commands
 
 from modcord.configuration.app_configuration import app_config
 from modcord.settings.guild_settings_manager import guild_settings_manager
-from modcord.database.database import get_db
+from modcord.database.database import database
 from modcord.datatypes.action_datatypes import ActionData
 from modcord.datatypes.discord_datatypes import ChannelID, GuildID, DiscordUsername, MessageID, UserID
 from modcord.scheduler import rules_sync_scheduler
 from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationMessage, ModerationUser
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
-from modcord.moderation.moderation_engine import ModerationEngine
+from modcord.moderation.moderation_pipeline import ModerationPipeline
 from modcord.util.discord import collector, discord_utils
 from modcord.util import image_utils
 from modcord.util.logger import get_logger
@@ -40,7 +40,7 @@ class MessageListenerCog(commands.Cog):
         """
         self.bot = discord_bot_instance
         self.discord_bot_instance = discord_bot_instance
-        self.ai_moderation_engine = ModerationEngine(discord_bot_instance)
+        self.ai_moderation_engine = ModerationPipeline(discord_bot_instance)
         self._history_fetcher = DiscordHistoryFetcher(discord_bot_instance)
         self._pending_messages: dict[ChannelID, List[ModerationMessage]] = {}
         self._batch_timer: asyncio.Task | None = None
@@ -69,6 +69,7 @@ class MessageListenerCog(commands.Cog):
 
         # Queue message for moderation processing
         await self._queue_message_for_moderation(message)
+
 
     @commands.Cog.listener(name='on_message_edit')
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -112,7 +113,7 @@ class MessageListenerCog(commands.Cog):
             self._pending_messages[channel_id].append(mod_message)
             
             logger.debug(
-                f"Queued message {mod_message.message_id} for channel {channel_id} "
+                f"Queued message ID {mod_message.message_id} for channel ID {channel_id} "
                 f"(batch size: {len(self._pending_messages[channel_id])})"
             )
             
@@ -123,13 +124,13 @@ class MessageListenerCog(commands.Cog):
         """
         Convert a Discord message to a ModerationMessage.
         
-        Downloads any image attachments and includes them in the ModerationMessage.
+        Extracts image information from any image attachments and includes them in the ModerationMessage.
         """
         if not message.guild:
             return None
         
-        # Download images from attachments
-        images = await image_utils.download_images_for_moderation(message)
+        # Extract image info from attachments
+        images = image_utils.extract_images_for_moderation(message)
         
         return ModerationMessage(
             message_id=MessageID.from_message(message),
@@ -166,7 +167,7 @@ class MessageListenerCog(commands.Cog):
         try:
             batches = await self._assemble_batches(pending)
             if batches:
-                await self.ai_moderation_engine.process_batches(batches)
+                await self.ai_moderation_engine.execute(batches)
         except Exception:
             logger.exception("Exception while processing moderation batches")
         
@@ -193,15 +194,19 @@ class MessageListenerCog(commands.Cog):
 
             # Fetch historical context
             exclude_ids = {m.message_id for m in messages}
-            history_messages = await self._history_fetcher.fetch_history_context(channel_id, exclude_ids)
+            history_limit = app_config.history_context_messages
+            history_messages = await self._history_fetcher.fetch_history_context(channel_id, exclude_ids, history_limit)
             history_users = await self._group_messages_by_user(history_messages, channel) if history_messages else []
 
+            guild_id = GuildID.from_guild(channel.guild)
+            
             logger.debug(
-                f"Prepared batch for channel {channel_id}: {len(users)} users, {len(history_users)} history users"
+                f"Prepared batch for guild {guild_id}, channel {channel_id}: {len(users)} users, {len(history_users)} history users"
             )
 
             batches.append(
                 ModerationChannelBatch(
+                    guild_id=guild_id,
                     channel_id=channel_id,
                     channel_name=getattr(channel, "name", str(channel_id)),
                     users=users,
@@ -236,6 +241,10 @@ class MessageListenerCog(commands.Cog):
         guild_id = GuildID.from_guild(guild)
         lookback = app_config.past_actions_lookback_minutes
 
+        # Batch query all user actions at once instead of individual queries
+        all_user_ids = list(user_msgs.keys())
+        bulk_past_actions = await database.get_bulk_past_actions(guild_id, all_user_ids, lookback)
+
         users: List[ModerationUser] = []
         for uid, msgs in user_msgs.items():
             member = guild.get_member(uid.to_int())
@@ -248,7 +257,8 @@ class MessageListenerCog(commands.Cog):
             else:
                 join_date = member.joined_at
 
-            past_actions: List[ActionData] = await get_db().get_past_actions(guild_id, uid, lookback)
+            # Get past actions from bulk query results
+            past_actions = bulk_past_actions.get(uid, [])
 
             users.append(
                 ModerationUser(

@@ -14,8 +14,6 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.shortcuts import PromptSession
 
-
-from modcord.ai import ai_moderation_processor
 from modcord.util.logger import get_logger
 
 
@@ -224,10 +222,8 @@ async def cmd_status(control: ConsoleControl, args: list[str]) -> None:
 
     print_boxed_title("Bot Status", "ansimagenta")
 
-    # AI Status
-    ai_status = "🟢 Available" if ai_moderation_processor.model_state.available else "🔴 Unavailable"
-    ai_detail = ai_moderation_processor.model_state.init_error or "ready"
-    console_print(f"  AI Engine:  {ai_status} ({ai_detail})")
+    # AI Status (OpenAI API mode - always ready, failures handled per-request)
+    console_print("  AI Engine:  🟢 Ready (OpenAI API mode)")
     
     # Bot connection status
     if control.bot:

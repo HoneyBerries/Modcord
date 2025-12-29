@@ -1,5 +1,4 @@
-from PIL import Image
-from modcord.util.image_utils import download_image_to_pil, generate_image_hash_id
+from modcord.util.image_utils import generate_image_hash_id
 from modcord.datatypes.image_datatypes import ImageURL
 
 IMAGE_URLS_RAW = [
@@ -10,15 +9,6 @@ IMAGE_URLS_RAW = [
 ]
 
 IMAGE_URLS = [ImageURL(url) for url in IMAGE_URLS_RAW]
-
-def test_download_image_to_pil_valid_urls():
-    for url in IMAGE_URLS:
-        img = download_image_to_pil(str(url))
-        assert img is not None, f"Image should be downloaded for {url}"
-        assert isinstance(img, Image.Image)
-        assert img.mode == "RGB"
-        w, h = img.size
-        assert max(w, h) == 512, f"Longest side should be 512 for {url}"
 
 def test_generate_image_hash_id_unique():
     hashes = set()

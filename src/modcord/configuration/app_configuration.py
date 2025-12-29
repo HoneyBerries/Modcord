@@ -140,6 +140,33 @@ class AppConfig:
         return float(cache_config.get("channel_guidelines_cache_refresh", INFINITY)) if isinstance(cache_config, dict) else INFINITY
 
     @property
+    def message_cache_enabled(self) -> bool:
+        """Return whether message caching is enabled.
+        
+        Default is True.
+        """
+        cache_config = self._data.get("cache", {})
+        return bool(cache_config.get("message_cache_enabled", True)) if isinstance(cache_config, dict) else True
+
+    @property
+    def message_cache_size_per_channel(self) -> int:
+        """Return the maximum number of messages to cache per channel.
+        
+        Default is 100.
+        """
+        cache_config = self._data.get("cache", {})
+        return int(cache_config.get("message_cache_size_per_channel", 100)) if isinstance(cache_config, dict) else 100
+
+    @property
+    def message_cache_ttl_seconds(self) -> int:
+        """Return the TTL for cached messages in seconds.
+        
+        Default is 300 seconds (5 minutes).
+        """
+        cache_config = self._data.get("cache", {})
+        return int(cache_config.get("message_cache_ttl_seconds", 300)) if isinstance(cache_config, dict) else 300
+
+    @property
     def moderation_batch_seconds(self) -> float:
         """Return the moderation batch window in seconds.
 

@@ -58,32 +58,11 @@ else
 
     # Install dependencies using uv
     echo "Installing dependencies..."
-    uv pip install -r requirements.txt
+    uv pip install -r requirements.txt --index-strategy unsafe-best-match
 
     if [ $? -ne 0 ]; then
         echo "Failed to install dependencies with uv"
         exit 1
-    fi
-
-    # Apply vLLM WSL detection patch
-    echo "Applying vLLM workaround patch..."
-    PYTHON_VERSION=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-    VLLM_INTERFACE_PATH=".venv/lib/python${PYTHON_VERSION}/site-packages/vllm/platforms/interface.py"
-
-    if [ -f "$VLLM_INTERFACE_PATH" ]; then
-        # Check if patch is already applied
-        if grep -q 'and not "wsl2" in uname_str' "$VLLM_INTERFACE_PATH"; then
-            echo "vLLM patch already applied."
-        else
-            patch "$VLLM_INTERFACE_PATH" < hacks/interface.patch
-            if [ $? -eq 0 ]; then
-                echo "vLLM patch applied successfully."
-            else
-                echo "Warning: vLLM patch application failed."
-            fi
-        fi
-    else
-        echo "Warning: vLLM interface file not found at $VLLM_INTERFACE_PATH"
     fi
 
     # Mark setup as complete

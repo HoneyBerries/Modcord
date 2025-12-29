@@ -18,9 +18,6 @@ __pycache__/
 .env.local
 .env.*.local
 
-# ignore commands.json
-config/commands.json
-
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 

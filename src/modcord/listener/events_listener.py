@@ -8,7 +8,6 @@ import json
 import discord
 from discord.ext import commands
 
-from modcord.ai.ai_moderation_processor import model_state
 from modcord.util.logger import get_logger
 
 logger = get_logger("events_listener")
@@ -47,31 +46,24 @@ class EventsListenerCog(commands.Cog):
 
         commands = await self.bot.http.get_global_commands(self.bot.user.id)
 
-        with open("config/commands.json", "w") as f:
+        with open("data/commands.json", "w") as f:
             f.write(json.dumps(commands, indent=2))
 
     async def _update_presence(self) -> None:
         """
-        Update bot's Discord presence based on AI model availability.
+        Update bot's Discord presence.
 
-        If the AI model is available, sets the bot status to online and a friendly message.
-        If not, sets the status to idle and a less enthusiastic message.
+        Sets the bot status to online with a friendly watching message.
+        AI availability is handled per-request, not via global state.
         """
         if not self.bot.user:
             return
 
-        if model_state.available:
-            status = discord.Status.online
-            activity_name = "over your server while you're asleep!"
-        else:
-            status = discord.Status.idle
-            activity_name = "your server drunkenly because the AI is tired."
-
         await self.bot.change_presence(
-            status=status,
+            status=discord.Status.online,
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
-                name=activity_name,
+                name="over your server while you're asleep!",
             )
         )
 

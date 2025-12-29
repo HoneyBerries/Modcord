@@ -53,7 +53,6 @@ from modcord.listener import events_listener
 from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
 from modcord.listener import message_listener
 from modcord.database import database as db
-from modcord.ai import ai_moderation_processor
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
 from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
@@ -143,26 +142,6 @@ def create_bot() -> discord.Bot:
     return bot
 
 
-async def initialize_ai_model() -> None:
-    """
-    Initialize the AI moderation engine before the bot connects to Discord.
-    
-    Attempts to load and initialize the vLLM-based AI model for automated
-    moderation. If initialization fails, logs the error but allows the bot
-    to continue running without AI capabilities.
-    
-    Raises:
-        Exception: Re-raises any unexpected initialization failures.
-    """
-    try:
-        logger.info("[MAIN] Initializing AI moderation engine before bot startup…")
-        available, detail = await ai_moderation_processor.initialize_engine()
-        if detail and not available:
-            logger.critical("AI model failed to initialize: %s", detail)
-    except Exception as exc:
-        logger.critical("Unexpected error during AI initialization: %s", exc)
-
-
 async def _start_schedulers_when_ready(bot: discord.Bot) -> None:
     """Wait for bot to be ready, then start background sync schedulers."""
     await bot.wait_until_ready()
@@ -248,12 +227,6 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
     except Exception as exc:
         logger.exception("Error during guidelines sync scheduler shutdown: %s", exc)
 
-    # Shutdown AI engine (heavy resource cleanup)
-    try:
-        await ai_moderation_processor.shutdown_engine()
-    except Exception as exc:
-        logger.exception("Error during moderation processor shutdown: %s", exc)
-
     # Persist any pending guild settings
     try:
         await guild_settings_manager.shutdown()
@@ -307,20 +280,6 @@ async def async_main() -> int:
     except Exception as exc:
         logger.critical("Failed to initialize Discord bot: %s", exc)
         return 1
-
-    try:
-        await ai_moderation_processor.initialize_engine()
-    except Exception:
-        if ai_moderation_processor.model_state.init_error:
-            logger.critical("AI initialization failed irrecoverably: %s", ai_moderation_processor.model_state.init_error)
-        await shutdown_runtime(bot)
-        return 1
-
-    if not ai_moderation_processor.model_state.available:
-        logger.warning(
-            "AI model is unavailable (%s). Continuing without automated moderation.",
-            ai_moderation_processor.model_state.init_error or "no details",
-        )
 
     control = ConsoleControl()
     exit_code = await run_bot(bot, token, control)

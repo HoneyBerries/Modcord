@@ -162,7 +162,7 @@ def setup_logger(logger_name: str) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    base_level = logging.INFO
+    base_level = logging.DEBUG
     logger.setLevel(base_level)
     logger.propagate = False
 

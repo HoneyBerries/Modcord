@@ -118,12 +118,7 @@ class ModerationActionCog(commands.Cog):
             )
             return False
 
-        # Protect administrators from moderation via these commands
-        if target_user.guild_permissions.administrator:
-            await application_context.send_followup(
-                "You cannot perform moderation actions against administrators."
-            )
-            return False
+        # (Administrator protection removed: allow actions on administrators)
 
         return True
 

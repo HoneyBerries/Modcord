@@ -19,7 +19,7 @@ from modcord.datatypes.discord_datatypes import ChannelID, GuildID
 from modcord.datatypes.action_datatypes import ActionType
 from modcord.datatypes.guild_settings import GuildSettings, ACTION_FLAG_FIELDS
 from modcord.util.logger import get_logger
-from modcord.database.database import get_db
+from modcord.database.database import database
 
 logger = get_logger("guild_settings_manager")
 
@@ -47,7 +47,7 @@ class GuildSettingsManager:
     async def async_init(self) -> None:
         """Initialize the database and load settings from disk."""
         if not self._db_initialized:
-            await get_db().initialize()
+            await database.initialize()
             await self._load_from_disk()
             self._db_initialized = True
             logger.info("[GUILD SETTINGS MANAGER] Database initialized and settings loaded")
@@ -92,10 +92,6 @@ class GuildSettingsManager:
         for field_name, value in kwargs.items():
             if hasattr(settings, field_name):
                 setattr(settings, field_name, value)
-                logger.debug(
-                    "[GUILD SETTINGS MANAGER] Updated %s=%r for guild %s",
-                    field_name, value, guild_id.to_int()
-                )
             else:
                 logger.warning(
                     "[GUILD SETTINGS MANAGER] Unknown field %s for guild %s",
@@ -201,7 +197,7 @@ class GuildSettingsManager:
     async def _load_from_disk(self) -> bool:
         """Load persisted guild settings from database into memory."""
         try:
-            async with get_db().get_connection() as conn:
+            async with database.get_connection() as conn:
                 async with conn.execute("""
                     SELECT 
                         gs.guild_id, gs.ai_enabled, gs.rules,
@@ -281,7 +277,7 @@ class GuildSettingsManager:
 
         async with self._persist_lock:
             try:
-                async with get_db().get_connection() as conn:
+                async with database.get_connection() as conn:
                     # Persist main guild settings
                     await conn.execute("""
                         INSERT INTO guild_settings (
