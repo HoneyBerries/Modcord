@@ -25,7 +25,7 @@ from openai.types.shared_params.response_format_json_schema import ResponseForma
 import json
 
 from modcord.util.logger import get_logger
-from modcord.datatypes.action_datatypes import ActionData
+from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.moderation_datatypes import ModerationChannelBatch
 from modcord.moderation import moderation_parsing
 from modcord.moderation.moderation_serialization import convert_batch_to_openai_messages
@@ -214,7 +214,7 @@ class LLMEngine:
         )
 
         # Log summary
-        action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != "null")
+        action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != ActionType.NULL)
         logger.debug(
             "[RESULT] Channel %s: %d actions [%s] | Response: \n%s",
             req.channel_id,
