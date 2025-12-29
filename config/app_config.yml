@@ -59,7 +59,6 @@ ai_settings:
 
     OUTPUT RULES:
     - OUTPUT JSON ONLY, NO EXTRA TEXT
-    - INTERNAL REASONING (<think> </think>) MUST BE **1–2 SHORT SENTENCES MAX**
     - IF UNCERTAIN → `"action": "null"`
 
     MESSAGE SCOPE:

@@ -288,7 +288,7 @@ class ModerationPipeline:
                 member=member,
                 bot=self._bot)
             
-            logger.info(
+            logger.debug(
                 "[MODERATION ENGINE] Applied action %s for user %s: %s",
                 action.action.value,
                 action.user_id,

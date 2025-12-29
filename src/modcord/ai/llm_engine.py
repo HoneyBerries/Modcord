@@ -150,7 +150,7 @@ class LLMEngine:
             )
             
             # DEBUG: Output the schema for debugging
-            logger.info(
+            logger.debug(
                 "[SCHEMA DEBUG] Channel %s: %s",
                 batch.channel_id,
                 json.dumps(dynamic_schema, indent=2)
@@ -198,7 +198,8 @@ class LLMEngine:
                 messages=req.messages,
                 response_format=req.response_format,
             )
-            response_text = response.choices[0].message.content or ""
+            response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
+            logger.debug("[LLM ENGINE] Model Output Object: \n%s", response)
             
         except Exception as exc:
             logger.error("[LLM ENGINE] API request failed for channel %s: %s", req.channel_id, exc)
@@ -214,7 +215,7 @@ class LLMEngine:
 
         # Log summary
         action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != "null")
-        logger.info(
+        logger.debug(
             "[RESULT] Channel %s: %d actions [%s] | Response: \n%s",
             req.channel_id,
             len([a for a in actions if a.action != "null"]),
