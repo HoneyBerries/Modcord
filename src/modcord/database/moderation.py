@@ -20,7 +20,7 @@ from modcord.util.logger import get_logger
 logger = get_logger("database_moderation")
 
 
-class ModerationActions:
+class DatabaseModerationStorage:
     """Handles moderation action logging and querying."""
     
     def __init__(self, performance: DatabasePerformanceMonitor, cache: DatabaseQueryCache):
@@ -66,7 +66,9 @@ class ModerationActions:
         
         duration = time.time() - start_time
         self._performance.track("log_moderation_action", duration)
+        # Invalidate all cached action counts for this guild, including day-specific variants
         self._cache.invalidate(f"action_count:{action.guild_id.to_int()}")
+        self._cache.invalidate(f"action_count:{action.guild_id.to_int()}:*")
         
         logger.debug(
             "[MODERATION] Logged action: %s on user %s in guild %s channel %s",

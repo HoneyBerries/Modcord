@@ -31,7 +31,7 @@ This guide enables AI agents to work productively in the Modcord Discord moderat
 - **Config-Driven**: Most runtime behavior (batch window, history depth, rules) is set in `config/app_config.yml` or per-guild settings.
 - **Separation of Concerns**: Each layer (intake, batching, AI, parsing, enforcement, review) is isolated for testability and clarity.
 - **Async-First**: All long-running operations are async to avoid blocking the Discord gateway loop.
-- **Database Class Pattern**: Use `get_db()` to access the singleton `Database` instance. Call methods like `get_db().log_moderation_action()` and `get_db().get_past_actions()`.
+- **Database Class Pattern**: Use `database` to access the singleton `Database` instance. Call methods like `database.log_moderation_action()` and `database.get_past_actions()`.
 
 ---
 

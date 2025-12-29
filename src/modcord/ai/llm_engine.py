@@ -22,6 +22,7 @@ from typing import Any, Dict, List
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
+import json
 
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData
@@ -38,8 +39,8 @@ logger = get_logger("llm_engine")
 
 
 @dataclass
-class BatchRequest:
-    """Container for a single batch's API request data."""
+class ChannelBatchRequest:
+    """Container for a single channel batch's API request data."""
     channel_id: ChannelID
     guild_id: GuildID
     messages: List[ChatCompletionMessageParam]
@@ -129,7 +130,7 @@ class LLMEngine:
             return {}
 
         # Prepare all requests
-        requests: List[BatchRequest] = []
+        requests: List[ChannelBatchRequest] = []
         
         for batch in batches:
             # Build system prompt with resolved rules and guidelines
@@ -148,7 +149,14 @@ class LLMEngine:
                 }
             )
             
-            requests.append(BatchRequest(
+            # DEBUG: Output the schema for debugging
+            logger.info(
+                "[SCHEMA DEBUG] Channel %s: %s",
+                batch.channel_id,
+                json.dumps(dynamic_schema, indent=2)
+            )
+            
+            requests.append(ChannelBatchRequest(
                 channel_id=batch.channel_id,
                 guild_id=batch.guild_id,
                 messages=messages,
@@ -174,12 +182,12 @@ class LLMEngine:
 
     async def _make_request_and_parse(
         self, 
-        req: BatchRequest
+        req: ChannelBatchRequest
     ) -> tuple[ChannelID, List[ActionData]]:
         """Make API request and parse response into actions.
         
         Args:
-            req: BatchRequest containing all data for this request.
+            req: ChannelBatchRequest containing all data for this request.
             
         Returns:
             Tuple of (channel_id, list of actions).
@@ -206,7 +214,7 @@ class LLMEngine:
 
         # Log summary
         action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != "null")
-        logger.debug(
+        logger.info(
             "[RESULT] Channel %s: %d actions [%s] | Response: \n%s",
             req.channel_id,
             len([a for a in actions if a.action != "null"]),

@@ -95,8 +95,7 @@ class SchemaManager:
             )
         """)
         
-        # Moderation actions table (recreate for schema updates)
-        await db.execute("DROP TABLE IF EXISTS moderation_actions")
+        # Moderation actions table
         await db.execute("""
             CREATE TABLE IF NOT EXISTS moderation_actions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

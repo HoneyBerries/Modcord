@@ -30,7 +30,7 @@ from modcord.database.db_connection import DatabaseConnectionContext
 from modcord.database.db_cache import DatabaseQueryCache
 from modcord.database.db_perf_mon import DatabasePerformanceMonitor
 from modcord.database.db_schema import SchemaManager
-from modcord.database.moderation import ModerationActions
+from modcord.database.moderation import DatabaseModerationStorage
 from modcord.database.db_maintenance import MaintenanceOperations
 
 logger = get_logger("database")
@@ -68,7 +68,7 @@ class Database:
         # Initialize specialized modules
         self.db_perf_mon = DatabasePerformanceMonitor()
         self._cache = DatabaseQueryCache(ttl_seconds=60)
-        self._moderation = ModerationActions(self.db_perf_mon, self._cache)
+        self.db_moderation_storage = DatabaseModerationStorage(self.db_perf_mon, self._cache)
         self._maintenance = MaintenanceOperations(self.db_perf_mon)
     
     def get_connection(self) -> DatabaseConnectionContext:
@@ -166,7 +166,7 @@ class Database:
             action: ActionData object containing all action details
         """
         async with self.get_connection() as db:
-            await self._moderation.log_action(db, action)
+            await self.db_moderation_storage.log_action(db, action)
     
     async def log_moderation_actions_batch(self, actions: List[ActionData]) -> int:
         """
@@ -179,7 +179,7 @@ class Database:
             Number of actions successfully logged, or -1 on error
         """
         async with self.get_connection() as db:
-            return await self._moderation.log_actions_batch(db, actions)
+            return await self.db_moderation_storage.log_actions_batch(db, actions)
 
     async def get_bulk_past_actions(
         self,
@@ -199,7 +199,7 @@ class Database:
             Dictionary mapping user_id to list of ActionData objects
         """
         async with self.get_connection() as db:
-            return await self._moderation.get_bulk_past_actions(db, guild_id, user_ids, lookback_minutes)
+            return await self.db_moderation_storage.get_bulk_past_actions(db, guild_id, user_ids, lookback_minutes)
     
     def get_db_performance_stats(self) -> Dict[str, Dict[str, float]]:
         """
@@ -241,17 +241,8 @@ class Database:
             Total number of actions in the time period
         """
         async with self.get_connection() as db:
-            return await self._moderation.get_guild_action_count(db, guild_id, days)
+            return await self.db_moderation_storage.get_guild_action_count(db, guild_id, days)
 
 
 # Global Database instance
 database = Database()
-
-def get_db() -> Database:
-    """
-    Get the global Database instance.
-    
-    Returns:
-        Database: The global Database manager instance.
-    """
-    return database

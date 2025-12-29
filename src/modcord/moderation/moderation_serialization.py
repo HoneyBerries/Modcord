@@ -109,11 +109,20 @@ def convert_batch_to_openai_messages(
         history_users=batch.history_users,
     )
     
-    # Build user->message_ids map for schema (non-history messages only)
-    user_message_map: Dict[UserID, List[MessageID]] = {
-        user.user_id: [msg.message_id for msg in user.messages]
-        for user in batch.users
-    }
+    # Build user->message_ids map for schema (non-history users only)
+    # Only include messages with actual content (text OR images)
+    # Users with no valid messages are excluded from moderation schema
+    user_message_map: Dict[UserID, List[MessageID]] = {}
+    for user in batch.users:
+        # Filter to messages with content (text or images)
+        valid_messages = [
+            msg.message_id 
+            for msg in user.messages 
+            if msg.content or msg.images  # Has text OR has images
+        ]
+        # Only include user if they have at least one valid message
+        if valid_messages:
+            user_message_map[user.user_id] = valid_messages
     
     # Build JSON payload with user/message data
     users_data: List[Dict[str, Any]] = []

@@ -46,8 +46,7 @@ class DatabaseConnectionContext:
         await self._conn.execute("PRAGMA synchronous = NORMAL")
         await self._conn.execute("PRAGMA cache_size = -64000")  # 64MB cache
         await self._conn.execute("PRAGMA temp_store = MEMORY")
-        await self._conn.execute("PRAGMA mmap_size = 30000000000")  # 30GB mmap
-        await self._conn.execute("PRAGMA page_size = 4096")
+        await self._conn.execute("PRAGMA mmap_size = 268435456")  # 256MB mmap
         
         return self._conn
     

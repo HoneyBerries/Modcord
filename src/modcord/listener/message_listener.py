@@ -12,7 +12,7 @@ from discord.ext import commands
 
 from modcord.configuration.app_configuration import app_config
 from modcord.settings.guild_settings_manager import guild_settings_manager
-from modcord.database.database import get_db
+from modcord.database.database import database
 from modcord.datatypes.action_datatypes import ActionData
 from modcord.datatypes.discord_datatypes import ChannelID, GuildID, DiscordUsername, MessageID, UserID
 from modcord.scheduler import rules_sync_scheduler
@@ -113,7 +113,7 @@ class MessageListenerCog(commands.Cog):
             self._pending_messages[channel_id].append(mod_message)
             
             logger.debug(
-                f"Queued message {mod_message.message_id} for channel {channel_id} "
+                f"Queued message ID {mod_message.message_id} for channel ID {channel_id} "
                 f"(batch size: {len(self._pending_messages[channel_id])})"
             )
             
@@ -243,7 +243,7 @@ class MessageListenerCog(commands.Cog):
 
         # Batch query all user actions at once instead of individual queries
         all_user_ids = list(user_msgs.keys())
-        bulk_past_actions = await get_db().get_bulk_past_actions(guild_id, all_user_ids, lookback)
+        bulk_past_actions = await database.get_bulk_past_actions(guild_id, all_user_ids, lookback)
 
         users: List[ModerationUser] = []
         for uid, msgs in user_msgs.items():

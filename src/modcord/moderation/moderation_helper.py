@@ -10,7 +10,7 @@ This module provides utility functions for:
 import datetime
 import discord
 
-from modcord.database.database import get_db
+from modcord.database.database import database
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import UserID
 from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationUser
@@ -181,12 +181,12 @@ async def apply_action(
         match action.action:
             case ActionType.WARN:
                 await send_action_notification(action, member, guild, channel, bot.user)
-                await get_db().log_moderation_action(action)
+                await database.log_moderation_action(action)
                 return True
             
             case ActionType.DELETE:
                 # Messages already deleted above
-                await get_db().log_moderation_action(action)
+                await database.log_moderation_action(action)
                 return True
             
             case ActionType.TIMEOUT:
@@ -197,13 +197,13 @@ async def apply_action(
                 
                 await member.timeout(until, reason=f"ModCord: {action.reason}")
                 await send_action_notification(action, member, guild, channel, bot.user)
-                await get_db().log_moderation_action(action)
+                await database.log_moderation_action(action)
                 return True
             
             case ActionType.KICK:
                 await guild.kick(member, reason=f"ModCord: {action.reason}")
                 await send_action_notification(action, member, guild, channel, bot.user)
-                await get_db().log_moderation_action(action)
+                await database.log_moderation_action(action)
                 return True
             
             case ActionType.BAN:
@@ -226,7 +226,7 @@ async def apply_action(
                         logger.error(f"Failed to schedule unban for user {member.id}: {e}")
                 
                 await send_action_notification(action, member, guild, channel, bot.user)
-                await get_db().log_moderation_action(action)
+                await database.log_moderation_action(action)
                 return True
             
             case _:
