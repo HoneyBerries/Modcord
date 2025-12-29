@@ -1,22 +1,20 @@
 """
 Tests for database optimization features.
 
-This test suite validates the optimizations added in tasks #1-#10:
-- Performance monitoring (#6)
-- Query caching (#3)
-- Batch operations (#4)
-- Database maintenance (#10)
+This test suite validates the optimizations added:
+- Performance monitoring
+- Query caching
+- Batch operations
+- Database maintenance
 """
 
 import pytest
 import tempfile
-import os
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
 
-from modcord.database.database import Database, get_query_statistics, _invalidate_cache
+from modcord.database.database import Database
 from modcord.datatypes.action_datatypes import ActionData, ActionType
-from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID, ChannelID
+from modcord.datatypes.discord_datatypes import UserID, GuildID, ChannelID
 
 
 @pytest.fixture
@@ -32,9 +30,9 @@ async def test_db():
 
 @pytest.mark.asyncio
 async def test_performance_monitoring(test_db):
-    """Test #6: Verify performance monitoring tracks queries."""
+    """Verify performance monitoring tracks queries."""
     # Clear stats
-    test_db.reset_performance_stats()
+    test_db.reset_db_performance_stats()
     
     # Log an action
     action = ActionData(
@@ -47,7 +45,7 @@ async def test_performance_monitoring(test_db):
     await test_db.log_moderation_action(action)
     
     # Check stats were recorded
-    stats = test_db.get_performance_stats()
+    stats = test_db.get_db_performance_stats()
     assert "log_moderation_action" in stats
     assert stats["log_moderation_action"]["count"] >= 1
     assert stats["log_moderation_action"]["total_time"] > 0
@@ -55,7 +53,7 @@ async def test_performance_monitoring(test_db):
 
 @pytest.mark.asyncio
 async def test_batch_operations(test_db):
-    """Test #4: Verify batch insert operations work correctly."""
+    """Verify batch insert operations work correctly."""
     actions = [
         ActionData(
             guild_id=GuildID(123),
@@ -85,7 +83,7 @@ async def test_batch_operations(test_db):
 
 @pytest.mark.asyncio
 async def test_query_caching(test_db):
-    """Test #3: Verify query result caching works."""
+    """Verify query result caching works."""
     guild_id = GuildID(123)
     
     # Log some actions
@@ -115,7 +113,7 @@ async def test_query_caching(test_db):
 
 @pytest.mark.asyncio
 async def test_database_maintenance(test_db):
-    """Test #10: Verify database maintenance operations work."""
+    """Verify database maintenance operations work."""
     # Test analyze
     result = await test_db.analyze()
     assert result is True
@@ -127,7 +125,7 @@ async def test_database_maintenance(test_db):
 
 @pytest.mark.asyncio
 async def test_cleanup_old_actions(test_db):
-    """Test #10: Verify cleanup of old actions."""
+    """Verify cleanup of old actions."""
     guild_id = GuildID(123)
     
     # Log an action
@@ -147,7 +145,7 @@ async def test_cleanup_old_actions(test_db):
 
 @pytest.mark.asyncio
 async def test_bulk_past_actions_performance(test_db):
-    """Test #5: Verify optimized timestamp queries work efficiently."""
+    """Verify optimized timestamp queries work efficiently."""
     guild_id = GuildID(123)
     user_ids = [UserID(3000 + i) for i in range(10)]  # Use numeric IDs
     
