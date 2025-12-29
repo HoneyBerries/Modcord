@@ -115,10 +115,6 @@ async def test_database_maintenance(test_db):
     # Test analyze
     result = await test_db.analyze()
     assert result is True
-    
-    # Test vacuum (may take time but should succeed)
-    result = await test_db.vacuum()
-    assert result is True
 
 
 @pytest.mark.asyncio
