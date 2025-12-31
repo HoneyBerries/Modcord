@@ -44,6 +44,7 @@ class GuildSettingsManager:
 
         logger.info("[GUILD SETTINGS MANAGER] Initialized")
 
+
     async def async_init(self) -> None:
         """Initialize the database and load settings from disk."""
         if not self._db_initialized:
@@ -51,6 +52,7 @@ class GuildSettingsManager:
             await self._load_from_disk()
             self._db_initialized = True
             logger.info("[GUILD SETTINGS MANAGER] Database initialized and settings loaded")
+
 
     # ========== Core API ==========
 
@@ -63,10 +65,7 @@ class GuildSettingsManager:
 
         Returns:
             GuildSettings instance for the guild.
-        """
-        if not isinstance(guild_id, GuildID):
-            guild_id = GuildID(guild_id)
-        
+        """        
         settings = self._guilds.get(guild_id)
         if settings is None:
             settings = GuildSettings(guild_id=guild_id)
@@ -107,10 +106,7 @@ class GuildSettingsManager:
 
         Args:
             guild_id: The guild ID to persist.
-        """
-        if not isinstance(guild_id, GuildID):
-            guild_id = GuildID(guild_id)
-        
+        """        
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -140,6 +136,54 @@ class GuildSettingsManager:
         """Return a snapshot list of guild IDs currently cached."""
         return list(self._guilds.keys())
 
+    async def delete(self, guild_id: GuildID) -> bool:
+        """Delete all data for a guild from memory and database.
+        
+        This removes:
+        - Guild settings
+        - Moderator roles
+        - Review channels
+        - Channel guidelines
+        - Moderation action history (if applicable)
+        
+        Args:
+            guild_id: The guild ID to delete.
+            
+        Returns:
+            True if successful, False otherwise.
+        """           
+        # Remove from memory cache
+        if guild_id in self._guilds:
+            del self._guilds[guild_id]
+            logger.debug(f"[GUILD SETTINGS MANAGER] Removed guild {guild_id.to_int()} from memory cache")
+        
+        # Delete from database (CASCADE will handle related tables)
+        try:
+            async with database.get_connection() as conn:
+                # Delete main guild settings (CASCADE handles related tables)
+                await conn.execute(
+                    "DELETE FROM guild_settings WHERE guild_id = ?",
+                    (guild_id.to_int(),)
+                )
+                
+                # Also delete moderation history for this guild
+                await conn.execute(
+                    "DELETE FROM moderation_actions WHERE guild_id = ?",
+                    (guild_id.to_int(),)
+                )
+                
+                await conn.commit()
+                logger.debug(
+                    f"[GUILD SETTINGS MANAGER] Deleted all data for guild {guild_id.to_int()} from database"
+                )
+                return True
+        except Exception:
+            logger.exception(
+                f"[GUILD SETTINGS MANAGER] Failed to delete guild {guild_id.to_int()} from database"
+            )
+            return False
+
+
     # ========== Action Type Helpers ==========
 
     def is_action_allowed(self, guild_id: GuildID, action: ActionType) -> bool:
@@ -158,6 +202,7 @@ class GuildSettingsManager:
         if field_name is None:
             return True
         return bool(getattr(settings, field_name, True))
+
 
     def set_action_allowed(self, guild_id: GuildID, action: ActionType, enabled: bool) -> bool:
         """

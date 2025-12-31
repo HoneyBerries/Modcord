@@ -27,14 +27,14 @@ class GuildSettings:
     """Persistent per-guild configuration values."""
 
     guild_id: GuildID
-    ai_enabled: bool = False
+    ai_enabled: bool = True
     rules: str = ""
-    auto_warn_enabled: bool = False
-    auto_delete_enabled: bool = False
-    auto_timeout_enabled: bool = False
-    auto_kick_enabled: bool = False
-    auto_ban_enabled: bool = False
-    auto_review_enabled: bool = False
+    auto_warn_enabled: bool = True
+    auto_delete_enabled: bool = True
+    auto_timeout_enabled: bool = True
+    auto_kick_enabled: bool = True
+    auto_ban_enabled: bool = True
+    auto_review_enabled: bool = True
     moderator_role_ids: List[int] = field(default_factory=list)
     review_channel_ids: List[ChannelID] = field(default_factory=list)
     channel_guidelines: Dict[ChannelID, str] = field(default_factory=dict)
