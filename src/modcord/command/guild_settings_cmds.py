@@ -122,12 +122,14 @@ class GuildSettingsCog(commands.Cog):
         
         settings = guild_settings_manager.get(ctx.guild_id)
         channel_id = ChannelID.from_channel(channel)
+        
         if channel_id not in settings.review_channel_ids:
             settings.review_channel_ids.append(channel_id)
             guild_settings_manager.save(ctx.guild_id)
             await ctx.respond(f"✅ Added {channel.mention} to review channels.", ephemeral=True)
         else:
             await ctx.respond(f"{channel.mention} is already a review channel.", ephemeral=True)
+
 
     @mods.command(name="remove-channel", description="Remove a channel from receiving AI review alerts")
     async def remove_review_channel(self, ctx: discord.ApplicationContext, channel: discord.TextChannel):
@@ -136,12 +138,14 @@ class GuildSettingsCog(commands.Cog):
         
         settings = guild_settings_manager.get(ctx.guild_id)
         channel_id = ChannelID.from_channel(channel)
+
         if channel_id in settings.review_channel_ids:
             settings.review_channel_ids.remove(channel_id)
             guild_settings_manager.save(ctx.guild_id)
             await ctx.respond(f"✅ Removed {channel.mention} from review channels.", ephemeral=True)
         else:
             await ctx.respond(f"{channel.mention} is not a review channel.", ephemeral=True)
+
 
     @mods.command(name="list", description="List current moderator settings")
     async def list_mods(self, ctx: discord.ApplicationContext):
