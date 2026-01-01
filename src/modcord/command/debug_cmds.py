@@ -36,7 +36,7 @@ class DebugCog(commands.Cog):
             )
             embed.add_field(name="Guild", value=application_context.guild.name, inline=False)
             embed.add_field(name="User", value=application_context.user.mention, inline=False)
-            embed.add_field(name="Ping/Latency", value=str(self.bot.latency), inline=False)
+            embed.add_field(name="Ping/Latency", value=f"{self.bot.latency * 1000:.0f} ms", inline=False)
 
             # Send response
             await application_context.respond(embed=embed, ephemeral=True)
