@@ -239,3 +239,7 @@ class GuildSettingsDB:
                 f"[GUILD SETTINGS DB] Failed to delete guild {guild_id.to_int()} from database"
             )
             return False
+        
+
+# Create a singleton instance for use by the rest of the application
+guild_settings_db = GuildSettingsDB()

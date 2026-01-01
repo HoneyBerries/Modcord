@@ -3,16 +3,6 @@ Database connection management.
 
 Provides async context managers for database connections with
 optimized SQLite pragmas for performance.
-
-WAL (Write-Ahead Logging) Mode:
-    SQLite WAL mode creates two additional files:
-    - .db-wal: Contains recent uncommitted changes
-    - .db-shm: Shared memory index for the WAL file
-    
-    These files are automatically managed by SQLite:
-    - Checkpointed automatically when WAL grows large
-    - Removed automatically when last connection closes cleanly
-    - Manual checkpoint available via maintenance.checkpoint_wal()
 """
 
 from pathlib import Path
@@ -52,7 +42,6 @@ class DatabaseConnectionContext:
         
         # Apply optimized pragmas
         await self._conn.execute("PRAGMA foreign_keys = ON")
-        await self._conn.execute("PRAGMA journal_mode = WAL")
         await self._conn.execute("PRAGMA synchronous = NORMAL")
         await self._conn.execute("PRAGMA cache_size = -64000")  # 64MB cache
         await self._conn.execute("PRAGMA temp_store = MEMORY")

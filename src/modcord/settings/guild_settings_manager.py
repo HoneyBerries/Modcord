@@ -15,12 +15,10 @@ from typing import Any, Dict, Set
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.datatypes.action_datatypes import ActionType
 from modcord.datatypes.guild_settings import GuildSettings, ACTION_FLAG_FIELDS
-from modcord.settings.guild_settings_db import GuildSettingsDB
+from modcord.settings.guild_settings_db import guild_settings_db
 from modcord.util.logger import get_logger
 
 logger = get_logger("guild_settings_manager")
-
-guild_settings_db = GuildSettingsDB()
 
 
 class GuildSettingsManager:

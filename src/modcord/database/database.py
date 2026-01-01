@@ -2,8 +2,7 @@
 Database initialization and connection management for SQLite.
 
 This module provides a centralized Database class that coordinates
-database operations including schema management, moderation action
-logging, and maintenance operations.
+database operations including schema management and moderation action logging.
 
 SQLite's WAL mode handles concurrent access safely with its own
 internal locking mechanisms, so no application-level locking is needed.
@@ -12,8 +11,6 @@ The Database class acts as a coordinator, delegating to specialized
 modules for different concerns:
 - schema: Table/index creation and migrations
 - moderation: Action logging and querying
-- maintenance: Analyze, cleanup operations
-- cache: Query result caching
 - performance: Query timing and statistics
 - connection: Connection management with optimized pragmas
 """
@@ -27,10 +24,8 @@ from modcord.datatypes.action_datatypes import ActionData
 from modcord.datatypes.discord_datatypes import UserID, GuildID
 from modcord.util.logger import get_logger
 from modcord.database.db_connection import DatabaseConnectionContext
-from modcord.database.db_cache import DatabaseQueryCache
-from modcord.database.db_perf_mon import DatabasePerformanceMonitor
 from modcord.database.db_schema import SchemaManager
-from modcord.database.moderation import DatabaseModerationStorage
+from modcord.database.moderation_action_storage import ModerationActionStorage
 
 logger = get_logger("database")
 
@@ -46,7 +41,6 @@ class Database:
     - Database initialization and schema management
     - Moderation action logging and querying
     - Performance monitoring and caching
-    - Database maintenance operations
     
     Lifecycle:
         1. Call initialize() at program startup
@@ -65,9 +59,7 @@ class Database:
         self._initialized = False
         
         # Initialize specialized modules
-        self.db_perf_mon = DatabasePerformanceMonitor()
-        self._cache = DatabaseQueryCache(ttl_seconds=60)
-        self.db_moderation_storage = DatabaseModerationStorage(self.db_perf_mon, self._cache)
+        self.moderation_action_storage = ModerationActionStorage()
     
     def get_connection(self) -> DatabaseConnectionContext:
         """
@@ -111,7 +103,7 @@ class Database:
     
     async def shutdown(self) -> None:
         """
-        Shutdown the database and perform final WAL checkpoint.
+        Shutdown the database.
         
         This method should be called at program shutdown for cleanup.
         It performs a TRUNCATE checkpoint to ensure all WAL data is flushed
@@ -120,8 +112,6 @@ class Database:
         """
         if not self._initialized:
             return
-        async with self.get_connection() as db:
-            await db.close()
         
         self._initialized = False
         logger.info("[DATABASE] Database shutdown complete")
@@ -136,7 +126,7 @@ class Database:
             action: ActionData object containing all action details
         """
         async with self.get_connection() as db:
-            await self.db_moderation_storage.log_action(db, action)
+            await self.moderation_action_storage.log_action(db, action)
     
     async def log_moderation_actions_batch(self, actions: List[ActionData]) -> int:
         """
@@ -149,7 +139,7 @@ class Database:
             Number of actions successfully logged, or -1 on error
         """
         async with self.get_connection() as db:
-            return await self.db_moderation_storage.log_actions_batch(db, actions)
+            return await self.moderation_action_storage.log_actions_batch(db, actions)
 
     async def get_bulk_past_actions(
         self,
@@ -169,39 +159,12 @@ class Database:
             Dictionary mapping user_id to list of ActionData objects
         """
         async with self.get_connection() as db:
-            return await self.db_moderation_storage.get_bulk_past_actions(db, guild_id, user_ids, lookback_minutes)
+            return await self.moderation_action_storage.get_bulk_past_actions(db, guild_id, user_ids, lookback_minutes)
     
-    def get_db_performance_stats(self) -> Dict[str, Dict[str, float]]:
-        """
-        Get database query performance statistics.
-        
-        Returns:
-            Dictionary of query statistics with timing information
-        """
-        return self.db_perf_mon.get_statistics()
-    
-    def reset_db_performance_stats(self) -> None:
-        """
-        Reset database query performance statistics.
-        
-        Useful for starting fresh performance measurements.
-        """
-        self.db_perf_mon.reset()
-        logger.info("[DATABASE] Performance statistics reset")
-    
-    def clear_query_cache(self, pattern: Optional[str] = None) -> None:
-        """
-        Clear query result cache.
-        
-        Args:
-            pattern: Optional pattern to match for selective clearing
-        """
-        self._cache.invalidate(pattern)
-        
     
     async def get_guild_action_count(self, guild_id: GuildID, days: int = 7) -> int:
         """
-        Get total action count for a guild, using caching to improve performance.
+        Get total action count for a guild.
         
         Args:
             guild_id: Guild ID to query
@@ -211,7 +174,7 @@ class Database:
             Total number of actions in the time period
         """
         async with self.get_connection() as db:
-            return await self.db_moderation_storage.get_guild_action_count(db, guild_id, days)
+            return await self.moderation_action_storage.get_guild_action_count(db, guild_id, days)
 
 
 # Global Database instance
