@@ -28,6 +28,7 @@ class DebugCog(commands.Cog):
     async def test(self, application_context: discord.ApplicationContext) -> None:
         """Test command to verify the bot is responsive."""
         try:
+            # Create embed response
             embed = discord.Embed(
                 title="✅ Bot Test Successful",
                 description="The bot is responsive and working correctly.",
@@ -35,11 +36,16 @@ class DebugCog(commands.Cog):
             )
             embed.add_field(name="Guild", value=application_context.guild.name, inline=False)
             embed.add_field(name="User", value=application_context.user.mention, inline=False)
+            embed.add_field(name="Ping/Latency", value=str(self.bot.latency), inline=False)
+
+            # Send response
             await application_context.respond(embed=embed, ephemeral=True)
             logger.debug(f"Test command executed by {application_context.user} in {application_context.guild.name}")
+
         except Exception as e:
             logger.error(f"Error in test command: {e}")
             await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
+
 
     @debug.command(name="purge", description="Delete all messages in the current channel")
     async def purge(self, application_context: discord.ApplicationContext) -> None:
@@ -65,6 +71,8 @@ class DebugCog(commands.Cog):
             logger.error(f"Error in purge command: {e}")
             await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
 
+
+
     @debug.command(name="refresh_rules", description="Manually refresh the server rules cache")
     async def refresh_rules(self, application_context: discord.ApplicationContext) -> None:
         """Manually refresh the server rules cache from the database."""
@@ -89,6 +97,7 @@ class DebugCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error in refresh_rules command: {e}")
             await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
+
 
 
     @debug.command(name="show_rules", description="Display the current server rules")
@@ -119,6 +128,8 @@ class DebugCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error in show_rules command: {e}")
             await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
+
+
 
     @debug.command(name="simulate_review", description="Simulate multiple users needing review for testing")
     async def simulate_review(self, application_context: discord.ApplicationContext) -> None:
@@ -265,6 +276,7 @@ class DebugCog(commands.Cog):
                 await application_context.followup.send(content=f"❌ Error: {e}", ephemeral=True)
             except Exception:
                 logger.error("Failed to send error message to user - interaction may have timed out")
+
 
 
 def setup(bot: discord.Bot) -> None:
