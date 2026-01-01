@@ -107,6 +107,78 @@ class GuildSettingsDB:
             logger.exception("[GUILD SETTINGS DB] Failed to load from database")
             return {}
 
+    async def fetch_guild_settings(self, guild_id: GuildID) -> GuildSettings | None:
+        """
+        Fetch settings for a specific guild from database.
+
+        Args:
+            guild_id: The guild ID to fetch settings for.
+
+        Returns:
+            GuildSettings object or None if not found.
+        """
+        try:
+            async with database.get_connection() as conn:
+                async with conn.execute("""
+                    SELECT 
+                        gs.guild_id, gs.ai_enabled, gs.rules,
+                        gs.auto_warn_enabled, gs.auto_delete_enabled,
+                        gs.auto_timeout_enabled, gs.auto_kick_enabled, gs.auto_ban_enabled,
+                        gs.auto_review_enabled,
+                        mr.role_id,
+                        rc.channel_id,
+                        cg.channel_id, cg.guidelines
+                    FROM guild_settings gs
+                    LEFT JOIN guild_moderator_roles mr ON gs.guild_id = mr.guild_id
+                    LEFT JOIN guild_review_channels rc ON gs.guild_id = rc.guild_id
+                    LEFT JOIN channel_guidelines cg ON gs.guild_id = cg.guild_id
+                    WHERE gs.guild_id = ?
+                """, (guild_id.to_int(),)) as cursor:
+                    rows = list(await cursor.fetchall())
+
+                if not rows:
+                    return None
+
+                # Process rows similar to load_all_guild_settings
+                # Since we are fetching for one guild, we can initialize settings once
+                first_row = rows[0]
+                settings = GuildSettings(
+                    guild_id=guild_id,
+                    ai_enabled=bool(first_row[1]),
+                    rules=first_row[2] or "",
+                    auto_warn_enabled=bool(first_row[3]),
+                    auto_delete_enabled=bool(first_row[4]),
+                    auto_timeout_enabled=bool(first_row[5]),
+                    auto_kick_enabled=bool(first_row[6]),
+                    auto_ban_enabled=bool(first_row[7]),
+                    auto_review_enabled=bool(first_row[8]) if first_row[8] is not None else True,
+                    moderator_role_ids=[],
+                    review_channel_ids=[],
+                    channel_guidelines={},
+                )
+
+                for row in rows:
+                    # Add moderator role if present
+                    if row[9] is not None and row[9] not in settings.moderator_role_ids:
+                        settings.moderator_role_ids.append(row[9])
+
+                    # Add review channel if present
+                    if row[10] is not None:
+                        channel_obj = ChannelID.from_int(row[10])
+                        if channel_obj not in settings.review_channel_ids:
+                            settings.review_channel_ids.append(channel_obj)
+
+                    # Add channel guidelines if present
+                    if row[11] is not None and row[12] is not None:
+                        channel_obj = ChannelID.from_int(row[11])
+                        settings.channel_guidelines[channel_obj] = row[12]
+                
+                return settings
+
+        except Exception as e:
+            logger.error(f"Failed to fetch settings for guild {guild_id}: {e}")
+            return None
+
     async def save_guild_settings(self, guild_id: GuildID, settings: GuildSettings) -> bool:
         """
         Persist a single guild's settings to database.

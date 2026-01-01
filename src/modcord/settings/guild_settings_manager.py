@@ -2,17 +2,17 @@
 Persistent per-guild configuration storage for the moderation bot.
 
 Provides a simplified API for managing guild settings:
-- get(guild_id) -> GuildSettings: Retrieve settings (creates default if missing)
+- get_settings(guild_id) -> GuildSettings: Retrieve settings (creates default if missing)
 - update(guild_id, **kwargs): Update fields and auto-persist
 - is_action_allowed/set_action_allowed: Action-type specific helpers
-- save(guild_id): Explicit persist trigger
+- save(guild_id, settings): Explicit persist trigger
 
 Database operations are delegated to GuildSettingsDB.
 """
 import asyncio
 from typing import Any, Dict, Set
 
-from modcord.datatypes.discord_datatypes import GuildID
+from modcord.datatypes.discord_datatypes import GuildID, ChannelID
 from modcord.datatypes.action_datatypes import ActionType
 from modcord.datatypes.guild_settings import GuildSettings, ACTION_FLAG_FIELDS
 from modcord.settings.guild_settings_db import guild_settings_db
@@ -26,15 +26,16 @@ class GuildSettingsManager:
     Manager for persistent per-guild settings.
 
     Provides a clean API:
-    - get(guild_id): Retrieve settings object
+    - get_settings(guild_id): Retrieve settings object
     - update(guild_id, **kwargs): Update fields and auto-persist
     - is_action_allowed/set_action_allowed: ActionType helpers
-    - save(guild_id): Explicit persist
+    - save(guild_id, settings): Explicit persist
     """
 
     def __init__(self):
         """Instantiate caches and persistence helpers."""
-        self._guilds: Dict[GuildID, GuildSettings] = {}
+        self._rules_cache: Dict[GuildID, str] = {}
+        self._guidelines_cache: Dict[GuildID, Dict[ChannelID, str]] = {}
         self._persist_lock = asyncio.Lock()
         self._active_persists: Set[asyncio.Task] = set()
         self._db_initialized = False
@@ -47,14 +48,21 @@ class GuildSettingsManager:
         if not self._db_initialized:
             await guild_settings_db.initialize()
             loaded_guilds = await guild_settings_db.load_all_guild_settings()
-            self._guilds.update(loaded_guilds)
+            
+            # Populate only rules and guidelines caches
+            for guild_id, settings in loaded_guilds.items():
+                if settings.rules:
+                    self._rules_cache[guild_id] = settings.rules
+                if settings.channel_guidelines:
+                    self._guidelines_cache[guild_id] = settings.channel_guidelines.copy()
+            
             self._db_initialized = True
-            logger.info("[GUILD SETTINGS MANAGER] Database initialized and settings loaded")
+            logger.info("[GUILD SETTINGS MANAGER] Database initialized and caches loaded")
 
 
     # ========== Core API ==========
 
-    def get(self, guild_id: GuildID) -> GuildSettings:
+    async def get_settings(self, guild_id: GuildID) -> GuildSettings:
         """
         Retrieve settings for a guild, creating defaults if missing.
 
@@ -63,14 +71,36 @@ class GuildSettingsManager:
 
         Returns:
             GuildSettings instance for the guild.
-        """        
-        settings = self._guilds.get(guild_id)
+        """
+        if not isinstance(guild_id, GuildID):
+            guild_id = GuildID(guild_id)
+        
+        settings = await guild_settings_db.fetch_guild_settings(guild_id)
         if settings is None:
             settings = GuildSettings(guild_id=guild_id)
-            self._guilds[guild_id] = settings
+        
+        # Overwrite with cached values
+        if guild_id in self._rules_cache:
+            settings.rules = self._rules_cache[guild_id]
+        
+        if guild_id in self._guidelines_cache:
+            settings.channel_guidelines = self._guidelines_cache[guild_id].copy()
+            
         return settings
 
-    def update(self, guild_id: GuildID, **kwargs: Any) -> GuildSettings:
+    def get_cached_rules(self, guild_id: GuildID) -> str:
+        """Get cached rules for a guild."""
+        if not isinstance(guild_id, GuildID):
+            guild_id = GuildID(guild_id)
+        return self._rules_cache.get(guild_id, "")
+
+    def get_cached_guidelines(self, guild_id: GuildID) -> Dict[ChannelID, str]:
+        """Get cached guidelines for a guild."""
+        if not isinstance(guild_id, GuildID):
+            guild_id = GuildID(guild_id)
+        return self._guidelines_cache.get(guild_id, {}).copy()
+
+    async def update(self, guild_id: GuildID, **kwargs: Any) -> GuildSettings:
         """
         Update settings fields and auto-persist.
 
@@ -84,51 +114,46 @@ class GuildSettingsManager:
         if not isinstance(guild_id, GuildID):
             guild_id = GuildID(guild_id)
         
-        settings = self.get(guild_id)
+        settings = await self.get_settings(guild_id)
         
         for field_name, value in kwargs.items():
             if hasattr(settings, field_name):
                 setattr(settings, field_name, value)
+                
+                # Update caches if necessary
+                if field_name == "rules":
+                    self._rules_cache[guild_id] = value
+                elif field_name == "channel_guidelines":
+                    self._guidelines_cache[guild_id] = value.copy()
             else:
                 logger.warning(
                     "[GUILD SETTINGS MANAGER] Unknown field %s for guild %s",
                     field_name, guild_id.to_int()
                 )
         
-        self.save(guild_id)
+        await self.save(guild_id, settings)
         return settings
 
-    def save(self, guild_id: GuildID) -> None:
+    async def save(self, guild_id: GuildID, settings: GuildSettings) -> None:
         """
-        Schedule persistence of guild settings to database.
+        Persist guild settings to database.
 
         Args:
             guild_id: The guild ID to persist.
-        """        
+            settings: The settings object to persist.
+        """
+        if not isinstance(guild_id, GuildID):
+            guild_id = GuildID(guild_id)
+        
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            logger.warning(
-                "[GUILD SETTINGS MANAGER] Cannot persist guild %s: no running event loop",
-                guild_id.to_int()
-            )
-            return
-
-        task = loop.create_task(self._persist_guild(guild_id))
-        self._active_persists.add(task)
-
-        def _cleanup(completed: asyncio.Task) -> None:
-            self._active_persists.discard(completed)
-            try:
-                if not completed.result():
-                    logger.error(
-                        "[GUILD SETTINGS MANAGER] Failed to persist guild %s",
-                        guild_id.to_int()
-                    )
-            except Exception:
-                logger.exception("Error persisting guild %s", guild_id.to_int())
-
-        task.add_done_callback(_cleanup)
+            success = await self._persist_guild(guild_id, settings)
+            if not success:
+                logger.error(
+                    "[GUILD SETTINGS MANAGER] Failed to persist guild %s",
+                    guild_id.to_int()
+                )
+        except Exception:
+            logger.exception("Error persisting guild %s", guild_id.to_int())
 
 
     async def delete(self, guild_id: GuildID) -> bool:
@@ -146,11 +171,17 @@ class GuildSettingsManager:
             
         Returns:
             True if successful, False otherwise.
-        """           
+        """
+        if not isinstance(guild_id, GuildID):
+            guild_id = GuildID(guild_id)
+           
         # Remove from memory cache
-        if guild_id in self._guilds:
-            del self._guilds[guild_id]
-            logger.debug(f"[GUILD SETTINGS MANAGER] Removed guild {guild_id.to_int()} from memory cache")
+        if guild_id in self._rules_cache:
+            del self._rules_cache[guild_id]
+        if guild_id in self._guidelines_cache:
+            del self._guidelines_cache[guild_id]
+            
+        logger.debug(f"[GUILD SETTINGS MANAGER] Removed guild {guild_id.to_int()} from memory cache")
         
         # Delete from database
         return await guild_settings_db.delete_guild_data(guild_id)
@@ -159,7 +190,7 @@ class GuildSettingsManager:
 
     # ========== Action Type Helpers ==========
 
-    def is_action_allowed(self, guild_id: GuildID, action: ActionType) -> bool:
+    async def is_action_allowed(self, guild_id: GuildID, action: ActionType) -> bool:
         """
         Check if a specific action type is enabled for the guild.
 
@@ -170,14 +201,17 @@ class GuildSettingsManager:
         Returns:
             True if the action is allowed, False otherwise.
         """
-        settings = self.get(guild_id)
+        if not isinstance(guild_id, GuildID):
+            guild_id = GuildID(guild_id)
+
+        settings = await self.get_settings(guild_id)
         field_name = ACTION_FLAG_FIELDS.get(action)
         if field_name is None:
             return True
         return bool(getattr(settings, field_name, True))
 
 
-    def set_action_allowed(self, guild_id: GuildID, action: ActionType, enabled: bool) -> bool:
+    async def set_action_allowed(self, guild_id: GuildID, action: ActionType, enabled: bool) -> bool:
         """
         Enable or disable an action type for the guild and auto-persist.
 
@@ -189,6 +223,9 @@ class GuildSettingsManager:
         Returns:
             True if successful, False if action type is unsupported.
         """
+        if not isinstance(guild_id, GuildID):
+            guild_id = GuildID(guild_id)
+
         field_name = ACTION_FLAG_FIELDS.get(action)
         if field_name is None:
             logger.warning(
@@ -197,7 +234,7 @@ class GuildSettingsManager:
             )
             return False
 
-        self.update(guild_id, **{field_name: bool(enabled)})
+        await self.update(guild_id, **{field_name: bool(enabled)})
         return True
 
     # ========== Lifecycle ==========
@@ -211,16 +248,8 @@ class GuildSettingsManager:
 
     # ========== Private Methods ==========
 
-    async def _persist_guild(self, guild_id: GuildID) -> bool:
+    async def _persist_guild(self, guild_id: GuildID, settings: GuildSettings) -> bool:
         """Persist a single guild's settings to database."""
-        settings = self._guilds.get(guild_id)
-        if settings is None:
-            logger.warning(
-                "[GUILD SETTINGS MANAGER] Cannot persist guild %s: not in cache",
-                guild_id.to_int()
-            )
-            return False
-
         return await guild_settings_db.save_guild_settings(guild_id, settings)
 
 

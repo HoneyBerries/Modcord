@@ -55,7 +55,7 @@ class ModerationPipeline:
         """Get the Discord bot instance."""
         return self._bot
     
-    def _filter_valid_batches(self, batches: List[ModerationChannelBatch]) -> List[ModerationChannelBatch]:
+    async def _filter_valid_batches(self, batches: List[ModerationChannelBatch]) -> List[ModerationChannelBatch]:
         """Filter out empty batches and those with AI moderation disabled.
         
         Args:
@@ -73,7 +73,7 @@ class ModerationPipeline:
             # Check if AI moderation is enabled for this guild
             first_message = batch.users[0].messages[0]
             guild_id = first_message.guild_id
-            settings = guild_settings_manager.get(guild_id) if guild_id else None
+            settings = await guild_settings_manager.get_settings(guild_id) if guild_id else None
             if settings and not settings.ai_enabled:
                 continue
             
@@ -97,7 +97,7 @@ class ModerationPipeline:
             return
 
         # Filter valid batches
-        valid_batches = self._filter_valid_batches(batches)
+        valid_batches = await self._filter_valid_batches(batches)
         if not valid_batches:
             logger.info("No valid batches to moderate")
             return
@@ -129,7 +129,7 @@ class ModerationPipeline:
         for guild_id in guilds_with_reviews:
             guild = self._bot.get_guild(guild_id)
             if guild:
-                settings = guild_settings_manager.get(guild_id)
+                settings = await guild_settings_manager.get_settings(guild_id)
                 if settings:
                     await review_manager.send_review_embed(guild, settings)
 

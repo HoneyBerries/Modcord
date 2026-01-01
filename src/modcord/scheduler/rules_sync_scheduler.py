@@ -14,7 +14,7 @@ from modcord.scheduler.generic_sync_scheduler import GenericSyncScheduler
 async def sync_rules(guild: discord.Guild) -> str:
     """Collect rules from rule-like channels and persist to guild settings."""
     rules_text = await collector.collect_rules(guild)
-    guild_settings_manager.update(GuildID(guild.id), rules=rules_text)
+    await guild_settings_manager.update(GuildID(guild.id), rules=rules_text)
     return rules_text
 
 

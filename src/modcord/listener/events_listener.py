@@ -75,10 +75,10 @@ class EventsListenerCog(commands.Cog):
         logger.debug(f"[EVENTS LISTENER] Bot joined guild: {guild.name} (ID: {guild.id})")
         
         # Get or create settings (this will use the new defaults with everything enabled)
-        settings = guild_settings_manager.get(guild_id)
+        settings = await guild_settings_manager.get_settings(guild_id)
         
         # Explicitly save to ensure it's persisted to the database
-        guild_settings_manager.save(guild_id)
+        await guild_settings_manager.save(guild_id, settings)
         
         logger.debug(
             f"[EVENTS LISTENER] Initialized settings for {guild.name}: "

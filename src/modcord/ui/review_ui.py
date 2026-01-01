@@ -86,7 +86,7 @@ class HumanReviewResolutionView(discord.ui.View):
             )
             return
         
-        if not has_review_permission(self.guild_id, interaction.user):
+        if not await has_review_permission(self.guild_id, interaction.user):
             await interaction.response.send_message(
                 "❌ You don't have permission to resolve reviews.",
                 ephemeral=True

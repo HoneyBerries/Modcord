@@ -254,7 +254,7 @@ def get_potential_review_channel(guild: discord.Guild) -> discord.TextChannel | 
     return None
 
 
-def has_review_permission(guild_id: GuildID, user: discord.Member) -> bool:
+async def has_review_permission(guild_id: GuildID, user: discord.Member) -> bool:
     """
     Check if a user has moderator permissions for review actions.
     
@@ -273,7 +273,7 @@ def has_review_permission(guild_id: GuildID, user: discord.Member) -> bool:
         return True
     
     # Check if user has any of the configured moderator roles
-    settings = guild_settings_manager.get(guild_id)
+    settings = await guild_settings_manager.get_settings(guild_id)
     if settings and settings.moderator_role_ids:
         user_role_ids = {role.id for role in user.roles}
         if any(role_id in user_role_ids for role_id in settings.moderator_role_ids):

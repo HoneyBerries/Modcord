@@ -75,7 +75,9 @@ class DebugCog(commands.Cog):
                 await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
-            settings = guild_settings_manager.get(guild.id)
+            guild_id = GuildID(guild.id)
+            settings = await guild_settings_manager.get_settings(guild_id)
+
             embed = discord.Embed(
                 title="✅ Rules Cache Refreshed",
                 description=f"Rules for {guild.name} have been refreshed from the database.",
@@ -99,7 +101,7 @@ class DebugCog(commands.Cog):
                 await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
-            rules = guild_settings_manager.get(GuildID(guild.id)).rules
+            rules = guild_settings_manager.get_cached_rules(GuildID(guild.id))
             if not rules:
                 embed = discord.Embed(
                     title="📋 Server Rules",
@@ -134,7 +136,7 @@ class DebugCog(commands.Cog):
                 return
 
             # Check if guild has review channels configured
-            settings = guild_settings_manager.get(guild.id)
+            settings = await guild_settings_manager.get_settings(GuildID(guild.id))
             if not HumanReviewManager.validate_review_channels(settings):
                 await application_context.followup.send(
                     content="❌ No review channels configured for this guild. Use `/config set_review_channel` first.",
