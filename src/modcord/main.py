@@ -233,9 +233,9 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
     except Exception as exc:
         logger.exception("Error during guild settings shutdown: %s", exc)
 
-    # Release database lock
+    # Checkpoint WAL and release database lock
     try:
-        db.database.shutdown()
+        await db.database.shutdown()
     except Exception as exc:
         logger.exception("Error during database shutdown: %s", exc)
 

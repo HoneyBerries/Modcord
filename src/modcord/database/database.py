@@ -12,7 +12,7 @@ The Database class acts as a coordinator, delegating to specialized
 modules for different concerns:
 - schema: Table/index creation and migrations
 - moderation: Action logging and querying
-- maintenance: Vacuum, analyze, cleanup operations
+- maintenance: Analyze, cleanup operations
 - cache: Query result caching
 - performance: Query timing and statistics
 - connection: Connection management with optimized pragmas
@@ -31,7 +31,6 @@ from modcord.database.db_cache import DatabaseQueryCache
 from modcord.database.db_perf_mon import DatabasePerformanceMonitor
 from modcord.database.db_schema import SchemaManager
 from modcord.database.moderation import DatabaseModerationStorage
-from modcord.database.db_maintenance import MaintenanceOperations
 
 logger = get_logger("database")
 
@@ -69,7 +68,6 @@ class Database:
         self.db_perf_mon = DatabasePerformanceMonitor()
         self._cache = DatabaseQueryCache(ttl_seconds=60)
         self.db_moderation_storage = DatabaseModerationStorage(self.db_perf_mon, self._cache)
-        self._maintenance = MaintenanceOperations(self.db_perf_mon)
     
     def get_connection(self) -> DatabaseConnectionContext:
         """
@@ -111,51 +109,23 @@ class Database:
             logger.error("[DATABASE] Database initialization failed: %s", e)
             return False
     
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """
-        Shutdown the database.
+        Shutdown the database and perform final WAL checkpoint.
         
-        This method can be called at program shutdown for cleanup.
-        Currently a no-op as SQLite handles connection cleanup automatically.
+        This method should be called at program shutdown for cleanup.
+        It performs a TRUNCATE checkpoint to ensure all WAL data is flushed
+        to the main database file, allowing SQLite to automatically remove
+        the .db-wal and .db-shm files when the last connection closes.
         """
         if not self._initialized:
             return
+        async with self.get_connection() as db:
+            await db.close()
         
         self._initialized = False
         logger.info("[DATABASE] Database shutdown complete")
-    
-    async def vacuum(self) -> bool:
-        """
-        Perform database vacuum to reclaim space and optimize storage.
-        
-        Returns:
-            True if vacuum succeeded, False otherwise
-        """
-        async with self.get_connection() as db:
-            return await self._maintenance.vacuum(db)
-    
-    async def analyze(self) -> bool:
-        """
-        Update database statistics for query optimizer.
-        
-        Returns:
-            True if analyze succeeded, False otherwise
-        """
-        async with self.get_connection() as db:
-            return await self._maintenance.analyze(db)
-    
-    async def cleanup_old_actions(self, days_to_keep: int = 30) -> int:
-        """
-        Clean up old moderation actions to reduce database size.
-        
-        Args:
-            days_to_keep: Number of days of history to retain (default: 30)
-        
-        Returns:
-            Number of records deleted, or -1 on error
-        """
-        async with self.get_connection() as db:
-            return await self._maintenance.cleanup_old_actions(db, days_to_keep)
+
     
     
     async def log_moderation_action(self, action: ActionData) -> None:
