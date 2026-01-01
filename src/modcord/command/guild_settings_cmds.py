@@ -21,7 +21,7 @@ from discord.ext import commands
 from modcord.util.logger import get_logger
 from modcord.ui.guild_settings_ui import build_settings_embed, GuildSettingsView
 from modcord.settings.guild_settings_manager import guild_settings_manager
-from modcord.datatypes.discord_datatypes import ChannelID
+from modcord.datatypes.discord_datatypes import ChannelID, GuildID
 
 logger = get_logger("settings_cog")
 
@@ -75,8 +75,10 @@ class GuildSettingsCog(commands.Cog):
             return
 
         invoker_id = ctx.user.id
-        view = GuildSettingsView(ctx.guild_id, invoker_id)
-        embed = build_settings_embed(ctx.guild_id)
+        guild_id = GuildID(ctx.guild_id)
+        view = GuildSettingsView(guild_id, invoker_id)
+        await view.refresh_items()
+        embed = await build_settings_embed(guild_id)
 
         await ctx.defer(ephemeral=True)
         await ctx.send_followup(embed=embed, view=view)
@@ -94,10 +96,11 @@ class GuildSettingsCog(commands.Cog):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get(ctx.guild_id)
+        guild_id = GuildID(ctx.guild_id)
+        settings = await guild_settings_manager.get_settings(guild_id)
         if role.id not in settings.moderator_role_ids:
             settings.moderator_role_ids.append(role.id)
-            guild_settings_manager.save(ctx.guild_id)
+            await guild_settings_manager.save(guild_id, settings)
             await ctx.respond(f"✅ Added {role.mention} to moderator roles.", ephemeral=True)
         else:
             await ctx.respond(f"{role.mention} is already a moderator role.", ephemeral=True)
@@ -107,10 +110,11 @@ class GuildSettingsCog(commands.Cog):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get(ctx.guild_id)
+        guild_id = GuildID(ctx.guild_id)
+        settings = await guild_settings_manager.get_settings(guild_id)
         if role.id in settings.moderator_role_ids:
             settings.moderator_role_ids.remove(role.id)
-            guild_settings_manager.save(ctx.guild_id)
+            await guild_settings_manager.save(guild_id, settings)
             await ctx.respond(f"✅ Removed {role.mention} from moderator roles.", ephemeral=True)
         else:
             await ctx.respond(f"{role.mention} is not a moderator role.", ephemeral=True)
@@ -120,35 +124,42 @@ class GuildSettingsCog(commands.Cog):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get(ctx.guild_id)
+        guild_id = GuildID(ctx.guild_id)
+        settings = await guild_settings_manager.get_settings(guild_id)
         channel_id = ChannelID.from_channel(channel)
+        
         if channel_id not in settings.review_channel_ids:
             settings.review_channel_ids.append(channel_id)
-            guild_settings_manager.save(ctx.guild_id)
+            await guild_settings_manager.save(guild_id, settings)
             await ctx.respond(f"✅ Added {channel.mention} to review channels.", ephemeral=True)
         else:
             await ctx.respond(f"{channel.mention} is already a review channel.", ephemeral=True)
+
 
     @mods.command(name="remove-channel", description="Remove a channel from receiving AI review alerts")
     async def remove_review_channel(self, ctx: discord.ApplicationContext, channel: discord.TextChannel):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get(ctx.guild_id)
+        guild_id = GuildID(ctx.guild_id)
+        settings = await guild_settings_manager.get_settings(guild_id)
         channel_id = ChannelID.from_channel(channel)
+
         if channel_id in settings.review_channel_ids:
             settings.review_channel_ids.remove(channel_id)
-            guild_settings_manager.save(ctx.guild_id)
+            await guild_settings_manager.save(guild_id, settings)
             await ctx.respond(f"✅ Removed {channel.mention} from review channels.", ephemeral=True)
         else:
             await ctx.respond(f"{channel.mention} is not a review channel.", ephemeral=True)
+
 
     @mods.command(name="list", description="List current moderator settings")
     async def list_mods(self, ctx: discord.ApplicationContext):
         if not await self._check_permissions(ctx):
             return
         
-        settings = guild_settings_manager.get(ctx.guild_id)
+        guild_id = GuildID(ctx.guild_id)
+        settings = await guild_settings_manager.get_settings(guild_id)
         
         roles = [f"<@&{rid}>" for rid in settings.moderator_role_ids]
         channels = [f"<#{ChannelID(cid).to_int()}>" for cid in settings.review_channel_ids]

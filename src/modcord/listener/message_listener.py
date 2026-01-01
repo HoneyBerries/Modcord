@@ -96,7 +96,8 @@ class MessageListenerCog(commands.Cog):
             return
         
         guild_id = GuildID.from_guild(message.guild)
-        if not guild_settings_manager.get(guild_id).ai_enabled:
+        settings = await guild_settings_manager.get_settings(guild_id)
+        if not settings.ai_enabled:
             logger.debug(f"AI moderation disabled for guild {guild_id}, skipping message")
             return
 

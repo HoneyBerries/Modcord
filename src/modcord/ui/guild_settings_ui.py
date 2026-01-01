@@ -37,7 +37,7 @@ ACTION_UI_EMOJIS: dict[ActionType, str] = {
 }
 
 
-def build_settings_embed(guild_id: GuildID) -> discord.Embed:
+async def build_settings_embed(guild_id: GuildID) -> discord.Embed:
     """
     Create a Discord embed summarizing current guild moderation settings.
     
@@ -50,12 +50,12 @@ def build_settings_embed(guild_id: GuildID) -> discord.Embed:
     Returns:
         discord.Embed: A formatted embed with current settings information.
     """
-    settings = guild_settings_manager.get(guild_id)
+    settings = await guild_settings_manager.get_settings(guild_id)
     ai_status = "Enabled ✅" if settings.ai_enabled else "Disabled ❌"
 
     auto_actions_lines: list[str] = []
     for action in ACTION_UI_ORDER:
-        enabled = guild_settings_manager.is_action_allowed(guild_id, action)
+        enabled = await guild_settings_manager.is_action_allowed(guild_id, action)
         emoji = ACTION_UI_EMOJIS.get(action, "⚙️")
         label = ACTION_UI_LABELS.get(action, action.value.title())
         state = "ON" if enabled else "OFF"
@@ -104,10 +104,12 @@ class GuildSettingsView(discord.ui.View):
 
     def __init__(self, guild_id: GuildID, invoker_id: UserID, timeout_seconds: int = 300):
         super().__init__(timeout=timeout_seconds)
+        if not isinstance(guild_id, GuildID):
+            guild_id = GuildID(guild_id)
         self.guild_id = guild_id
         self.invoker_id = invoker_id
         self._message: discord.Message | None = None
-        self.refresh_items()
+        # self.refresh_items() is now async and must be called externally
 
     @property
     def message(self) -> discord.Message | None:
@@ -117,7 +119,7 @@ class GuildSettingsView(discord.ui.View):
     def message(self, value: discord.Message | None) -> None:
         self._message = value
 
-    def refresh_items(self) -> None:
+    async def refresh_items(self) -> None:
         """
         Rebuild the button set based on current guild settings.
         
@@ -127,11 +129,12 @@ class GuildSettingsView(discord.ui.View):
 
         self.clear_items()
 
-        ai_enabled = guild_settings_manager.get(self.guild_id).ai_enabled
+        settings = await guild_settings_manager.get_settings(self.guild_id)
+        ai_enabled = settings.ai_enabled
         self.add_item(ToggleAIButton(ai_enabled))
 
         for index, action in enumerate(ACTION_UI_ORDER, start=1):
-            enabled = guild_settings_manager.is_action_allowed(self.guild_id, action)
+            enabled = await guild_settings_manager.is_action_allowed(self.guild_id, action)
             label = ACTION_UI_LABELS.get(action, action.value.title())
             emoji = ACTION_UI_EMOJIS.get(action, "⚙️")
             row = ((index - 1) // 3) + 1
@@ -170,8 +173,8 @@ class GuildSettingsView(discord.ui.View):
             flash (str | None): Optional temporary message to display above the embed.
         """
 
-        self.refresh_items()
-        embed = build_settings_embed(self.guild_id)
+        await self.refresh_items()
+        embed = await build_settings_embed(self.guild_id)
 
         try:
             # For ephemeral messages, we must use edit_original_response
@@ -234,9 +237,10 @@ class ToggleAIButton(discord.ui.Button):
             )
             return
 
-        current = guild_settings_manager.get(view.guild_id).ai_enabled
+        settings = await guild_settings_manager.get_settings(view.guild_id)
+        current = settings.ai_enabled
         new_state = not current
-        guild_settings_manager.update(view.guild_id, ai_enabled=new_state)
+        await guild_settings_manager.update(view.guild_id, ai_enabled=new_state)
         await view.refresh_message(
             interaction,
             flash=f"AI moderation is now {'enabled' if new_state else 'disabled'}.",
@@ -278,9 +282,9 @@ class ToggleActionButton(discord.ui.Button):
             )
             return
 
-        current = guild_settings_manager.is_action_allowed(view.guild_id, self.action)
+        current = await guild_settings_manager.is_action_allowed(view.guild_id, self.action)
         new_state = not current
-        guild_settings_manager.set_action_allowed(view.guild_id, self.action, new_state)
+        await guild_settings_manager.set_action_allowed(view.guild_id, self.action, new_state)
         await view.refresh_message(
             interaction,
             flash=f"{self.display_emoji} {self.action_label} actions are now {'enabled' if new_state else 'disabled'}.",

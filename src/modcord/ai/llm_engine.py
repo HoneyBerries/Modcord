@@ -94,10 +94,10 @@ class LLMEngine:
         template = self._base_system_prompt or ""
 
         # Resolve guild rules and channel guidelines
-        settings = guild_settings_manager.get(guild_id)
-
-        guild_rules = (settings.rules or app_config.server_rules).strip()
-        channel_guidelines = settings.channel_guidelines.get(channel_id, app_config.channel_guidelines).strip()
+        guild_rules = (guild_settings_manager.get_cached_rules(guild_id) or app_config.server_rules).strip()
+        
+        guidelines_map = guild_settings_manager.get_cached_guidelines(guild_id)
+        channel_guidelines = guidelines_map.get(channel_id, app_config.channel_guidelines).strip()
 
         # Inject into template
         prompt = template.replace("<|SERVER_RULES_INJECT|>", guild_rules)

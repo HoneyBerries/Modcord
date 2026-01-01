@@ -13,11 +13,12 @@ from modcord.scheduler.generic_sync_scheduler import GenericSyncScheduler
 
 async def sync_all_channel_guidelines(guild: discord.Guild) -> None:
     """Sync guidelines for all text channels in a guild."""
-    settings = guild_settings_manager.get(GuildID(guild.id))
+    guild_id = GuildID(guild.id)
+    settings = await guild_settings_manager.get_settings(guild_id)
     for ch in guild.text_channels:
         text = collector.collect_channel_topic(ch)
         settings.channel_guidelines[ChannelID(ch.id)] = text
-    guild_settings_manager.save(GuildID(guild.id))
+    await guild_settings_manager.save(guild_id, settings)
 
 
 guidelines_sync_scheduler = GenericSyncScheduler(

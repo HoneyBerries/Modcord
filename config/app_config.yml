@@ -33,7 +33,7 @@ moderation:
 
   # Number of recent messages to fetch for context (including historical messages).
   # Provides context for violations. Recommended: 8-20.
-  history_context_messages: 8
+  history_context_messages: 16
 
 # ========================================
 # 3. AI API & INFERENCE SETTINGS

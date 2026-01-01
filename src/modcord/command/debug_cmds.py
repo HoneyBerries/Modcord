@@ -28,6 +28,7 @@ class DebugCog(commands.Cog):
     async def test(self, application_context: discord.ApplicationContext) -> None:
         """Test command to verify the bot is responsive."""
         try:
+            # Create embed response
             embed = discord.Embed(
                 title="✅ Bot Test Successful",
                 description="The bot is responsive and working correctly.",
@@ -35,11 +36,16 @@ class DebugCog(commands.Cog):
             )
             embed.add_field(name="Guild", value=application_context.guild.name, inline=False)
             embed.add_field(name="User", value=application_context.user.mention, inline=False)
+            embed.add_field(name="Ping/Latency", value=str(self.bot.latency), inline=False)
+
+            # Send response
             await application_context.respond(embed=embed, ephemeral=True)
             logger.debug(f"Test command executed by {application_context.user} in {application_context.guild.name}")
+
         except Exception as e:
             logger.error(f"Error in test command: {e}")
             await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
+
 
     @debug.command(name="purge", description="Delete all messages in the current channel")
     async def purge(self, application_context: discord.ApplicationContext) -> None:
@@ -65,6 +71,8 @@ class DebugCog(commands.Cog):
             logger.error(f"Error in purge command: {e}")
             await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
 
+
+
     @debug.command(name="refresh_rules", description="Manually refresh the server rules cache")
     async def refresh_rules(self, application_context: discord.ApplicationContext) -> None:
         """Manually refresh the server rules cache from the database."""
@@ -75,7 +83,9 @@ class DebugCog(commands.Cog):
                 await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
-            settings = guild_settings_manager.get(guild.id)
+            guild_id = GuildID(guild.id)
+            settings = await guild_settings_manager.get_settings(guild_id)
+
             embed = discord.Embed(
                 title="✅ Rules Cache Refreshed",
                 description=f"Rules for {guild.name} have been refreshed from the database.",
@@ -89,6 +99,7 @@ class DebugCog(commands.Cog):
             await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
 
 
+
     @debug.command(name="show_rules", description="Display the current server rules")
     async def show_rules(self, application_context: discord.ApplicationContext) -> None:
         """Display the current server rules cached in memory."""
@@ -99,7 +110,7 @@ class DebugCog(commands.Cog):
                 await application_context.respond(content="❌ This command must be used in a guild.", ephemeral=True)
                 return
 
-            rules = guild_settings_manager.get(GuildID(guild.id)).rules
+            rules = guild_settings_manager.get_cached_rules(GuildID(guild.id))
             if not rules:
                 embed = discord.Embed(
                     title="📋 Server Rules",
@@ -118,6 +129,8 @@ class DebugCog(commands.Cog):
             logger.error(f"Error in show_rules command: {e}")
             await application_context.respond(content=f"❌ Error: {e}", ephemeral=True)
 
+
+
     @debug.command(name="simulate_review", description="Simulate multiple users needing review for testing")
     async def simulate_review(self, application_context: discord.ApplicationContext) -> None:
         """Simulate multiple hardcoded moderation review actions to test the consolidated review notification system."""
@@ -134,7 +147,7 @@ class DebugCog(commands.Cog):
                 return
 
             # Check if guild has review channels configured
-            settings = guild_settings_manager.get(guild.id)
+            settings = await guild_settings_manager.get_settings(GuildID(guild.id))
             if not HumanReviewManager.validate_review_channels(settings):
                 await application_context.followup.send(
                     content="❌ No review channels configured for this guild. Use `/config set_review_channel` first.",
@@ -263,6 +276,7 @@ class DebugCog(commands.Cog):
                 await application_context.followup.send(content=f"❌ Error: {e}", ephemeral=True)
             except Exception:
                 logger.error("Failed to send error message to user - interaction may have timed out")
+
 
 
 def setup(bot: discord.Bot) -> None:

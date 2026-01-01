@@ -13,26 +13,15 @@ import aiosqlite
 
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID, ChannelID
-from modcord.database.db_perf_mon import DatabasePerformanceMonitor
-from modcord.database.db_cache import DatabaseQueryCache
 from modcord.util.logger import get_logger
 
 logger = get_logger("database_moderation")
 
 
-class DatabaseModerationStorage:
+class ModerationActionStorage:
     """Handles moderation action logging and querying."""
-    
-    def __init__(self, performance: DatabasePerformanceMonitor, cache: DatabaseQueryCache):
-        """
-        Initialize moderation actions handler.
-        
-        Args:
-            performance: Performance monitor for tracking query times
-            cache: Query cache for frequently accessed data
-        """
-        self._performance = performance
-        self._cache = cache
+    def __init__(self):
+        pass
     
     async def log_action(self, db: aiosqlite.Connection, action: ActionData) -> None:
         """
@@ -42,7 +31,7 @@ class DatabaseModerationStorage:
             db: Open database connection
             action: ActionData object containing all action details
         """
-        start_time = time.time()
+        # Performance monitoring removed
         
         message_ids = ",".join(str(mid.to_int()) for mid in (action.message_ids_to_delete or []))
         
@@ -64,11 +53,6 @@ class DatabaseModerationStorage:
         )
         await db.commit()
         
-        duration = time.time() - start_time
-        self._performance.track("log_moderation_action", duration)
-        # Invalidate all cached action counts for this guild, including day-specific variants
-        self._cache.invalidate(f"action_count:{action.guild_id.to_int()}")
-        self._cache.invalidate(f"action_count:{action.guild_id.to_int()}:")
         
         logger.debug(
             "[MODERATION] Logged action: %s on user %s in guild %s channel %s",
@@ -95,7 +79,7 @@ class DatabaseModerationStorage:
         if not actions:
             return 0
         
-        start_time = time.time()
+        # Performance monitoring removed
         
         try:
             # Prepare batch data
@@ -122,17 +106,10 @@ class DatabaseModerationStorage:
             )
             await db.commit()
             
-            duration = time.time() - start_time
-            self._performance.track("log_moderation_actions_batch", duration)
-            
-            # Invalidate cache for affected guilds
-            guild_ids_affected = set(action.guild_id.to_int() for action in actions)
-            for guild_id in guild_ids_affected:
-                self._cache.invalidate(f"action_count:{guild_id}")
             
             logger.debug(
-                "[MODERATION] Batch logged %d actions in %.2fms",
-                len(actions), duration * 1000
+                "[MODERATION] Batch logged %d actions",
+                len(actions)
             )
             return len(actions)
             
@@ -165,7 +142,7 @@ class DatabaseModerationStorage:
         if not user_ids:
             return {}
         
-        start_time = time.time()
+        # Performance monitoring removed
         
         cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
         guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
@@ -211,8 +188,6 @@ class DatabaseModerationStorage:
             if user_id_key in actions_by_user:
                 actions_by_user[user_id_key].append(action_data)
         
-        duration = time.time() - start_time
-        self._performance.track("get_bulk_past_actions", duration)
         
         return actions_by_user
     
@@ -223,10 +198,7 @@ class DatabaseModerationStorage:
         days: int = 7
     ) -> int:
         """
-        Get total action count for a guild with caching.
-        
-        Results are cached to reduce database queries for frequently
-        accessed guild statistics.
+        Get total action count for a guild.
         
         Args:
             db: Open database connection
@@ -236,15 +208,8 @@ class DatabaseModerationStorage:
         Returns:
             Total number of actions in the time period
         """
-        cache_key = f"action_count:{guild_id.to_int()}:{days}"
-        
-        # Check cache first
-        cached_result = self._cache.get(cache_key)
-        if cached_result is not None:
-            return cached_result
-        
-        # Query database
-        start_time = time.time()
+        # Always query the database directly; SQLite pages are already cached
+        # Performance monitoring removed
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         cursor = await db.execute(
@@ -253,11 +218,5 @@ class DatabaseModerationStorage:
         )
         row = await cursor.fetchone()
         count = row[0] if row else 0
-        
-        duration = time.time() - start_time
-        self._performance.track("get_guild_action_count", duration)
-        
-        # Cache the result
-        self._cache.set(cache_key, count)
         
         return count
