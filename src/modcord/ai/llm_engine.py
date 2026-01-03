@@ -70,7 +70,7 @@ class LLMEngine:
             api_key=ai_settings.api_key,
             base_url=ai_settings.base_url,
         )
-        
+
         self._model_name = ai_settings.model_name
         self._base_system_prompt = app_config.system_prompt_template
         logger.info(
@@ -203,8 +203,18 @@ class LLMEngine:
                 messages=req.messages,
                 response_format=req.response_format,
             )
+        
         try:
             response = await create_completion()
+
+            # Check for incomplete response
+            if response.choices[0].finish_reason != "stop":
+                logger.warning(
+                    "[LLM ENGINE] Incomplete response for channel %s: finish_reason=%s",
+                    req.channel_id,
+                    response.choices[0].finish_reason
+                )
+
             response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
             logger.debug("[LLM ENGINE] Model Output Object: \n%s", response)
             
