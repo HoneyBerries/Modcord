@@ -65,7 +65,7 @@ class LLMEngine:
         """Initialize the LLMEngine with AsyncOpenAI client."""
         ai_settings = app_config.ai_settings
 
-        weave.init('honeyberries-dev/modcord-ai') # 🐝
+        weave.init('modcord-ai') # 🐝
         self._client = AsyncOpenAI(
             api_key=ai_settings.api_key,
             base_url=ai_settings.base_url,
