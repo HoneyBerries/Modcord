@@ -240,8 +240,8 @@ class ModerationPipeline:
 
         guild_id = GuildID.from_guild(guild)
 
-        if not guild_settings_manager.is_action_allowed(guild_id, action.action):
-            logger.warning(
+        if not await guild_settings_manager.is_action_allowed(guild_id, action.action):
+            logger.debug(
                 "[MODERATION ENGINE] Action %s not allowed in guild %s",
                 action.action.value,
                 guild_id.to_int()
