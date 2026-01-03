@@ -12,6 +12,8 @@ openai
 # --- Application & Infrastructure Dependencies ---
 # Discord Bot
 py-cord>=2.6.1
+wandb
+weave
 
 # Configuration & Utilities
 python-dotenv>=1.2.1

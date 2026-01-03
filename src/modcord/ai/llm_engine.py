@@ -24,6 +24,7 @@ from openai.types.chat import ChatCompletionMessageParam
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
 import json
 
+import weave
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.moderation_datatypes import ModerationChannelBatch
@@ -63,10 +64,13 @@ class LLMEngine:
     def __init__(self) -> None:
         """Initialize the LLMEngine with AsyncOpenAI client."""
         ai_settings = app_config.ai_settings
+
+        weave.init('honeyberries-dev/modcord-ai') # 🐝
         self._client = AsyncOpenAI(
             api_key=ai_settings.api_key,
             base_url=ai_settings.base_url,
         )
+        
         self._model_name = ai_settings.model_name
         self._base_system_prompt = app_config.system_prompt_template
         logger.info(
@@ -192,12 +196,15 @@ class LLMEngine:
         Returns:
             Tuple of (channel_id, list of actions).
         """
-        try:
-            response = await self._client.chat.completions.create(
+        @weave.op(name="llm-engine-request")
+        async def create_completion():
+            return await self._client.chat.completions.create(
                 model=self._model_name,
                 messages=req.messages,
                 response_format=req.response_format,
             )
+        try:
+            response = await create_completion()
             response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
             logger.debug("[LLM ENGINE] Model Output Object: \n%s", response)
             
