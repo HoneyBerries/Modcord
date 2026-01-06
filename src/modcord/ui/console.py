@@ -162,7 +162,12 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
         # Set bot status to offline before closing, but only if websocket is still open
         # This prevents errors when the connection is already closing/closed
         if bot.ws is not None and not bot.ws.closed:
-            await bot.change_presence(status=discord.Status.offline)
+            try:
+                await bot.change_presence(status=discord.Status.offline)
+            except Exception as exc:
+                # Log but don't fail - presence change is optional, closing the bot is essential
+                logger.debug("Could not change presence during shutdown: %s", exc)
+        
         await bot.close()
         if log_close:
             logger.info("[CONSOLE] Discord bot connection closed.")
