@@ -1,4 +1,9 @@
 from typing import Any, Dict
+import asyncio
+from openai import AsyncOpenAI
+from modcord.util.logger import get_logger
+
+logger = get_logger("ai_settings")
 
 
 class AISettings:
@@ -34,5 +39,19 @@ class AISettings:
 
     @property
     def model_name(self) -> str:
-        """Return the model name/identifier to use for inference."""
-        return str(self.data.get("model_name", ""))
+        """Return the model name/identifier, fetching from API if not configured."""
+        configured = str(self.data.get("model_name", "")).strip()
+        if configured:
+            return configured
+        
+        else:
+            try:
+                return asyncio.run(self.fetch_first_available_model())
+            except Exception as e:
+                logger.error("Failed to fetch models: %s", e)
+                return ""
+
+    async def fetch_first_available_model(self) -> str:
+        client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        models = await client.models.list()
+        return models.data[0].id
