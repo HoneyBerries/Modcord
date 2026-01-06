@@ -79,6 +79,25 @@ class LLMEngine:
             self._model_name,
         )
 
+    async def shutdown(self) -> None:
+        """
+        Shutdown the LLM engine and close the AsyncOpenAI client.
+        
+        This method properly closes the underlying HTTP client and weave to prevent
+        'Event loop is closed' errors during application shutdown.
+        """
+        try:
+            await self._client.close()
+            logger.info("[LLM ENGINE] AsyncOpenAI client closed successfully")
+        except Exception as exc:
+            logger.exception("Error closing AsyncOpenAI client: %s", exc)
+        
+        try:
+            weave.finish()
+            logger.info("[LLM ENGINE] Weave finished successfully")
+        except Exception as exc:
+            logger.warning("Error finishing weave (non-critical): %s", exc)
+
     def generate_dynamic_system_prompt(self, guild_id: GuildID, channel_id: ChannelID) -> str:
         """Build the system prompt with guild-specific and channel-specific rules and guidelines.
 

@@ -139,7 +139,7 @@ class ConsoleControl:
         return self.restart_event.is_set()
 
 
-async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False) -> None:
+async def close_bot_instance(bot: discord.Bot | None) -> None:
     """
     Gracefully close the Discord bot connection if active.
     
@@ -150,8 +150,6 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
     Args:
         bot (discord.Bot | None): The Discord bot instance to close. If None or
             already closed, this function does nothing.
-        log_close (bool): Whether to log a confirmation message after closing.
-            Defaults to False.
     """
     if bot is None or bot.is_closed():
         return
@@ -159,9 +157,8 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
     try:
         # Set bot status to offline before closing
         await bot.change_presence(status=discord.Status.offline)
+        logger.info("[CONSOLE] Discord bot connection closed.")
         await bot.close()
-        if log_close:
-            logger.info("[CONSOLE] Discord bot connection closed.")
     except Exception as exc:
         logger.exception("Error while closing Discord bot: %s", exc)
 

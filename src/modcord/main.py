@@ -56,6 +56,7 @@ from modcord.database import database as db
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
 from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
+from modcord.moderation.moderation_pipeline import llm_engine
 from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
 from modcord.util.logger import get_logger, handle_exception
 
@@ -196,11 +197,12 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
     Performs cleanup in the following order:
     1. Close Discord bot connection
     2. Close HTTP client session
-    3. Shutdown rules cache manager (stops periodic refresh)
-    4. Shutdown message batch manager (stops batch processing)
-    5. Shutdown AI moderation engine
+    3. Shutdown rules sync scheduler (stops periodic refresh)
+    4. Shutdown guidelines sync scheduler (stops periodic refresh)
+    5. Shutdown LLM engine (closes AsyncOpenAI HTTP client)
     6. Shutdown guild settings manager (persist pending changes)
-    7. Run garbage collection
+    7. Shutdown database (checkpoint WAL)
+    8. Run garbage collection
     
     Args:
         bot (discord.Bot): The bot instance to shut down.
@@ -211,8 +213,7 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
     """
     # First, close Discord connection to stop receiving events
     try:
-        await close_bot_instance(bot, log_close=True)
-        await bot.http.close()
+        await close_bot_instance(bot)
     except Exception as exc:
         logger.exception("Error during discord http connection shutdown: %s", exc)
 
@@ -226,6 +227,12 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
         await guidelines_sync_scheduler.shutdown()
     except Exception as exc:
         logger.exception("Error during guidelines sync scheduler shutdown: %s", exc)
+
+    # Close LLM engine HTTP client
+    try:
+        await llm_engine.shutdown()
+    except Exception as exc:
+        logger.exception("Error during LLM engine shutdown: %s", exc)
 
     # Persist any pending guild settings
     try:
