@@ -143,9 +143,11 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
     """
     Gracefully close the Discord bot connection if active.
     
-    Sets the bot's status to offline before closing to indicate proper shutdown.
-    All exceptions during closure are caught and logged to prevent crashes during
-    shutdown.
+    Sets the bot's status to offline before closing to indicate proper shutdown,
+    but only if the websocket connection is still open. This prevents errors when
+    the connection has already been closed or is closing (e.g., due to network
+    issues or Discord disconnection). All exceptions during closure are caught
+    and logged to prevent crashes during shutdown.
     
     Args:
         bot (discord.Bot | None): The Discord bot instance to close. If None or
