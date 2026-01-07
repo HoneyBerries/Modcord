@@ -7,7 +7,7 @@ Handles creation of tables, indexes, triggers, and schema version tracking.
 import aiosqlite
 from modcord.util.logger import get_logger
 
-logger = get_logger("database_schema")
+logger = get_logger("DB SCHEMA")
 
 
 class SchemaManager:
@@ -29,7 +29,7 @@ class SchemaManager:
         await SchemaManager._create_triggers(db)
         await SchemaManager._update_schema_version(db)
         await db.commit()
-        logger.info("[SCHEMA] Database schema initialized")
+        logger.info("Database schema initialized")
     
     @staticmethod
     async def _create_tables(db: aiosqlite.Connection) -> None:
@@ -56,7 +56,7 @@ class SchemaManager:
             await db.execute(
                 "ALTER TABLE guild_settings ADD COLUMN auto_review_enabled INTEGER NOT NULL DEFAULT 1"
             )
-            logger.info("[SCHEMA] Added auto_review_enabled column to guild_settings")
+            logger.info("Added auto_review_enabled column to guild_settings")
         except Exception:
             pass  # Column already exists
         

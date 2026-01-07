@@ -12,9 +12,7 @@ banning, kicking, and timing out users.
 # Standard library imports
 # =============================================================
 import os
-import gc
 import sys
-import asyncio
 from pathlib import Path
 
 # =============================================================
@@ -44,22 +42,34 @@ os.chdir(BASE_DIR)
 # =============================================================
 # Rest of the imports (safe after BASE_DIR is resolved)
 # =============================================================
+import asyncio
+import gc
 import discord
 from dotenv import load_dotenv
-from modcord.listener import events_listener, message_listener
-from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
-from modcord.database import database as db
-from modcord.settings import guild_settings_manager as gsm
+
+from modcord.listener import (
+    events_listener,
+    message_listener,
+    guild_listener,
+)
+from modcord.command import (
+    debug_cmds, 
+    guild_settings_cmds, 
+    moderation_cmds
+)
 from modcord.scheduler import (
     guidelines_sync_scheduler,
     rules_sync_scheduler,
     unban_scheduler,
 )
+
+from modcord.database import database as db
+from modcord.settings import guild_settings_manager as gsm
 from modcord.moderation import moderation_pipeline
 from modcord.ui import console
 from modcord.util.logger import get_logger, handle_exception
 
-logger = get_logger("main")
+logger = get_logger("MAIN")
 
 # =============================================================
 # Configuration helpers
@@ -93,7 +103,7 @@ def build_intents() -> discord.Intents:
 
 def load_cogs(bot: discord.Bot) -> None:
     """Attach all commands, listeners, and schedulers to the bot."""
-    logger.info("[MAIN] Loading cogs…")
+    logger.info("Loading cogs…")
 
     # Commands
     debug_cmds.setup(bot)
@@ -103,13 +113,14 @@ def load_cogs(bot: discord.Bot) -> None:
     # Event listeners
     events_listener.setup(bot)
     message_listener.setup(bot)
+    guild_listener.setup(bot)
 
     # Background schedulers
     rules_sync_scheduler.setup(bot)
     guidelines_sync_scheduler.setup(bot)
     unban_scheduler.setup(bot)
 
-    logger.info("[MAIN] Cogs loaded successfully.")
+    logger.info("Cogs loaded successfully.")
 
 
 def create_bot() -> discord.Bot:
@@ -149,12 +160,12 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
     except Exception as exc:
         logger.exception("Garbage collection failed: %s", exc)
 
-    logger.info("[MAIN] Shutdown complete.")
+    logger.info("Shutdown complete.")
 
 
 async def run_bot(bot: discord.Bot, token: str, control: console.ConsoleControl) -> int:
     """Run the Discord bot inside a managed console session."""
-    logger.info("[MAIN] Starting Discord bot…")
+    logger.info("Starting Discord bot…")
     control.set_bot(bot)
     exit_code = 0
 
@@ -162,7 +173,7 @@ async def run_bot(bot: discord.Bot, token: str, control: console.ConsoleControl)
         try:
             await bot.start(token)
         except asyncio.CancelledError:
-            logger.info("[MAIN] Bot startup cancelled.")
+            logger.info("Bot startup cancelled.")
         except Exception as exc:
             logger.critical("Discord runtime error: %s", exc)
             exit_code = 200
@@ -180,7 +191,7 @@ async def async_main() -> int:
     token = load_environment()
 
     try:
-        logger.info("[MAIN] Initializing database and guild settings…")
+        logger.info("Initializing database and guild settings…")
         await gsm.guild_settings_manager.async_init()
     except Exception as exc:
         logger.critical("Database initialization failed: %s", exc)
@@ -196,7 +207,7 @@ async def async_main() -> int:
     exit_code = await run_bot(bot, token, control)
 
     if control.is_restart_requested():
-        logger.info("[MAIN] Restart requested.")
+        logger.info("Restart requested.")
         return -1
 
     return exit_code
@@ -204,20 +215,20 @@ async def async_main() -> int:
 
 def main() -> int:
     """Synchronous process entrypoint."""
-    logger.info("[MAIN] Launching Modcord…")
+    logger.info("Launching Modcord…")
 
     try:
         exit_code = asyncio.run(async_main())
 
         if exit_code == -1:
-            logger.info("[MAIN] Replacing process for restart.")
+            logger.info("Replacing process for restart.")
             os.execv(sys.executable, [sys.executable] + sys.argv)
             return 0
 
         return exit_code
 
     except KeyboardInterrupt:
-        logger.info("[MAIN] Shutdown requested by user.")
+        logger.info("Shutdown requested by user.")
         return 0
 
     except SystemExit as exc:

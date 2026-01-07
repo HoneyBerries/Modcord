@@ -16,7 +16,7 @@ import discord
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
-logger = get_logger("collector")
+logger = get_logger("COLLECTOR")
 
 
 RULE_CHANNEL_PATTERN = re.compile(

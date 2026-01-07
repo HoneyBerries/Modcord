@@ -40,7 +40,7 @@ def print_boxed_title(title: str, color: str = "") -> None:
     for line in (top, mid, bot):
         console_print(line, color)
 
-logger = get_logger("console")
+logger = get_logger("CONSOLE")
 
 # Type alias for command handler functions
 CommandHandler = Callable[["ConsoleControl", list[str]], Awaitable[None]]
@@ -163,10 +163,10 @@ async def close_bot_instance(bot: discord.Bot) -> bool:
     try:
         await bot.change_presence(status=discord.Status.offline)
         await bot.close()
-        logger.info("[CONSOLE] Discord bot connection closed.")
+        logger.info("Discord bot connection closed.")
         return True
     except Exception as exc:
-        logger.error("[CONSOLE] Error closing Discord bot: %s", exc)
+        logger.error("Error closing Discord bot: %s", exc)
         return False
 
 

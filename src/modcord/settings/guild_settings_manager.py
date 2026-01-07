@@ -18,7 +18,7 @@ from modcord.datatypes.guild_settings import GuildSettings, ACTION_FLAG_FIELDS
 from modcord.settings.guild_settings_db import guild_settings_db
 from modcord.util.logger import get_logger
 
-logger = get_logger("guild_settings_manager")
+logger = get_logger("GUILD SETTINGS MANAGER")
 
 
 class GuildSettingsManager:
@@ -40,7 +40,7 @@ class GuildSettingsManager:
         self._active_persists: Set[asyncio.Task] = set()
         self._db_initialized = False
 
-        logger.info("[GUILD SETTINGS MANAGER] Initialized")
+        logger.info("Initialized")
 
 
     async def async_init(self) -> None:
@@ -57,7 +57,7 @@ class GuildSettingsManager:
                     self._guidelines_cache[guild_id] = settings.channel_guidelines.copy()
             
             self._db_initialized = True
-            logger.info("[GUILD SETTINGS MANAGER] Database initialized and caches loaded")
+            logger.info("Database initialized and caches loaded")
 
 
     # ========== Core API ==========
@@ -181,7 +181,7 @@ class GuildSettingsManager:
         if guild_id in self._guidelines_cache:
             del self._guidelines_cache[guild_id]
             
-        logger.debug(f"[GUILD SETTINGS MANAGER] Removed guild {guild_id.to_int()} from memory cache")
+        logger.debug(f"Removed guild {guild_id.to_int()} from memory cache")
         
         # Delete from database
         return await guild_settings_db.delete_guild_data(guild_id)
@@ -243,7 +243,7 @@ class GuildSettingsManager:
         """Await any pending persistence tasks during shutdown."""
         await asyncio.gather(*self._active_persists, return_exceptions=True)
         self._active_persists.clear()
-        logger.info("[GUILD SETTINGS MANAGER] Shutdown complete")
+        logger.info("Shutdown complete")
 
 
     # ========== Private Methods ==========

@@ -3,7 +3,7 @@ import asyncio
 from openai import AsyncOpenAI
 from modcord.util.logger import get_logger
 
-logger = get_logger("ai_settings")
+logger = get_logger("AI SETTINGS")
 
 
 class AISettings:

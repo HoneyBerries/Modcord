@@ -14,7 +14,7 @@ from modcord.util.logger import get_logger
 from modcord.datatypes.discord_datatypes import MessageID, GuildID
 from modcord.util import image_utils
 
-logger = get_logger("discord_utils")
+logger = get_logger("DISCORD UTILS")
 
 # ==========================================
 # Duration/constants and choices (moved here so discord_utils is self-contained)
@@ -170,6 +170,18 @@ def should_process_message(
     has_images = any(image_utils.is_image_attachment(att) for att in message.attachments)
     
     return has_text or has_images
+
+def is_dm_channel(channel: discord.abc.Messageable) -> bool:
+    """
+    Check if a channel is a DM channel.
+
+    Args:
+        channel (discord.abc.Messageable): The channel to check.
+
+    Returns:
+        bool: True if the channel is a DM channel, False otherwise.
+    """
+    return isinstance(channel, discord.DMChannel)
 
 
 def has_elevated_permissions(member: Union[discord.User, discord.Member]) -> bool:

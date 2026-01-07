@@ -11,9 +11,9 @@ from modcord.datatypes.discord_datatypes import GuildID
 from modcord.util.discord import collector
 from modcord.util.logger import get_logger
 
-logger = get_logger("rules_sync")
+logger = get_logger("RULES SYNC SCHEDULER")
 
-class RulesSyncCog(commands.Cog):
+class RulesSyncScheduler(commands.Cog):
     """
     A Cog that handles the periodic collection and persistence of server rules.
     """
@@ -44,7 +44,7 @@ class RulesSyncCog(commands.Cog):
                 await self.sync_rules(guild)
             except Exception as exc:
                 # We catch errors here so one failing guild doesn't stop the whole loop
-                logger.error("[%s] Failed to sync rules: %s", guild.name, exc)
+                logger.error("Failed to sync rules for %s: %s", guild.name, exc)
 
     @sync_loop.before_loop
     async def before_sync_loop(self):
@@ -53,4 +53,4 @@ class RulesSyncCog(commands.Cog):
 
 def setup(bot: discord.Bot):
     """Entry point for bot.load_extension."""
-    bot.add_cog(RulesSyncCog(bot))
+    bot.add_cog(RulesSyncScheduler(bot))

@@ -23,7 +23,7 @@ from modcord.ui.guild_settings_ui import build_settings_embed, GuildSettingsView
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.discord_datatypes import ChannelID, GuildID
 
-logger = get_logger("settings_cog")
+logger = get_logger("GUILD SETTINGS COG")
 
 
 class GuildSettingsCog(commands.Cog):
@@ -40,7 +40,7 @@ class GuildSettingsCog(commands.Cog):
             bot: Discord bot instance for guild access.
         """
         self.bot = bot
-        logger.info("[GUILD SETTINGS CMDS] Settings cog loaded")
+        logger.info("Settings cog loaded")
 
     async def _ensure_guild_context(self, ctx: discord.ApplicationContext) -> bool:
         """Ensure the command is used in a guild context."""
@@ -56,6 +56,7 @@ class GuildSettingsCog(commands.Cog):
         permissions = member.guild_permissions
         return bool(permissions.manage_guild)
     
+
     async def _check_permissions(self, ctx: discord.ApplicationContext) -> bool:
         """Check both guild context and manage permissions. Returns True if all checks pass."""
         if not await self._ensure_guild_context(ctx):

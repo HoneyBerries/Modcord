@@ -7,7 +7,7 @@ from modcord.datatypes.action_datatypes import ActionType
 from modcord.datatypes.discord_datatypes import GuildID, UserID
 from modcord.util.logger import get_logger
 
-logger = get_logger("guild_settings_ui")
+logger = get_logger("GUILD SETTINGS UI")
 
 ACTION_UI_ORDER: tuple[ActionType, ...] = (
     ActionType.WARN,
@@ -206,7 +206,7 @@ class GuildSettingsView(discord.ui.View):
             try:
                 await self._message.edit(view=self)
             except discord.HTTPException as e:
-                logger.debug("[GUILD SETTINGS UI] Failed to edit message on timeout: %s", e)
+                logger.debug("Failed to edit message on timeout: %s", e)
 
 
 class ToggleAIButton(discord.ui.Button):

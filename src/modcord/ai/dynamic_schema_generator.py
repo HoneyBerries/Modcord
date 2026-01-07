@@ -4,7 +4,7 @@ from typing import Dict, List
 from modcord.util.logger import get_logger
 
 
-logger = get_logger("dynamic_schema_generator")
+logger = get_logger("DYNAMIC SCHEMA GENERATOR")
 
 
 def build_dynamic_moderation_schema(
@@ -26,7 +26,7 @@ def build_dynamic_moderation_schema(
     if not user_message_map:
         # Fallback for empty batch - no users to moderate
         # Return schema that expects empty users array
-        logger.warning("[SCHEMA] Empty user_message_map - no users with valid content to moderate")
+        logger.warning("Empty user_message_map - no users with valid content to moderate")
         return {
             "type": "object",
             "properties": {

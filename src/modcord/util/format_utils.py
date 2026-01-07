@@ -1,10 +1,7 @@
 from datetime import datetime, timezone
 from typing import List
 
-from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData, ActionType
-
-logger = get_logger("format_utils")
 
 
 def humanize_timestamp(value: datetime) -> str:
@@ -25,17 +22,7 @@ def humanize_timestamp(value: datetime) -> str:
     elif value.tzinfo is None:
         # If naive, assume UTC
         value = value.replace(tzinfo=timezone.utc)
-    
-    # Clamp to current time if timestamp is in the future
-    now_utc = datetime.now(timezone.utc)
-    if value > now_utc:
-        logger.warning(
-            "Timestamp %s is in the future, clamping to current time %s",
-            value.isoformat(),
-            now_utc.isoformat()
-        )
-        value = now_utc
-    
+
     return value.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 

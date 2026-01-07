@@ -27,7 +27,7 @@ from modcord.datatypes.image_datatypes import ImageURL, ImageID
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData
 
-logger = get_logger("moderation_datatypes")
+logger = get_logger("MODERATION DATATYPES")
 
 
 @dataclass(slots=True)

@@ -8,13 +8,14 @@ import discord
 from discord.ext import commands
 
 from modcord.settings.guild_settings_manager import guild_settings_manager
+from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
 from modcord.datatypes.moderation_datatypes import ModerationMessage, ModerationUser
 from modcord.moderation.human_review_manager import HumanReviewManager
 
-logger = get_logger("debug_commands")
+logger = get_logger("DEBUG COMMANDS")
 
 class DebugCog(commands.Cog):
     """Cog for debug commands."""
@@ -27,6 +28,9 @@ class DebugCog(commands.Cog):
     @debug.command(name="test", description="Test command to verify the bot is responsive")
     async def test(self, application_context: discord.ApplicationContext) -> None:
         """Test command to verify the bot is responsive."""
+        if discord_utils.is_dm_channel(application_context.channel):
+            return
+        
         try:
             # Create embed response
             embed = discord.Embed(
@@ -50,6 +54,9 @@ class DebugCog(commands.Cog):
     @debug.command(name="purge", description="Delete all messages in the current channel")
     async def purge(self, application_context: discord.ApplicationContext) -> None:
         """Delete all messages in the current channel."""
+        if discord_utils.is_dm_channel(application_context.channel):
+            return
+        
         try:
             await application_context.defer(ephemeral=True)
             guild = application_context.guild
@@ -76,6 +83,9 @@ class DebugCog(commands.Cog):
     @debug.command(name="refresh_rules", description="Manually refresh the server rules cache")
     async def refresh_rules(self, application_context: discord.ApplicationContext) -> None:
         """Manually refresh the server rules cache from the database."""
+        if discord_utils.is_dm_channel(application_context.channel):
+            return
+        
         try:
             guild = application_context.guild
 
@@ -104,6 +114,9 @@ class DebugCog(commands.Cog):
     async def show_rules(self, application_context: discord.ApplicationContext) -> None:
         """Display the current server rules cached in memory."""
         try:
+            if discord_utils.is_dm_channel(application_context.channel):
+                return
+
             guild = application_context.guild
 
             if not guild:
@@ -134,6 +147,8 @@ class DebugCog(commands.Cog):
     @debug.command(name="simulate_review", description="Simulate multiple users needing review for testing")
     async def simulate_review(self, application_context: discord.ApplicationContext) -> None:
         """Simulate multiple hardcoded moderation review actions to test the consolidated review notification system."""
+        if discord_utils.is_dm_channel(application_context.channel):
+            return
         try:
             # Defer IMMEDIATELY to avoid interaction timeout
             await application_context.defer(ephemeral=True)

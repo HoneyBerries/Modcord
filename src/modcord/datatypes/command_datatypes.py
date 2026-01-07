@@ -15,7 +15,6 @@ from modcord.datatypes.discord_datatypes import UserID, GuildID, ChannelID
 from modcord.moderation import moderation_helper
 from modcord.util.logger import get_logger
 
-logger = get_logger("command_datatypes")
 
 
 class CommandAction(ActionData):
@@ -44,23 +43,12 @@ class CommandAction(ActionData):
             bool: True if action was successfully applied.
         """
         # Populate ActionData fields from context
-        self.guild_id = GuildID.from_guild(ctx.guild)
-        self.channel_id = ChannelID.from_channel(ctx.channel)
+        self.guild_id = GuildID.from_guild(ctx.guild) if ctx.guild is not None else GuildID(0)
+        self.channel_id = ChannelID.from_channel(ctx.channel) if ctx.channel is not None else ChannelID(0)
+
         self.user_id = UserID.from_user(user)
-        
-        # Get channel for notifications
-        channel = ctx.channel
-        if not isinstance(channel, discord.TextChannel):
-            logger.warning("Command executed in non-text channel, trying to find suitable channel")
-            channel = ctx.guild.system_channel or next(
-                (c for c in ctx.guild.text_channels if c.permissions_for(ctx.guild.me).send_messages),
-                None
-            )
-        
-        if channel is None:
-            logger.error("No suitable channel found for action notification")
-            return False
-        
+
+
         # Delegate to the unified apply_action function
         return await moderation_helper.apply_action(
             action=self,

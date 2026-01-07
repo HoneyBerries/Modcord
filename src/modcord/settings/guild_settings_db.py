@@ -15,7 +15,7 @@ from modcord.datatypes.guild_settings import GuildSettings
 from modcord.util.logger import get_logger
 from modcord.database.database import database
 
-logger = get_logger("guild_settings_db")
+logger = get_logger("GUILD SETTINGS DB")
 
 
 class GuildSettingsDB:
@@ -28,7 +28,7 @@ class GuildSettingsDB:
     async def initialize(self) -> None:
         """Initialize the database connection."""
         await database.initialize()
-        logger.info("[GUILD SETTINGS DB] Database initialized")
+        logger.info("Database initialized")
 
     async def load_all_guild_settings(self) -> Dict[GuildID, GuildSettings]:
         """
@@ -259,7 +259,7 @@ class GuildSettingsDB:
 
                     await conn.commit()
                     logger.debug(
-                        "[GUILD SETTINGS DB] Persisted guild %s to database",
+                        "Persisted guild %s to database",
                         guild_id.to_int()
                     )
                     return True

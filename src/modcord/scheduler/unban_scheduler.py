@@ -9,13 +9,9 @@ import datetime
 import discord
 from discord.ext import tasks, commands
 
-from modcord.datatypes.discord_datatypes import UserID, GuildID
 from modcord.util.logger import get_logger
 
-# In a real app, you would import your actual database manager here
-# from modcord.settings.guild_settings_manager import guild_settings_manager
-
-logger = get_logger("unban_scheduler")
+logger = get_logger("UNBAN SCHEDULER")
 
 class UnbanScheduler(commands.Cog):
     """
@@ -32,7 +28,7 @@ class UnbanScheduler(commands.Cog):
         """Cleanly stop the task when the cog is removed."""
         self.check_unbans.cancel()
 
-    @tasks.loop(seconds=60.0)
+    @tasks.loop(seconds=5.0)
     async def check_unbans(self):
         """
         Periodic task that checks for users whose ban duration has expired.
@@ -48,6 +44,7 @@ class UnbanScheduler(commands.Cog):
 
         for ban in expired_bans:
             await self.execute_unban(ban.guild_id, ban.user_id, ban.reason)
+
 
     async def execute_unban(self, guild_id: int, user_id: int, reason: str):
         """
@@ -71,7 +68,7 @@ class UnbanScheduler(commands.Cog):
             logger.info("Successfully auto-unbanned %s in guild %s", user_id, guild.name)
 
         except discord.NotFound:
-            logger.info("User %s was already unbanned from %s.", user_id, guild.name)
+            logger.warning("User %s was already unbanned from %s.", user_id, guild.name)
             # Still remove from DB since it's no longer needed
         except discord.Forbidden:
             logger.error("Missing permissions to unban %s in %s.", user_id, guild.name)
@@ -84,17 +81,18 @@ class UnbanScheduler(commands.Cog):
         await self.bot.wait_until_ready()
 
     # Example of how you would "Schedule" a new unban now
-    async def schedule_unban(self, guild_id: int, user_id: int, duration_seconds: float, reason: str):
+    async def schedule_unban(self, guild_id: int, user_id: int, duration_seconds: float):
         """
         Instead of a heap, we just calculate the timestamp and save it to the DB.
         """
         unban_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=duration_seconds)
         
         # --- DATABASE LOGIC PLACEHOLDER ---
-        # await database.save_temp_ban(guild_id, user_id, unban_at, reason)
+        # await database.save_temp_ban(guild_id, user_id, unban_at)
         # ----------------------------------
         
         logger.info("Scheduled unban for %s in %s for %s", user_id, guild_id, unban_at)
+
 
 def setup(bot: discord.Bot):
     """Entry point for bot.load_extension."""

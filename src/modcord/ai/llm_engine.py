@@ -36,7 +36,7 @@ from modcord.settings.guild_settings_manager import guild_settings_manager
 
 
 
-logger = get_logger("llm_engine")
+logger = get_logger("LLM ENGINE")
 
 
 @dataclass
@@ -88,13 +88,13 @@ class LLMEngine:
         """
         try:
             await self._client.close()
-            logger.info("[LLM ENGINE] AsyncOpenAI client closed successfully")
+            logger.info("AsyncOpenAI client closed successfully")
         except Exception as exc:
             logger.exception("Error closing AsyncOpenAI client: %s", exc)
         
         try:
             weave.finish()
-            logger.info("[LLM ENGINE] Weave finished successfully")
+            logger.info("Weave finished successfully")
         except Exception as exc:
             logger.warning("Error finishing weave (non-critical): %s", exc)
 
@@ -147,7 +147,7 @@ class LLMEngine:
         Returns:
             Dictionary mapping channel_id (ChannelID) to list of ActionData objects.
         """
-        logger.debug("[MODERATION] Processing %d batches", len(batches))
+        logger.debug("Processing %d batches", len(batches))
 
         if not batches:
             return {}
@@ -235,10 +235,10 @@ class LLMEngine:
                 )
 
             response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
-            logger.debug("[LLM ENGINE] Model Output Object: \n%s", response)
+            logger.debug("Model Output Object: \n%s", response)
             
         except Exception as exc:
-            logger.error("[LLM ENGINE] API request failed for channel %s: %s", req.channel_id, exc)
+            logger.error("API request failed for channel %s: %s", req.channel_id, exc)
             response_text = f"null: api error - {exc}"
 
         # Parse response into actions

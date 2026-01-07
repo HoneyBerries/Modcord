@@ -46,7 +46,7 @@ from modcord.datatypes.command_datatypes import (
 )
 from modcord.util.logger import get_logger
 
-logger = get_logger("moderation_cog")
+logger = get_logger("MODERATION ACTION CMDS")
 
 
 class ModerationActionCog(commands.Cog):
@@ -67,7 +67,7 @@ class ModerationActionCog(commands.Cog):
             bot: Active Discord bot instance used for moderation and scheduling tasks.
         """
         self.bot = bot
-        logger.info("[MODERATION CMDS] Moderation cog loaded")
+        logger.info("Moderation cog loaded")
 
     async def check_moderation_permissions(
         self,
@@ -162,7 +162,7 @@ class ModerationActionCog(commands.Cog):
                     ephemeral=True
                 )
             except Exception:
-                logger.error("[MODERATION CMDS] Failed to send error response to user.")
+                logger.error("Failed to send error response to user.")
 
     @commands.slash_command(name="warn", description="Warns a user for a specified reason.")
     async def warn(

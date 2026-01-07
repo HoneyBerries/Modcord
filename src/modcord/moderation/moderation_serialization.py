@@ -34,7 +34,7 @@ from modcord.util.format_utils import humanize_timestamp, format_past_actions
 from modcord.util.logger import get_logger
 from modcord.ai import dynamic_schema_generator
 
-logger = get_logger("moderation_serialization")
+logger = get_logger("MODERATION SERIALIZATION")
 
 
 def merge_users_with_history(

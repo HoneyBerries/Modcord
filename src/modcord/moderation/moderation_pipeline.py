@@ -25,7 +25,7 @@ from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
 
-logger = get_logger("moderation_engine")
+logger = get_logger("MODERATION PIPELINE")
 
 llm_engine = LLMEngine()
 
@@ -158,7 +158,7 @@ class ModerationPipeline:
         )
         
         if not action.user_id:
-            logger.debug("[MODERATION ENGINE] Skipping: no user_id")
+            logger.debug("Skipping: no user_id")
             return False
         
         # Find target user with Discord context
@@ -222,7 +222,7 @@ class ModerationPipeline:
         )
         
         if action.action is ActionType.NULL or not action.user_id:
-            logger.debug("[MODERATION ENGINE] Skipping: action is NULL or no user_id")
+            logger.debug("Skipping: action is NULL or no user_id")
             return False
 
         # Find target user with Discord context

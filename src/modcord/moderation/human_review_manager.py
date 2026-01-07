@@ -25,7 +25,7 @@ from modcord.ui.review_ui import HumanReviewResolutionView
 from modcord.ui import review_embed_helper
 from modcord.datatypes.guild_settings import GuildSettings
 
-logger = get_logger("human_review_manager")
+logger = get_logger("HUMAN REVIEW MANAGER")
 
 
 class HumanReviewManager:
@@ -102,7 +102,7 @@ class HumanReviewManager:
         """
         guild_key = GuildID.from_guild(guild)
         if guild_key not in self._active_batches or not self._active_batches[guild_key]:
-            logger.debug("[REVIEW] No review items to finalize for guild %s", guild.id)
+            logger.debug("No review items to finalize for guild %s", guild.id)
             return False
         
         # Convert dict values to list for embed builder
@@ -130,15 +130,15 @@ class HumanReviewManager:
                     )
 
                     sent_messages.append((channel_obj, sent_message.id))
-                    logger.info("[REVIEW] Sent review batch %s to channel %s", batch_id, channel_obj.to_int())
+                    logger.info("Sent review batch %s to channel %s", batch_id, channel_obj.to_int())
 
                 except Exception as e:
-                    logger.error("[REVIEW] Failed to send review to channel %s: %s", channel_obj.to_int(), e)
+                    logger.error("Failed to send review to channel %s: %s", channel_obj.to_int(), e)
         
         if sent_messages:
-            logger.info("[REVIEW] Review batch %s sent to %d channel(s) in guild %s", batch_id, len(sent_messages), guild.id)
+            logger.info("Review batch %s sent to %d channel(s) in guild %s", batch_id, len(sent_messages), guild.id)
         else:
-            logger.warning("[REVIEW] Review batch generated but no review channels responded for guild %s", guild.id)
+            logger.warning("Review batch generated but no review channels responded for guild %s", guild.id)
         
         self._active_batches.pop(GuildID.from_guild(guild))
         return len(sent_messages) > 0

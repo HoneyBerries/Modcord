@@ -8,11 +8,7 @@ using ActionData as the canonical input.
 import datetime
 import discord
 from modcord.datatypes.action_datatypes import ActionData, ActionType
-from modcord.util.logger import get_logger
 from modcord.util.discord import discord_utils
-
-logger = get_logger("action_embed")
-
 
 # Emoji mapping for action types
 ACTION_EMOJIS = {

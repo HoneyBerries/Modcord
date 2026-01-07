@@ -7,7 +7,7 @@ import yaml
 from modcord.configuration.ai_settings import AISettings
 from modcord.util.logger import get_logger
 
-logger = get_logger("app_configuration")
+logger = get_logger("APP CONFIG")
 
 
 CONFIG_PATH = Path("./config/app_config.yml").resolve()
@@ -42,9 +42,9 @@ class AppConfig:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
                 return data
         except FileNotFoundError:
-            logger.error("[APP CONFIGURATION] Config file %s not found.", self.config_path)
+            logger.error("Config file %s not found.", self.config_path)
         except Exception as exc:
-            logger.error("[APP CONFIGURATION] Failed to load config %s: %s", self.config_path, exc)
+            logger.error("Failed to load config %s: %s", self.config_path, exc)
         return {}
 
     # --------------------------

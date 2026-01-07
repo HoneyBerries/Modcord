@@ -16,7 +16,7 @@ from modcord.datatypes.moderation_datatypes import ModerationMessage
 from modcord.util.logger import get_logger
 from modcord.util.discord import discord_utils
 
-logger = get_logger("discord_history_fetcher")
+logger = get_logger("DISCORD HISTORY FETCHER")
 
 
 class DiscordHistoryFetcher:
@@ -77,7 +77,7 @@ class DiscordHistoryFetcher:
 
         channel = self._bot.get_channel(channel_id_int)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
-            logger.debug("[HISTORY FETCHER] Channel %s is not a text channel or thread", channel_id)
+            logger.debug("Channel %s is not a text channel or thread", channel_id)
             return []
 
         if history_limit is None:
@@ -123,11 +123,11 @@ class DiscordHistoryFetcher:
                     break
 
         except discord.Forbidden:
-            logger.warning("[HISTORY FETCHER] Missing permissions to read history for channel %s", channel_id)
+            logger.warning("Missing permissions to read history for channel %s", channel_id)
         except discord.NotFound:
-            logger.warning("[HISTORY FETCHER] Channel %s not found while fetching history", channel_id)
+            logger.warning("Channel %s not found while fetching history", channel_id)
         except Exception as exc:
-            logger.error("[HISTORY FETCHER] Unexpected error fetching history for channel %s: %s", channel_id, exc)
+            logger.error("Unexpected error fetching history for channel %s: %s", channel_id, exc)
 
         return results
 

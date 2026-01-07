@@ -18,7 +18,7 @@ modules for different concerns:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 from modcord.datatypes.action_datatypes import ActionData
 from modcord.datatypes.discord_datatypes import UserID, GuildID
@@ -27,7 +27,7 @@ from modcord.database.db_connection import DatabaseConnectionContext
 from modcord.database.db_schema import SchemaManager
 from modcord.database.moderation_action_storage import ModerationActionStorage
 
-logger = get_logger("database")
+logger = get_logger("DATABASE")
 
 # Database file path
 DB_PATH = Path("./data/app.db").resolve()
@@ -85,7 +85,7 @@ class Database:
             True if initialization succeeded, False otherwise
         """
         if self._initialized:
-            logger.debug("[DATABASE] Already initialized, skipping")
+            logger.debug("Already initialized, skipping")
             return True
         
         try:
@@ -94,11 +94,11 @@ class Database:
                 await SchemaManager.initialize_schema(db)
             
             self._initialized = True
-            logger.info("[DATABASE] Database initialized at %s", self.db_path)
+            logger.info("Database initialized at %s", self.db_path)
             return True
             
         except Exception as e:
-            logger.error("[DATABASE] Database initialization failed: %s", e)
+            logger.error("Database initialization failed: %s", e)
             return False
     
     async def shutdown(self) -> None:
@@ -114,7 +114,7 @@ class Database:
             return
         
         self._initialized = False
-        logger.info("[DATABASE] Database shutdown complete")
+        logger.info("Database shutdown complete")
 
     
     

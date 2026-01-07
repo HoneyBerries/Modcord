@@ -10,7 +10,7 @@ from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, Mess
 import jsonschema
 from modcord.util.logger import get_logger
 
-logger = get_logger("moderation_parsing")
+logger = get_logger("MODERATION PARSING")
 
 
 def _extract_json_payload(raw: str) -> Any:
@@ -18,7 +18,7 @@ def _extract_json_payload(raw: str) -> Any:
     try:
         return json.loads(raw.strip())
     except json.JSONDecodeError as exc:
-        logger.warning("[EXTRACT] Parsing failed: %s", exc)
+        logger.warning("Parsing failed: %s", exc)
         raise ValueError("Failed to extract JSON payload") from exc
 
 
@@ -42,37 +42,37 @@ def parse_batch_actions(
     Returns:
         List of ActionData objects parsed from response
     """
-    logger.debug("[PARSE] Parsing batch response (%d chars)", len(response))
+    logger.debug("Parsing batch response (%d chars)", len(response))
     # Extract JSON
     try:
         payload = _extract_json_payload(response)
     except ValueError as exc:
-        logger.error("[PARSE] Failed to extract JSON: %s", exc)
+        logger.error("Failed to extract JSON: %s", exc)
         return []
     
     if not isinstance(payload, dict):
-        logger.error("[PARSE] Payload is not a dict, got %s", type(payload))
+        logger.error("Payload is not a dict, got %s", type(payload))
         return []
     
     # Validate against schema (should pass due to xgrammar constraint)
     try:
         jsonschema.validate(instance=payload, schema=expected_schema)
     except ValidationError as exc:
-        logger.error("[PARSE] Schema validation failed: %s", exc.message)
+        logger.error("Schema validation failed: %s", exc.message)
         return []
     
     # Verify channel ID matches
     response_channel = str(payload.get("channel_id", "")).strip()
     if response_channel != str(channel_id):
-        logger.warning("[PARSE] Channel mismatch: expected %s, got %s", channel_id, response_channel)
+        logger.warning("Channel mismatch: expected %s, got %s", channel_id, response_channel)
         return []
     
     entries = payload.get("users") or []
     if not isinstance(entries, list):
-        logger.error("[PARSE] 'users' field is not a list")
+        logger.error("'users' field is not a list")
         return []
     
-    logger.debug("[PARSE] Extracted %d user entries", len(entries))
+    logger.debug("Extracted %d user entries", len(entries))
     
     # Parse each action - trust schema, just normalize data
     actions: List[ActionData] = []
@@ -117,5 +117,5 @@ def parse_batch_actions(
             )
         )
     
-    logger.debug("[PARSE] Successfully parsed %d actions", len(actions))
+    logger.debug("Successfully parsed %d actions", len(actions))
     return actions

@@ -11,9 +11,9 @@ from modcord.datatypes.discord_datatypes import GuildID, ChannelID
 from modcord.util.discord import collector
 from modcord.util.logger import get_logger
 
-logger = get_logger("guidelines_sync")
+logger = get_logger("GUIDELINES SYNC SCHEDULER")
 
-class GuidelinesSyncCog(commands.Cog):
+class GuidelinesSyncScheduler(commands.Cog):
     """
     A Cog that handles the periodic collection and persistence of channel-specific guidelines.
     """
@@ -50,7 +50,7 @@ class GuidelinesSyncCog(commands.Cog):
                 await self.sync_guild_guidelines(guild)
             except Exception as exc:
                 # Ensures one guild error doesn't stop the entire background process
-                logger.error("[%s] Failed to sync guidelines: %s", guild.name, exc)
+                logger.error("Failed to sync guidelines for %s: %s", guild.name, exc)
 
     @sync_loop.before_loop
     async def before_sync_loop(self):
@@ -59,4 +59,4 @@ class GuidelinesSyncCog(commands.Cog):
 
 def setup(bot: discord.Bot):
     """Entry point for bot.load_extension."""
-    bot.add_cog(GuidelinesSyncCog(bot))
+    bot.add_cog(GuidelinesSyncScheduler(bot))

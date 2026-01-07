@@ -20,7 +20,7 @@ from modcord.datatypes.discord_datatypes import GuildID
 from modcord.ui.review_embed_helper import build_resolved_review_embed
 from modcord.datatypes.action_datatypes import ActionType
 
-logger = get_logger("review_ui")
+logger = get_logger("REVIEW UI")
 
 QUICK_ACTION_MESSAGES: dict[ActionType, str] = {
     ActionType.WARN: "Use `/warn user:<user> reason:<reason>` to warn this user.",
@@ -215,7 +215,7 @@ class HumanReviewResolutionView(discord.ui.View):
         """
         message = QUICK_ACTION_MESSAGES.get(action_type)
         if not message:
-            logger.warning("[REVIEW UI] No quick-action template configured for %s", action_type.value)
+            logger.warning("No quick-action template configured for %s", action_type.value)
             message = "Refer to the server's moderation commands for the correct syntax."
 
         await interaction.response.send_message(

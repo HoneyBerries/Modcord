@@ -19,7 +19,7 @@ from modcord.scheduler import unban_scheduler
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
-logger = get_logger("moderation_helper")
+logger = get_logger("MODERATION HELPER")
 
 
 # ---------------------------------------------------------------------------

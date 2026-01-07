@@ -13,18 +13,16 @@ from discord.ext import commands
 from modcord.configuration.app_configuration import app_config
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.database.database import database
-from modcord.datatypes.action_datatypes import ActionData
 from modcord.datatypes.discord_datatypes import ChannelID, GuildID, DiscordUsername, MessageID, UserID
-from modcord.scheduler import rules_sync_scheduler
 from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationMessage, ModerationUser
 from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
 from modcord.moderation.moderation_pipeline import ModerationPipeline
-from modcord.util.discord import collector, discord_utils
+from modcord.util.discord import discord_utils
 from modcord.util import image_utils
 
 from modcord.util.logger import get_logger
 
-logger = get_logger("message_listener_cog")
+logger = get_logger("MESSAGE LISTENER")
 
 
 class MessageListenerCog(commands.Cog):
@@ -45,7 +43,7 @@ class MessageListenerCog(commands.Cog):
         self._pending_messages: dict[ChannelID, List[ModerationMessage]] = {}
         self._batch_timer: asyncio.Task | None = None
         self._lock = asyncio.Lock()
-        logger.info("[MESSAGE LISTENER] Message listener cog loaded")
+        logger.info("Message listener cog loaded")
 
     @commands.Cog.listener(name='on_message')
     async def on_message(self, message: discord.Message):

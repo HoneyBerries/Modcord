@@ -12,7 +12,7 @@ from typing import Any, Awaitable, Callable
 import discord
 from modcord.util.logger import get_logger
 
-logger = get_logger("sync_scheduler")
+logger = get_logger("GENERIC SYNC SCHEDULER")
 
 
 class GenericSyncScheduler:
@@ -41,7 +41,7 @@ class GenericSyncScheduler:
     async def _sync_all_guilds(self) -> None:
         """Iterate bot.guilds and call per_guild_coro for each."""
         if not self._bot:
-            logger.error("[%s] Bot instance not set, cannot sync guilds", self._name)
+            logger.error("Bot instance not set, cannot sync guilds")
             return
             
         for guild in self._bot.guilds:
@@ -50,16 +50,16 @@ class GenericSyncScheduler:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning("[%s] Failed to sync guild %s: %s", self._name, guild.name, exc)
+                logger.warning("Failed to sync guild %s: %s", guild.name, exc)
 
 
     async def _run_loop(self, interval: float) -> None:
         """Infinite loop: sync all guilds, sleep, repeat."""
         if not self._bot:
-            logger.error("[%s] Bot instance not set, cannot run scheduler", self._name)
+            logger.error("Bot instance not set, cannot run scheduler")
             return
             
-        logger.info("[%s] Starting periodic sync (interval=%.1fs) for %d guilds", self._name, interval, len(self._bot.guilds))
+        logger.info("Starting periodic sync (interval=%.1fs) for %d guilds", interval, len(self._bot.guilds))
         try:
             while True:
                 try:
@@ -67,10 +67,10 @@ class GenericSyncScheduler:
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    logger.error("[%s] Unexpected error during sync: %s", self._name, exc)
+                    logger.error("Unexpected error during sync: %s", exc)
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
-            logger.info("[%s] Periodic sync cancelled", self._name)
+            logger.info("Periodic sync cancelled")
             raise
 
 
@@ -83,10 +83,10 @@ class GenericSyncScheduler:
         self._bot = bot
         
         if self._task and not self._task.done():
-            logger.warning("[%s] Sync task already running", self._name)
+            logger.warning("Sync task already running")
             return
         interval = self._get_interval()
-        logger.info("[%s] Creating sync task with interval %.1fs", self._name, interval)
+        logger.info("Creating sync task with interval %.1fs", interval)
         self._task = asyncio.create_task(self._run_loop(interval))
 
 
@@ -99,4 +99,4 @@ class GenericSyncScheduler:
             except asyncio.CancelledError:
                 pass
 
-        logger.info("[%s] Scheduler shutdown complete", self._name)
+        logger.info("Scheduler shutdown complete")

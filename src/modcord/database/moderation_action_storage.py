@@ -15,7 +15,7 @@ from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID, ChannelID
 from modcord.util.logger import get_logger
 
-logger = get_logger("database_moderation")
+logger = get_logger("DB MODERATION ACTIONS")
 
 
 class ModerationActionStorage:
@@ -55,7 +55,7 @@ class ModerationActionStorage:
         
         
         logger.debug(
-            "[MODERATION] Logged action: %s on user %s in guild %s channel %s",
+            "Logged action: %s on user %s in guild %s channel %s",
             action.action.value,
             action.user_id,
             action.guild_id,
@@ -114,7 +114,7 @@ class ModerationActionStorage:
             return len(actions)
             
         except Exception as e:
-            logger.error("[MODERATION] Batch log failed: %s", e)
+            logger.error("Batch log failed: %s", e)
             return -1
     
     async def get_bulk_past_actions(

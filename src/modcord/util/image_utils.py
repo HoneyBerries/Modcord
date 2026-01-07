@@ -6,7 +6,7 @@ from modcord.datatypes.moderation_datatypes import ModerationImage
 from modcord.datatypes.image_datatypes import ImageURL, ImageID
 from modcord.util.logger import get_logger
 
-logger = get_logger("image_utils")
+logger = get_logger("IMAGE UTILS")
 
 
 def generate_image_hash_id(image_url: ImageURL) -> ImageID:
