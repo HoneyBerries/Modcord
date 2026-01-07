@@ -21,14 +21,14 @@ class GenericSyncScheduler:
 
     Args:
         name: Human-readable name for logging (e.g., "rules", "guidelines").
-        per_guild_coro: Async callable that accepts a single `discord.Guild` argument.
+        per_guild_coro: Async callable that accepts (bot, guild) arguments.
         get_interval: Callable returning the interval in seconds (called at start).
     """
 
     def __init__(
         self,
         name: str,
-        per_guild_coro: Callable[[discord.Guild], Awaitable[Any]],
+        per_guild_coro: Callable[[discord.Bot, discord.Guild], Awaitable[Any]],
         get_interval: Callable[[], float],
     ) -> None:
         self._name = name
@@ -38,24 +38,32 @@ class GenericSyncScheduler:
         self._bot: discord.Bot | None = None
 
 
-    async def _sync_all_guilds(self, bot: discord.Bot) -> None:
+    async def _sync_all_guilds(self) -> None:
         """Iterate bot.guilds and call per_guild_coro for each."""
-        for guild in bot.guilds:
+        if not self._bot:
+            logger.error("[%s] Bot instance not set, cannot sync guilds", self._name)
+            return
+            
+        for guild in self._bot.guilds:
             try:
-                await self._per_guild_coro(guild)
+                await self._per_guild_coro(self._bot, guild)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.warning("[%s] Failed to sync guild %s: %s", self._name, guild.name, exc)
 
 
-    async def _run_loop(self, bot: discord.Bot, interval: float) -> None:
+    async def _run_loop(self, interval: float) -> None:
         """Infinite loop: sync all guilds, sleep, repeat."""
-        logger.info("[%s] Starting periodic sync (interval=%.1fs) for %d guilds", self._name, interval, len(bot.guilds))
+        if not self._bot:
+            logger.error("[%s] Bot instance not set, cannot run scheduler", self._name)
+            return
+            
+        logger.info("[%s] Starting periodic sync (interval=%.1fs) for %d guilds", self._name, interval, len(self._bot.guilds))
         try:
             while True:
                 try:
-                    await self._sync_all_guilds(bot)
+                    await self._sync_all_guilds()
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -67,14 +75,19 @@ class GenericSyncScheduler:
 
 
     def start(self, bot: discord.Bot) -> None:
-        """Start the background sync task if not already running."""
+        """Start the background sync task if not already running.
+        
+        Args:
+            bot: Discord bot instance to use for guild access.
+        """
+        self._bot = bot
+        
         if self._task and not self._task.done():
             logger.warning("[%s] Sync task already running", self._name)
             return
-        self._bot = bot
         interval = self._get_interval()
         logger.info("[%s] Creating sync task with interval %.1fs", self._name, interval)
-        self._task = asyncio.create_task(self._run_loop(bot, interval))
+        self._task = asyncio.create_task(self._run_loop(interval))
 
 
     async def shutdown(self) -> None:

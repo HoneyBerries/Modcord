@@ -21,6 +21,7 @@ from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
 from modcord.moderation.moderation_pipeline import ModerationPipeline
 from modcord.util.discord import collector, discord_utils
 from modcord.util import image_utils
+
 from modcord.util.logger import get_logger
 
 logger = get_logger("message_listener_cog")
@@ -29,19 +30,18 @@ logger = get_logger("message_listener_cog")
 class MessageListenerCog(commands.Cog):
     """Cog responsible for handling message creation and editing events."""
 
-    def __init__(self, discord_bot_instance):
+    def __init__(self, bot: discord.Bot):
         """
         Initialize the message listener cog.
 
-        Parameters
-        ----------
-        discord_bot_instance:
-            The Discord bot instance to attach this cog to.
+        Args:
+            bot: The Discord bot instance to attach this cog to.
         """
-        self.bot = discord_bot_instance
-        self.discord_bot_instance = discord_bot_instance
-        self.ai_moderation_engine = ModerationPipeline(discord_bot_instance)
-        self._history_fetcher = DiscordHistoryFetcher(discord_bot_instance)
+        self.bot = bot
+
+        # Set up AI moderation engine and history fetcher
+        self.ai_moderation_engine = ModerationPipeline(self.bot)
+        self._history_fetcher = DiscordHistoryFetcher(self.bot)
         self._pending_messages: dict[ChannelID, List[ModerationMessage]] = {}
         self._batch_timer: asyncio.Task | None = None
         self._lock = asyncio.Lock()
@@ -61,11 +61,8 @@ class MessageListenerCog(commands.Cog):
         if not discord_utils.should_process_message(message):
             return
 
-        logger.debug(f"Received message from {message.author}: {message.clean_content[:80] if message.clean_content else '[no text]'}")
+        logger.debug(f"Received message from {message.author}: {message.clean_content[:80] if message.clean_content else '[placeholder | no text]'}")
 
-        # Sync rules cache if this was posted in a rules channel
-        if isinstance(message.channel, discord.TextChannel) and collector.is_rules_channel(message.channel):
-            await rules_sync_scheduler.sync_rules(message.channel.guild)
 
         # Queue message for moderation processing
         await self._queue_message_for_moderation(message)
@@ -74,16 +71,13 @@ class MessageListenerCog(commands.Cog):
     @commands.Cog.listener(name='on_message_edit')
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         """
-        Handle message edits by refreshing rules cache if needed.
+        Handle message edits by updating the moderation queue.
         """
         # Use centralized filtering logic
         if not discord_utils.should_process_message(after):
             return
-
-        # Sync rules cache if this edit occurred in a rules channel
-        if isinstance(after.channel, discord.TextChannel) and collector.is_rules_channel(after.channel):
-            from modcord.scheduler.rules_sync_scheduler import sync_rules
-            await sync_rules(after.channel.guild)
+        
+        
 
     async def _queue_message_for_moderation(self, message: discord.Message) -> None:
         """
@@ -278,6 +272,10 @@ class MessageListenerCog(commands.Cog):
         return users
 
 
-def setup(discord_bot_instance):
-    """Register the MessageListenerCog with the bot."""
-    discord_bot_instance.add_cog(MessageListenerCog(discord_bot_instance))
+def setup(bot: discord.Bot) -> None:
+    """Register the MessageListenerCog with the bot.
+    
+    Args:
+        bot: Discord bot instance to attach the cog to.
+    """
+    bot.add_cog(MessageListenerCog(bot))

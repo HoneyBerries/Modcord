@@ -111,16 +111,16 @@ class ConsoleControl:
         is_restart_requested: Check if restart has been requested.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, bot: discord.Bot) -> None:
         self.shutdown_event = asyncio.Event()
         self.restart_event = asyncio.Event()
-        self._bot: discord.Bot | None = None
+        self._bot: discord.Bot = bot
 
-    def set_bot(self, bot: discord.Bot | None) -> None:
+    def set_bot(self, bot: discord.Bot) -> None:
         self._bot = bot
 
     @property
-    def bot(self) -> discord.Bot | None:  # pragma: no cover - trivial getter
+    def bot(self) -> discord.Bot:
         return self._bot
 
     def request_shutdown(self) -> None:
@@ -139,28 +139,36 @@ class ConsoleControl:
         return self.restart_event.is_set()
 
 
-async def close_bot_instance(bot: discord.Bot | None) -> None:
+async def close_bot_instance(bot: discord.Bot) -> bool:
     """
     Gracefully close the Discord bot connection if active.
     
-    Sets the bot's status to offline before closing to indicate proper shutdown.
-    All exceptions during closure are caught and logged to prevent crashes during
-    shutdown.
+    Sets the bot's status to offline before closing to indicate proper shutdown,
+    but only if the websocket connection is still open. This prevents errors when
+    the connection has already been closed or is closing (e.g., due to network
+    issues or Discord disconnection). All exceptions during closure are caught
+    and logged to prevent crashes during shutdown.
     
     Args:
-        bot (discord.Bot | None): The Discord bot instance to close. If None or
-            already closed, this function does nothing.
+        bot (discord.Bot): The Discord bot instance to close. If already closed, this function does nothing.
+        log_close (bool): Whether to log a confirmation message after closing.
+            Defaults to False.
+    
+    Returns:
+        bool: True if the bot was closed, False if it was already closed or if there was an error.
     """
-    if bot is None or bot.is_closed():
-        return
+    if bot.is_closed():
+        return False
 
     try:
-        # Set bot status to offline before closing
         await bot.change_presence(status=discord.Status.offline)
-        logger.info("[CONSOLE] Discord bot connection closed.")
         await bot.close()
+        logger.info("[CONSOLE] Discord bot connection closed.")
+        return True
     except Exception as exc:
-        logger.exception("Error while closing Discord bot: %s", exc)
+        logger.error("[CONSOLE] Error closing Discord bot: %s", exc)
+        return False
+
 
 
 async def _request_lifecycle_action(control: ConsoleControl, *, restart: bool) -> None:
@@ -175,6 +183,7 @@ async def _request_lifecycle_action(control: ConsoleControl, *, restart: bool) -
     """
     if restart:
         control.request_restart()
+    
     control.request_shutdown()
     await close_bot_instance(control.bot)
 

@@ -33,9 +33,13 @@ class GuildSettingsCog(commands.Cog):
     for debugging. All changes are persisted via the guild settings manager.
     """
 
-    def __init__(self, discord_bot_instance):
-        """Store the Discord bot reference and prepare guild settings access."""
-        self.discord_bot_instance = discord_bot_instance
+    def __init__(self, bot: discord.Bot):
+        """Store the Discord bot reference and prepare guild settings access.
+        
+        Args:
+            bot: Discord bot instance for guild access.
+        """
+        self.bot = bot
         logger.info("[GUILD SETTINGS CMDS] Settings cog loaded")
 
     async def _ensure_guild_context(self, ctx: discord.ApplicationContext) -> bool:
@@ -172,6 +176,10 @@ class GuildSettingsCog(commands.Cog):
         await ctx.respond(embed=embed, ephemeral=True)
 
 
-def setup(discord_bot_instance):
-    """Add the settings cog to the supplied Discord bot instance."""
-    discord_bot_instance.add_cog(GuildSettingsCog(discord_bot_instance))
+def setup(bot: discord.Bot) -> None:
+    """Add the settings cog to the supplied Discord bot instance.
+    
+    Args:
+        bot: Discord bot instance to attach the cog to.
+    """
+    bot.add_cog(GuildSettingsCog(bot))

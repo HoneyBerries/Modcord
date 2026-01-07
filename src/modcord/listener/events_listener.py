@@ -18,17 +18,14 @@ logger = get_logger("events_listener")
 class EventsListenerCog(commands.Cog):
     """Cog containing bot lifecycle and command error handlers."""
 
-    def __init__(self, discord_bot_instance):
+    def __init__(self, bot: discord.Bot):
         """
         Initialize the events listener cog.
 
-        Parameters
-        ----------
-        discord_bot_instance:
-            The Discord bot instance to attach this cog to.
+        Args:
+            bot: The Discord bot instance to attach this cog to.
         """
-        self.bot = discord_bot_instance
-        self.discord_bot_instance = discord_bot_instance
+        self.bot = bot
         logger.info("[EVENTS LISTENER] Events listener cog loaded")
 
     @commands.Cog.listener(name='on_ready')
@@ -117,13 +114,11 @@ class EventsListenerCog(commands.Cog):
             )
 
 
-def setup(discord_bot_instance):
+def setup(bot: discord.Bot) -> None:
     """
     Register the EventsListenerCog with the bot.
 
-    Parameters
-    ----------
-    discord_bot_instance:
-        The Discord bot instance to add this cog to.
+    Args:
+        bot: The Discord bot instance to add this cog to.
     """
-    discord_bot_instance.add_cog(EventsListenerCog(discord_bot_instance))
+    bot.add_cog(EventsListenerCog(bot))

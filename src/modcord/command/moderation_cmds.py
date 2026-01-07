@@ -60,15 +60,13 @@ class ModerationActionCog(commands.Cog):
     scheduling tasks.
     """
 
-    def __init__(self, discord_bot_instance):
+    def __init__(self, bot: discord.Bot):
         """Store the bot instance for executing actions.
 
-        Parameters
-        ----------
-        discord_bot_instance:
-            Active :class:`discord.Bot` instance used for moderation and scheduling tasks.
+        Args:
+            bot: Active Discord bot instance used for moderation and scheduling tasks.
         """
-        self.discord_bot_instance = discord_bot_instance
+        self.bot = bot
         logger.info("[MODERATION CMDS] Moderation cog loaded")
 
     async def check_moderation_permissions(
@@ -143,7 +141,7 @@ class ModerationActionCog(commands.Cog):
             Optional message deletion window, in minutes.
         """
         try:
-            await action.execute(ctx, user, self.discord_bot_instance)
+            await action.execute(ctx, user, self.bot)
 
             # Delete messages in background if requested
             if delete_message_minutes > 0:
@@ -290,10 +288,13 @@ class ModerationActionCog(commands.Cog):
         )
 
 
-def setup(discord_bot_instance):
+def setup(bot: discord.Bot) -> None:
     """Cog setup entry point.
 
     This function is used by the bot loader to register the cog with the
     running bot instance.
+    
+    Args:
+        bot: Discord bot instance to attach the cog to.
     """
-    discord_bot_instance.add_cog(ModerationActionCog(discord_bot_instance))
+    bot.add_cog(ModerationActionCog(bot))
