@@ -4,29 +4,46 @@ cd "$(dirname "$0")"
 
 # Function to install uv if not present
 install_uv() {
-    if ! command -v uv &> /dev/null; then
-        echo "uv not found. Installing uv..."
-        if command -v curl &> /dev/null; then
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-            if [ $? -ne 0 ]; then
-                echo "Failed to install uv via curl"
-                return 1
-            fi
-        else
-            echo "curl not found. Please install uv manually: https://github.com/astral-sh/uv#installation"
-            return 1
-        fi
-        
-        # Source the shell profile to update PATH
-        if [ -f "$HOME/.bashrc" ]; then
-            source "$HOME/.bashrc"
-        fi
-        if [ -f "$HOME/.zshrc" ]; then
-            source "$HOME/.zshrc"
-        fi
+    if command -v uv &> /dev/null; then
+        echo "uv is already installed."
+        return 0
     fi
-    
-    return 0
+
+    echo "uv not found. Installing uv..."
+    if ! command -v curl &> /dev/null; then
+        echo "curl not found. Please install uv manually: https://github.com/astral-sh/uv#installation"
+        return 1
+    fi
+
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+        echo "Failed to install uv via curl."
+        return 1
+    fi
+
+    # Source the appropriate shell profile to update PATH
+    CURRENT_SHELL=$(basename "$SHELL")
+    case "$CURRENT_SHELL" in
+        bash)
+            [ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc"
+            ;;
+        zsh)
+            [ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc"
+            ;;
+        fish)
+            [ -f "$HOME/.config/fish/config.fish" ] && source "$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            echo "Unknown shell: $CURRENT_SHELL. Please restart your terminal or source your profile manually if uv is not found."
+            ;;
+    esac
+
+    if command -v uv &> /dev/null; then
+        echo "uv installed successfully."
+        return 0
+    else
+        echo "uv installation completed, but uv not found in PATH. Please restart your terminal or source your shell profile."
+        return 1
+    fi
 }
 
 # Install uv if not present
@@ -37,5 +54,4 @@ if ! install_uv; then
 fi
 
 echo "Starting program ..."
-
 uv run src/modcord/main.py
