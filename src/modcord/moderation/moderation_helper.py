@@ -176,7 +176,7 @@ async def apply_action(
         # Delete specified messages
         await discord_utils.delete_messages_by_ids(guild, action.message_ids_to_delete)
     
-    
+    # Apply the moderation action
     try:
         match action.action:
             case ActionType.WARN:
@@ -210,21 +210,12 @@ async def apply_action(
                 duration = compute_action_duration(action)
                 
                 await guild.ban(member, reason=f"ModCord: {action.reason}")
-                
-                # Schedule unban if not permanent
-                if duration is not None:
-                    try:
-                        await unban_scheduler.UNBAN_SCHEDULER.schedule(
-                            guild=guild,
-                            user_id=action.user_id,
-                            channel=channel,
-                            duration_seconds=int(duration.total_seconds()),
-                            bot=bot,
-                            reason="Ban duration expired.",
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to schedule unban for user {member.id}: {e}")
-                
+                await send_action_notification(action, member, guild, channel, bot.user)
+                await database.log_moderation_action(action)
+                return True
+
+            case ActionType.UNBAN:
+                await guild.unban(member, reason=action.reason)
                 await send_action_notification(action, member, guild, channel, bot.user)
                 await database.log_moderation_action(action)
                 return True

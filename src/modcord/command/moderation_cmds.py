@@ -25,24 +25,20 @@ Permissions
 """
 
 import asyncio
+import time
 import discord
 from discord import Option
 from discord.ext import commands
 
-from modcord.util.discord.discord_utils import (
-    has_permissions,
-    PERMANENT_DURATION,
-    DURATION_CHOICES,
-    DELETE_MESSAGE_CHOICES,
-    parse_duration_to_minutes,
-    delete_messages_background,
-)
+from modcord.database import database as db
+from modcord.util.discord import discord_utils
 from modcord.datatypes.command_datatypes import (
     CommandAction,
     WarnCommand,
     TimeoutCommand,
     KickCommand,
     BanCommand,
+    UnbanCommand
 )
 from modcord.util.logger import get_logger
 
@@ -96,7 +92,7 @@ class ModerationActionCog(commands.Cog):
         This method expects the interaction to already be deferred by the caller.
         """
         # Check invoking user's permission
-        if not has_permissions(application_context, **{required_permission_name: True}):
+        if not discord_utils.has_permissions(application_context, **{required_permission_name: True}):
             await application_context.send_followup(
                 "You do not have permission to use this command."
             )
@@ -145,7 +141,7 @@ class ModerationActionCog(commands.Cog):
 
             # Delete messages in background if requested
             if delete_message_minutes > 0:
-                asyncio.create_task(delete_messages_background(ctx, user, delete_message_minutes))
+                asyncio.create_task(discord_utils.delete_messages_background(ctx, user, delete_message_minutes))
 
             # Send success confirmation to dismiss "thinking" state
             action_name = action.action.value.capitalize()
@@ -173,7 +169,7 @@ class ModerationActionCog(commands.Cog):
         delete_message_minutes: Option(
             int,
             "Delete messages from (choose time range, in minutes)",
-            choices=DELETE_MESSAGE_CHOICES,
+            choices=discord_utils.DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
     ) -> None:
@@ -198,13 +194,13 @@ class ModerationActionCog(commands.Cog):
         ctx: discord.ApplicationContext,
         user: Option(discord.Member, "The user to timeout.", required=True),  # type: ignore
         duration: Option(
-            str, "Duration of the timeout.", choices=DURATION_CHOICES, default="10 mins"
+            str, "Duration of the timeout.", choices=discord_utils.DURATION_CHOICES, default="10 mins"
         ),  # type: ignore
         reason: Option(str, "Reason for the timeout.", default="No reason provided."),  # type: ignore
         delete_message_minutes: Option(
             int,
             "Delete messages from (choose time range, in minutes)",
-            choices=DELETE_MESSAGE_CHOICES,
+            choices=discord_utils.DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
     ) -> None:
@@ -218,7 +214,7 @@ class ModerationActionCog(commands.Cog):
         if not await self.check_moderation_permissions(ctx, user, "moderate_members"):
             return
 
-        timeout_minutes = parse_duration_to_minutes(duration)
+        timeout_minutes = discord_utils.parse_duration_to_minutes(duration)
         action = TimeoutCommand(reason=reason, duration_minutes=timeout_minutes)
         await self.execute_command_action(
             ctx, user, action, delete_message_minutes=delete_message_minutes
@@ -233,7 +229,7 @@ class ModerationActionCog(commands.Cog):
         delete_message_minutes: Option(
             int,
             "Delete messages from (choose time range, in minutes)",
-            choices=DELETE_MESSAGE_CHOICES,
+            choices=discord_utils.DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
     ) -> None:
@@ -260,14 +256,14 @@ class ModerationActionCog(commands.Cog):
         duration: Option(
             str,
             "Duration of the ban.",
-            choices=DURATION_CHOICES,
-            default=PERMANENT_DURATION,
+            choices=discord_utils.DURATION_CHOICES,
+            default=discord_utils.PERMANENT_DURATION,
         ),  # type: ignore
         reason: Option(str, "Reason for the ban.", default="No reason provided."),  # type: ignore
         delete_message_minutes: Option(
             int,
             "Delete messages from (choose time range, in minutes)",
-            choices=DELETE_MESSAGE_CHOICES,
+            choices=discord_utils.DELETE_MESSAGE_CHOICES,
             default=0,
         ),  # type: ignore
     ) -> None:
@@ -281,11 +277,81 @@ class ModerationActionCog(commands.Cog):
         if not await self.check_moderation_permissions(ctx, user, "ban_members"):
             return
 
-        ban_minutes = parse_duration_to_minutes(duration) if duration != PERMANENT_DURATION else 0
+        ban_minutes = discord_utils.parse_duration_to_minutes(duration) if duration != discord_utils.PERMANENT_DURATION else 0
         action = BanCommand(duration_minutes=ban_minutes, reason=reason)
         await self.execute_command_action(
             ctx, user, action, delete_message_minutes=delete_message_minutes
         )
+
+        async with db.database.get_connection() as conn:
+            future_timestamp = int(time.time() + float(ban_minutes * 60))
+            await db.database.moderation_action_storage.save_temp_ban(conn, ctx.guild_id, user.id, future_timestamp, reason)
+            
+    
+    @commands.slash_command(name="unban", description="Unban a user from the server.")
+    async def unban(
+        self,
+        ctx: discord.ApplicationContext,
+        user_id: Option(str, "The ID of the user to unban.", required=True),  # type: ignore
+        reason: Option(str, "Reason for the unban.", default="No reason provided."),  # type: ignore
+    ) -> None:
+        """Unban a user from the guild.
+
+        Removes a user from the ban list and cancels any scheduled unban timers.
+        """
+        await ctx.defer(ephemeral=True)
+
+        # Check invoking user's permission
+        if not discord_utils.has_permissions(ctx, ban_members=True):
+            await ctx.send_followup(
+                "You do not have permission to use this command."
+            )
+            return
+        
+        user_id = int(user_id)
+
+        try:
+            # Get the guild
+            guild = ctx.guild
+            if not guild:
+                await ctx.send_followup("This command can only be used in a server.")
+                return
+
+            # Create a Discord Object to unban
+            user_obj = discord.Object(id=user_id)
+            unban = UnbanCommand(reason=reason)
+            await self.execute_command_action(
+                ctx, user_obj, unban, delete_message_minutes=0
+            )
+
+            # Mark any pending scheduled unbans as processed
+            async with db.database.get_connection() as conn:
+                await db.database.moderation_action_storage.mark_ban_processed(conn, guild.id, user_id)
+            
+            await ctx.send_followup(
+                f"Successfully unbanned user {user_id}.",
+                ephemeral=True
+            )
+            logger.debug("Unbanned user %s in guild %s. Reason: %s", user_id, guild.name, reason)
+
+        except discord.NotFound:
+            await ctx.send_followup(
+                "User is not currently banned from this server.",
+                ephemeral=True
+            )
+            logger.warning("Attempted to unban user %s who is not banned in guild %s.", user_id, ctx.guild.name if ctx.guild else "Unknown")
+        except discord.Forbidden:
+            await ctx.send_followup(
+                "Missing permissions to unban users in this server.",
+                ephemeral=True
+            )
+            logger.error("Missing permissions to unban in guild %s.", ctx.guild.name if ctx.guild else "Unknown")
+        except Exception as e:
+            logger.exception("Error unbanning user %s: %s", user_id, e)
+            await ctx.send_followup(
+                "An error occurred while processing the unban.",
+                ephemeral=True
+            )
 
 
 def setup(bot: discord.Bot) -> None:

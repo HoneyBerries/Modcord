@@ -117,3 +117,16 @@ class BanCommand(CommandAction):
             reason=reason,
             ban_duration=duration_minutes,
         )
+
+class UnbanCommand(CommandAction):
+    """Unban action for manual commands."""
+
+    def __init__(self, reason: str = "No reason provided."):
+        """Initialize an unban action."""
+        super().__init__(
+            guild_id=GuildID(0),
+            channel_id=ChannelID(0),
+            user_id=UserID(0),
+            action=ActionType.UNBAN,
+            reason=reason,
+        )

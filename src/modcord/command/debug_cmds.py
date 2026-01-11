@@ -292,6 +292,61 @@ class DebugCog(commands.Cog):
             except Exception:
                 logger.error("Failed to send error message to user - interaction may have timed out")
 
+    @debug.command(name="jailbreak", description="Instantly unban all banned users in this server")
+    async def jailbreak(self, application_context: discord.ApplicationContext) -> None:
+        """Instantly unban all banned users from the server."""
+        if discord_utils.is_dm_channel(application_context.channel):
+            return
+        
+        try:
+            await application_context.defer(ephemeral=True)
+            guild = application_context.guild
+
+            if not guild:
+                await application_context.send_followup(content="❌ This command must be used in a guild.", ephemeral=True)
+                return
+
+            # Get all banned users
+            banned_users = [entry async for entry in guild.bans()]
+            
+            if not banned_users:
+                await application_context.send_followup(content="✅ No users are currently banned.", ephemeral=True)
+                return
+
+            # Unban all users
+            unbanned_count = 0
+            failed_count = 0
+            
+            for ban_entry in banned_users:
+                try:
+                    await guild.unban(ban_entry.user, reason="Debug: Jailbreak command")
+                    unbanned_count += 1
+                    
+                    # Mark any pending scheduled unbans as processed
+                    from modcord.database.database import database
+                    async with database.get_connection() as db:
+                        await database.moderation_action_storage.mark_ban_processed(db, guild.id, ban_entry.user.id)
+                    
+                except Exception as e:
+                    logger.error(f"Failed to unban user {ban_entry.user.id}: {e}")
+                    failed_count += 1
+
+            # Create response embed
+            embed = discord.Embed(
+                title="🔓 Jailbreak Complete",
+                description=f"Unbanned all users from the server.",
+                color=discord.Color.green(),
+            )
+            embed.add_field(name="Successfully Unbanned", value=str(unbanned_count), inline=True)
+            if failed_count > 0:
+                embed.add_field(name="Failed", value=str(failed_count), inline=True)
+            
+            await application_context.send_followup(embed=embed, ephemeral=True)
+            logger.info(f"Jailbreak command executed by {application_context.user} in {guild.name}: unbanned {unbanned_count} users")
+
+        except Exception as e:
+            logger.error(f"Error in jailbreak command: {e}")
+            await application_context.send_followup(content=f"❌ Error: {e}", ephemeral=True)
 
 
 def setup(bot: discord.Bot) -> None:

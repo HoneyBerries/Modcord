@@ -111,6 +111,19 @@ class SchemaManager:
             )
         """)
         
+        # Temporary bans table (for scheduled unbans)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS bans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                user_id TEXT NOT NULL,
+                unban_at INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                UNIQUE(guild_id, user_id)
+            )
+        """)
+        
         # Schema version table
         await db.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
@@ -122,6 +135,16 @@ class SchemaManager:
     @staticmethod
     async def _create_indexes(db: aiosqlite.Connection) -> None:
         """Create strategic indexes for query optimization."""
+        # Bans table indexes
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bans_unban_at
+            ON bans(unban_at)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bans_guild_user
+            ON bans(guild_id, user_id)
+        """)
+        
         # Existing indexes
         await db.execute("CREATE INDEX IF NOT EXISTS idx_moderator_roles_guild ON guild_moderator_roles(guild_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_review_channels_guild ON guild_review_channels(guild_id)")

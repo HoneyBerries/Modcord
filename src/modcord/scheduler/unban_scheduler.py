@@ -10,6 +10,7 @@ import discord
 from discord.ext import tasks, commands
 
 from modcord.util.logger import get_logger
+from modcord.database import database as db
 
 logger = get_logger("UNBAN SCHEDULER")
 
@@ -28,22 +29,21 @@ class UnbanScheduler(commands.Cog):
         """Cleanly stop the task when the cog is removed."""
         self.check_unbans.cancel()
 
-    @tasks.loop(seconds=5.0)
+    @tasks.loop(seconds=2.0)
     async def check_unbans(self):
         """
         Periodic task that checks for users whose ban duration has expired.
         """
         now = datetime.datetime.now(datetime.timezone.utc)
+        current_timestamp = int(now.timestamp())
         logger.debug("Checking for expired bans at %s", now)
 
-        # --- DATABASE LOGIC PLACEHOLDER ---
-        # In a real implementation, you would query your DB for:
-        # SELECT * FROM temp_bans WHERE unban_at <= now
-        expired_bans = [] # This would be a list of ban objects from your DB
-        # ----------------------------------
+        # Query database for expired bans
+        async with db.database.get_connection() as conn:
+            expired_bans = await db.database.moderation_action_storage.get_expired_bans(conn, current_timestamp)
 
         for ban in expired_bans:
-            await self.execute_unban(ban.guild_id, ban.user_id, ban.reason)
+            await self.execute_unban(ban["guild_id"], ban["user_id"], ban["reason"])
 
 
     async def execute_unban(self, guild_id: int, user_id: int, reason: str):
@@ -60,20 +60,23 @@ class UnbanScheduler(commands.Cog):
             user_obj = discord.Object(id=user_id)
             await guild.unban(user_obj, reason=f"[Auto-Unban] {reason}")
             
-            # --- DATABASE LOGIC PLACEHOLDER ---
-            # Remove the ban record from your DB so we don't try again
-            # await database.remove_temp_ban(guild_id, user_id)
-            # ----------------------------------
+            # Mark the ban record as processed in DB
+            async with db.database.get_connection() as conn:
+                await db.database.moderation_action_storage.mark_ban_processed(conn, guild_id, user_id)
             
-            logger.info("Successfully auto-unbanned %s in guild %s", user_id, guild.name)
+            logger.debug("Successfully auto-unbanned %s in guild %s", user_id, guild.name)
 
         except discord.NotFound:
             logger.warning("User %s was already unbanned from %s.", user_id, guild.name)
-            # Still remove from DB since it's no longer needed
+            # Mark as processed in DB since it's no longer needed
+            async with db.database.get_connection() as conn:
+                await db.database.moderation_action_storage.mark_ban_processed(conn, guild_id, user_id)
         except discord.Forbidden:
-            logger.error("Missing permissions to unban %s in %s.", user_id, guild.name)
+            logger.error("Missing permissions to unban %s in %s. Will retry later.", user_id, guild.name)
+            # Keep ban record in DB for retry - don't remove it
         except Exception as e:
-            logger.error("Unexpected error unbanning %s: %s", user_id, e)
+            logger.error("Unexpected error unbanning %s: %s. Will retry later.", user_id, e)
+            # Keep ban record in DB for retry - don't remove it
 
     @check_unbans.before_loop
     async def before_unban_check(self):
@@ -81,17 +84,24 @@ class UnbanScheduler(commands.Cog):
         await self.bot.wait_until_ready()
 
     # Example of how you would "Schedule" a new unban now
-    async def schedule_unban(self, guild_id: int, user_id: int, duration_seconds: float):
+    async def schedule_unban(self, guild_id: int, user_id: int, duration_seconds: float, reason: str = "Ban duration expired"):
         """
         Instead of a heap, we just calculate the timestamp and save it to the DB.
+        
+        Args:
+            guild_id: Discord guild ID
+            user_id: Discord user ID
+            duration_seconds: How long until the unban (in seconds)
+            reason: Reason for the ban (default: "Ban duration expired")
         """
         unban_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=duration_seconds)
+        unban_timestamp = int(unban_at.timestamp())
         
-        # --- DATABASE LOGIC PLACEHOLDER ---
-        # await database.save_temp_ban(guild_id, user_id, unban_at)
-        # ----------------------------------
+        # Save to database (will update if ban already exists)
+        async with db.database.get_connection() as conn:
+            await db.database.moderation_action_storage.save_temp_ban(conn, guild_id, user_id, unban_timestamp, reason)
         
-        logger.info("Scheduled unban for %s in %s for %s", user_id, guild_id, unban_at)
+        logger.info("Scheduled unban for %s in guild %s at %s (timestamp: %s)", user_id, guild_id, unban_at, unban_timestamp)
 
 
 def setup(bot: discord.Bot):
