@@ -119,7 +119,6 @@ class SchemaManager:
                 user_id TEXT NOT NULL,
                 unban_at INTEGER NOT NULL,
                 reason TEXT NOT NULL,
-                is_active INTEGER NOT NULL DEFAULT 1,
                 UNIQUE(guild_id, user_id)
             )
         """)

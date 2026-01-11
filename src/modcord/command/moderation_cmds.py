@@ -324,9 +324,9 @@ class ModerationActionCog(commands.Cog):
                 ctx, user_obj, unban, delete_message_minutes=0
             )
 
-            # Mark any pending scheduled unbans as processed
+            # Delete the ban record from database
             async with db.database.get_connection() as conn:
-                await db.database.moderation_action_storage.mark_ban_processed(conn, guild.id, user_id)
+                await db.database.moderation_action_storage.delete_ban(conn, guild.id, user_id)
             
             await ctx.send_followup(
                 f"Successfully unbanned user {user_id}.",

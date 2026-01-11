@@ -226,7 +226,6 @@ class ModerationActionStorage:
         
         Uses INSERT OR REPLACE to handle duplicate bans automatically.
         If a ban already exists for this guild_id + user_id, it updates the unban_at and reason.
-        Always sets is_active to 1 when saving.
         
         Args:
             db: Open database connection
@@ -236,7 +235,7 @@ class ModerationActionStorage:
             reason: Reason for the ban
         """
         await db.execute(
-            """INSERT OR REPLACE INTO bans (guild_id, user_id, unban_at, reason, is_active) VALUES (?, ?, ?, ?, 1)""",
+            """INSERT OR REPLACE INTO bans (guild_id, user_id, unban_at, reason) VALUES (?, ?, ?, ?)""",
             (guild_id, str(user_id), unban_at, reason)
         )
         await db.commit()
@@ -245,17 +244,17 @@ class ModerationActionStorage:
 
     async def get_expired_bans(self, db: aiosqlite.Connection, current_time: int) -> List[Dict[str, Any]]:
         """
-        Retrieve all active bans that have expired (unban_at <= current_time and is_active = 1).
+        Retrieve all bans that have expired (unban_at <= current_time).
         
         Args:
             db: Open database connection
             current_time: Unix timestamp of current time
         
         Returns:
-            List of dictionaries with keys: id, guild_id, user_id, unban_at, reason, is_active
+            List of dictionaries with keys: id, guild_id, user_id, unban_at, reason
         """
         cursor = await db.execute(
-            """SELECT id, guild_id, user_id, unban_at, reason, is_active FROM bans WHERE unban_at <= ? AND is_active = 1""",
+            """SELECT id, guild_id, user_id, unban_at, reason FROM bans WHERE unban_at <= ?""",
             (current_time,)
         )
         rows = await cursor.fetchall()
@@ -266,8 +265,7 @@ class ModerationActionStorage:
                 "guild_id": int(row[1]),
                 "user_id": int(row[2]),
                 "unban_at": int(row[3]),
-                "reason": str(row[4]),
-                "is_active": bool(row[5])
+                "reason": str(row[4])
             }
             for row in rows
         ]
@@ -275,11 +273,13 @@ class ModerationActionStorage:
         logger.debug(f"Found {len(bans)} expired bans at time {current_time}")
         return bans
     
-    async def mark_ban_processed(self, db: aiosqlite.Connection, guild_id: int, user_id: int) -> None:
+
+    
+    async def delete_ban(self, db: aiosqlite.Connection, guild_id: int, user_id: int) -> None:
         """
-        Mark a temporary ban as processed (inactive) after successful unban.
+        Delete a ban record from the database.
         
-        Keeps the record for audit trail while preventing re-processing.
+        Removes the ban entry completely after successful unban.
         
         Args:
             db: Open database connection
@@ -287,8 +287,8 @@ class ModerationActionStorage:
             user_id: Discord user ID
         """
         await db.execute(
-            """UPDATE bans SET is_active = FALSE WHERE guild_id = ? AND user_id = ?""",
+            """DELETE FROM bans WHERE guild_id = ? AND user_id = ?""",
             (guild_id, str(user_id))
         )
         await db.commit()
-        logger.debug(f"Marked temporary ban as processed for user {user_id} in guild {guild_id}")
+        logger.debug(f"Deleted ban record for user {user_id} in guild {guild_id}")

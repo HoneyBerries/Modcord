@@ -60,17 +60,17 @@ class UnbanScheduler(commands.Cog):
             user_obj = discord.Object(id=user_id)
             await guild.unban(user_obj, reason=f"[Auto-Unban] {reason}")
             
-            # Mark the ban record as processed in DB
+            # Delete the ban record from DB
             async with db.database.get_connection() as conn:
-                await db.database.moderation_action_storage.mark_ban_processed(conn, guild_id, user_id)
+                await db.database.moderation_action_storage.delete_ban(conn, guild_id, user_id)
             
             logger.debug("Successfully auto-unbanned %s in guild %s", user_id, guild.name)
 
         except discord.NotFound:
             logger.warning("User %s was already unbanned from %s.", user_id, guild.name)
-            # Mark as processed in DB since it's no longer needed
+            # Delete from DB since it's no longer needed
             async with db.database.get_connection() as conn:
-                await db.database.moderation_action_storage.mark_ban_processed(conn, guild_id, user_id)
+                await db.database.moderation_action_storage.delete_ban(conn, guild_id, user_id)
         except discord.Forbidden:
             logger.error("Missing permissions to unban %s in %s. Will retry later.", user_id, guild.name)
             # Keep ban record in DB for retry - don't remove it
