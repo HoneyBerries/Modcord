@@ -1,6 +1,5 @@
 from __future__ import annotations
 from pathlib import Path
-import fcntl
 from typing import Any, Dict
 import yaml
 
@@ -34,13 +33,9 @@ class AppConfig:
     def load_from_disk(self) -> Dict[str, Any]:
         try:
             with self.config_path.open("r", encoding="utf-8") as f:
-                # Acquire a shared lock for reading
-                fcntl.flock(f.fileno(), fcntl.LOCK_SH)
                 data = yaml.safe_load(f)
-
-                # Release the lock
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
                 return data
+            
         except FileNotFoundError:
             logger.error("Config file %s not found.", self.config_path)
         except Exception as exc:

@@ -64,8 +64,12 @@ class LLMEngine:
     def __init__(self) -> None:
         """Initialize the LLMEngine with AsyncOpenAI client."""
         ai_settings = app_config.ai_settings
-
-        weave.init('modcord-ai') # 🐝
+        
+        try:
+            weave.init('modcord') # 🐝
+        except Exception as exc:
+            logger.warning("Weave initialization failed: %s", exc)
+            
         self._client = AsyncOpenAI(
             api_key=ai_settings.api_key,
             base_url=ai_settings.base_url,
