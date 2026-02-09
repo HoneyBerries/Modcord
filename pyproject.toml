@@ -6,8 +6,19 @@ build-backend = "setuptools.build_meta"
 name = "modcord"
 version = "0.0.1"
 description = "A Discord bot for moderation using AI"
-requires-python = "==3.12.*"
-dependencies = []
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "openai>=2.15.0",
+    "py-cord>=2.6.1",
+    "wandb>=0.24.2",
+    "weave>=0.52.26",
+    "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
+    "jsonschema>=4.25.1",
+    "aiosqlite>=0.21.0",
+    "prompt-toolkit>=3.0.52",
+    "rich>=14.2.0",
+]
 
 [project.scripts]
 modcord = "modcord.main:main"
@@ -17,3 +28,18 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv.workspace]
+members = [
+    ".",
+]
+
+[tool.uv.sources]
+modcord = { workspace = true }
+
+[dependency-groups]
+test = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+]
