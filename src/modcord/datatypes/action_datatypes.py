@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
+from typing import Optional, Tuple
 
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
 
@@ -30,24 +30,139 @@ class ActionType(Enum):
         return self.value
 
 
-@dataclass(slots=True)
-class ActionData:
-    """Data structure representing a moderation action.
+class Actions:
+    @staticmethod
+    def warn(
+        guild_id: GuildID,
+        channel_id: ChannelID,
+        user_id: UserID,
+        reason: str,
+    ) -> ActionData:
+
+        return ActionData(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            user_id=user_id,
+            action=ActionType.WARN,
+            reason=reason,
+        )
+
+
+    @staticmethod
+    def timeout(
+        guild_id: GuildID,
+        channel_id: ChannelID,
+        user_id: UserID,
+        duration_minutes: int,
+        reason: str,
+    ) -> ActionData:
+
+        return ActionData(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            user_id=user_id,
+            action=ActionType.TIMEOUT,
+            reason=reason,
+            timeout_duration=duration_minutes,
+        )
+
+    @staticmethod
+    def kick(
+        guild_id: GuildID,
+        channel_id: ChannelID,
+        user_id: UserID,
+        reason: str,
+    ) -> ActionData:
+
+        return ActionData(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            user_id=user_id,
+            action=ActionType.KICK,
+            reason=reason,
+        )
     
-    Attributes:
-        guild_id: ID of the guild where the action should be performed
-        user_id: ID of the user the action is taken against
-        action: Type of action to perform
-        reason: Reason for the action
-        timeout_duration: Duration of timeout in minutes (0 if not applicable, -1 for max)
-        ban_duration: Duration of ban in minutes (0 for permanent, -1 for max)
-        message_ids: List of message IDs to delete (for delete actions)
-    """
+    @staticmethod
+    def ban(
+        guild_id: GuildID,
+        channel_id: ChannelID,
+        user_id: UserID,
+        duration_minutes: int,
+        reason: str,
+    ) -> ActionData:
+
+        return ActionData(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            user_id=user_id,
+            action=ActionType.BAN,
+            reason=reason,
+            ban_duration=duration_minutes,
+        )
+
+    @staticmethod
+    def unban(
+        guild_id: GuildID,
+        channel_id: ChannelID,
+        user_id: UserID,
+        reason: str,
+    ) -> ActionData:
+
+        return ActionData(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            user_id=user_id,
+            action=ActionType.UNBAN,
+            reason=reason,
+        )
+    
+
+    @staticmethod
+    def delete(
+        guild_id: GuildID,
+        channel_id: ChannelID,
+        user_id: UserID,
+        message_ids_to_delete: Tuple[MessageID, ...],
+        reason: str,
+    ) -> ActionData:
+
+        return ActionData(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            user_id=user_id,
+            action=ActionType.DELETE,
+            message_ids_to_delete=message_ids_to_delete,
+            reason=reason,
+        )
+    
+
+    @staticmethod
+    def review(
+        guild_id: GuildID,
+        channel_id: ChannelID,
+        user_id: UserID,
+        reason: str,
+    ) -> ActionData:
+
+        return ActionData(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            user_id=user_id,
+            action=ActionType.REVIEW,
+            reason=reason,
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class ActionData:
+
     guild_id: GuildID
     channel_id: ChannelID
     user_id: UserID
     action: ActionType
     reason: str
-    timeout_duration: int = 0
-    ban_duration: int = 0
-    message_ids_to_delete: List[MessageID] = field(default_factory=list)
+
+    timeout_duration: Optional[int] = None
+    ban_duration: Optional[int] = None
+
+    message_ids_to_delete: Tuple[MessageID, ...] = field(default_factory=tuple)

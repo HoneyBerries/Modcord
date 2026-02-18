@@ -1,17 +1,8 @@
-"""
-Persistent per-guild configuration storage for the moderation bot.
-
-Database schema:
-- guild_settings table with columns: guild_id, ai_enabled, rules, auto_*_enabled flags
-- channel_guidelines table with columns: guild_id, channel_id, guidelines
-"""
-from typing import Dict, List
 from dataclasses import dataclass, field
+from typing import Dict, Set
 from modcord.datatypes.discord_datatypes import ChannelID, GuildID
 from modcord.datatypes.action_datatypes import ActionType
 
-
-# Maps ActionType enum to the corresponding boolean field name on GuildSettings
 ACTION_FLAG_FIELDS: Dict[ActionType, str] = {
     ActionType.WARN: "auto_warn_enabled",
     ActionType.DELETE: "auto_delete_enabled",
@@ -24,17 +15,39 @@ ACTION_FLAG_FIELDS: Dict[ActionType, str] = {
 
 @dataclass(slots=True)
 class GuildSettings:
-    """Persistent per-guild configuration values."""
+    """Persistent per-guild configuration values with controlled flag updates."""
 
     guild_id: GuildID
     ai_enabled: bool = True
     rules: str = ""
-    auto_warn_enabled: bool = True
-    auto_delete_enabled: bool = True
-    auto_timeout_enabled: bool = True
-    auto_kick_enabled: bool = True
-    auto_ban_enabled: bool = True
-    auto_review_enabled: bool = True
-    moderator_role_ids: List[int] = field(default_factory=list)
-    review_channel_ids: List[ChannelID] = field(default_factory=list)
+
+    # private flags
+    _auto_warn_enabled: bool = True
+    _auto_delete_enabled: bool = True
+    _auto_timeout_enabled: bool = True
+    _auto_kick_enabled: bool = True
+    _auto_ban_enabled: bool = True
+    _auto_review_enabled: bool = True
+
+    # collections
+    moderator_role_ids: Set[int] = field(default_factory=set)
+    review_channel_ids: Set[ChannelID] = field(default_factory=set)
     channel_guidelines: Dict[ChannelID, str] = field(default_factory=dict)
+
+    # -------------------------
+    # Flag access methods
+    # -------------------------
+
+    def is_auto_enabled(self, action: ActionType) -> bool:
+        """Check if auto-action is enabled for a given ActionType."""
+        field = ACTION_FLAG_FIELDS.get(action)
+        if field is None:
+            return False
+        return getattr(self, f"_{field}")
+
+    def set_auto_enabled(self, action: ActionType, enabled: bool) -> None:
+        """Enable or disable auto-action for a given ActionType."""
+        field = ACTION_FLAG_FIELDS.get(action)
+        if field is None:
+            raise ValueError(f"No auto-flag for action {action}")
+        setattr(self, f"_{field}", enabled)
