@@ -13,7 +13,7 @@ ACTION_FLAG_FIELDS: Dict[ActionType, str] = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class GuildSettings:
     """Persistent per-guild configuration values with controlled flag updates."""
 
@@ -21,7 +21,7 @@ class GuildSettings:
     ai_enabled: bool = True
     rules: str = ""
 
-    # private flags
+    # Private backing fields for action flags
     _auto_warn_enabled: bool = True
     _auto_delete_enabled: bool = True
     _auto_timeout_enabled: bool = True
@@ -35,19 +35,53 @@ class GuildSettings:
     channel_guidelines: Dict[ChannelID, str] = field(default_factory=dict)
 
     # -------------------------
-    # Flag access methods
+    # Properties (getters/setters)
     # -------------------------
 
-    def is_auto_enabled(self, action: ActionType) -> bool:
-        """Check if auto-action is enabled for a given ActionType."""
-        field = ACTION_FLAG_FIELDS.get(action)
-        if field is None:
-            return False
-        return getattr(self, f"_{field}")
+    @property
+    def auto_warn_enabled(self) -> bool:
+        return self._auto_warn_enabled
 
-    def set_auto_enabled(self, action: ActionType, enabled: bool) -> None:
-        """Enable or disable auto-action for a given ActionType."""
-        field = ACTION_FLAG_FIELDS.get(action)
-        if field is None:
-            raise ValueError(f"No auto-flag for action {action}")
-        setattr(self, f"_{field}", enabled)
+    @auto_warn_enabled.setter
+    def auto_warn_enabled(self, value: bool) -> None:
+        self._auto_warn_enabled = value
+
+    @property
+    def auto_delete_enabled(self) -> bool:
+        return self._auto_delete_enabled
+
+    @auto_delete_enabled.setter
+    def auto_delete_enabled(self, value: bool) -> None:
+        self._auto_delete_enabled = value
+
+    @property
+    def auto_timeout_enabled(self) -> bool:
+        return self._auto_timeout_enabled
+
+    @auto_timeout_enabled.setter
+    def auto_timeout_enabled(self, value: bool) -> None:
+        self._auto_timeout_enabled = value
+
+    @property
+    def auto_kick_enabled(self) -> bool:
+        return self._auto_kick_enabled
+
+    @auto_kick_enabled.setter
+    def auto_kick_enabled(self, value: bool) -> None:
+        self._auto_kick_enabled = value
+
+    @property
+    def auto_ban_enabled(self) -> bool:
+        return self._auto_ban_enabled
+
+    @auto_ban_enabled.setter
+    def auto_ban_enabled(self, value: bool) -> None:
+        self._auto_ban_enabled = value
+
+    @property
+    def auto_review_enabled(self) -> bool:
+        return self._auto_review_enabled
+
+    @auto_review_enabled.setter
+    def auto_review_enabled(self, value: bool) -> None:
+        self._auto_review_enabled = value

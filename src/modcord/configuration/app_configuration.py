@@ -1,6 +1,5 @@
 from __future__ import annotations
 from pathlib import Path
-import fcntl
 from typing import Any, Dict
 import yaml
 
@@ -34,13 +33,8 @@ class AppConfig:
     def load_from_disk(self) -> Dict[str, Any]:
         try:
             with self.config_path.open("r", encoding="utf-8") as f:
-                # Acquire a shared lock for reading
-                fcntl.flock(f.fileno(), fcntl.LOCK_SH)
-                data = yaml.safe_load(f)
-
-                # Release the lock
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                return data
+                return yaml.safe_load(f)
+        
         except FileNotFoundError:
             logger.error("[APP CONFIGURATION] Config file %s not found.", self.config_path)
         except Exception as exc:
@@ -139,32 +133,6 @@ class AppConfig:
         cache_config = self._data.get("cache", {})
         return float(cache_config.get("channel_guidelines_cache_refresh", INFINITY)) if isinstance(cache_config, dict) else INFINITY
 
-    @property
-    def message_cache_enabled(self) -> bool:
-        """Return whether message caching is enabled.
-        
-        Default is True.
-        """
-        cache_config = self._data.get("cache", {})
-        return bool(cache_config.get("message_cache_enabled", True)) if isinstance(cache_config, dict) else True
-
-    @property
-    def message_cache_size_per_channel(self) -> int:
-        """Return the maximum number of messages to cache per channel.
-        
-        Default is 100.
-        """
-        cache_config = self._data.get("cache", {})
-        return int(cache_config.get("message_cache_size_per_channel", 100)) if isinstance(cache_config, dict) else 100
-
-    @property
-    def message_cache_ttl_seconds(self) -> int:
-        """Return the TTL for cached messages in seconds.
-        
-        Default is 300 seconds (5 minutes).
-        """
-        cache_config = self._data.get("cache", {})
-        return int(cache_config.get("message_cache_ttl_seconds", 300)) if isinstance(cache_config, dict) else 300
 
     @property
     def moderation_batch_seconds(self) -> float:

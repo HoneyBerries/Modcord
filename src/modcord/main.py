@@ -50,9 +50,13 @@ import discord
 from dotenv import load_dotenv
 
 from modcord.listener import events_listener
-from modcord.command import debug_cmds, guild_settings_cmds, moderation_cmds
+from modcord.command import debug_cmds, guild_settings_cmds
 from modcord.listener import message_listener
 from modcord.database import database as db
+from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
+from modcord.moderation.moderation_pipeline import ModerationPipeline
+from modcord.services.message_processing_service import MessageProcessingService
+from modcord.services.moderation_queue_service import ModerationQueueService
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
 from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
@@ -107,39 +111,55 @@ def build_intents() -> discord.Intents:
     return intents
 
 
-def load_cogs(discord_bot_instance: discord.Bot) -> None:
+def load_cogs(discord_bot_instance: discord.Bot) -> ModerationQueueService:
     """
     Register all Modcord cogs with the Discord bot instance.
-    
-    Loads and initializes the following cogs:
-    - debug_cmds: Debug and testing commands
-    - events_listener: Bot lifecycle and event handling
-    - message_listener: Message creation, editing, and deletion events
-    - guild_settings_cmds: Guild-specific settings management
-    - moderation_cmds: Manual moderation commands (warn, timeout, kick, ban)
-    
+
+    Service wiring happens here so every dependency is constructed in one
+    place and injected transparently into the cogs that need them.
+
+    Cogs loaded
+    -----------
+    - debug_cmds           : debug and testing commands
+    - events_listener      : bot lifecycle (on_ready, guild join/leave)
+    - message_listener     : thin event forwarder → queue service
+    - guild_settings_cmds  : guild-specific settings management
+    - moderation_cmds      : manual moderation commands
+
     Args:
-        discord_bot_instance (discord.Bot): The bot instance to attach cogs to.
+        discord_bot_instance: The bot instance to attach cogs to.
     """
+    # --- Build the service layer ------------------------------------------
+    moderation_pipeline = ModerationPipeline(discord_bot_instance)
+    history_fetcher = DiscordHistoryFetcher(discord_bot_instance)
+    processing_service = MessageProcessingService(
+        bot=discord_bot_instance,
+        moderation_pipeline=moderation_pipeline,
+        history_fetcher=history_fetcher,
+    )
+    queue_service = ModerationQueueService()
+    # ----------------------------------------------------------------------
+
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
-    message_listener.setup(discord_bot_instance)
+    message_listener.setup(discord_bot_instance, queue_service, processing_service)
     guild_settings_cmds.setup(discord_bot_instance)
-    moderation_cmds.setup(discord_bot_instance)
 
     logger.info("[MAIN] All cogs loaded successfully.")
 
+    return queue_service  # returned so shutdown_runtime can cancel workers
 
-def create_bot() -> discord.Bot:
+
+def create_bot() -> tuple[discord.Bot, ModerationQueueService]:
     """
     Create and initialize the Discord bot instance with all cogs loaded.
-    
+
     Returns:
-        discord.Bot: Fully configured bot instance ready to connect to Discord.
+        A (bot, queue_service) tuple so the queue can be shut down cleanly.
     """
     bot = discord.Bot(intents=build_intents())
-    load_cogs(bot)
-    return bot
+    queue_service = load_cogs(bot)
+    return bot, queue_service
 
 
 async def _start_schedulers_when_ready(bot: discord.Bot) -> None:
@@ -150,7 +170,12 @@ async def _start_schedulers_when_ready(bot: discord.Bot) -> None:
     guidelines_sync_scheduler.start(bot)
 
 
-async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
+async def run_bot(
+    bot: discord.Bot,
+    token: str,
+    control: ConsoleControl,
+    queue_service: ModerationQueueService,
+) -> int:
     """
     Run the Discord bot within the console session and return an exit code.
     
@@ -184,30 +209,30 @@ async def run_bot(bot: discord.Bot, token: str, control: ConsoleControl) -> int:
                 scheduler_task.cancel()
     finally:
         control.set_bot(None)
-        await shutdown_runtime(bot)
+        await shutdown_runtime(bot, queue_service)
 
     return exit_code
 
 
-async def shutdown_runtime(bot: discord.Bot) -> None:
+async def shutdown_runtime(
+    bot: discord.Bot,
+    queue_service: ModerationQueueService | None = None,
+) -> None:
     """
     Gracefully shutdown all Modcord subsystems and clean up resources.
-    
-    Performs cleanup in the following order:
-    1. Close Discord bot connection
-    2. Close HTTP client session
-    3. Shutdown rules cache manager (stops periodic refresh)
-    4. Shutdown message batch manager (stops batch processing)
-    5. Shutdown AI moderation engine
-    6. Shutdown guild settings manager (persist pending changes)
-    7. Run garbage collection
-    
+
+    Shutdown order
+    --------------
+    1. Discord connection (stop receiving events)
+    2. Per-channel queue workers (ModerationQueueService)
+    3. Background schedulers
+    4. Guild settings manager (persist pending changes)
+    5. Database (WAL checkpoint + lock release)
+    6. Garbage collection
+
     Args:
-        bot (discord.Bot): The bot instance to shut down.
-    
-    Note:
-        All exceptions during shutdown are caught and logged to ensure
-        cleanup continues even if individual subsystems fail.
+        bot: The bot instance to shut down.
+        queue_service: Optional queue service whose workers need cancelling.
     """
     # First, close Discord connection to stop receiving events
     try:
@@ -215,6 +240,13 @@ async def shutdown_runtime(bot: discord.Bot) -> None:
         await bot.http.close()
     except Exception as exc:
         logger.exception("Error during discord http connection shutdown: %s", exc)
+
+    # Cancel queue workers before stopping schedulers
+    if queue_service is not None:
+        try:
+            await queue_service.shutdown()
+        except Exception as exc:
+            logger.exception("Error during queue service shutdown: %s", exc)
 
     # Stop background tasks in proper order
     try:
@@ -276,13 +308,13 @@ async def async_main() -> int:
         return 1
 
     try:
-        bot = create_bot()
+        bot, queue_service = create_bot()
     except Exception as exc:
         logger.critical("Failed to initialize Discord bot: %s", exc)
         return 1
 
     control = ConsoleControl()
-    exit_code = await run_bot(bot, token, control)
+    exit_code = await run_bot(bot, token, control, queue_service)
 
     if control.is_restart_requested():
         logger.info("[MAIN] Restart requested, returning exit code -1 to trigger restart")

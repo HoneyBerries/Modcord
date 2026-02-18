@@ -1,181 +1,165 @@
 """
-Database initialization and connection management for SQLite.
+Database coordinator for Modcord.
 
-This module provides a centralized Database class that coordinates
-database operations including schema management and moderation action logging.
+All SQL I/O flows through the single long-lived ``db_connection``
+singleton (see db_connection.py).  This module is responsible for:
+- Opening / closing that connection at the right lifecycle points
+- Initializing the schema on first run
+- Exposing high-level helpers (log action, query history, etc.)
 
-SQLite's WAL mode handles concurrent access safely with its own
-internal locking mechanisms, so no application-level locking is needed.
+Connection model
+----------------
+``db_connection.open()`` is called once at startup.  After that every
+repository and storage class borrows the same live connection:
+  - Reads  → ``db_connection.connection`` (WAL; fully concurrent)
+  - Writes → ``async with db_connection.transaction()`` (serialized)
 
-The Database class acts as a coordinator, delegating to specialized
-modules for different concerns:
-- schema: Table/index creation and migrations
-- moderation: Action logging and querying
-- performance: Query timing and statistics
-- connection: Connection management with optimized pragmas
+This eliminates the per-operation connect/disconnect overhead and
+keeps the SQLite page cache warm for the entire bot lifetime.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, List
 
-from modcord.datatypes.action_datatypes import ActionData
-from modcord.datatypes.discord_datatypes import UserID, GuildID
-from modcord.util.logger import get_logger
-from modcord.database.db_connection import DatabaseConnectionContext
+from modcord.database.db_connection import db_connection
 from modcord.database.db_schema import SchemaManager
 from modcord.database.moderation_action_storage import ModerationActionStorage
+from modcord.datatypes.action_datatypes import ActionData
+from modcord.datatypes.discord_datatypes import GuildID, UserID
+from modcord.util.logger import get_logger
 
 logger = get_logger("database")
 
-# Database file path
 DB_PATH = Path("./data/app.db").resolve()
 
 
 class Database:
     """
-    Central database coordinator for all database operations.
-    
-    This class coordinates between specialized modules to provide:
-    - Database initialization and schema management
-    - Moderation action logging and querying
-    - Performance monitoring and caching
-    
-    Lifecycle:
-        1. Call initialize() at program startup
-        2. Use the various methods for database operations
-        3. Call shutdown() at program end (optional)
+    Central database coordinator.
+
+    Lifecycle
+    ---------
+    1. ``await database.initialize()`` — opens the connection, creates schema.
+    2. Use the helper methods throughout the bot lifetime.
+    3. ``await database.shutdown()`` — flushes WAL and closes the connection.
     """
-    
-    def __init__(self, db_path: Path = DB_PATH):
-        """
-        Initialize the Database coordinator.
-        
-        Args:
-            db_path: Path to the SQLite database file
-        """
+
+    def __init__(self, db_path: Path = DB_PATH) -> None:
         self.db_path = db_path
         self._initialized = False
-        
-        # Initialize specialized modules
         self.moderation_action_storage = ModerationActionStorage()
-    
-    def get_connection(self) -> DatabaseConnectionContext:
-        """
-        Get an async database connection for use in a context manager.
-        
-        The returned connection automatically enables foreign keys and WAL mode.
-        
-        Returns:
-            DatabaseConnectionContext: Async context manager yielding a connection.
-        """
-        return DatabaseConnectionContext(self.db_path)
 
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     async def initialize(self) -> bool:
         """
-        Initialize the database and create schema.
-        
-        This method should be called once at program startup. It:
-        1. Creates the database directory if needed
-        2. Creates all required tables, indexes, and triggers via SchemaManager
-        
+        Open the database connection and create the schema.
+
+        Safe to call multiple times — subsequent calls are no-ops.
+
         Returns:
-            True if initialization succeeded, False otherwise
+            True on success, False if an error occurred.
         """
         if self._initialized:
             logger.debug("[DATABASE] Already initialized, skipping")
             return True
-        
+
         try:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            async with self.get_connection() as db:
-                await SchemaManager.initialize_schema(db)
-            
+            await db_connection.open(self.db_path)
+
+            async with db_connection.transaction() as conn:
+                await SchemaManager.initialize_schema(conn)
+
             self._initialized = True
-            logger.info("[DATABASE] Database initialized at %s", self.db_path)
+            logger.info("[DATABASE] Ready at %s", self.db_path)
             return True
-            
-        except Exception as e:
-            logger.error("[DATABASE] Database initialization failed: %s", e)
+
+        except Exception:
+            logger.exception("[DATABASE] Initialization failed")
             return False
-    
+
     async def shutdown(self) -> None:
         """
-        Shutdown the database.
-        
-        This method should be called at program shutdown for cleanup.
-        It performs a TRUNCATE checkpoint to ensure all WAL data is flushed
-        to the main database file, allowing SQLite to automatically remove
-        the .db-wal and .db-shm files when the last connection closes.
+        Flush the WAL and close the connection cleanly.
+
+        Should be called when the bot is shutting down.
         """
         if not self._initialized:
             return
-        
-        self._initialized = False
-        logger.info("[DATABASE] Database shutdown complete")
 
-    
-    
+        self._initialized = False
+        await db_connection.close()
+        logger.info("[DATABASE] Shutdown complete")
+
+    # ------------------------------------------------------------------
+    # Moderation action helpers
+    # ------------------------------------------------------------------
+
     async def log_moderation_action(self, action: ActionData) -> None:
         """
-        Log a moderation action to the database.
-        
+        Persist a single moderation action.
+
         Args:
-            action: ActionData object containing all action details
+            action: ActionData to log.
         """
-        async with self.get_connection() as db:
-            await self.moderation_action_storage.log_action(db, action)
-    
+        async with db_connection.transaction() as conn:
+            await self.moderation_action_storage.log_action(conn, action)
+
     async def log_moderation_actions_batch(self, actions: List[ActionData]) -> int:
         """
-        Batch log multiple moderation actions in a single transaction.
-        
+        Persist multiple moderation actions in a single transaction.
+
         Args:
-            actions: List of ActionData objects to log
-        
+            actions: List of ActionData objects to log.
+
         Returns:
-            Number of actions successfully logged, or -1 on error
+            Number of actions successfully logged, or -1 on error.
         """
-        async with self.get_connection() as db:
-            return await self.moderation_action_storage.log_actions_batch(db, actions)
+        async with db_connection.transaction() as conn:
+            return await self.moderation_action_storage.log_actions_batch(conn, actions)
 
     async def get_bulk_past_actions(
         self,
         guild_id: GuildID,
         user_ids: List[UserID],
-        lookback_minutes: int
+        lookback_minutes: int,
     ) -> Dict[UserID, List[ActionData]]:
         """
         Query past moderation actions for multiple users within a time window.
-        
+
         Args:
-            guild_id: ID of the guild to query actions from
-            user_ids: List of user IDs to query history for
-            lookback_minutes: How many minutes back to query
-        
+            guild_id: Guild to query.
+            user_ids: Users to look up.
+            lookback_minutes: How far back to search.
+
         Returns:
-            Dictionary mapping user_id to list of ActionData objects
+            Mapping of UserID → list of ActionData.
         """
-        async with self.get_connection() as db:
-            return await self.moderation_action_storage.get_bulk_past_actions(db, guild_id, user_ids, lookback_minutes)
-    
-    
+        async with db_connection.read() as conn:
+            return await self.moderation_action_storage.get_bulk_past_actions(
+                conn, guild_id, user_ids, lookback_minutes
+            )
+
     async def get_guild_action_count(self, guild_id: GuildID, days: int = 7) -> int:
         """
-        Get total action count for a guild.
-        
+        Get the number of moderation actions logged for a guild.
+
         Args:
-            guild_id: Guild ID to query
-            days: Number of days to look back
-        
+            guild_id: Guild to query.
+            days: Number of days to look back.
+
         Returns:
-            Total number of actions in the time period
+            Total action count.
         """
-        async with self.get_connection() as db:
-            return await self.moderation_action_storage.get_guild_action_count(db, guild_id, days)
+        async with db_connection.read() as conn:
+            return await self.moderation_action_storage.get_guild_action_count(
+                conn, guild_id, days
+            )
 
 
-# Global Database instance
+# Global singleton
 database = Database()

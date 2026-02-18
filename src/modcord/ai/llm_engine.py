@@ -1,21 +1,20 @@
 """High-level orchestration logic for AI-driven moderation workflows.
 
 This module coordinates the entire moderation pipeline using an OpenAI-compatible API:
-- Converting channel batches into chat completion requests with multimodal content.
+- Converting server-wide batches into chat completion requests with multimodal content.
 - Dynamically building JSON schemas for structured outputs.
-- Submitting concurrent requests to the API using asyncio.gather().
-- Parsing responses and applying moderation actions per channel.
+- Submitting a single request per guild per batch interval.
+- Parsing responses and returning moderation actions.
 
 Key Features:
 - Uses AsyncOpenAI client for inference (compatible with vLLM, LM Studio, etc.).
 - Supports multimodal inputs (text + images via URLs).
-- Handles per-channel server rules dynamically.
-- Ensures efficient concurrent processing for high throughput.
+- Handles per-guild server rules dynamically (channel guidelines in payload).
+- One API call per server per batch for token efficiency.
 """
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 
 from typing import Any, Dict, List
@@ -26,10 +25,10 @@ import json
 
 from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData, ActionType
-from modcord.datatypes.moderation_datatypes import ModerationChannelBatch
+from modcord.datatypes.moderation_datatypes import ServerModerationBatch
 from modcord.moderation import moderation_parsing
 from modcord.moderation.moderation_serialization import convert_batch_to_openai_messages
-from modcord.datatypes.discord_datatypes import ChannelID, GuildID
+from modcord.datatypes.discord_datatypes import GuildID
 from modcord.configuration.app_configuration import app_config
 from modcord.settings.guild_settings_manager import guild_settings_manager
 
@@ -38,26 +37,15 @@ from modcord.settings.guild_settings_manager import guild_settings_manager
 logger = get_logger("llm_engine")
 
 
-@dataclass
-class ChannelBatchRequest:
-    """Container for a single channel batch's API request data."""
-    channel_id: ChannelID
-    guild_id: GuildID
-    messages: List[ChatCompletionMessageParam]
-    response_format: ResponseFormatJSONSchema
-    schema: Dict[str, Any]
-
-
 class LLMEngine:
     """
     Coordinate moderation prompts, inference, and response parsing.
 
     This class manages the moderation pipeline using an OpenAI-compatible API:
     - Initializing the AsyncOpenAI client from configuration.
-    - Converting channel batches into chat completion requests.
+    - Converting a server-wide batch into a single chat completion request.
     - Dynamically generating JSON schemas for structured outputs.
-    - Submitting concurrent requests using asyncio.gather().
-    - Parsing responses and grouping actions by channel.
+    - Parsing responses into ActionData objects.
     """
 
     def __init__(self) -> None:
@@ -75,152 +63,104 @@ class LLMEngine:
             self._model_name,
         )
 
-    def generate_dynamic_system_prompt(self, guild_id: GuildID, channel_id: ChannelID) -> str:
-        """Build the system prompt with guild-specific and channel-specific rules and guidelines.
+    def generate_dynamic_system_prompt(self, guild_id: GuildID) -> str:
+        """Build the system prompt with guild-specific server rules.
 
-        This method handles all the logic for resolving and injecting rules and guidelines:
-        1. Fetches guild settings and channel guidelines from guild_settings_manager.
-        2. Falls back to global defaults if guild/channel-specific settings are not set.
-        3. Injects them into the system prompt template.
+        Channel-specific guidelines are now embedded per-channel in the
+        JSON payload rather than injected into the system prompt.
 
         Args:
             guild_id: The guild ID to fetch rules from.
-            channel_id: The channel ID to fetch channel-specific guidelines from.
 
         Returns:
-            Formatted system prompt string with injected rules and guidelines.
+            Formatted system prompt string with injected server rules.
         """
-        # Fetch base template
         template = self._base_system_prompt or ""
 
-        # Resolve guild rules and channel guidelines
+        # Resolve guild rules
         guild_rules = (guild_settings_manager.get_cached_rules(guild_id) or app_config.server_rules).strip()
-        
-        guidelines_map = guild_settings_manager.get_cached_guidelines(guild_id)
-        channel_guidelines = guidelines_map.get(channel_id, app_config.channel_guidelines).strip()
 
-        # Inject into template
+        # Inject server rules; channel guidelines are in the payload
         prompt = template.replace("<|SERVER_RULES_INJECT|>", guild_rules)
-        prompt = prompt.replace("<|CHANNEL_GUIDELINES_INJECT|>", channel_guidelines)
+        # Remove channel guidelines placeholder if present — no longer used in system prompt
+        prompt = prompt.replace("<|CHANNEL_GUIDELINES_INJECT|>", "")
 
         return prompt
 
-
-
     async def get_moderation_actions(
         self,
-        batches: List[ModerationChannelBatch]) -> Dict[ChannelID, List[ActionData]]:
+        batch: ServerModerationBatch,
+    ) -> List[ActionData]:
         """
-        Get moderation actions from AI for multiple batches.
+        Get moderation actions from AI for a server-wide batch.
 
-        This method only handles AI inference:
-        1. Converts batches to API requests with dynamic schemas
-        2. Submits concurrent requests to OpenAI-compatible API
-        3. Parses responses into ActionData objects
+        This method handles AI inference for a single guild batch:
+        1. Builds system prompt with guild rules
+        2. Converts batch to API request with dynamic schema
+        3. Submits request to OpenAI-compatible API
+        4. Parses response into ActionData objects
 
         Args:
-            batches: List of ModerationChannelBatch objects to analyze.
+            batch: ServerModerationBatch containing all users/messages across channels.
 
         Returns:
-            Dictionary mapping channel_id (ChannelID) to list of ActionData objects.
+            List of ActionData objects parsed from the AI response.
         """
-        logger.debug("[MODERATION] Processing %d batches", len(batches))
+        logger.debug("[MODERATION] Processing server batch for guild %s", batch.guild_id)
 
-        if not batches:
-            return {}
+        # Build system prompt with guild rules (no channel guidelines)
+        system_prompt = self.generate_dynamic_system_prompt(batch.guild_id)
 
-        # Prepare all requests
-        requests: List[ChannelBatchRequest] = []
-        
-        for batch in batches:
-            # Build system prompt with resolved rules and guidelines
-            system_prompt = self.generate_dynamic_system_prompt(batch.guild_id, batch.channel_id)
-            
-            # Convert batch to OpenAI messages with dynamic schema (single call)
-            messages, dynamic_schema = convert_batch_to_openai_messages(batch, system_prompt)
+        # Convert batch to OpenAI messages with dynamic schema
+        messages, dynamic_schema = convert_batch_to_openai_messages(batch, system_prompt)
 
-            # Convert dynamic output schema to OpenAI-compatible format
-            response_format = ResponseFormatJSONSchema(
-                type="json_schema",
-                json_schema={
-                    "name": "moderation_response",
-                    "strict": True,
-                    "schema": dynamic_schema
-                }
-            )
-            
-            # DEBUG: Output the schema for debugging
-            logger.debug(
-                "[SCHEMA DEBUG] Channel %s: %s",
-                batch.channel_id,
-                json.dumps(dynamic_schema, indent=2)
-            )
-            
-            requests.append(ChannelBatchRequest(
-                channel_id=batch.channel_id,
-                guild_id=batch.guild_id,
-                messages=messages,
-                response_format=response_format,
-                schema=dynamic_schema
-            ))
+        # Convert dynamic output schema to OpenAI-compatible format
+        response_format = ResponseFormatJSONSchema(
+            type="json_schema",
+            json_schema={
+                "name": "moderation_response",
+                "strict": True,
+                "schema": dynamic_schema,
+            },
+        )
 
-        # Submit all requests concurrently and process results
-        tasks = [
-            self._make_request_and_parse(req)
-            for req in requests
-        ]
-        
-        results = await asyncio.gather(*tasks)
-        
-        # Group actions by channel
-        actions_by_channel: Dict[ChannelID, List[ActionData]] = {
-            channel_id: actions
-            for channel_id, actions in results
-        }
+        logger.debug(
+            "[SCHEMA DEBUG] Guild %s: %s",
+            batch.guild_id,
+            json.dumps(dynamic_schema, indent=2),
+        )
 
-        return actions_by_channel
-
-    async def _make_request_and_parse(
-        self, 
-        req: ChannelBatchRequest
-    ) -> tuple[ChannelID, List[ActionData]]:
-        """Make API request and parse response into actions.
-        
-        Args:
-            req: ChannelBatchRequest containing all data for this request.
-            
-        Returns:
-            Tuple of (channel_id, list of actions).
-        """
+        # Make API request
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
-                messages=req.messages,
-                response_format=req.response_format,
+                messages=messages,
+                response_format=response_format,
             )
             response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
             logger.debug("[LLM ENGINE] Model Output Object: \n%s", response)
-            
+
         except Exception as exc:
-            logger.error("[LLM ENGINE] API request failed for channel %s: %s", req.channel_id, exc)
+            logger.error("[LLM ENGINE] API request failed for guild %s: %s", batch.guild_id, exc)
             response_text = f"null: api error - {exc}"
 
         # Parse response into actions
         actions = moderation_parsing.parse_batch_actions(
             response_text,
-            req.channel_id,
-            req.guild_id,
-            req.schema
+            batch.guild_id,
+            dynamic_schema,
         )
 
         # Log summary
-        action_summary = ", ".join(f"{a.action}({a.user_id})" for a in actions if a.action != ActionType.NULL)
+        action_summary = ", ".join(
+            f"{a.action}({a.user_id})" for a in actions if a.action != ActionType.NULL
+        )
         logger.debug(
-            "[RESULT] Channel %s: %d actions [%s] | Response: \n%s",
-            req.channel_id,
-            len([a for a in actions if a.action != "null"]),
+            "[RESULT] Guild %s: %d actions [%s] | Response: \n%s",
+            batch.guild_id,
+            len([a for a in actions if a.action != ActionType.NULL]),
             action_summary or "none",
-            response_text
+            response_text,
         )
 
-        return req.channel_id, actions
+        return actions

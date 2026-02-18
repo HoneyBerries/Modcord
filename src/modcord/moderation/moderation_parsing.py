@@ -6,7 +6,7 @@ import json
 from typing import Any, Dict, List
 from jsonschema import ValidationError
 from modcord.datatypes.action_datatypes import ActionData, ActionType
-from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
+from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID
 import jsonschema
 from modcord.util.logger import get_logger
 
@@ -24,7 +24,6 @@ def _extract_json_payload(raw: str) -> Any:
 
 def parse_batch_actions(
     response: str,
-    channel_id: ChannelID,
     guild_id: GuildID,
     expected_schema: dict
 ) -> List[ActionData]:
@@ -35,8 +34,7 @@ def parse_batch_actions(
     
     Args:
         response: Model response text containing JSON
-        channel_id: Expected channel identifier
-        guild_id: Guild ID to include in ActionData
+        guild_id: Guild ID to validate and include in ActionData
         expected_schema: JSON schema used for validation
         
     Returns:
@@ -61,10 +59,10 @@ def parse_batch_actions(
         logger.error("[PARSE] Schema validation failed: %s", exc.message)
         return []
     
-    # Verify channel ID matches
-    response_channel = str(payload.get("channel_id", "")).strip()
-    if response_channel != str(channel_id):
-        logger.warning("[PARSE] Channel mismatch: expected %s, got %s", channel_id, response_channel)
+    # Verify guild ID matches
+    response_guild = str(payload.get("guild_id", "")).strip()
+    if response_guild != str(guild_id):
+        logger.warning("[PARSE] Guild mismatch: expected %s, got %s", guild_id, response_guild)
         return []
     
     entries = payload.get("users") or []
@@ -102,18 +100,17 @@ def parse_batch_actions(
         # Extract reason
         reason = str(item.get("reason", "")).strip()
 
-        # Create action with channel_id included
+        # Create action without channel_id (server-wide moderation)
         action_type = ActionType(action_str)
         actions.append(
             ActionData(
                 guild_id=guild_id,
-                channel_id=channel_id,
                 user_id=UserID(user_id),
                 action=action_type,
                 reason=reason,
                 timeout_duration=timeout_dur,
                 ban_duration=ban_dur,
-                message_ids_to_delete=message_ids,
+                message_ids_to_delete=tuple(message_ids),
             )
         )
     

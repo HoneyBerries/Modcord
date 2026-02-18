@@ -1,129 +1,126 @@
 """Event listener Cog for Modcord.
 
-This cog handles bot lifecycle events (on_ready) and command error handling.
-Message-related events are handled by the MessageListenerCog.
+This cog has exactly ONE responsibility: handle bot lifecycle events
+(on_ready, on_guild_join, on_guild_remove).
+
+Side-effect details (DB writes, file writes) are confined to small,
+clearly-named helpers so the event handlers themselves stay readable.
 """
 
+import asyncio
 import json
+
 import discord
 from discord.ext import commands
 
-from modcord.util.logger import get_logger
-from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.discord_datatypes import GuildID
+from modcord.settings.guild_settings_manager import guild_settings_manager
+from modcord.util.logger import get_logger
 
 logger = get_logger("events_listener")
 
 
 class EventsListenerCog(commands.Cog):
-    """Cog containing bot lifecycle and command error handlers."""
+    """Handles Discord bot lifecycle events."""
 
-    def __init__(self, discord_bot_instance):
-        """
-        Initialize the events listener cog.
-
-        Parameters
-        ----------
-        discord_bot_instance:
-            The Discord bot instance to attach this cog to.
-        """
-        self.bot = discord_bot_instance
-        self.discord_bot_instance = discord_bot_instance
+    def __init__(self, bot: discord.Bot) -> None:
+        self.bot = bot
         logger.info("[EVENTS LISTENER] Events listener cog loaded")
 
-    @commands.Cog.listener(name='on_ready')
-    async def on_ready(self):
-        """
-        Handle bot startup: initialize presence.
+    # ------------------------------------------------------------------
+    # Lifecycle events
+    # ------------------------------------------------------------------
 
-        This method:
-        1. Updates the bot's Discord presence based on AI model state
-        2. Puts all registered commands into a file called commands.json for reference
-        """
-        if self.bot.user:
-
-            # Set initial presence
-            await self.bot.change_presence(
-                status=discord.Status.online,
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name="over your server while you're asleep!"
-                )
+    @commands.Cog.listener(name="on_ready")
+    async def on_ready(self) -> None:
+        """Set bot presence and persist command list to disk."""
+        if not self.bot.user:
+            logger.warning(
+                "[EVENTS LISTENER] Bot partially connected — user info not yet available."
             )
+            return
 
-            logger.info(f"Bot connected as {self.bot.user} (ID: {self.bot.user.id})")
-        else:
-            logger.warning("[EVENTS LISTENER] Bot partially connected, but user information not yet available.")
+        await self.bot.change_presence(
+            status=discord.Status.online,
+            activity=discord.Activity(
+                type=discord.ActivityType.watching,
+                name="over your server while you're asleep!",
+            ),
+        )
+        logger.info("Bot connected as %s (ID: %s)", self.bot.user, self.bot.user.id)
 
-        commands = await self.bot.http.get_global_commands(self.bot.user.id)
+        # Persist command list for stuff like top.gg and other bot listing sites that want to show our commands. This is a bit hacky but it works and it's not worth caring much just for this.
+        await self._write_commands_file()
 
-        with open("data/commands.json", "w") as f:
-            f.write(json.dumps(commands, indent=2))
-        
 
-    @commands.Cog.listener(name='on_guild_join')
-    async def on_guild_join(self, guild: discord.Guild):
-        """
-        Handle bot joining a new server.
 
-        This method:
-        1. Creates default guild settings with all features enabled
-        2. Persists the settings to the database
-        3. Logs the successful setup
-        """
+    @commands.Cog.listener(name="on_guild_join")
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        """Initialise and persist default settings for a newly joined guild."""
         guild_id = GuildID(guild.id)
-        logger.debug(f"[EVENTS LISTENER] Bot joined guild: {guild.name} (ID: {guild.id})")
-        
-        # Get or create settings (this will use the new defaults with everything enabled)
+        logger.debug("[EVENTS LISTENER] Bot joined guild: %s (ID: %s)", guild.name, guild.id)
+
         settings = await guild_settings_manager.get_settings(guild_id)
-        
-        # Explicitly save to ensure it's persisted to the database
         await guild_settings_manager.save(guild_id, settings)
-        
-        logger.debug(
-            f"[EVENTS LISTENER] Initialized settings for {guild.name}: "
-            f"AI={'enabled' if settings.ai_enabled else 'disabled'}, "
-            f"Actions={'all enabled' if all([settings.auto_warn_enabled, settings.auto_delete_enabled, settings.auto_timeout_enabled, settings.auto_kick_enabled, settings.auto_ban_enabled, settings.auto_review_enabled]) else 'some disabled'}"
+
+        logger.info(
+            "[EVENTS LISTENER] Initialized settings for guild '%s' — AI=%s",
+            guild.name,
+            "enabled" if settings.ai_enabled else "disabled",
         )
 
 
-    @commands.Cog.listener(name='on_guild_remove')
-    async def on_guild_remove(self, guild: discord.Guild):
-        """
-        Handle bot leaving or being removed from a server.
 
-        This method:
-        1. Deletes all guild-related data from the database
-        2. Removes the guild from the in-memory cache
-        3. Cleans up moderation history
-        4. Logs the removal
-        
-        This is good practice for data hygiene and privacy - when the bot
-        is no longer in a server, there's no reason to keep their data.
-        """
+    @commands.Cog.listener(name="on_guild_remove")
+    async def on_guild_remove(self, guild: discord.Guild) -> None:
+        """Delete all guild data when the bot leaves a server."""
         guild_id = GuildID(guild.id)
-        logger.debug(f"[EVENTS LISTENER] Bot removed from guild: {guild.name} (ID: {guild.id})")
-        
-        # Delete all data for this guild
+        logger.debug(
+            "[EVENTS LISTENER] Bot removed from guild: %s (ID: %s)", guild.name, guild.id
+        )
+
+        # We actually don't delete the data as it's kinda pointless and has no meaning in life.
+        return
+
         success = await guild_settings_manager.delete(guild_id)
-        
         if success:
-            logger.debug(
-                f"[EVENTS LISTENER] Successfully cleaned up all data for guild: {guild.name} (ID: {guild.id})"
+            logger.info(
+                "[EVENTS LISTENER] Cleaned up data for guild '%s' (ID: %s)",
+                guild.name,
+                guild.id,
             )
         else:
             logger.error(
-                f"[EVENTS LISTENER] Failed to clean up data for guild: {guild.name} (ID: {guild.id})"
+                "[EVENTS LISTENER] Failed to clean up data for guild '%s' (ID: %s)",
+                guild.name,
+                guild.id,
             )
 
+    # ------------------------------------------------------------------
+    # These methods don't really do anything — they just log the events for now. But it's nice to have them here in case we want to add side effects later.
+    # ------------------------------------------------------------------
 
-def setup(discord_bot_instance):
-    """
-    Register the EventsListenerCog with the bot.
+    async def _write_commands_file(self) -> None:
+        """Fetch global commands from Discord and write them to data/commands.json."""
+        try:
+            commands_data = await self.bot.http.get_global_commands(self.bot.user.id) # type: ignore
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None, _write_json, "data/commands.json", commands_data
+            )
+            logger.debug("[EVENTS LISTENER] commands.json updated.")
+        except Exception:
+            logger.exception("[EVENTS LISTENER] Failed to write commands.json")
 
-    Parameters
-    ----------
-    discord_bot_instance:
-        The Discord bot instance to add this cog to.
-    """
-    discord_bot_instance.add_cog(EventsListenerCog(discord_bot_instance))
+
+def _write_json(path: str, data: object) -> None:
+    """Blocking helper — write *data* as JSON to *path* (run in executor)."""
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+
+
+
+
+def setup(bot: discord.Bot) -> None:
+    """Register the EventsListenerCog with the bot."""
+    bot.add_cog(EventsListenerCog(bot))

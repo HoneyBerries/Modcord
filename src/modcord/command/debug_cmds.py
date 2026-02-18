@@ -191,11 +191,10 @@ class DebugCog(commands.Cog):
                 # Create hardcoded ActionData simulating AI output
                 action_data = ActionData(
                     guild_id=GuildID.from_guild(guild),
-                    channel_id=ChannelID.from_channel(channel),
                     user_id=UserID.from_user(user),
                     action=ActionType.REVIEW,
                     reason=review_reasons[idx % len(review_reasons)],
-                    message_ids_to_delete=[MessageID.from_message(fake_message)],
+                    message_ids_to_delete=(MessageID.from_message(fake_message),),
                     timeout_duration=0,
                     ban_duration=0
                 )

@@ -6,6 +6,7 @@ suitable for AI inference, with a focus on building OpenAI-compatible messages d
 
 Key Features:
 - Direct conversion to OpenAI ChatCompletionMessageParam format
+- Server-wide batching with per-channel context and guidelines
 - Inline image handling (no separate ID mapping needed)
 - User/message deduplication for historical context
 - Clean, testable functions with single responsibilities
@@ -26,7 +27,7 @@ from openai.types.chat import (
 
 from modcord.datatypes.discord_datatypes import UserID, MessageID
 from modcord.datatypes.moderation_datatypes import (
-    ModerationChannelBatch,
+    ServerModerationBatch,
     ModerationUser,
     ModerationMessage,
 )
@@ -78,10 +79,10 @@ def merge_users_with_history(
 
 
 def convert_batch_to_openai_messages(
-    batch: ModerationChannelBatch,
+    batch: ServerModerationBatch,
     system_prompt: str,
 ) -> Tuple[List[ChatCompletionMessageParam], Dict[str, Any]]:
-    """Convert a moderation batch to OpenAI messages with dynamic schema.
+    """Convert a server moderation batch to OpenAI messages with dynamic schema.
     
     This is the primary entry point for preparing batches for AI inference.
     It builds the complete message list with inline images AND generates the
@@ -90,12 +91,13 @@ def convert_batch_to_openai_messages(
     The output format:
     - System message with the prompt
     - User message containing:
-      - JSON text with batch metadata and user/message data
+      - JSON text with server-wide batch metadata, per-channel context
+        (including channel guidelines), and user/message data
       - Inline images immediately after the JSON (with labels)
     - Dynamic schema constraining outputs to valid user/message IDs
     
     Args:
-        batch: ModerationChannelBatch containing users, messages, and context.
+        batch: ServerModerationBatch containing users, messages, channels, and context.
         system_prompt: The system prompt to use for this inference.
     
     Returns:
@@ -111,18 +113,27 @@ def convert_batch_to_openai_messages(
     
     # Build user->message_ids map for schema (non-history users only)
     # Only include messages with actual content (text OR images)
-    # Users with no valid messages are excluded from moderation schema
     user_message_map: Dict[UserID, List[MessageID]] = {}
     for user in batch.users:
-        # Filter to messages with content (text or images)
         valid_messages = [
             msg.message_id 
             for msg in user.messages 
-            if msg.content or msg.images  # Has text OR has images
+            if msg.content or msg.images
         ]
-        # Only include user if they have at least one valid message
         if valid_messages:
             user_message_map[user.user_id] = valid_messages
+    
+    # Build per-channel context with guidelines
+    channels_data: List[Dict[str, Any]] = []
+    for ch_id, ctx in batch.channels.items():
+        channel_info: Dict[str, Any] = {
+            "channel_id": ctx.channel_id.to_int(),
+            "channel_name": ctx.channel_name,
+            "message_count": ctx.message_count,
+        }
+        if ctx.guidelines:
+            channel_info["guidelines"] = ctx.guidelines
+        channels_data.append(channel_info)
     
     # Build JSON payload with user/message data
     users_data: List[Dict[str, Any]] = []
@@ -144,6 +155,7 @@ def convert_batch_to_openai_messages(
             
             messages_data.append({
                 "message_id": msg.message_id.to_int(),
+                "channel_id": msg.channel_id.to_int(),
                 "timestamp": humanize_timestamp(msg.timestamp),
                 "content": msg.content or ("[Images only]" if msg_image_ids else ""),
                 "image_ids": msg_image_ids,
@@ -161,10 +173,10 @@ def convert_batch_to_openai_messages(
             "past_actions": format_past_actions(user.past_actions),
         })
     
-    # Build the JSON payload
+    # Build the JSON payload — server-wide, with per-channel context
     json_payload = {
-        "channel_id": batch.channel_id.to_int(),
-        "channel_name": batch.channel_name,
+        "guild_id": batch.guild_id.to_int(),
+        "channels": channels_data,
         "message_count": total_messages,
         "unique_user_count": len(user_map),
         "total_images": len(all_images),
@@ -202,13 +214,15 @@ def convert_batch_to_openai_messages(
         {"role": "user", "content": user_content},
     ]
     
-    # Generate dynamic schema with user/message constraints
-    dynamic_schema = dynamic_schema_generator.build_dynamic_moderation_schema(
-        user_message_map, batch.channel_id
+    # Generate dynamic schema with user/message constraints (server-wide)
+    dynamic_schema = dynamic_schema_generator.build_server_moderation_schema(
+        user_message_map, batch.guild_id
     )
     
     logger.debug(
-        "[SERIALIZATION] Built OpenAI messages: %d users, %d messages, %d images",
+        "[SERIALIZATION] Built OpenAI messages: guild=%s channels=%d users=%d messages=%d images=%d",
+        batch.guild_id,
+        len(batch.channels),
         len(user_map),
         total_messages,
         len(seen_image_ids),

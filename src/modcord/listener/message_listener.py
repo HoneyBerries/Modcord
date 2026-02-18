@@ -1,283 +1,93 @@
 """Message listener Cog for Modcord.
 
-This cog handles all message-related Discord events (on_message, on_message_edit)
-and processes messages through the AI moderation pipeline.
+This cog has exactly ONE responsibility: listen to Discord message events and
+forward qualifying messages to the ModerationQueueService.
+
+All batching, conversion, enrichment, and AI moderation logic lives in the
+service layer — NOT here.
 """
-import asyncio
-from datetime import datetime, timezone
-from typing import List
 
 import discord
 from discord.ext import commands
 
-from modcord.configuration.app_configuration import app_config
-from modcord.settings.guild_settings_manager import guild_settings_manager
-from modcord.database.database import database
-from modcord.datatypes.action_datatypes import ActionData
-from modcord.datatypes.discord_datatypes import ChannelID, GuildID, DiscordUsername, MessageID, UserID
 from modcord.scheduler import rules_sync_scheduler
-from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationMessage, ModerationUser
-from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
-from modcord.moderation.moderation_pipeline import ModerationPipeline
+from modcord.services.moderation_queue_service import ModerationQueueService
+from modcord.services.message_processing_service import MessageProcessingService
 from modcord.util.discord import collector, discord_utils
-from modcord.util import image_utils
 from modcord.util.logger import get_logger
 
 logger = get_logger("message_listener_cog")
 
 
 class MessageListenerCog(commands.Cog):
-    """Cog responsible for handling message creation and editing events."""
+    """
+    Thin event listener that forwards messages to the queue service.
 
-    def __init__(self, discord_bot_instance):
-        """
-        Initialize the message listener cog.
+    Parameters
+    ----------
+    bot:
+        Discord bot instance.
+    queue_service:
+        Receives enqueued messages and manages per-channel workers.
+    processing_service:
+        Called by the queue worker to convert/enrich/dispatch a batch.
+    """
 
-        Parameters
-        ----------
-        discord_bot_instance:
-            The Discord bot instance to attach this cog to.
-        """
-        self.bot = discord_bot_instance
-        self.discord_bot_instance = discord_bot_instance
-        self.ai_moderation_engine = ModerationPipeline(discord_bot_instance)
-        self._history_fetcher = DiscordHistoryFetcher(discord_bot_instance)
-        self._pending_messages: dict[ChannelID, List[ModerationMessage]] = {}
-        self._batch_timer: asyncio.Task | None = None
-        self._lock = asyncio.Lock()
+    def __init__(
+        self,
+        bot: discord.Bot,
+        queue_service: ModerationQueueService,
+        processing_service: MessageProcessingService,
+    ) -> None:
+        self.bot = bot
+        self._queue_service = queue_service
+        self._processing_service = processing_service
         logger.info("[MESSAGE LISTENER] Message listener cog loaded")
 
-    @commands.Cog.listener(name='on_message')
-    async def on_message(self, message: discord.Message):
-        """
-        Handle new messages.
+    # ------------------------------------------------------------------
+    # Event handlers — keep these as small as possible
+    # ------------------------------------------------------------------
 
-        This handler:
-        1. Filters out DMs, other bots, and empty messages using centralized logic
-        2. Refreshes rules cache if posted in a rules channel
-        3. Queues messages for AI moderation processing
-        """
-        # Use centralized filtering logic
+    @commands.Cog.listener(name="on_message")
+    async def on_message(self, message: discord.Message) -> None:
+        """Filter, sync rules if needed, then enqueue for moderation."""
         if not discord_utils.should_process_message(message):
             return
 
-        logger.debug(f"Received message from {message.author}: {message.clean_content[:80] if message.clean_content else '[no text]'}")
+        logger.debug(
+            "Received message from %s: %s",
+            message.author,
+            (message.clean_content or "[no text]")[:80],
+        )
 
-        # Sync rules cache if this was posted in a rules channel
-        if isinstance(message.channel, discord.TextChannel) and collector.is_rules_channel(message.channel):
+        # Sync rules cache if the message was posted in a rules channel
+        if (
+            isinstance(message.channel, discord.TextChannel)
+            and collector.is_rules_channel(message.channel)
+        ):
             await rules_sync_scheduler.sync_rules(message.channel.guild)
 
-        # Queue message for moderation processing
-        await self._queue_message_for_moderation(message)
+        await self._queue_service.enqueue_message(message, self._processing_service)
 
-
-    @commands.Cog.listener(name='on_message_edit')
-    async def on_message_edit(self, before: discord.Message, after: discord.Message):
-        """
-        Handle message edits by refreshing rules cache if needed.
-        """
-        # Use centralized filtering logic
+    @commands.Cog.listener(name="on_message_edit")
+    async def on_message_edit(
+        self, before: discord.Message, after: discord.Message
+    ) -> None:
+        """Sync rules cache on edit; moderation of edited content is not re-queued."""
         if not discord_utils.should_process_message(after):
             return
 
-        # Sync rules cache if this edit occurred in a rules channel
-        if isinstance(after.channel, discord.TextChannel) and collector.is_rules_channel(after.channel):
-            from modcord.scheduler.rules_sync_scheduler import sync_rules
-            await sync_rules(after.channel.guild)
-
-    async def _queue_message_for_moderation(self, message: discord.Message) -> None:
-        """
-        Queue a message for batched moderation processing.
-        
-        Messages are batched per-channel and processed after a configurable delay.
-        """
-        # Check if AI moderation is enabled for this guild
-        if not message.guild:
-            return
-        
-        guild_id = GuildID.from_guild(message.guild)
-        settings = await guild_settings_manager.get_settings(guild_id)
-        if not settings.ai_enabled:
-            logger.debug(f"AI moderation disabled for guild {guild_id}, skipping message")
-            return
-
-        # Convert Discord message to ModerationMessage (async for image download)
-        mod_message = await self._convert_to_moderation_message(message)
-        if not mod_message:
-            return
-
-        channel_id = ChannelID.from_channel(message.channel)
-        
-        async with self._lock:
-            if channel_id not in self._pending_messages:
-                self._pending_messages[channel_id] = []
-            self._pending_messages[channel_id].append(mod_message)
-            
-            logger.debug(
-                f"Queued message ID {mod_message.message_id} for channel ID {channel_id} "
-                f"(batch size: {len(self._pending_messages[channel_id])})"
-            )
-            
-            # Start the batch timer if not already running
-            self._ensure_batch_timer_running()
-
-    async def _convert_to_moderation_message(self, message: discord.Message) -> ModerationMessage | None:
-        """
-        Convert a Discord message to a ModerationMessage.
-        
-        Extracts image information from any image attachments and includes them in the ModerationMessage.
-        """
-        if not message.guild:
-            return None
-        
-        # Extract image info from attachments
-        images = image_utils.extract_images_for_moderation(message)
-        
-        return ModerationMessage(
-            message_id=MessageID.from_message(message),
-            user_id=UserID.from_user(message.author),
-            content=message.clean_content or "",
-            timestamp=message.created_at,
-            guild_id=GuildID.from_guild(message.guild),
-            channel_id=ChannelID.from_channel(message.channel),
-            images=images,
-        )
-
-    def _ensure_batch_timer_running(self) -> None:
-        """Start the batch timer if not already running."""
-        if self._batch_timer is None or self._batch_timer.done():
-            self._batch_timer = asyncio.create_task(self._batch_timer_task())
-            logger.debug("Started batch timer")
-
-    async def _batch_timer_task(self) -> None:
-        """Wait for the batch interval, then process all pending messages."""
-        interval = app_config.moderation_batch_seconds
-        logger.debug(f"Batch timer sleeping for {interval} seconds")
-        await asyncio.sleep(interval)
-
-        async with self._lock:
-            pending = {cid: list(msgs) for cid, msgs in self._pending_messages.items() if msgs}
-            self._pending_messages.clear()
-
-        if not pending:
-            logger.debug("Batch timer fired but no pending messages")
-            self._batch_timer = None
-            return
-
-        # Assemble and process batches
-        try:
-            batches = await self._assemble_batches(pending)
-            if batches:
-                await self.ai_moderation_engine.execute(batches)
-        except Exception:
-            logger.exception("Exception while processing moderation batches")
-        
-        self._batch_timer = None
-
-    async def _assemble_batches(
-        self, pending: dict[ChannelID, List[ModerationMessage]]
-    ) -> List[ModerationChannelBatch]:
-        """
-        Assemble ModerationChannelBatch objects from pending messages.
-        """
-        batches: List[ModerationChannelBatch] = []
-
-        for channel_id, messages in pending.items():
-            channel = self.bot.get_channel(channel_id.to_int())
-            if not isinstance(channel, discord.abc.GuildChannel):
-                logger.warning(f"Channel {channel_id} not found or not a guild channel")
-                continue
-
-            # Group messages by user and enrich with Discord context
-            users = await self._group_messages_by_user(messages, channel)
-            if not users:
-                continue
-
-            # Fetch historical context
-            exclude_ids = {m.message_id for m in messages}
-            history_limit = app_config.history_context_messages
-            history_messages = await self._history_fetcher.fetch_history_context(channel_id, exclude_ids, history_limit)
-            history_users = await self._group_messages_by_user(history_messages, channel) if history_messages else []
-
-            guild_id = GuildID.from_guild(channel.guild)
-            
-            logger.debug(
-                f"Prepared batch for guild {guild_id}, channel {channel_id}: {len(users)} users, {len(history_users)} history users"
-            )
-
-            batches.append(
-                ModerationChannelBatch(
-                    guild_id=guild_id,
-                    channel_id=channel_id,
-                    channel_name=getattr(channel, "name", str(channel_id)),
-                    users=users,
-                    history_users=history_users,
-                )
-            )
-
-        return batches
-
-    async def _group_messages_by_user(
-        self, messages: List[ModerationMessage], channel: discord.abc.GuildChannel
-    ) -> List[ModerationUser]:
-        """
-        Group messages by user and enrich with Discord context.
-        """
-        from collections import defaultdict
-
-        user_msgs: dict[UserID, List[ModerationMessage]] = defaultdict(list)
-        first_seen: dict[UserID, int] = {}
-
-        for idx, msg in enumerate(messages):
-            uid = msg.user_id
-            if uid not in first_seen:
-                first_seen[uid] = idx
-            user_msgs[uid].append(msg)
-
-        guild = channel.guild
-        if guild is None:
-            logger.warning(f"Guild not found for channel {channel.id}")
-            return []
-
-        guild_id = GuildID.from_guild(guild)
-        lookback = app_config.past_actions_lookback_minutes
-
-        # Batch query all user actions at once instead of individual queries
-        all_user_ids = list(user_msgs.keys())
-        bulk_past_actions = await database.get_bulk_past_actions(guild_id, all_user_ids, lookback)
-
-        users: List[ModerationUser] = []
-        for uid, msgs in user_msgs.items():
-            member = guild.get_member(uid.to_int())
-            if member is None:
-                logger.debug(f"Member {uid} not found in guild {guild.id}, skipping")
-                continue
-            if member.joined_at is None:
-                logger.debug(f"Join date missing for member {uid}, using now")
-                join_date = datetime.now(timezone.utc)
-            else:
-                join_date = member.joined_at
-
-            # Get past actions from bulk query results
-            past_actions = bulk_past_actions.get(uid, [])
-
-            users.append(
-                ModerationUser(
-                    user_id=uid,
-                    username=DiscordUsername.from_user(member),
-                    join_date=join_date,
-                    discord_member=member,
-                    discord_guild=guild,
-                    roles=[role.name for role in member.roles],
-                    messages=list(msgs),
-                    past_actions=past_actions,
-                )
-            )
-
-        users.sort(key=lambda u: first_seen[u.user_id])
-        return users
+        if (
+            isinstance(after.channel, discord.TextChannel)
+            and collector.is_rules_channel(after.channel)
+        ):
+            await rules_sync_scheduler.sync_rules(after.channel.guild)
 
 
-def setup(discord_bot_instance):
+def setup(
+    bot: discord.Bot,
+    queue_service: ModerationQueueService,
+    processing_service: MessageProcessingService,
+) -> None:
     """Register the MessageListenerCog with the bot."""
-    discord_bot_instance.add_cog(MessageListenerCog(discord_bot_instance))
+    bot.add_cog(MessageListenerCog(bot, queue_service, processing_service))

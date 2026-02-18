@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "modcord"
-version = "0.0.1"
+version = "0.0.2"
 description = "A Discord bot for moderation using AI"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "openai>=2.15.0",
     "py-cord>=2.6.1",

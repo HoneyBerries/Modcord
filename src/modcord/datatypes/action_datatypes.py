@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Tuple
 
-from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
+from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID
 
 
 class ActionType(Enum):
@@ -34,24 +34,20 @@ class Actions:
     @staticmethod
     def warn(
         guild_id: GuildID,
-        channel_id: ChannelID,
         user_id: UserID,
         reason: str,
     ) -> ActionData:
 
         return ActionData(
             guild_id=guild_id,
-            channel_id=channel_id,
             user_id=user_id,
             action=ActionType.WARN,
             reason=reason,
         )
 
-
     @staticmethod
     def timeout(
         guild_id: GuildID,
-        channel_id: ChannelID,
         user_id: UserID,
         duration_minutes: int,
         reason: str,
@@ -59,7 +55,6 @@ class Actions:
 
         return ActionData(
             guild_id=guild_id,
-            channel_id=channel_id,
             user_id=user_id,
             action=ActionType.TIMEOUT,
             reason=reason,
@@ -69,23 +64,20 @@ class Actions:
     @staticmethod
     def kick(
         guild_id: GuildID,
-        channel_id: ChannelID,
         user_id: UserID,
         reason: str,
     ) -> ActionData:
 
         return ActionData(
             guild_id=guild_id,
-            channel_id=channel_id,
             user_id=user_id,
             action=ActionType.KICK,
             reason=reason,
         )
-    
+
     @staticmethod
     def ban(
         guild_id: GuildID,
-        channel_id: ChannelID,
         user_id: UserID,
         duration_minutes: int,
         reason: str,
@@ -93,7 +85,6 @@ class Actions:
 
         return ActionData(
             guild_id=guild_id,
-            channel_id=channel_id,
             user_id=user_id,
             action=ActionType.BAN,
             reason=reason,
@@ -103,24 +94,20 @@ class Actions:
     @staticmethod
     def unban(
         guild_id: GuildID,
-        channel_id: ChannelID,
         user_id: UserID,
         reason: str,
     ) -> ActionData:
 
         return ActionData(
             guild_id=guild_id,
-            channel_id=channel_id,
             user_id=user_id,
             action=ActionType.UNBAN,
             reason=reason,
         )
-    
 
     @staticmethod
     def delete(
         guild_id: GuildID,
-        channel_id: ChannelID,
         user_id: UserID,
         message_ids_to_delete: Tuple[MessageID, ...],
         reason: str,
@@ -128,25 +115,21 @@ class Actions:
 
         return ActionData(
             guild_id=guild_id,
-            channel_id=channel_id,
             user_id=user_id,
             action=ActionType.DELETE,
             message_ids_to_delete=message_ids_to_delete,
             reason=reason,
         )
-    
 
     @staticmethod
     def review(
         guild_id: GuildID,
-        channel_id: ChannelID,
         user_id: UserID,
         reason: str,
     ) -> ActionData:
 
         return ActionData(
             guild_id=guild_id,
-            channel_id=channel_id,
             user_id=user_id,
             action=ActionType.REVIEW,
             reason=reason,
@@ -157,7 +140,6 @@ class Actions:
 class ActionData:
 
     guild_id: GuildID
-    channel_id: ChannelID
     user_id: UserID
     action: ActionType
     reason: str

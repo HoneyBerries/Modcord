@@ -5,14 +5,13 @@ Handles storage and retrieval of moderation actions from the database
 with performance optimizations for batch operations and bulk queries.
 """
 
-import time
 from typing import List, Dict
 from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 
 from modcord.datatypes.action_datatypes import ActionData, ActionType
-from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID, ChannelID
+from modcord.datatypes.discord_datatypes import UserID, GuildID
 from modcord.util.logger import get_logger
 
 logger = get_logger("database_moderation")
@@ -37,12 +36,11 @@ class ModerationActionStorage:
         
         await db.execute(
             """
-            INSERT INTO moderation_actions (guild_id, channel_id, user_id, action, reason, timeout_duration, ban_duration, message_ids)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO moderation_actions (guild_id, user_id, action, reason, timeout_duration, ban_duration, message_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 action.guild_id.to_int(),
-                action.channel_id.to_int(),
                 str(action.user_id),
                 action.action.value,
                 action.reason,
@@ -55,11 +53,10 @@ class ModerationActionStorage:
         
         
         logger.debug(
-            "[MODERATION] Logged action: %s on user %s in guild %s channel %s",
+            "[MODERATION] Logged action: %s on user %s in guild %s",
             action.action.value,
             action.user_id,
             action.guild_id,
-            action.channel_id
         )
     
     async def log_actions_batch(self, db: aiosqlite.Connection, actions: List[ActionData]) -> int:
@@ -88,7 +85,6 @@ class ModerationActionStorage:
                 message_ids = ",".join(str(mid.to_int()) for mid in (action.message_ids_to_delete or []))
                 batch_data.append((
                     action.guild_id.to_int(),
-                    action.channel_id.to_int(),
                     str(action.user_id),
                     action.action.value,
                     action.reason,
@@ -99,8 +95,8 @@ class ModerationActionStorage:
             
             await db.executemany(
                 """
-                INSERT INTO moderation_actions (guild_id, channel_id, user_id, action, reason, timeout_duration, ban_duration, message_ids)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO moderation_actions (guild_id, user_id, action, reason, timeout_duration, ban_duration, message_ids)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 batch_data
             )
@@ -153,7 +149,7 @@ class ModerationActionStorage:
         
         cursor = await db.execute(
             f"""
-            SELECT guild_id, channel_id, user_id, action, reason, timeout_duration, ban_duration, message_ids, timestamp
+            SELECT guild_id, user_id, action, reason, timeout_duration, ban_duration, message_ids, timestamp
             FROM moderation_actions
             WHERE guild_id = ? AND user_id IN ({placeholders}) AND timestamp >= ?
             ORDER BY timestamp DESC
@@ -166,15 +162,15 @@ class ModerationActionStorage:
         actions_by_user: Dict[UserID, List[ActionData]] = {user_id: [] for user_id in user_ids}
         
         for row in rows:
-            db_guild_id, db_channel_id, db_user_id, action_str, reason, timeout_dur, ban_dur, message_ids_str, _ = row
+            db_guild_id, db_user_id, action_str, reason, timeout_dur, ban_dur, message_ids_str, _ = row
             
-            message_ids: List[MessageID] = []
             if message_ids_str:
-                message_ids = [MessageID(mid) for mid in message_ids_str.split(",") if mid]
+                message_ids = tuple(message_ids_str.split(","))
+            else:
+                message_ids = tuple()
             
             action_data = ActionData(
                 guild_id=GuildID(db_guild_id),
-                channel_id=ChannelID(db_channel_id),
                 user_id=UserID(db_user_id),
                 action=ActionType(action_str),
                 reason=reason,

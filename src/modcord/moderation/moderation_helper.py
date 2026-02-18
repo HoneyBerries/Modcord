@@ -2,7 +2,7 @@
 Moderation helper functions for applying actions and sending notifications.
 
 This module provides utility functions for:
-- Finding users in moderation batches
+- Finding users in server moderation batches
 - Sending moderation notifications using ActionData
 - Applying moderation actions from ActionData objects
 """
@@ -13,7 +13,7 @@ import discord
 from modcord.database.database import database
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import UserID
-from modcord.datatypes.moderation_datatypes import ModerationChannelBatch, ModerationUser
+from modcord.datatypes.moderation_datatypes import ServerModerationBatch, ModerationUser
 from modcord.ui import action_embed
 from modcord.scheduler import unban_scheduler
 from modcord.util.discord import discord_utils
@@ -27,14 +27,14 @@ logger = get_logger("moderation_helper")
 # ---------------------------------------------------------------------------
 
 def find_target_user_in_batch(
-    batch: ModerationChannelBatch,
+    batch: ServerModerationBatch,
     user_id: UserID
 ) -> ModerationUser | None:
     """
-    Find a target user in a batch by user ID.
+    Find a target user in a server batch by user ID.
     
     Args:
-        batch: ModerationChannelBatch to search.
+        batch: ServerModerationBatch to search.
         user_id: UserID to find.
     
     Returns:
@@ -134,6 +134,7 @@ async def apply_action(
     action: ActionData,
     member: discord.Member,
     bot: discord.Bot,
+    notification_channel: discord.TextChannel | None = None,
 ) -> bool:
     """
     Apply a moderation action to a user using the ActionData object.
@@ -148,9 +149,8 @@ async def apply_action(
     Args:
         action: ActionData containing all action parameters
         member: Discord member to apply action to
-        guild: Discord guild context
         bot: Bot instance for API calls
-        channel: Discord channel to post notification embed to
+        notification_channel: Channel to post notification embed to (derived from batch)
     
     Returns:
         bool: True if action was successfully applied
@@ -161,26 +161,24 @@ async def apply_action(
         return False
     
     guild = bot.get_guild(action.guild_id.to_int())
-    channel = guild.get_channel(action.channel_id.to_int()) if guild else None
     
-    if guild is None or channel is None:
-        logger.error("Guild or Channel is None or missing, cannot apply moderation action")
+    if guild is None:
+        logger.error("Guild is None or missing, cannot apply moderation action")
         return False
 
-    if type(channel) is not discord.TextChannel:
-        logger.error("Channel %s is not a TextChannel, cannot post moderation notification", channel.id)
-        return False
+    channel = notification_channel
     
     # now do actual stuff
     if len(action.message_ids_to_delete) > 0:
-        # Delete specified messages
+        # Delete specified messages (scans all channels in guild)
         await discord_utils.delete_messages_by_ids(guild, action.message_ids_to_delete)
     
     
     try:
         match action.action:
             case ActionType.WARN:
-                await send_action_notification(action, member, guild, channel, bot.user)
+                if channel:
+                    await send_action_notification(action, member, guild, channel, bot.user)
                 await database.log_moderation_action(action)
                 return True
             
@@ -196,13 +194,15 @@ async def apply_action(
                 until = discord.utils.utcnow() + duration
                 
                 await member.timeout(until, reason=f"ModCord: {action.reason}")
-                await send_action_notification(action, member, guild, channel, bot.user)
+                if channel:
+                    await send_action_notification(action, member, guild, channel, bot.user)
                 await database.log_moderation_action(action)
                 return True
             
             case ActionType.KICK:
                 await guild.kick(member, reason=f"ModCord: {action.reason}")
-                await send_action_notification(action, member, guild, channel, bot.user)
+                if channel:
+                    await send_action_notification(action, member, guild, channel, bot.user)
                 await database.log_moderation_action(action)
                 return True
             
@@ -225,7 +225,8 @@ async def apply_action(
                     except Exception as e:
                         logger.error(f"Failed to schedule unban for user {member.id}: {e}")
                 
-                await send_action_notification(action, member, guild, channel, bot.user)
+                if channel:
+                    await send_action_notification(action, member, guild, channel, bot.user)
                 await database.log_moderation_action(action)
                 return True
             
