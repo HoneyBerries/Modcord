@@ -57,7 +57,7 @@ class DiscordHistoryFetcher:
 
         Returns messages in chronological order (oldest first).
         """
-        channel = self._bot.get_channel(channel_id.to_int())
+        channel = self._bot.get_channel(int(channel_id))
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             logger.debug("Channel %s is not a text channel or thread — skipping history", channel_id)
             return []

@@ -128,7 +128,7 @@ class GuildSettingsManager:
             else:
                 logger.warning(
                     "[GUILD SETTINGS MANAGER] Unknown field %s for guild %s",
-                    field_name, guild_id.to_int()
+                    field_name, int(guild_id)
                 )
 
         await self.save(guild_id, settings)
@@ -149,7 +149,7 @@ class GuildSettingsManager:
         if not success:
             logger.error(
                 "[GUILD SETTINGS MANAGER] Failed to persist guild %s",
-                guild_id.to_int()
+                int(guild_id)
             )
 
     async def delete(self, guild_id: GuildID) -> bool:
@@ -168,7 +168,7 @@ class GuildSettingsManager:
         self._rules_cache.pop(guild_id, None)
         self._guidelines_cache.pop(guild_id, None)
 
-        logger.debug("[GUILD SETTINGS MANAGER] Removed guild %s from memory cache", guild_id.to_int())
+        logger.debug("[GUILD SETTINGS MANAGER] Removed guild %s from memory cache", int(guild_id))
 
         return await guild_settings_service.delete(guild_id)
 

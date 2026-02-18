@@ -32,7 +32,7 @@ class ModerationActionStorage:
         """
         # Performance monitoring removed
         
-        message_ids = ",".join(str(mid.to_int()) for mid in (action.message_ids_to_delete or []))
+        message_ids = ",".join(str(int(mid)) for mid in (action.message_ids_to_delete or []))
         
         await db.execute(
             """
@@ -40,7 +40,7 @@ class ModerationActionStorage:
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                action.guild_id.to_int(),
+                int(action.guild_id),
                 str(action.user_id),
                 action.action.value,
                 action.reason,
@@ -82,9 +82,9 @@ class ModerationActionStorage:
             # Prepare batch data
             batch_data = []
             for action in actions:
-                message_ids = ",".join(str(mid.to_int()) for mid in (action.message_ids_to_delete or []))
+                message_ids = ",".join(str(int(mid)) for mid in (action.message_ids_to_delete or []))
                 batch_data.append((
-                    action.guild_id.to_int(),
+                    int(action.guild_id),
                     str(action.user_id),
                     action.action.value,
                     action.reason,
@@ -141,7 +141,7 @@ class ModerationActionStorage:
         # Performance monitoring removed
         
         cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
-        guild_id_int = guild_id.to_int() if isinstance(guild_id, GuildID) else guild_id
+        guild_id_int = int(guild_id) if isinstance(guild_id, GuildID) else guild_id
         
         # Create placeholders for IN clause
         user_id_strs = [str(user_id) for user_id in user_ids]
@@ -210,7 +210,7 @@ class ModerationActionStorage:
         
         cursor = await db.execute(
             "SELECT COUNT(*) FROM moderation_actions WHERE guild_id = ? AND timestamp >= ?",
-            (guild_id.to_int(), cutoff_date.isoformat())
+            (int(guild_id), cutoff_date.isoformat())
         )
         row = await cursor.fetchone()
         count = row[0] if row else 0

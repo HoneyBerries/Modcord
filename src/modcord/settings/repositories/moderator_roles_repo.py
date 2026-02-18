@@ -23,7 +23,7 @@ class ModeratorRolesRepository:
         """Return all moderator role IDs for a single guild."""
         async with conn.execute(
             "SELECT role_id FROM guild_moderator_roles WHERE guild_id = ?",
-            (guild_id.to_int(),),
+            (int(guild_id),),
         ) as cursor:
             rows = await cursor.fetchall()
         return {row[0] for row in rows}
@@ -51,7 +51,7 @@ class ModeratorRolesRepository:
         self, conn: aiosqlite.Connection, guild_id: GuildID, role_ids: Set[int]
     ) -> None:
         """Replace all moderator roles for a guild atomically."""
-        gid = guild_id.to_int()
+        gid = int(guild_id)
         await conn.execute(
             "DELETE FROM guild_moderator_roles WHERE guild_id = ?", (gid,)
         )

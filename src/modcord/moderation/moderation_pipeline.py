@@ -102,7 +102,7 @@ class ModerationPipeline:
         
         # Finalize all review batches after processing all actions
         if has_reviews:
-            guild = self._bot.get_guild(batch.guild_id.to_int())
+            guild = self._bot.get_guild(int(batch.guild_id))
             if guild and settings:
                 await review_manager.send_review_embed(guild, settings)
 
@@ -217,7 +217,7 @@ class ModerationPipeline:
             logger.warning(
                 "[PIPELINE] Action %s not allowed in guild %s",
                 action.action.value,
-                guild_id.to_int()
+                int(guild_id)
             )
             return False
 
@@ -287,13 +287,13 @@ def _resolve_notification_channel(
     # Try the channel of the user's first message
     if target_user.messages:
         first_msg = target_user.messages[0]
-        ch = guild.get_channel(first_msg.channel_id.to_int())
+        ch = guild.get_channel(int(first_msg.channel_id))
         if isinstance(ch, discord.TextChannel):
             return ch
 
     # Fallback: first channel in the batch
     for ctx in batch.channels.values():
-        ch = guild.get_channel(ctx.channel_id.to_int())
+        ch = guild.get_channel(int(ctx.channel_id))
         if isinstance(ch, discord.TextChannel):
             return ch
 

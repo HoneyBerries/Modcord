@@ -23,7 +23,7 @@ class ChannelGuidelinesRepository:
         """Return all channel guidelines for a single guild."""
         async with conn.execute(
             "SELECT channel_id, guidelines FROM channel_guidelines WHERE guild_id = ?",
-            (guild_id.to_int(),),
+            (int(guild_id),),
         ) as cursor:
             rows = await cursor.fetchall()
         return {ChannelID.from_int(row[0]): row[1] for row in rows}
@@ -54,12 +54,12 @@ class ChannelGuidelinesRepository:
         guidelines: Dict[ChannelID, str],
     ) -> None:
         """Replace all channel guidelines for a guild atomically."""
-        gid = guild_id.to_int()
+        gid = int(guild_id)
         await conn.execute(
             "DELETE FROM channel_guidelines WHERE guild_id = ?", (gid,)
         )
         if guidelines:
             await conn.executemany(
                 "INSERT INTO channel_guidelines (guild_id, channel_id, guidelines) VALUES (?, ?, ?)",
-                [(gid, ch.to_int(), text) for ch, text in guidelines.items()],
+                [(gid, int(ch), text) for ch, text in guidelines.items()],
             )

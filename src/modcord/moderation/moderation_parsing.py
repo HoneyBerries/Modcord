@@ -101,7 +101,11 @@ def parse_batch_actions(
         reason = str(item.get("reason", "")).strip()
 
         # Create action without channel_id (server-wide moderation)
-        action_type = ActionType(action_str)
+        try:
+            action_type = ActionType(action_str)
+        except ValueError:
+            logger.warning("[PARSE] Unknown action type %r for user %s, defaulting to null", action_str, user_id)
+            action_type = ActionType.NULL
         actions.append(
             ActionData(
                 guild_id=guild_id,

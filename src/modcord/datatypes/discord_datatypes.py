@@ -79,13 +79,6 @@ class DiscordSnowflake:
         """
         return cls(obj.id)
 
-    # -------------------------
-    # Conversion
-    # -------------------------
-
-    def to_int(self) -> int:
-        """Returns the snowflake value as an integer."""
-        return int(self._value)
 
     # -------------------------
     # Representation
@@ -94,6 +87,10 @@ class DiscordSnowflake:
     def __str__(self) -> str:
         """Returns the string representation of the snowflake ID."""
         return self._value
+    
+    def __int__(self) -> int:
+        """Returns the integer representation of the snowflake ID."""
+        return int(self._value)
 
     def __repr__(self) -> str:
         """Returns a developer-friendly representation of the snowflake."""

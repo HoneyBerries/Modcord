@@ -117,7 +117,7 @@ class HumanReviewManager:
         
         for channel_id in settings.review_channel_ids:
             channel_obj = ChannelID(channel_id)
-            review_channel = guild.get_channel(channel_obj.to_int())
+            review_channel = guild.get_channel(int(channel_obj))
             if review_channel and isinstance(review_channel, (discord.TextChannel, discord.Thread)):
                 try:
                     view = HumanReviewResolutionView(batch_id=batch_id, guild_id=GuildID.from_guild(guild), bot=self.bot)
@@ -130,10 +130,10 @@ class HumanReviewManager:
                     )
 
                     sent_messages.append((channel_obj, sent_message.id))
-                    logger.info("[REVIEW] Sent review batch %s to channel %s", batch_id, channel_obj.to_int())
+                    logger.info("[REVIEW] Sent review batch %s to channel %s", batch_id, int(channel_obj))
 
                 except Exception as e:
-                    logger.error("[REVIEW] Failed to send review to channel %s: %s", channel_obj.to_int(), e)
+                    logger.error("[REVIEW] Failed to send review to channel %s: %s", int(channel_obj), e)
         
         if sent_messages:
             logger.info("[REVIEW] Review batch %s sent to %d channel(s) in guild %s", batch_id, len(sent_messages), guild.id)

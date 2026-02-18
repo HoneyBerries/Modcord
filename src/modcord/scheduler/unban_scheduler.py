@@ -235,7 +235,7 @@ class UnbanScheduler:
         user_id = payload.user_id
 
         try:
-            user_obj = discord.Object(id=user_id.to_int())
+            user_obj = discord.Object(id=int(user_id))
             await guild.unban(user_obj, reason=payload.reason)
             logger.debug("Unbanned user %s after ban expired.", user_id)
 
@@ -243,7 +243,7 @@ class UnbanScheduler:
             # module independent from util.discord_utils).
             if payload.bot and isinstance(payload.channel, (discord.TextChannel, discord.Thread)):
                 try:
-                    user = await payload.bot.fetch_user(user_id.to_int())
+                    user = await payload.bot.fetch_user(int(user_id))
                     embed = discord.Embed(
                         title="🔓 User Unbanned",
                         description=f"{user.mention} (`{user.id}`) has been unbanned.\n{payload.reason}",

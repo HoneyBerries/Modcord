@@ -23,7 +23,7 @@ class ReviewChannelsRepository:
         """Return all review channel IDs for a single guild."""
         async with conn.execute(
             "SELECT channel_id FROM guild_review_channels WHERE guild_id = ?",
-            (guild_id.to_int(),),
+            (int(guild_id),),
         ) as cursor:
             rows = await cursor.fetchall()
         return {ChannelID.from_int(row[0]) for row in rows}
@@ -51,12 +51,12 @@ class ReviewChannelsRepository:
         self, conn: aiosqlite.Connection, guild_id: GuildID, channel_ids: Set[ChannelID]
     ) -> None:
         """Replace all review channels for a guild atomically."""
-        gid = guild_id.to_int()
+        gid = int(guild_id)
         await conn.execute(
             "DELETE FROM guild_review_channels WHERE guild_id = ?", (gid,)
         )
         if channel_ids:
             await conn.executemany(
                 "INSERT INTO guild_review_channels (guild_id, channel_id) VALUES (?, ?)",
-                [(gid, ch.to_int()) for ch in channel_ids],
+                [(gid, int(ch)) for ch in channel_ids],
             )

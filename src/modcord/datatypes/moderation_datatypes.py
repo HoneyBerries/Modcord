@@ -6,14 +6,14 @@ from typing import Dict, Tuple, Optional
 import discord
 
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
-from modcord.datatypes.image_datatypes import ImageID, ImageURL
+from modcord.datatypes.image_datatypes import ImageID, ImageLink
 from modcord.datatypes.action_datatypes import ActionData
 
 
 @dataclass(frozen=True, slots=True)
 class ModerationImage:
     image_id: ImageID
-    image_url: ImageURL
+    image_url: ImageLink
 
 
 @dataclass(frozen=True, slots=True)

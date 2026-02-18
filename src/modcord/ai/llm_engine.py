@@ -15,11 +15,8 @@ Key Features:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from typing import Any, Dict, List
+from typing import List
 from openai import AsyncOpenAI
-from openai.types.chat import ChatCompletionMessageParam
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
 import json
 
@@ -27,7 +24,7 @@ from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.moderation_datatypes import ServerModerationBatch
 from modcord.moderation import moderation_parsing
-from modcord.moderation.moderation_serialization import convert_batch_to_openai_messages
+from modcord.ai import llm_payload_builder
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.configuration.app_configuration import app_config
 from modcord.settings.guild_settings_manager import guild_settings_manager
@@ -75,17 +72,15 @@ class LLMEngine:
         Returns:
             Formatted system prompt string with injected server rules.
         """
-        template = self._base_system_prompt or ""
+        template = self._base_system_prompt
 
         # Resolve guild rules
         guild_rules = (guild_settings_manager.get_cached_rules(guild_id) or app_config.server_rules).strip()
 
         # Inject server rules; channel guidelines are in the payload
         prompt = template.replace("<|SERVER_RULES_INJECT|>", guild_rules)
-        # Remove channel guidelines placeholder if present — no longer used in system prompt
-        prompt = prompt.replace("<|CHANNEL_GUIDELINES_INJECT|>", "")
-
         return prompt
+
 
     async def get_moderation_actions(
         self,
@@ -106,13 +101,13 @@ class LLMEngine:
         Returns:
             List of ActionData objects parsed from the AI response.
         """
-        logger.debug("[MODERATION] Processing server batch for guild %s", batch.guild_id)
+        logger.info("[MODERATION] Processing server batch for guild %s", batch.guild_id)
 
         # Build system prompt with guild rules (no channel guidelines)
         system_prompt = self.generate_dynamic_system_prompt(batch.guild_id)
 
         # Convert batch to OpenAI messages with dynamic schema
-        messages, dynamic_schema = convert_batch_to_openai_messages(batch, system_prompt)
+        messages, dynamic_schema = llm_payload_builder.convert_batch_to_openai_messages(batch, system_prompt)
 
         # Convert dynamic output schema to OpenAI-compatible format
         response_format = ResponseFormatJSONSchema(
@@ -136,7 +131,10 @@ class LLMEngine:
                 model=self._model_name,
                 messages=messages,
                 response_format=response_format,
+                reasoning_effort="low",
+                #extra_body={'thinking': {'type': 'disabled'}, 'chat_template_kwargs': {"thinking": False}},
             )
+            
             response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
             logger.debug("[LLM ENGINE] Model Output Object: \n%s", response)
 

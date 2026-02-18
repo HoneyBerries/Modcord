@@ -50,7 +50,7 @@ class GuildSettingsService:
         self._per_guild_locks: Dict[int, asyncio.Lock] = {}
 
     def _lock_for(self, guild_id: GuildID) -> asyncio.Lock:
-        gid = guild_id.to_int()
+        gid = int(guild_id)
         if gid not in self._per_guild_locks:
             self._per_guild_locks[gid] = asyncio.Lock()
         return self._per_guild_locks[gid]
@@ -136,12 +136,12 @@ class GuildSettingsService:
                     # transaction() auto-commits on clean exit
 
                 logger.debug(
-                    "[GUILD SETTINGS SERVICE] Persisted guild %s", guild_id.to_int()
+                    "[GUILD SETTINGS SERVICE] Persisted guild %s", str(guild_id)
                 )
                 return True
             except Exception:
                 logger.exception(
-                    "[GUILD SETTINGS SERVICE] Failed to persist guild %s", guild_id.to_int()
+                    "[GUILD SETTINGS SERVICE] Failed to persist guild %s", str(guild_id)
                 )
                 return False
 
@@ -162,17 +162,17 @@ class GuildSettingsService:
                 # Moderation history has no FK, delete it explicitly
                 await conn.execute(
                     "DELETE FROM moderation_actions WHERE guild_id = ?",
-                    (guild_id.to_int(),),
+                    (int(guild_id),),
                 )
                 # transaction() auto-commits on clean exit
 
             logger.debug(
-                "[GUILD SETTINGS SERVICE] Deleted all data for guild %s", guild_id.to_int()
+                "[GUILD SETTINGS SERVICE] Deleted all data for guild %s", str(guild_id)
             )
             return True
         except Exception:
             logger.exception(
-                "[GUILD SETTINGS SERVICE] Failed to delete guild %s", guild_id.to_int()
+                "[GUILD SETTINGS SERVICE] Failed to delete guild %s", str(guild_id)
             )
             return False
 
@@ -206,7 +206,7 @@ def _row_to_settings(
 def _settings_to_row(guild_id: GuildID, settings: GuildSettings) -> GuildSettingsRow:
     """Build a GuildSettingsRow from a GuildSettings object."""
     return GuildSettingsRow(
-        guild_id=guild_id.to_int(),
+        guild_id=int(guild_id),
         ai_enabled=settings.ai_enabled,
         rules=settings.rules,
         auto_warn_enabled=settings.auto_warn_enabled,

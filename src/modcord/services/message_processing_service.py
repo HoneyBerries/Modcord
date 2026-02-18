@@ -167,7 +167,7 @@ class MessageProcessingService:
         guidelines_map = guild_settings_manager.get_cached_guidelines(guild_id)
         channels: Dict[ChannelID, ChannelContext] = {}
         for ch_id, ch_mod_msgs in mod_messages_by_channel.items():
-            channel_obj = self._bot.get_channel(ch_id.to_int())
+            channel_obj = self._bot.get_channel(int(ch_id))
             channel_name = channel_obj.name if channel_obj is not None else f"Channel {ch_id}" # type: ignore
             
             channel_guidelines = guidelines_map.get(ch_id, "")
@@ -248,7 +248,7 @@ class MessageProcessingService:
 
         users: List[ModerationUser] = []
         for uid, msgs in user_msgs.items():
-            member = guild.get_member(uid.to_int())
+            member = guild.get_member(int(uid))
             if member is None:
                 logger.debug("Member %s not found in guild %s — skipping", uid, guild.id)
                 continue

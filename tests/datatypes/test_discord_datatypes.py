@@ -20,7 +20,7 @@ class DummyObj:
 
 def test_userid_from_int_and_str_and_equality_and_hash():
     u1 = UserID(12345)
-    assert u1.to_int() == 12345
+    assert int(u1) == 12345
     assert str(u1) == "12345"
 
     u2 = UserID("12345")
@@ -28,12 +28,12 @@ def test_userid_from_int_and_str_and_equality_and_hash():
 
     u3 = UserID.from_int(67890)
     assert isinstance(u3, UserID)
-    assert u3.to_int() == 67890
+    assert int(u3) == 67890
 
     # from_user helper
     dummy = DummyObj(id_val=111)
     u4 = UserID.from_user(dummy) # type: ignore
-    assert u4.to_int() == 111
+    assert int(u4) == 111
 
     # equality with raw types
     assert u4 == 111
@@ -71,7 +71,7 @@ def test_discordusername_behavior_and_defaults():
 @pytest.mark.parametrize("cls, val_int", [(GuildID, 222), (ChannelID, 333), (MessageID, 444)])
 def test_id_wrappers_common_behaviour(cls, val_int):
     inst = cls(val_int)
-    assert inst.to_int() == val_int
+    assert int(inst) == val_int
     assert str(inst) == str(val_int)
 
     inst2 = cls(str(val_int))
@@ -85,7 +85,7 @@ def test_id_wrappers_common_behaviour(cls, val_int):
         inst3 = cls.from_channel(dummy) # type: ignore
     else:
         inst3 = cls.from_message(dummy)
-    assert inst3.to_int() == val_int
+    assert int(inst3) == val_int
 
     # equality with raw types
     assert inst == val_int

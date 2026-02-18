@@ -162,7 +162,7 @@ class GuildSettingsCog(commands.Cog):
         settings = await guild_settings_manager.get_settings(guild_id)
         
         roles = [f"<@&{rid}>" for rid in settings.moderator_role_ids]
-        channels = [f"<#{ChannelID(cid).to_int()}>" for cid in settings.review_channel_ids]
+        channels = [f"<#{int(ChannelID(cid))}>" for cid in settings.review_channel_ids]
         
         embed = discord.Embed(title="Moderator Settings", color=discord.Color.blue())
         embed.add_field(name="Moderator Roles", value=", ".join(roles) or "None", inline=False)

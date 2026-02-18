@@ -7,7 +7,7 @@ Handles only the guild_settings table — no joins, no related data.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict
 
 import aiosqlite
 
@@ -46,7 +46,7 @@ class GuildSettingsRepository:
             FROM guild_settings
             WHERE guild_id = ?
             """,
-            (guild_id.to_int(),),
+            (int(guild_id),),
         ) as cursor:
             row = await cursor.fetchone()
 
@@ -117,7 +117,7 @@ class GuildSettingsRepository:
                 auto_review_enabled  = excluded.auto_review_enabled
             """,
             (
-                row.guild_id,
+                int(row.guild_id),
                 1 if row.ai_enabled else 0,
                 row.rules,
                 1 if row.auto_warn_enabled else 0,
@@ -135,5 +135,5 @@ class GuildSettingsRepository:
         """Delete a guild row (CASCADE removes related rows)."""
         await conn.execute(
             "DELETE FROM guild_settings WHERE guild_id = ?",
-            (guild_id.to_int(),),
+            (int(guild_id),),
         )

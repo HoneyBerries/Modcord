@@ -160,7 +160,7 @@ async def apply_action(
         logger.error("Bot client is None or bot user is None, cannot apply moderation action")
         return False
     
-    guild = bot.get_guild(action.guild_id.to_int())
+    guild = bot.get_guild(int(action.guild_id))
     
     if guild is None:
         logger.error("Guild is None or missing, cannot apply moderation action")
