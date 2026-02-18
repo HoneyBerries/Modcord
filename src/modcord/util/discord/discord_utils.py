@@ -59,16 +59,14 @@ def bot_can_manage_messages(channel: discord.TextChannel, guild: discord.Guild) 
     Returns:
         bool: True if the bot can read and manage messages, False otherwise.
     """
-    me = getattr(guild, "me", None)
-    if me is None:
-        return True
+    me = guild.me
 
     try:
         permissions = channel.permissions_for(me)
     except Exception:
         return False
 
-    return permissions.read_messages and permissions.manage_messages
+    return (permissions.manage_messages and permissions.read_messages and permissions.view_channel and permissions.read_message_history and permissions.send_messages)
 
 
 def iter_moderatable_channels(guild: discord.Guild):
@@ -81,12 +79,10 @@ def iter_moderatable_channels(guild: discord.Guild):
     Yields:
         discord.TextChannel: Channels suitable for moderation actions.
     """
-    for channel in getattr(guild, "text_channels", []):
-        try:
-            if bot_can_manage_messages(channel, guild):
-                yield channel
-        except Exception as exc:
-            logger.debug("Skipping channel %s due to error: %s", getattr(channel, 'name', '<unknown>'), exc)
+    for channel in guild.text_channels:
+        if bot_can_manage_messages(channel, guild):
+            yield channel
+
 
 
 def extract_embed_text_from_message(embed: discord.Embed) -> List[str]:
@@ -128,10 +124,7 @@ def is_ignored_author(author: Union[discord.User, discord.Member]) -> bool:
 
 
 def should_process_message(
-    message: discord.Message,
-    *,
-    check_guild: bool = True
-) -> bool:
+    message: discord.Message) -> bool:
     """
     Determine if a message should be processed for moderation.
     
@@ -153,7 +146,7 @@ def should_process_message(
         bool: True if the message should be processed, False otherwise.
     """
     # Ignore DMs
-    if check_guild and message.guild is None:
+    if message.guild is None:
         return False
     
     # Ignore messages from bots or non-members
@@ -333,42 +326,23 @@ async def delete_recent_messages(guild, member, seconds) -> int:
         int: Number of messages deleted.
     """
     if seconds <= 0:
-        return 0
+        raise ValueError("Seconds must be greater than 0 for message deletion.")
 
     window_start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=seconds)
     deleted_count = 0
 
     for channel in iter_moderatable_channels(guild):
-        channel_name = channel.name if hasattr(channel, 'name') else str(channel.id)
         try:
             async for message in channel.history(after=window_start):
-                if message.author.id == member.id and await delete_message(message):
+                if message.author.id == member.id:
+                    await delete_message(message)
                     deleted_count += 1
+
         except Exception as exc:
-            logger.error(f"Error deleting messages in {channel}: {exc}")
+            logger.warning(f"Error deleting messages in {channel}: {exc}")
 
     return deleted_count
 
-
-async def delete_messages_background(ctx: discord.ApplicationContext, user: discord.Member, delete_message_minutes: int):
-    """
-    Delete a user's messages in the background and notify the command invoker of the result.
-
-    Args:
-        ctx (discord.ApplicationContext): The command context for follow-up messaging.
-        user (discord.Member): The member whose messages are deleted.
-        delete_message_minutes (int): Time window in minutes to look back.
-    """
-    try:
-        seconds = delete_message_minutes * 60
-        deleted = await delete_recent_messages(ctx.guild, user, seconds)
-        if deleted:
-            await ctx.followup.send(f"🗑️ Deleted {deleted} recent messages from {user.mention}.", ephemeral=True)
-        else:
-            await ctx.followup.send(f"No recent messages found to delete from {user.mention}.", ephemeral=True)
-    except Exception as e:
-        logger.error(f"Error deleting messages in background: {e}")
-        await ctx.followup.send("⚠️ Action completed, but failed to delete some messages.", ephemeral=True)
 
 
 async def delete_message(message: discord.Message) -> bool:
@@ -381,62 +355,71 @@ async def delete_message(message: discord.Message) -> bool:
     Returns:
         bool: True if deletion succeeded, False otherwise.
     """
+    # Safety check to prevent DM message deletion which would raise an error
+    if isinstance(message.channel, Union[discord.DMChannel, discord.PartialMessageable]):
+        logger.error(f"Cannot delete message in DM channel: {message.id}")
+        assert False, "Attempted to delete a message in a DM channel, which is ILLEGAL."
+    
     try:
         await message.delete()
         return True
+    
     except discord.NotFound:
-        return False
+        logger.warning(f"Message ID {message.id} not found in channel: {message.channel.name}")
     except discord.Forbidden:
         logger.warning(f"No permission to delete message {message.id}")
     except Exception as exc:
         logger.error(f"Error deleting message {message.id}: {exc}")
+
     return False
 
 
-async def delete_messages_by_ids(guild: discord.Guild, message_ids: list[MessageID] | MessageID) -> int:
+
+async def delete_messages_by_ids(guild: discord.Guild, message_ids: tuple[MessageID, ...]) -> int:
     """
     Delete specific messages by their IDs across all moderatable channels in a guild, in parallel.
 
     Args:
         guild (discord.Guild): The guild to search for messages.
-        message_ids (list[MessageID] | MessageID): List of message IDs or a single message ID.
+        message_ids (tuple[MessageID, ...]): Tuple of message IDs.
 
     Returns:
         int: Number of messages deleted.
     """
     # Normalize input to a list
-    if isinstance(message_ids, (str, int)):
-        ids = [int(message_ids)]
-    elif isinstance(message_ids, list):
-        ids = [int(mid) for mid in message_ids if isinstance(mid, (str, int))]
-    else:
-        return 0
+    ids = [int(mid) for mid in message_ids]
 
-    if not ids:
-        return 0
-
-    deleted_count = 0
     pending_ids = set(ids)
-    channels = list(iter_moderatable_channels(guild))
+    channels = set(iter_moderatable_channels(guild))
 
-    async def fetch_and_delete(msg_id):
+    async def fetch_and_delete(msg_id) -> bool:
+        """Fetch a message by ID across channels and attempt to delete it.
+
+        Args:
+            msg_id (int): The message ID to find and delete.
+
+        Returns:
+            bool: True if deletion succeeded, False otherwise."""
         for channel in channels:
             try:
                 msg = await channel.fetch_message(msg_id)
                 if await delete_message(msg):
                     return True
+                
             except discord.NotFound:
                 continue
+
             except Exception as exc:
                 logger.error(f"Error deleting message {msg_id} in channel {getattr(channel, 'name', channel.id)}: {exc}")
                 continue
-        logger.debug(f"Failed to locate message: {msg_id}")
+
+        logger.warning(f"Failed to locate message: {msg_id}")
         return False
+
 
     # Run all fetch_and_delete tasks concurrently
     results = await asyncio.gather(*(fetch_and_delete(msg_id) for msg_id in pending_ids))
-    deleted_count = sum(results)
-    return deleted_count
+    return sum(results)
 
 
 
