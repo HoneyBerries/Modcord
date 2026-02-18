@@ -1,6 +1,6 @@
 from modcord.datatypes.discord_datatypes import UserID, MessageID
 from modcord.datatypes.moderation_datatypes import ServerModerationBatch
-from typing import Dict, List
+from typing import Dict, List, Set
 
 from modcord.util.logger import get_logger
 
@@ -50,21 +50,31 @@ def build_server_moderation_schema(
         }
 
     # Build user_id -> message_ids mapping from the batch's current (non-history) users
-    user_message_map: Dict[UserID, List[MessageID]] = {
-        user.user_id: [msg.message_id for msg in user.messages]
+    user_message_map: Dict[UserID, Set[MessageID]] = {
+        user.user_id: {msg.message_id for msg in user.messages}
         for user in batch.users
     }
+
+    # Iterate through batch.history_users to add context messages for moderated users
+    for history_user in batch.history_users:
+        if history_user.user_id in user_message_map:
+            # Add history message IDs to the allowed set for deletions
+            for msg in history_user.messages:
+                user_message_map[history_user.user_id].add(msg.message_id)
 
     user_ids = list(user_message_map.keys())
 
     # Build per-user schema with constrained message IDs.
     # All snowflake fields are "type": "string" to avoid IEEE 754 precision loss.
     user_schemas = []
-    for user_id, message_ids in user_message_map.items():
+    for user_id, message_ids_set in user_message_map.items():
+        # Convert to sorted list for deterministic schema output
+        message_ids: list[str] = sorted(str(mid) for mid in message_ids_set)
+
         if message_ids:
             message_constraint = {
                 "type": "array",
-                "items": {"type": "string", "enum": [str(mid) for mid in message_ids]}
+                "items": {"type": "string", "enum": [mid for mid in message_ids]}
             }
         else:
             message_constraint = {

@@ -40,6 +40,7 @@ class DiscordSnowflake:
             normalized = str(int(value.strip()))
         else:
             raise TypeError(f"Invalid snowflake type: {type(value).__name__}")
+    
 
         # Bypass immutability guard using object.__setattr__
         object.__setattr__(self, "_value", normalized)

@@ -40,7 +40,7 @@ ai_settings:
   base_url: "https://api.inference.wandb.ai/v1"
   
   # API key for authentication (use "EMPTY" for local servers without auth)
-  api_key: "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"
+  api_key: ""
   
   # Model name/identifier to use for inference
   model_name: "moonshotai/Kimi-K2.5"
@@ -82,9 +82,9 @@ ai_settings:
 
     IF:
 
-    - ACTION = "timeout"
+    - ACTION != "null"
     - THEN THERE MUST BE A REAL RULE VIOLATION
-    - AND VIOLATING MESSAGE IDS MUST BE INCLUDED
+    - AND VIOLATING MESSAGE IDS MUST BE INCLUDED FOR DELETION
 
     NEVER:
 
@@ -206,8 +206,8 @@ ai_settings:
           "action": "null|warn|delete|timeout|kick|ban|review",
           "reason": "<string>",
           "message_ids_to_delete": ["<string>"],
-          "timeout_duration": <integer>,
-          "ban_duration": <integer>
+          "timeout_duration": "<string>",
+          "ban_duration": "<string>"
         }
       ]
     }
@@ -260,10 +260,10 @@ ai_settings:
         {
           "user_id": "999888777",
           "action": "timeout",
-          "reason": "Posted NSFW sexual images repeatedly",
+          "reason": "Posted NSFW images repeatedly",
           "message_ids_to_delete": ["111222","111223","111224"],
-          "timeout_duration": 60,
-          "ban_duration": 0
+          "timeout_duration": "60",
+          "ban_duration": "0"
         }
       ]
     }
@@ -286,8 +286,8 @@ ai_settings:
           "action": "null",
           "reason": "No rule violation",
           "message_ids_to_delete": [],
-          "timeout_duration": 0,
-          "ban_duration": 0
+          "timeout_duration": "0",
+          "ban_duration": "0"
         }
       ]
     }

@@ -138,7 +138,6 @@ class LLMEngine:
             )
             
             response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
-            logger.debug("[LLM ENGINE] Model Output Object: \n%s", response)
 
         except Exception as exc:
             logger.error("[LLM ENGINE] API request failed for guild %s: %s", batch.guild_id, exc)
@@ -149,18 +148,6 @@ class LLMEngine:
             response_text,
             batch.guild_id,
             dynamic_schema,
-        )
-
-        # Log summary
-        action_summary = ", ".join(
-            f"{a.action}({a.user_id})" for a in actions if a.action != ActionType.NULL
-        )
-        logger.debug(
-            "[RESULT] Guild %s: %d actions [%s] | Response: \n%s",
-            batch.guild_id,
-            len([a for a in actions if a.action != ActionType.NULL]),
-            action_summary or "none",
-            response_text,
         )
 
         return actions

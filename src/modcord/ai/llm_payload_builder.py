@@ -127,7 +127,7 @@ def convert_batch_to_openai_messages(
 
     for image_id, image_url in all_images:
         content_parts.append(
-            ChatCompletionContentPartTextParam(type="text", text=f"Image {image_id} (see below):")
+            ChatCompletionContentPartTextParam(type="text", text=f"Image {image_id} (see below/next/after this message):\n")
         )
         content_parts.append(
             ChatCompletionContentPartImageParam(type="image_url", image_url={"url": image_url})
