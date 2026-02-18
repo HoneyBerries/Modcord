@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import List
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
+import weave
 import json
 
 from modcord.util.logger import get_logger
@@ -48,6 +49,7 @@ class LLMEngine:
     def __init__(self) -> None:
         """Initialize the LLMEngine with AsyncOpenAI client."""
         ai_settings = app_config.ai_settings
+        weave.init("modcord")
         self._client = AsyncOpenAI(
             api_key=ai_settings.api_key,
             base_url=ai_settings.base_url,

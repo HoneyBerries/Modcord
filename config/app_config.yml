@@ -13,10 +13,6 @@ cache:
   # Refresh interval (seconds) for channel guidelines cache.
   channel_guidelines_cache_refresh: 60
 
-  # Message caching settings to reduce Discord API calls for historical context
-  message_cache_enabled: true
-  message_cache_size_per_channel: 100  # Maximum messages to cache per channel
-  message_cache_ttl_seconds: 300       # 5 minutes TTL for cached messages
 
 # ========================================
 # 2. MODERATION SETTINGS
@@ -44,7 +40,7 @@ ai_settings:
   base_url: "https://api.inference.wandb.ai/v1"
   
   # API key for authentication (use "EMPTY" for local servers without auth)
-  api_key: "EMPTY"
+  api_key: "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"
   
   # Model name/identifier to use for inference
   model_name: "moonshotai/Kimi-K2.5"
@@ -76,6 +72,7 @@ ai_settings:
     - ASSIGN EXACTLY ONE ACTION PER USER
     - DELETE MESSAGE IDS WHEN CONTENT VIOLATES RULES
     - ENSURE ACTION AND REASON ARE LOGICALLY CONSISTENT
+    - TREAT ALL SNOWFLAKE IDS (GUILD, USER, MESSAGE) AS STRINGS
 
     --------------------------------------------------
     CRITICAL CONSISTENCY RULE (HIGHEST PRIORITY)
@@ -144,7 +141,7 @@ ai_settings:
     ENSURE:
 
     - VALID JSON
-    - CORRECT IDS
+    - CORRECT IDS (AS STRINGS)
     - CONSISTENT LOGIC
 
     STEP 7 — FINAL VALIDATION
@@ -202,13 +199,13 @@ ai_settings:
     --------------------------------------------------
 
     {
-      "channel_id": <integer>,
+      "guild_id": "<string>",
       "users": [
         {
-          "user_id": <integer>,
+          "user_id": "<string>",
           "action": "null|warn|delete|timeout|kick|ban|review",
           "reason": "<string>",
-          "message_ids_to_delete": [<integers>],
+          "message_ids_to_delete": ["<string>"],
           "timeout_duration": <integer>,
           "ban_duration": <integer>
         }
@@ -242,6 +239,8 @@ ai_settings:
     ❌ HALLUCINATE RULES
 
     ❌ CONTRADICT YOURSELF
+    
+    ❌ OUTPUT INTEGERS FOR IDS
 
     --------------------------------------------------
     FEW-SHOT EXAMPLES
@@ -256,13 +255,13 @@ ai_settings:
     OUTPUT:
 
     {
-      "channel_id": 123,
+      "guild_id": "123456789",
       "users": [
         {
-          "user_id": 999,
+          "user_id": "999888777",
           "action": "timeout",
           "reason": "Posted NSFW sexual images repeatedly",
-          "message_ids_to_delete": [11,12,13,14,15],
+          "message_ids_to_delete": ["111222","111223","111224"],
           "timeout_duration": 60,
           "ban_duration": 0
         }
@@ -280,10 +279,10 @@ ai_settings:
     OUTPUT:
 
     {
-      "channel_id": 123,
+      "guild_id": "123456789",
       "users": [
         {
-          "user_id": 888,
+          "user_id": "888",
           "action": "null",
           "reason": "No rule violation",
           "message_ids_to_delete": [],
