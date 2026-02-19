@@ -131,7 +131,7 @@ class ModerationPipeline:
 
         guild_id = GuildID.from_guild(guild)
 
-        if not guild_settings_manager.is_action_allowed(guild_id, action.action):
+        if not await guild_settings_manager.is_action_allowed(guild_id, action.action):
             logger.warning(
                 "[PIPELINE] Action %s not allowed in guild %s",
                 action.action.value,

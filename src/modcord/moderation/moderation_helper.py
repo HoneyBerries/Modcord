@@ -171,9 +171,9 @@ async def apply_action(
     # now do actual stuff — delete messages per channel
     for spec in action.channel_deletions:
         del_channel = guild.get_channel(int(spec.channel_id))
-        if del_channel is None or not isinstance(del_channel, discord.TextChannel):
+        if del_channel is None or not isinstance(del_channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
             logger.warning(
-                "Channel %s not found or not a text channel in guild %s",
+                "Channel %s not found or not a text channel/thread in guild %s",
                 spec.channel_id,
                 guild.id,
             )

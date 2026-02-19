@@ -24,7 +24,7 @@ class DebugCog(commands.Cog):
     @debug.command(name="test", description="Test console to verify the bot is responsive")
     async def test(self, application_context: discord.ApplicationContext) -> None:
         """Test console to verify the bot is responsive."""
-        await application_context.respond(f"Bot is online at {datetime.datetime.now()}, lagging behind by {self.bot.latency * 1000:.2f} ms!", ephemeral=True)
+        await application_context.respond(f"Bot is online at {datetime.datetime.now():.0f}, lagging behind by {self.bot.latency * 1000:.2f} ms!", ephemeral=True)
 
 
     @debug.command(name="purge", description="Delete all messages in the current channel")

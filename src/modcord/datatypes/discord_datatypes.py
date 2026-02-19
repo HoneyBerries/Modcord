@@ -113,6 +113,8 @@ class DiscordSnowflake:
             return self._value == other._value
         if isinstance(other, str):
             return self._value == other
+        if isinstance(other, int):
+            return int(self._value) == other
         return NotImplemented
 
     def __hash__(self) -> int:

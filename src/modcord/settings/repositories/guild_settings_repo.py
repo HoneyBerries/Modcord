@@ -51,6 +51,9 @@ class GuildSettingsRepository:
         ) as cursor:
             row = await cursor.fetchone()
 
+        if row is None:
+            return None
+
         return GuildSettingsRow(
             guild_id=row[0],
             ai_enabled=bool(row[1]),

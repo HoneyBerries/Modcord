@@ -92,7 +92,6 @@ def build_server_moderation_schema(
     # ---- build JSON schema ------------------------------------------
     user_schemas: List[dict] = []
     for user_id, ch_map in user_channel_msgs.items():
-        ch_names = user_channel_names[user_id]
 
         channel_schemas: List[dict] = []
         for ch_id, msg_ids_set in ch_map.items():

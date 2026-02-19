@@ -345,7 +345,7 @@ async def delete_messages_from_channel(
             # Some messages already gone — fall back to individual
             for obj in batch:
                 try:
-                    msg = await channel.fetch_message(obj.id)
+                    msg = channel.get_partial_message(obj.id)
                     await msg.delete()
                     deleted += 1
                 except (discord.NotFound, discord.Forbidden):
@@ -360,7 +360,7 @@ async def delete_messages_from_channel(
     # Individual delete for old messages
     for msg_id in old_ids:
         try:
-            msg = await channel.fetch_message(msg_id)
+            msg = channel.get_partial_message(msg_id)
             await msg.delete()
             deleted += 1
         except discord.NotFound:

@@ -75,7 +75,7 @@ class MessageProcessingService:
 
         # Build per-user structures
         users = await self._group_by_user(mod_messages_by_channel, channels, guild)
-        history_users = await self._group_by_user(history_by_channel, channels, guild) if history_by_channel else []
+        history_users = await self._group_by_user(history_by_channel, channels, guild) if history_by_channel else ()
 
         if not users:
             logger.debug("No users found in batch for guild %s", guild.id)
@@ -123,9 +123,7 @@ class MessageProcessingService:
 
         users= []
         for user_id, ch_msgs in user_channels_map.items():
-            # user_id is a UserID object, extract integer for guild.get_member()
-            user_id_int = user_id.to_int() if isinstance(user_id, UserID) else user_id
-            member = guild.get_member(user_id_int)
+            member = guild.get_member(int(user_id))
             if not member:
                 continue
 
@@ -148,7 +146,7 @@ class MessageProcessingService:
             users.append(
                 ModerationUser(
                     user_id=user_id,  # Already a UserID object
-                    username=DiscordUsername.from_user(member),
+                    username=DiscordUsername.from_member(member),
                     join_date=join_date,
                     discord_member=member,
                     discord_guild=guild,
