@@ -1,9 +1,8 @@
-from modcord.datatypes.discord_datatypes import UserID, MessageID
-from modcord.datatypes.moderation_datatypes import ServerModerationBatch
 from typing import Dict, List, Set
 
+from modcord.datatypes.discord_datatypes import ChannelID, UserID, MessageID
+from modcord.datatypes.moderation_datatypes import ServerModerationBatch
 from modcord.util.logger import get_logger
-
 
 logger = get_logger("dynamic_schema_generator")
 
@@ -13,88 +12,143 @@ def build_server_moderation_schema(
 ) -> dict:
     """Build a dynamic JSON schema for server-wide moderation.
 
-    Constrains AI outputs to valid user IDs and per-user message IDs across
-    all channels in the guild.  There is no channel_id constraint — the AI
-    operates at the server level and channel context is provided in the
-    JSON payload instead.
+    Constrains AI outputs to valid user IDs and, for each user, valid
+    channel IDs with per-channel message IDs.
 
-    Only the non-history users in the batch are eligible for moderation actions;
-    history users are context only and are excluded from the schema.
+    Expected AI response shape::
 
-    All snowflake ID fields (guild_id, user_id, message_ids_to_delete) are
-    declared as "type": "string" in the schema. This prevents IEEE 754 double
-    precision loss: 64-bit Discord snowflakes exceed the 53-bit mantissa of
-    JSON numbers, causing silent rounding when the LLM emits them as bare
-    integer literals. Quoting them as strings bypasses this entirely.
-    The parser already normalises all ID fields via str() / DiscordSnowflake,
-    so no parser changes are required.
+        {
+          "guild_id": "<string>",
+          "users": [
+            {
+              "user_id": "<string>",
+              "action": "null|delete|warn|timeout|kick|ban",
+              "reason": "<string>",
+              "channels": [
+                {
+                  "channel_id": "<string>",
+                  "message_ids_to_delete": ["<mid>", ...]
+                }
+              ],
+              "timeout_duration": <int>,
+              "ban_duration": <int>
+            }
+          ]
+        }
+
+    Only the non-history users in the batch are eligible for moderation
+    actions; history users provide context only and are excluded from the
+    schema (but their message IDs are added to the allowed-deletion set).
+
+    All snowflake fields are ``"type": "string"`` to prevent IEEE 754
+    precision loss on 64-bit Discord snowflakes.
 
     Args:
-        batch: The ServerModerationBatch containing current users and their messages.
+        batch: ServerModerationBatch with current and history users.
 
     Returns:
-        JSON schema dict with per-user message ID constraints.
+        JSON schema dict with per-user, per-channel message ID constraints.
     """
     guild_id = batch.guild_id
 
     if not batch.users:
-        logger.warning("[SCHEMA] Empty batch.users - no users with valid content to moderate")
+        logger.warning("[SCHEMA] Empty batch.users — no users to moderate")
         return {
             "type": "object",
             "properties": {
                 "guild_id": {"type": "string", "enum": [str(guild_id)]},
-                "users": {"type": "array", "maxItems": 0}
+                "users": {"type": "array", "maxItems": 0},
             },
             "required": ["guild_id", "users"],
-            "additionalProperties": False
+            "additionalProperties": False,
         }
 
-    # Build user_id -> message_ids mapping from the batch's current (non-history) users
-    user_message_map: Dict[UserID, Set[MessageID]] = {
-        user.user_id: {msg.message_id for msg in user.messages}
-        for user in batch.users
-    }
+    # ---- collect user → channel → message-id sets -------------------
+    # Start with current (non-history) users
+    user_channel_msgs: Dict[UserID, Dict[ChannelID, Set[MessageID]]] = {}
+    user_channel_names: Dict[UserID, Dict[ChannelID, str]] = {}
 
-    # Iterate through batch.history_users to add context messages for moderated users
+    for user in batch.users:
+        ch_map: Dict[ChannelID, Set[MessageID]] = {}
+        ch_names: Dict[ChannelID, str] = {}
+        for uch in user.channels:
+            ch_map[uch.channel_id] = {msg.message_id for msg in uch.messages}
+            ch_names[uch.channel_id] = uch.channel_name
+        user_channel_msgs[user.user_id] = ch_map
+        user_channel_names[user.user_id] = ch_names
+
+    # Merge history message IDs into existing users' channels
     for history_user in batch.history_users:
-        if history_user.user_id in user_message_map:
-            # Add history message IDs to the allowed set for deletions
-            for msg in history_user.messages:
-                user_message_map[history_user.user_id].add(msg.message_id)
+        if history_user.user_id not in user_channel_msgs:
+            continue  # history-only user — not moderated
+        ch_map = user_channel_msgs[history_user.user_id]
+        ch_names = user_channel_names[history_user.user_id]
+        for uch in history_user.channels:
+            ch_map.setdefault(uch.channel_id, set())
+            ch_names.setdefault(uch.channel_id, uch.channel_name)
+            for msg in uch.messages:
+                ch_map[uch.channel_id].add(msg.message_id)
 
-    user_ids = list(user_message_map.keys())
+    # ---- build JSON schema ------------------------------------------
+    user_schemas: List[dict] = []
+    for user_id, ch_map in user_channel_msgs.items():
+        ch_names = user_channel_names[user_id]
 
-    # Build per-user schema with constrained message IDs.
-    # All snowflake fields are "type": "string" to avoid IEEE 754 precision loss.
-    user_schemas = []
-    for user_id, message_ids_set in user_message_map.items():
-        # Convert to sorted list for deterministic schema output
-        message_ids: list[str] = sorted(str(mid) for mid in message_ids_set)
+        channel_schemas: List[dict] = []
+        for ch_id, msg_ids_set in ch_map.items():
+            sorted_mids: List[str] = sorted(str(mid) for mid in msg_ids_set)
 
-        if message_ids:
-            message_constraint = {
+            if sorted_mids:
+                mid_constraint = {
+                    "type": "array",
+                    "items": {"type": "string", "enum": sorted_mids},
+                }
+            else:
+                mid_constraint = {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 0,
+                }
+
+            channel_schemas.append({
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "enum": [str(ch_id)]},
+                    "message_ids_to_delete": mid_constraint,
+                },
+                "required": ["channel_id", "message_ids_to_delete"],
+                "additionalProperties": False,
+            })
+
+        # channels array for this user — oneOf per channel
+        if channel_schemas:
+            channels_constraint: dict = {
                 "type": "array",
-                "items": {"type": "string", "enum": [mid for mid in message_ids]}
+                "items": {"oneOf": channel_schemas},
+                "minItems": len(channel_schemas),
+                "maxItems": len(channel_schemas),
             }
         else:
-            message_constraint = {
+            channels_constraint = {
                 "type": "array",
-                "items": {"type": "string"},
-                "maxItems": 0
+                "maxItems": 0,
             }
 
         user_schemas.append({
             "type": "object",
             "properties": {
                 "user_id": {"type": "string", "enum": [str(user_id)]},
-                "action": {"type": "string", "enum": ["null", "delete", "warn", "timeout", "kick", "ban", "review"]},
+                "action": {
+                    "type": "string",
+                    "enum": ["null", "delete", "warn", "timeout", "kick", "ban"],
+                },
                 "reason": {"type": "string"},
-                "message_ids_to_delete": message_constraint,
+                "channels": channels_constraint,
                 "timeout_duration": {"type": "integer", "minimum": 0, "maximum": 60 * 24 * 7},
                 "ban_duration": {"type": "integer", "minimum": -1, "maximum": 60 * 24 * 365},
             },
-            "required": ["user_id", "action", "reason", "message_ids_to_delete", "timeout_duration", "ban_duration"],
-            "additionalProperties": False
+            "required": ["user_id", "action", "reason", "channels", "timeout_duration", "ban_duration"],
+            "additionalProperties": False,
         })
 
     return {
@@ -104,10 +158,10 @@ def build_server_moderation_schema(
             "users": {
                 "type": "array",
                 "items": {"oneOf": user_schemas},
-                "minItems": len(user_ids),
-                "maxItems": len(user_ids)
-            }
+                "minItems": len(user_schemas),
+                "maxItems": len(user_schemas),
+            },
         },
         "required": ["guild_id", "users"],
-        "additionalProperties": False
+        "additionalProperties": False,
     }

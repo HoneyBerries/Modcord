@@ -14,9 +14,8 @@ import discord
 
 from modcord.configuration.app_configuration import app_config
 from modcord.datatypes.discord_datatypes import GuildID
-from modcord.util.logger import get_logger
-
 from modcord.services.message_processing_service import MessageProcessingService
+from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_queue_service")
 
@@ -123,7 +122,7 @@ class ModerationQueueService:
                     messages.append(queue.get_nowait())
 
             except asyncio.CancelledError:
-                logger.debug("Guild worker cancelled for guild %s", guild_id)
+                logger.info("Guild worker cancelled for guild %s", guild_id)
                 return
             except Exception:
                 logger.exception(
@@ -134,7 +133,7 @@ class ModerationQueueService:
             if not messages:
                 continue
 
-            logger.debug(
+            logger.info(
                 "Guild %s: forwarding batch of %d message(s) from %d channel(s) to processing service",
                 guild_id,
                 len(messages),

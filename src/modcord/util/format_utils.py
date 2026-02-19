@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from typing import List
 
-from modcord.util.logger import get_logger
 from modcord.datatypes.action_datatypes import ActionData, ActionType
+from modcord.util.logger import get_logger
 
 logger = get_logger("format_utils")
 

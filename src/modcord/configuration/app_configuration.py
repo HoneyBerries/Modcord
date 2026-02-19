@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Dict
+
 import yaml
 
 from modcord.configuration.ai_settings import AISettings

@@ -7,16 +7,17 @@ Provides a simplified API for managing guild settings:
 - is_action_allowed/set_action_allowed: Action-type specific helpers
 - save(guild_id, settings): Explicit persist trigger
 
-Database operations are delegated to GuildSettingsService which itself
-delegates to focused per-table repositories.
+All reads go directly to the database — there is no in-memory cache.
+This keeps state simple and consistent at the cost of a DB round-trip
+per read, which is acceptable given SQLite's WAL read performance and
+the 256 MB page cache configured on the connection.
 """
-import asyncio
-from typing import Any, Dict, Set
+from typing import Any, Dict
 
-from modcord.datatypes.discord_datatypes import GuildID, ChannelID
 from modcord.datatypes.action_datatypes import ActionType
+from modcord.datatypes.discord_datatypes import GuildID, ChannelID
 from modcord.datatypes.guild_settings import GuildSettings, ACTION_FLAG_FIELDS
-from modcord.settings.guild_settings_service import guild_settings_service
+from modcord.services.guild_settings_service import guild_settings_service
 from modcord.util.logger import get_logger
 
 logger = get_logger("guild_settings_manager")
@@ -26,45 +27,48 @@ class GuildSettingsManager:
     """
     Manager for persistent per-guild settings.
 
-    Provides a clean API:
-    - get_settings(guild_id): Retrieve settings object
+    No in-memory cache — every read hits the database directly.
+    SQLite's WAL mode and page cache make this fast enough in practice.
+
+    Public API:
+    - get_settings(guild_id): Retrieve settings object (creates defaults if missing)
+    - get_rules(guild_id): Fetch just the rules string
+    - get_guidelines(guild_id): Fetch just the channel guidelines map
     - update(guild_id, **kwargs): Update fields and auto-persist
-    - is_action_allowed/set_action_allowed: ActionType helpers
+    - is_action_allowed(guild_id, action): DB-backed action flag check
+    - set_action_allowed(guild_id, action, enabled): Toggle an action flag
     - save(guild_id, settings): Explicit persist
+    - delete(guild_id): Remove all data for a guild
     """
 
-    def __init__(self):
-        """Instantiate caches and persistence helpers."""
-        self._rules_cache: Dict[GuildID, str] = {}
-        self._guidelines_cache: Dict[GuildID, Dict[ChannelID, str]] = {}
-        self._active_persists: Set[asyncio.Task] = set()
+    def __init__(self) -> None:
         self._db_initialized = False
-
         logger.info("[GUILD SETTINGS MANAGER] Initialized")
 
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     async def async_init(self) -> None:
-        """Initialize the database and load settings from disk."""
+        """Initialize the database service."""
         if not self._db_initialized:
             await guild_settings_service.initialize()
-            loaded_guilds = await guild_settings_service.load_all()
-
-            # Populate only rules and guidelines caches
-            for guild_id, settings in loaded_guilds.items():
-                if settings.rules:
-                    self._rules_cache[guild_id] = settings.rules
-                if settings.channel_guidelines:
-                    self._guidelines_cache[guild_id] = settings.channel_guidelines.copy()
-
             self._db_initialized = True
-            logger.info("[GUILD SETTINGS MANAGER] Database initialized and caches loaded")
+            logger.info("[GUILD SETTINGS MANAGER] Database initialized")
 
+    async def shutdown(self) -> None:
+        """No-op — nothing to flush without a cache."""
+        logger.info("[GUILD SETTINGS MANAGER] Shutdown complete")
 
-    # ========== Core API ==========
+    # ------------------------------------------------------------------
+    # Core API
+    # ------------------------------------------------------------------
 
     async def get_settings(self, guild_id: GuildID) -> GuildSettings:
         """
         Retrieve settings for a guild, creating defaults if missing.
+
+        Always reads from the database.
 
         Args:
             guild_id: The guild ID to fetch settings for.
@@ -79,30 +83,40 @@ class GuildSettingsManager:
         if settings is None:
             settings = GuildSettings(guild_id=guild_id)
 
-        # Overwrite with cached values
-        if guild_id in self._rules_cache:
-            settings.rules = self._rules_cache[guild_id]
-
-        if guild_id in self._guidelines_cache:
-            settings.channel_guidelines = self._guidelines_cache[guild_id].copy()
-
         return settings
 
-    def get_cached_rules(self, guild_id: GuildID) -> str:
-        """Get cached rules for a guild."""
-        if not isinstance(guild_id, GuildID):
-            guild_id = GuildID(guild_id)
-        return self._rules_cache.get(guild_id, "")
+    async def get_rules(self, guild_id: GuildID) -> str:
+        """
+        Fetch just the rules string for a guild directly from the DB.
 
-    def get_cached_guidelines(self, guild_id: GuildID) -> Dict[ChannelID, str]:
-        """Get cached guidelines for a guild."""
-        if not isinstance(guild_id, GuildID):
-            guild_id = GuildID(guild_id)
-        return self._guidelines_cache.get(guild_id, {}).copy()
+        Args:
+            guild_id: The guild ID.
+
+        Returns:
+            The rules string, or an empty string if none are set.
+        """
+        settings = await self.get_settings(guild_id)
+        return settings.rules
+
+    async def get_guidelines(self, guild_id: GuildID) -> Dict[ChannelID, str]:
+        """
+        Fetch just the channel guidelines map for a guild directly from the DB.
+
+        Args:
+            guild_id: The guild ID.
+
+        Returns:
+            Dict mapping ChannelID to guideline text.
+        """
+        settings = await self.get_settings(guild_id)
+        return settings.channel_guidelines.copy() if settings.channel_guidelines else {}
 
     async def update(self, guild_id: GuildID, **kwargs: Any) -> GuildSettings:
         """
         Update settings fields and auto-persist.
+
+        Reads current settings from the DB, applies the given fields,
+        then writes back immediately.
 
         Args:
             guild_id: The guild ID to update settings for.
@@ -119,12 +133,6 @@ class GuildSettingsManager:
         for field_name, value in kwargs.items():
             if hasattr(settings, field_name):
                 setattr(settings, field_name, value)
-
-                # Update caches if necessary
-                if field_name == "rules":
-                    self._rules_cache[guild_id] = value
-                elif field_name == "channel_guidelines":
-                    self._guidelines_cache[guild_id] = value.copy()
             else:
                 logger.warning(
                     "[GUILD SETTINGS MANAGER] Unknown field %s for guild %s",
@@ -136,7 +144,7 @@ class GuildSettingsManager:
 
     async def save(self, guild_id: GuildID, settings: GuildSettings) -> None:
         """
-        Persist guild settings to database.
+        Persist guild settings to the database.
 
         Args:
             guild_id: The guild ID to persist.
@@ -153,7 +161,8 @@ class GuildSettingsManager:
             )
 
     async def delete(self, guild_id: GuildID) -> bool:
-        """Delete all data for a guild from memory and database.
+        """
+        Delete all data for a guild from the database.
 
         Args:
             guild_id: The guild ID to delete.
@@ -164,23 +173,17 @@ class GuildSettingsManager:
         if not isinstance(guild_id, GuildID):
             guild_id = GuildID(guild_id)
 
-        # Remove from memory cache
-        self._rules_cache.pop(guild_id, None)
-        self._guidelines_cache.pop(guild_id, None)
-
-        logger.debug("[GUILD SETTINGS MANAGER] Removed guild %s from memory cache", int(guild_id))
-
         return await guild_settings_service.delete(guild_id)
 
+    # ------------------------------------------------------------------
+    # Action Type Helpers
+    # ------------------------------------------------------------------
 
-    # ========== Action Type Helpers ==========
-
-    def is_action_allowed(self, guild_id: GuildID, action: ActionType) -> bool:
+    async def is_action_allowed(self, guild_id: GuildID, action: ActionType) -> bool:
         """
-        Check if a specific action type is enabled using cached settings.
+        Check if a specific action type is enabled for a guild.
 
-        This is a synchronous fast-path using only the in-memory state.
-        For an accurate DB-backed check use get_settings() first.
+        Always reads from the database for an accurate result.
 
         Args:
             guild_id: The guild ID.
@@ -188,9 +191,18 @@ class GuildSettingsManager:
 
         Returns:
             True if the action is allowed, False otherwise.
+            Defaults to True if the action flag is not mapped.
         """
-        # Default to allowed if we have no settings cached
-        return True
+        field_name = ACTION_FLAG_FIELDS.get(action)
+        if field_name is None:
+            logger.warning(
+                "[GUILD SETTINGS MANAGER] Unsupported action %s for guild %s — defaulting to allowed",
+                action, guild_id
+            )
+            return True
+
+        settings = await self.get_settings(guild_id)
+        return bool(getattr(settings, field_name, True))
 
     async def set_action_allowed(self, guild_id: GuildID, action: ActionType, enabled: bool) -> bool:
         """
@@ -202,7 +214,7 @@ class GuildSettingsManager:
             enabled: Whether to enable or disable.
 
         Returns:
-            True if successful, False if action type is unsupported.
+            True if successful, False if the action type is unsupported.
         """
         if not isinstance(guild_id, GuildID):
             guild_id = GuildID(guild_id)
@@ -217,14 +229,6 @@ class GuildSettingsManager:
 
         await self.update(guild_id, **{field_name: bool(enabled)})
         return True
-
-    # ========== Lifecycle ==========
-
-    async def shutdown(self) -> None:
-        """Await any pending persistence tasks during shutdown."""
-        await asyncio.gather(*self._active_persists, return_exceptions=True)
-        self._active_persists.clear()
-        logger.info("[GUILD SETTINGS MANAGER] Shutdown complete")
 
 
 # Global instance

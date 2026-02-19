@@ -8,14 +8,14 @@ This module provides utility functions for:
 """
 
 import datetime
+
 import discord
 
-from modcord.database.database import database
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import UserID
 from modcord.datatypes.moderation_datatypes import ServerModerationBatch, ModerationUser
-from modcord.ui import action_embed
 from modcord.scheduler import unban_scheduler
+from modcord.ui import action_embed
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
@@ -42,9 +42,9 @@ def find_target_user_in_batch(
     """
     target_user = next((u for u in batch.users if u.user_id == user_id), None)
     
-    if not target_user or not target_user.messages:
+    if not target_user or not target_user.channels:
         logger.warning(
-            "[MODERATION HELPER] Target user %s not found in batch or has no messages",
+            "[MODERATION HELPER] Target user %s not found in batch or has no channels",
             user_id
         )
         return None
@@ -168,10 +168,17 @@ async def apply_action(
 
     channel = notification_channel
     
-    # now do actual stuff
-    if len(action.message_ids_to_delete) > 0:
-        # Delete specified messages (scans all channels in guild)
-        await discord_utils.delete_messages_by_ids(guild, action.message_ids_to_delete)
+    # now do actual stuff — delete messages per channel
+    for spec in action.channel_deletions:
+        del_channel = guild.get_channel(int(spec.channel_id))
+        if del_channel is None or not isinstance(del_channel, discord.TextChannel):
+            logger.warning(
+                "Channel %s not found or not a text channel in guild %s",
+                spec.channel_id,
+                guild.id,
+            )
+            continue
+        await discord_utils.delete_messages_from_channel(del_channel, spec.message_ids)
     
     
     try:
@@ -179,12 +186,10 @@ async def apply_action(
             case ActionType.WARN:
                 if channel:
                     await send_action_notification(action, member, guild, channel, bot.user)
-                await database.log_moderation_action(action)
                 return True
             
             case ActionType.DELETE:
                 # Messages already deleted above
-                await database.log_moderation_action(action)
                 return True
             
             case ActionType.TIMEOUT:
@@ -196,14 +201,12 @@ async def apply_action(
                 await member.timeout(until, reason=f"ModCord: {action.reason}")
                 if channel:
                     await send_action_notification(action, member, guild, channel, bot.user)
-                await database.log_moderation_action(action)
                 return True
             
             case ActionType.KICK:
                 await guild.kick(member, reason=f"ModCord: {action.reason}")
                 if channel:
                     await send_action_notification(action, member, guild, channel, bot.user)
-                await database.log_moderation_action(action)
                 return True
             
             case ActionType.BAN:
@@ -227,7 +230,6 @@ async def apply_action(
                 
                 if channel:
                     await send_action_notification(action, member, guild, channel, bot.user)
-                await database.log_moderation_action(action)
                 return True
             
             case _:
@@ -240,7 +242,3 @@ async def apply_action(
     except Exception as e:
         logger.error(f"Error applying {action.action.value}: {e}", exc_info=True)
         return False
-
-
-# Backwards compatibility alias - will be removed in future versions
-apply_action_decision = apply_action

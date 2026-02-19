@@ -1,276 +1,162 @@
-"""
-Message Processing Service.
-
-Owns the entire pipeline between raw Discord messages and a
-ServerModerationBatch ready for the AI engine:
-
-  1. Convert discord.Message  →  ModerationMessage  (including images)
-  2. Group messages by channel and fetch per-channel historical context
-  3. Deduplicate users across channels and resolve Discord member objects
-  4. Bulk-fetch past actions from the database
-  5. Build a single ServerModerationBatch with per-channel context
-  6. Forward the batch to ModerationPipeline.execute()
-
-Nothing in this service knows about Cogs or queues — it only talks to
-infrastructure helpers (history fetcher, database, guild settings, image utils)
-and the AI moderation pipeline.
-"""
-
-from __future__ import annotations
-
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Dict, List, Set, TYPE_CHECKING
 
 import discord
 
-from modcord.configuration.app_configuration import app_config
-from modcord.database.database import database
-from modcord.datatypes.discord_datatypes import (
-    ChannelID,
-    DiscordUsername,
-    GuildID,
-    MessageID,
-    UserID,
-)
+from modcord.datatypes.discord_datatypes import GuildID, UserID, DiscordUsername, MessageID, ChannelID
 from modcord.datatypes.moderation_datatypes import (
-    ChannelContext,
-    ServerModerationBatch,
-    ModerationMessage,
-    ModerationUser,
-)
-from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
+    ModerationMessage, ModerationUserChannel, ModerationUser,
+    ChannelContext, ServerModerationBatch)
+from modcord.history.discord_history_fetcher import fetch_history_context
 from modcord.moderation.moderation_pipeline import ModerationPipeline
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util import image_utils
-from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
 logger = get_logger("message_processing_service")
 
-
 class MessageProcessingService:
-    """
-    Converts, enriches, and dispatches batches of raw Discord messages
-    through the AI moderation pipeline.
+    """Processes Discord messages into ServerModerationBatch for AI moderation."""
 
-    Messages from ALL channels in a guild are processed together into a
-    single ServerModerationBatch, enabling cross-channel pattern detection.
+    def __init__(self, bot: discord.Bot, moderation_pipeline: ModerationPipeline):
+        self.bot = bot
+        self.pipeline = moderation_pipeline
 
-    Parameters
-    ----------
-    bot:
-        The Discord bot instance — needed to resolve channels and guilds.
-    moderation_pipeline:
-        The AI pipeline that consumes ServerModerationBatch objects.
-    history_fetcher:
-        Utility that fetches historical channel messages.
-    """
-
-    def __init__(
-        self,
-        bot: discord.Bot,
-        moderation_pipeline: ModerationPipeline,
-        history_fetcher: DiscordHistoryFetcher,
-    ) -> None:
-        self._bot = bot
-        self._pipeline = moderation_pipeline
-        self._history_fetcher = history_fetcher
-
-    # ------------------------------------------------------------------
-    # Public API — called by ModerationQueueService
-    # ------------------------------------------------------------------
-
-    async def process_batch(self, raw_messages: List[discord.Message]) -> None:
-        """
-        Full processing pipeline for one guild batch (multi-channel).
-
-        Steps
-        -----
-        1. Gate on AI-enabled guild setting.
-        2. Group raw messages by channel.
-        3. Convert each discord.Message to ModerationMessage.
-        4. Fetch historical context per channel.
-        5. Deduplicate users across channels, enrich each user.
-        6. Build channel context with per-channel guidelines.
-        7. Build a single ServerModerationBatch.
-        8. Forward to ModerationPipeline.execute().
-        """
+    async def process_batch(self, raw_messages):
         if not raw_messages:
             return
 
-
-        # Step 1 — gate on AI-enabled guild setting
         guild = raw_messages[0].guild
-        if guild is None:
+        if not guild:
             return
 
-        guild_id = GuildID.from_guild(guild)
-        settings = await guild_settings_manager.get_settings(guild_id)
+        settings = await guild_settings_manager.get_settings(guild.id)
         if not settings.ai_enabled:
-            logger.debug("AI moderation disabled for guild %s — skipping batch", guild_id)
+            logger.debug("AI moderation disabled for guild %s", guild.id)
             return
 
-
-        # Step 2 — group raw messages by channel
-        messages_by_channel: Dict[ChannelID, List[discord.Message]] = defaultdict(list)
+        # Group messages by channel (using integer IDs from Discord API)
+        messages_by_channel_int = defaultdict(list)
         for msg in raw_messages:
-            if msg.channel is not None:
-                ch_id = ChannelID.from_channel(msg.channel)
-                messages_by_channel[ch_id].append(msg)
+            if msg.channel:
+                messages_by_channel_int[msg.channel.id].append(msg)
 
-
-        # Step 3 — convert raw messages per channel
-        mod_messages_by_channel: Dict[ChannelID, List[ModerationMessage]] = {}
-        for ch_id, ch_msgs in messages_by_channel.items():
-            converted: List[ModerationMessage] = []
-            
-            for raw_msg in ch_msgs:
-                mod_msg = await self._convert_message(raw_msg)
-                if mod_msg is not None:
-                    converted.append(mod_msg)
+        # Convert messages to ModerationMessage objects
+        mod_messages_by_channel = {}
+        for ch_id_int, msgs in messages_by_channel_int.items():
+            converted = [await self._convert_message(m) for m in msgs]
+            converted = [m for m in converted if m]
             if converted:
-                mod_messages_by_channel[ch_id] = converted
+                # Use integer keys for now, will wrap in ChannelID later
+                mod_messages_by_channel[ch_id_int] = converted
 
         if not mod_messages_by_channel:
             return
 
+        # Fetch history per channel
+        history_by_channel = {}
+        for ch_id_int, msgs in mod_messages_by_channel.items():
+            exclude_ids = {m.message_id for m in msgs}
+            history = await fetch_history_context(self.bot, ch_id_int, exclude_ids, history_limit=50)
+            if history:
+                history_by_channel[ch_id_int] = history
 
-        # Step 4 — fetch historical context per channel
-        all_history_messages: List[ModerationMessage] = []
-        for ch_id, ch_mod_msgs in mod_messages_by_channel.items():
-            exclude_ids = {m.message_id for m in ch_mod_msgs}
-            history = await self._history_fetcher.fetch_history_context(
-                channel_id=ch_id,
-                exclude_message_ids=exclude_ids,
-                history_limit=app_config.history_context_messages,
+        # Build channel contexts with ChannelID keys
+        guidelines_map = await guild_settings_manager.get_guidelines(GuildID(guild.id))
+        channels = {}
+        for ch_id_int, msgs in mod_messages_by_channel.items():
+            ch_obj = self.bot.get_channel(ch_id_int)
+            channels[ChannelID(ch_id_int)] = ChannelContext(
+                channel_id=ChannelID(ch_id_int),
+                channel_name=ch_obj.name if ch_obj else f"Channel {ch_id_int}",
+                guidelines=guidelines_map.get(ChannelID(ch_id_int), ""),
+                message_count=len(msgs)
             )
-            all_history_messages.extend(history)
 
-        # Step 5 — deduplicate users across ALL channels
-        all_mod_messages: List[ModerationMessage] = []
-        for ch_mod_msgs in mod_messages_by_channel.values():
-            all_mod_messages.extend(ch_mod_msgs)
-
-        users = await self._group_messages_by_user(all_mod_messages, guild)
-        history_users = (
-            await self._group_messages_by_user(all_history_messages, guild)
-            if all_history_messages
-            else []
-        )
+        # Build per-user structures
+        users = await self._group_by_user(mod_messages_by_channel, channels, guild)
+        history_users = await self._group_by_user(history_by_channel, channels, guild) if history_by_channel else []
 
         if not users:
-            logger.debug("No valid users in batch for guild %s", guild_id)
+            logger.debug("No users found in batch for guild %s", guild.id)
             return
 
-        # Step 6 — build channel context with per-channel guidelines
-        guidelines_map = guild_settings_manager.get_cached_guidelines(guild_id)
-        channels: Dict[ChannelID, ChannelContext] = {}
-        for ch_id, ch_mod_msgs in mod_messages_by_channel.items():
-            channel_obj = self._bot.get_channel(int(ch_id))
-            channel_name = channel_obj.name if channel_obj is not None else f"Channel {ch_id}" # type: ignore
-            
-            channel_guidelines = guidelines_map.get(ch_id, "")
-            channels[ch_id] = ChannelContext(
-                channel_id=ch_id,
-                channel_name=channel_name,
-                guidelines=channel_guidelines,
-                message_count=len(ch_mod_msgs),
-            )
-
-        # Step 7 — build the server-wide batch
         batch = ServerModerationBatch(
-            guild_id=guild_id,
+            guild_id=GuildID(guild.id),
             channels=channels,
-            users=tuple(users),
-            history_users=tuple(history_users),
+            users=users,
+            history_users=history_users
         )
 
         logger.debug(
-            "Forwarding server batch to pipeline — guild=%s channels=%d users=%d history_users=%d",
-            guild_id,
-            len(channels),
-            len(users),
-            len(history_users),
+            "Forwarding batch: guild=%s channels=%d users=%d history_users=%d",
+            guild.id, len(channels), len(users), len(history_users)
         )
 
-        # Step 8 — forward to pipeline
-        await self._pipeline.execute(batch)
+        await self.pipeline.execute(batch)
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    async def _convert_message(self, message: discord.Message) -> ModerationMessage | None:
-        """Convert a raw discord.Message into a ModerationMessage."""
-        if message.guild is None or message.channel is None:
+    async def _convert_message(self, message):
+        if not message.guild or not message.channel:
             return None
-
         images = image_utils.extract_images_for_moderation(message)
-
         return ModerationMessage(
-            message_id=MessageID.from_message(message),
-            user_id=UserID.from_user(message.author),
+            message_id=MessageID(message.id),
+            user_id=UserID(message.author.id),
             content=message.clean_content or "",
             timestamp=message.created_at,
-            guild_id=GuildID.from_guild(message.guild),
-            channel_id=ChannelID.from_channel(message.channel),
-            images=tuple(images),
+            guild_id=GuildID(message.guild.id),
+            channel_id=ChannelID(message.channel.id),
+            images=tuple(images)
         )
 
-    async def _group_messages_by_user(
-        self,
-        messages: List[ModerationMessage],
-        guild: discord.Guild,
-    ) -> List[ModerationUser]:
-        """
-        Group ModerationMessages by user_id across all channels in the guild,
-        resolve each user's Discord member object, and bulk-fetch their past
-        moderation actions.
+    async def _group_by_user(self, messages_by_channel, channel_contexts, guild):
+        user_channels_map = defaultdict(list)
+        first_seen = {}
 
-        Preserves the order of first-appearance so the batch is chronological.
-        """
-        user_msgs: dict[UserID, List[ModerationMessage]] = defaultdict(list)
-        first_seen: dict[UserID, int] = {}
+        idx = 0
+        for ch_id, msgs in messages_by_channel.items():
+            for m in msgs:
+                if m.user_id not in first_seen:
+                    first_seen[m.user_id] = idx
+                user_channels_map[m.user_id].append((ch_id, m))
+                idx += 1
 
-        for idx, msg in enumerate(messages):
-            uid = msg.user_id
-            if uid not in first_seen:
-                first_seen[uid] = idx
-            user_msgs[uid].append(msg)
-
-        guild_id = GuildID.from_guild(guild)
-        lookback = app_config.past_actions_lookback_minutes
-
-        # Bulk DB query — one round-trip for all users
-        all_user_ids = list(user_msgs.keys())
-        bulk_past_actions = await database.get_bulk_past_actions(guild_id, all_user_ids, lookback)
-
-        users: List[ModerationUser] = []
-        for uid, msgs in user_msgs.items():
-            member = guild.get_member(int(uid))
-            if member is None:
-                logger.debug("Member %s not found in guild %s — skipping", uid, guild.id)
+        users= []
+        for user_id, ch_msgs in user_channels_map.items():
+            # user_id is a UserID object, extract integer for guild.get_member()
+            user_id_int = user_id.to_int() if isinstance(user_id, UserID) else user_id
+            member = guild.get_member(user_id_int)
+            if not member:
                 continue
 
-            join_date = (
-                member.joined_at
-                if member.joined_at is not None
-                else datetime.now(timezone.utc)
+            join_date = member.joined_at or datetime.now(timezone.utc)
+            # group messages per channel
+            channels_dict = defaultdict(tuple)
+            for ch_id, msg in ch_msgs:
+                channels_dict[ch_id] = channels_dict[ch_id] + (msg,)
+
+            user_channels = tuple(
+                ModerationUserChannel(
+                    channel_id=ChannelID(ch_id),
+                    channel_name=channel_contexts.get(ChannelID(ch_id), f"Channel {ch_id}").channel_name
+                    if ChannelID(ch_id) in channel_contexts else f"Channel {ch_id}",
+                    messages=msgs  # if msgs is already a tuple, no cast needed
+                )
+                for ch_id, msgs in channels_dict.items()
             )
 
             users.append(
                 ModerationUser(
-                    user_id=uid,
-                    username=DiscordUsername.from_member(member),
+                    user_id=user_id,  # Already a UserID object
+                    username=DiscordUsername.from_user(member),
                     join_date=join_date,
                     discord_member=member,
                     discord_guild=guild,
-                    roles=tuple(role.name for role in member.roles),
-                    messages=tuple(msgs),
-                    past_actions=tuple(bulk_past_actions.get(uid, [])),
+                    roles=tuple([role.name for role in member.roles]),
+                    channels=user_channels,
                 )
             )
 
+        # maintain chronological order
         users.sort(key=lambda u: first_seen[u.user_id])
-        return users
+        return tuple(users)

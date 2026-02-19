@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, Awaitable, Callable
+
 import discord
+
 from modcord.util.logger import get_logger
 
 logger = get_logger("sync_scheduler")

@@ -4,7 +4,7 @@ Moderation pipeline for server-wide AI moderation.
 This module orchestrates the full moderation flow:
 - Validates the server batch (non-empty, AI enabled)
 - Gets AI moderation decisions via LLMEngine (single request per guild)
-- Routes actions to Discord (delete, timeout, kick, ban) or human review
+- Routes actions to Discord (delete, timeout, kick, ban)
 
 Features:
 - Single ServerModerationBatch per guild per batch interval
@@ -12,19 +12,17 @@ Features:
 - Applies moderation actions back to Discord contexts
 """
 
-from typing import List
 import discord
 
 from modcord.ai.llm_engine import LLMEngine
-from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import GuildID
-from modcord.datatypes.moderation_datatypes import ServerModerationBatch
-from modcord.moderation.human_review_manager import HumanReviewManager
+from modcord.datatypes.guild_settings import GuildSettings
+from modcord.datatypes.moderation_datatypes import ServerModerationBatch, ModerationUser
 from modcord.moderation import moderation_helper
+from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
-
 
 logger = get_logger("moderation_engine")
 
@@ -63,7 +61,7 @@ class ModerationPipeline:
         Flow:
         1. Validate batch (non-empty, AI enabled)
         2. Get AI moderation decisions via LLMEngine (single request)
-        3. Apply actions (delete, timeout, kick, ban) or queue for review
+        3. Apply actions (delete, timeout, kick, ban)
         
         Args:
             batch: ServerModerationBatch containing all users/messages across channels.
@@ -84,98 +82,17 @@ class ModerationPipeline:
             logger.debug("[PIPELINE] No actions returned for guild %s", batch.guild_id)
             return
 
-        # Apply actions and handle reviews
-        review_manager = HumanReviewManager(self._bot)
-        has_reviews = False
-
+        # Apply actions
         for action in actions:
             if action.action is ActionType.NULL:
                 continue
-            
-            # Handle REVIEW actions separately through HumanReviewManager
-            if action.action is ActionType.REVIEW:
-                result = await self._handle_review_action(action, batch, review_manager)
-                if result:
-                    has_reviews = True
-            else:
-                await self._apply_batch_action(action, batch)
-        
-        # Finalize all review batches after processing all actions
-        if has_reviews:
-            guild = self._bot.get_guild(int(batch.guild_id))
-            if guild and settings:
-                await review_manager.send_review_embed(guild, settings)
-
-
-    async def _handle_review_action(
-        self,
-        action: ActionData,
-        batch: ServerModerationBatch,
-        review_manager: HumanReviewManager
-    ) -> bool:
-        """
-        Handle a REVIEW action by adding it to the HumanReviewManager.
-        
-        Args:
-            action: Review action to handle.
-            batch: Server batch containing the user and messages.
-            review_manager: HumanReviewManager instance for this batch.
-        
-        Returns:
-            True if review item was successfully added, False otherwise.
-        """
-        logger.debug(
-            "[PIPELINE] Processing review action for user %s in guild %s",
-            action.user_id,
-            batch.guild_id
-        )
-        
-        if not action.user_id:
-            logger.debug("[PIPELINE] Skipping: no user_id")
-            return False
-        
-        # Find target user with Discord context
-        target_user = moderation_helper.find_target_user_in_batch(batch, action.user_id)
-        if target_user is None:
-            return False
-        
-        guild = target_user.discord_guild
-        member = target_user.discord_member
-        
-        # Skip if user has elevated permissions
-        if guild.owner_id == member.id or discord_utils.has_elevated_permissions(member):
-            logger.debug(
-                "[PIPELINE] Skipping review for user %s: elevated permissions",
-                action.user_id
-            )
-            return False
-        
-        # Add review item to the manager
-        try:
-            await review_manager.add_item_for_review(
-                guild=guild,
-                user=target_user,
-                action=action
-            )
-            logger.info(
-                "[PIPELINE] Added review item for user %s in guild %s",
-                action.user_id,
-                guild.id
-            )
-            return True
-        except Exception as e:
-            logger.error(
-                "[PIPELINE] Failed to add review item for user %s: %s",
-                action.user_id,
-                e,
-                exc_info=True
-            )
-            return False
+            await self._apply_batch_action(action, batch, settings)
 
     async def _apply_batch_action(
         self,
         action: ActionData,
-        batch: ServerModerationBatch
+        batch: ServerModerationBatch,
+        settings: GuildSettings | None = None,
     ) -> bool:
         """
         Apply a moderation action to a user in the batch.
@@ -183,6 +100,7 @@ class ModerationPipeline:
         Args:
             action: ActionData containing action type and parameters.
             batch: Server batch containing the target user.
+            settings: Guild settings for notification channel resolution.
         
         Returns:
             True if action was successfully applied, False otherwise.
@@ -229,8 +147,8 @@ class ModerationPipeline:
             return False
 
         try:
-            # Derive notification channel from the user's first message in the batch
-            notification_channel = _resolve_notification_channel(guild, batch, target_user)
+            # Derive notification channel (mod-log > user channel > batch fallback)
+            notification_channel = _resolve_notification_channel(guild, batch, target_user, settings)
             
             result = await moderation_helper.apply_action(
                 action=action,
@@ -268,30 +186,39 @@ class ModerationPipeline:
 def _resolve_notification_channel(
     guild: discord.Guild,
     batch: ServerModerationBatch,
-    target_user,
+    target_user: ModerationUser,
+    settings: GuildSettings | None = None,
 ) -> discord.TextChannel | None:
     """Derive the best channel to post a notification embed in.
-    
-    Strategy: use the channel of the user's first message in the batch.
-    Falls back to the first channel in the batch if the user's messages
-    don't resolve to a valid text channel.
-    
+
+    Priority:
+    1. Configured mod-log channel (``settings.mod_log_channel_id``)
+    2. First channel from the user's message channels in this batch
+    3. First channel context in the batch
+
     Args:
         guild: Discord guild object.
         batch: Server batch with channel metadata.
-        target_user: ModerationUser whose messages we inspect.
-    
+        target_user: ModerationUser whose channels we inspect.
+        settings: Optional guild settings for mod-log channel.
+
     Returns:
         A TextChannel if one can be resolved, otherwise None.
     """
-    # Try the channel of the user's first message
-    if target_user.messages:
-        first_msg = target_user.messages[0]
-        ch = guild.get_channel(int(first_msg.channel_id))
+    # 1. Configured mod-log channel
+    if settings and settings.mod_log_channel_id:
+        ch = guild.get_channel(int(settings.mod_log_channel_id))
         if isinstance(ch, discord.TextChannel):
             return ch
 
-    # Fallback: first channel in the batch
+    # 2. First channel from the user's channels
+    if target_user.channels:
+        first_ch = target_user.channels[0]
+        ch = guild.get_channel(int(first_ch.channel_id))
+        if isinstance(ch, discord.TextChannel):
+            return ch
+
+    # 3. Fallback: first channel in the batch
     for ctx in batch.channels.values():
         ch = guild.get_channel(int(ctx.channel_id))
         if isinstance(ch, discord.TextChannel):

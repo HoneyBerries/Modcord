@@ -1,16 +1,17 @@
 """
 Build AI-ready payloads from server moderation batches.
 
-- Merges current and historical messages
-- Deduplicates messages by ID
+- Merges current and historical user-channel-message trees
+- Deduplicates messages by ID within each channel
 - Adds timestamps, roles, and images
 - Generates ChatCompletionMessageParam list ready for OpenAI API
 """
 
 from __future__ import annotations
-from typing import Dict, List, Tuple
-from collections import defaultdict
+
 import json
+from collections import defaultdict
+from typing import Dict, List, Tuple
 
 from openai.types.chat import (
     ChatCompletionMessageParam,
@@ -20,10 +21,11 @@ from openai.types.chat import (
     ChatCompletionContentPartImageParam,
 )
 
-from modcord.datatypes.discord_datatypes import UserID
+from modcord.datatypes.discord_datatypes import ChannelID, UserID
 from modcord.datatypes.moderation_datatypes import (
     ServerModerationBatch,
     ModerationUser,
+    ModerationUserChannel,
     ModerationMessage,
 )
 from modcord.util.format_utils import humanize_timestamp
@@ -32,36 +34,56 @@ from . import dynamic_schema_generator
 
 logger = get_logger("llm_payload_builder")
 
+
 def merge_users_with_history(
     current_users: Tuple[ModerationUser, ...],
     history_users: Tuple[ModerationUser, ...],
-) -> Tuple[Dict[UserID, ModerationUser], Dict[UserID, Tuple[ModerationMessage, ...]]]:
+) -> Tuple[Dict[UserID, ModerationUser], Dict[UserID, Tuple[ModerationUserChannel, ...]]]:
     """
-    Merge current and historical users/messages, deduplicating by message_id.
+    Merge current and historical users, deduplicating messages per channel.
+
+    Returns
+    -------
+    user_map : Dict[UserID, ModerationUser]
+        First-seen ModerationUser object per user.
+    channels_by_user : Dict[UserID, Tuple[ModerationUserChannel, ...]]
+        Per-user channel groupings with deduplicated messages.
     """
     user_map: Dict[UserID, ModerationUser] = {}
-    
-    # Use list as the factory for efficiency during collection
-    messages_by_user_list: Dict[UserID, list] = defaultdict(list)
-    seen_message_ids = set()
 
-    # Combine both iterables
+    # user_id → channel_id → ordered list of messages (deduped)
+    user_channel_msgs: Dict[UserID, Dict[ChannelID, List[ModerationMessage]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    # user_id → channel_id → channel_name (first seen wins)
+    channel_names: Dict[UserID, Dict[ChannelID, str]] = defaultdict(dict)
+    seen_message_ids: set = set()
+
     for user in current_users + history_users:
-        # Keep the first instance of the user object encountered
         user_map.setdefault(user.user_id, user)
-        
-        for msg in user.messages:
-            if msg.message_id not in seen_message_ids:
-                messages_by_user_list[user.user_id].append(msg)
-                seen_message_ids.add(msg.message_id)
 
-    # Convert lists back to tuples to match the return type signature
-    messages_by_user = {
-        user_id: tuple(msgs) 
-        for user_id, msgs in messages_by_user_list.items()
-    }
+        for uch in user.channels:
+            channel_names[user.user_id].setdefault(uch.channel_id, uch.channel_name)
+            for msg in uch.messages:
+                if msg.message_id not in seen_message_ids:
+                    user_channel_msgs[user.user_id][uch.channel_id].append(msg)
+                    seen_message_ids.add(msg.message_id)
 
-    return user_map, messages_by_user
+    # Convert to frozen ModerationUserChannel tuples
+    channels_by_user: Dict[UserID, Tuple[ModerationUserChannel, ...]] = {}
+    for uid, ch_map in user_channel_msgs.items():
+        uchs: List[ModerationUserChannel] = []
+        for ch_id, msgs in ch_map.items():
+            uchs.append(
+                ModerationUserChannel(
+                    channel_id=ch_id,
+                    channel_name=channel_names[uid].get(ch_id, f"Channel {ch_id}"),
+                    messages=tuple(msgs),
+                )
+            )
+        channels_by_user[uid] = tuple(uchs)
+
+    return user_map, channels_by_user
 
 
 def convert_batch_to_openai_messages(
@@ -71,44 +93,53 @@ def convert_batch_to_openai_messages(
     """
     Convert a ServerModerationBatch to OpenAI ChatCompletionMessageParam list.
 
-    - Includes history
-    - Deduplicates by message_id
-    - Adds timestamps and roles
-    - Inline images labeled as Image <id>
+    JSON payload shape sent to AI:
+        guild_id, message_count, unique_user_count,
+        users[].user_id / username / roles /
+            channels[].channel_id / channel_name /
+                messages[].message_id / timestamp / content / image_ids
     """
-    user_map, messages_by_user = merge_users_with_history(
+    user_map, channels_by_user = merge_users_with_history(
         batch.users,
-        batch.history_users
+        batch.history_users,
     )
 
     all_images: List[Tuple[str, str]] = []
-
-    users_data = []
+    users_data: List[dict] = []
     total_messages = 0
 
     for user_id, user in user_map.items():
-        user_messages_data = []
-        for msg in messages_by_user[user_id]:
-            image_ids = []
-            for img in msg.images:
-                if img.image_id and img.image_url:
-                    image_ids.append(str(img.image_id))
-                    all_images.append(
-                        (str(img.image_id), str(img.image_url))
-                    )
-            user_messages_data.append({
-                "message_id": str(msg.message_id),
-                "timestamp": humanize_timestamp(msg.timestamp),
-                "content": msg.content or ("[Images only]" if image_ids else ""),
-                "image_ids": image_ids
+        user_channels_data: List[dict] = []
+
+        for uch in channels_by_user.get(user_id, ()):
+            channel_messages_data: List[dict] = []
+
+            for msg in uch.messages:
+                image_ids: List[str] = []
+                for img in msg.images:
+                    if img.image_id and img.image_url:
+                        image_ids.append(str(img.image_id))
+                        all_images.append((str(img.image_id), str(img.image_url)))
+
+                channel_messages_data.append({
+                    "message_id": str(msg.message_id),
+                    "timestamp": humanize_timestamp(msg.timestamp),
+                    "content": msg.content or ("[Images only]" if image_ids else ""),
+                    "image_ids": image_ids,
+                })
+                total_messages += 1
+
+            user_channels_data.append({
+                "channel_id": str(uch.channel_id),
+                "channel_name": uch.channel_name,
+                "messages": channel_messages_data,
             })
-            total_messages += 1
 
         users_data.append({
             "user_id": str(user.user_id),
             "username": str(user.username),
             "roles": user.roles,
-            "messages": user_messages_data
+            "channels": user_channels_data,
         })
 
     json_payload = {
@@ -121,7 +152,7 @@ def convert_batch_to_openai_messages(
     content_parts: List[ChatCompletionContentPartTextParam | ChatCompletionContentPartImageParam] = [
         ChatCompletionContentPartTextParam(
             type="text",
-            text=json.dumps(json_payload, separators=(",", ":"))
+            text=json.dumps(json_payload, separators=(",", ":")),
         )
     ]
 
@@ -135,14 +166,14 @@ def convert_batch_to_openai_messages(
 
     messages: List[ChatCompletionMessageParam] = [
         ChatCompletionSystemMessageParam(role="system", content=system_prompt),
-        ChatCompletionUserMessageParam(role="user", content=content_parts)
+        ChatCompletionUserMessageParam(role="user", content=content_parts),
     ]
 
     dynamic_schema = dynamic_schema_generator.build_server_moderation_schema(batch)
 
     logger.debug(
         "[PAYLOAD] Guild %s: users=%d messages=%d images=%d",
-        batch.guild_id, len(user_map), total_messages, len(all_images)
+        batch.guild_id, len(user_map), total_messages, len(all_images),
     )
 
     return messages, dynamic_schema

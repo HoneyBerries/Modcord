@@ -6,19 +6,6 @@ package is installed; when running from a source tree the version falls back
 to a placeholder.
 """
 from __future__ import annotations
+
 from importlib import metadata as importlib_metadata
-
-
-try:
-    __version__ = importlib_metadata.version("modcord")
-except Exception:
-    __version__ = "1.0.0"
-
-
-def get_version() -> str:
-    """Return the package version string.
-
-    This helper prefers the installed distribution metadata but will return
-    the fallback version when running from source.
-    """
-    return __version__
+__version__ = importlib_metadata.version("modcord")

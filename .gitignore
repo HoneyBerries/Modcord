@@ -53,7 +53,6 @@ docs/
 # Gradle / Maven
 .gradle/
 .mvn/
-build/
 dependency-reduced-pom.xml
 release.properties
 
@@ -67,7 +66,6 @@ Thumbs.db
 *.egg
 *.egg-info/
 dist/
-build/
 *.manifest
 *.spec
 
@@ -87,7 +85,6 @@ build/
 *.tmp
 *.bak
 .cache/
-__pycache__/
 
 __pypackages__/
 

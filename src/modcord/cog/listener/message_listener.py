@@ -11,8 +11,8 @@ import discord
 from discord.ext import commands
 
 from modcord.scheduler import rules_sync_scheduler
-from modcord.services.moderation_queue_service import ModerationQueueService
 from modcord.services.message_processing_service import MessageProcessingService
+from modcord.services.moderation_queue_service import ModerationQueueService
 from modcord.util.discord import collector, discord_utils
 from modcord.util.logger import get_logger
 

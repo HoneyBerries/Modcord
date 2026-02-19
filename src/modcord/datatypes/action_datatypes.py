@@ -1,8 +1,8 @@
 """
 Action types and data structures for moderation actions.
 
-This module defines the ActionType enum and ActionData dataclass used to represent
-moderation actions throughout the pipeline.
+This module defines the ActionType enum, ChannelDeleteSpec, and ActionData
+dataclass used to represent moderation actions throughout the pipeline.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Tuple
 
-from modcord.datatypes.discord_datatypes import UserID, GuildID, MessageID
+from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
 
 
 class ActionType(Enum):
@@ -23,11 +23,17 @@ class ActionType(Enum):
     WARN = "warn"
     DELETE = "delete"
     TIMEOUT = "timeout"
-    REVIEW = "review"
     NULL = "null"
 
     def __str__(self) -> str:
         return self.value
+
+
+@dataclass(slots=True, frozen=True)
+class ChannelDeleteSpec:
+    """Messages to delete from a specific channel."""
+    channel_id: ChannelID
+    message_ids: Tuple[MessageID, ...] = ()
 
 
 class Actions:
@@ -37,7 +43,6 @@ class Actions:
         user_id: UserID,
         reason: str,
     ) -> ActionData:
-
         return ActionData(
             guild_id=guild_id,
             user_id=user_id,
@@ -52,7 +57,6 @@ class Actions:
         duration_minutes: int,
         reason: str,
     ) -> ActionData:
-
         return ActionData(
             guild_id=guild_id,
             user_id=user_id,
@@ -67,7 +71,6 @@ class Actions:
         user_id: UserID,
         reason: str,
     ) -> ActionData:
-
         return ActionData(
             guild_id=guild_id,
             user_id=user_id,
@@ -82,7 +85,6 @@ class Actions:
         duration_minutes: int,
         reason: str,
     ) -> ActionData:
-
         return ActionData(
             guild_id=guild_id,
             user_id=user_id,
@@ -97,7 +99,6 @@ class Actions:
         user_id: UserID,
         reason: str,
     ) -> ActionData:
-
         return ActionData(
             guild_id=guild_id,
             user_id=user_id,
@@ -109,35 +110,25 @@ class Actions:
     def delete(
         guild_id: GuildID,
         user_id: UserID,
-        message_ids_to_delete: Tuple[MessageID, ...],
+        channel_deletions: Tuple[ChannelDeleteSpec, ...],
         reason: str,
     ) -> ActionData:
-
         return ActionData(
             guild_id=guild_id,
             user_id=user_id,
             action=ActionType.DELETE,
-            message_ids_to_delete=message_ids_to_delete,
-            reason=reason,
-        )
-
-    @staticmethod
-    def review(
-        guild_id: GuildID,
-        user_id: UserID,
-        reason: str,
-    ) -> ActionData:
-
-        return ActionData(
-            guild_id=guild_id,
-            user_id=user_id,
-            action=ActionType.REVIEW,
+            channel_deletions=channel_deletions,
             reason=reason,
         )
 
 
 @dataclass(slots=True, frozen=True)
 class ActionData:
+    """A moderation action to apply to a user.
+
+    channel_deletions maps each channel to the specific message IDs
+    that should be deleted in that channel.
+    """
 
     guild_id: GuildID
     user_id: UserID
@@ -147,4 +138,9 @@ class ActionData:
     timeout_duration: Optional[int] = None
     ban_duration: Optional[int] = None
 
-    message_ids_to_delete: Tuple[MessageID, ...] = field(default_factory=tuple)
+    channel_deletions: Tuple[ChannelDeleteSpec, ...] = field(default_factory=tuple)
+
+    @property
+    def all_message_ids(self) -> Tuple[MessageID, ...]:
+        """Flat view of every message ID across all channel deletions."""
+        return tuple(mid for spec in self.channel_deletions for mid in spec.message_ids)

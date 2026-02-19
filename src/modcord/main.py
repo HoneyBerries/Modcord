@@ -49,18 +49,16 @@ import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.listener import events_listener
-from modcord.command import debug_cmds, guild_settings_cmds
-from modcord.listener import message_listener
+from modcord.cog.commands import debug_cmds, settings_cmds
+from modcord.cog.listener import message_listener, events_listener
 from modcord.database import database as db
-from modcord.history.discord_history_fetcher import DiscordHistoryFetcher
 from modcord.moderation.moderation_pipeline import ModerationPipeline
 from modcord.services.message_processing_service import MessageProcessingService
 from modcord.services.moderation_queue_service import ModerationQueueService
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
 from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
-from modcord.ui.console import ConsoleControl, close_bot_instance, console_session
+from modcord.console.control_panel import ConsoleControl, close_bot_instance, console_session
 from modcord.util.logger import get_logger, handle_exception
 
 
@@ -131,19 +129,16 @@ def load_cogs(discord_bot_instance: discord.Bot) -> ModerationQueueService:
     """
     # --- Build the service layer ------------------------------------------
     moderation_pipeline = ModerationPipeline(discord_bot_instance)
-    history_fetcher = DiscordHistoryFetcher(discord_bot_instance)
     processing_service = MessageProcessingService(
         bot=discord_bot_instance,
-        moderation_pipeline=moderation_pipeline,
-        history_fetcher=history_fetcher,
-    )
+        moderation_pipeline=moderation_pipeline)
     queue_service = ModerationQueueService()
     # ----------------------------------------------------------------------
 
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
     message_listener.setup(discord_bot_instance, queue_service, processing_service)
-    guild_settings_cmds.setup(discord_bot_instance)
+    settings_cmds.setup(discord_bot_instance)
 
     logger.info("[MAIN] All cogs loaded successfully.")
 
@@ -234,13 +229,6 @@ async def shutdown_runtime(
         bot: The bot instance to shut down.
         queue_service: Optional queue service whose workers need cancelling.
     """
-    # First, close Discord connection to stop receiving events
-    try:
-        await close_bot_instance(bot, log_close=True)
-        await bot.http.close()
-    except Exception as exc:
-        logger.exception("Error during discord http connection shutdown: %s", exc)
-
     # Cancel queue workers before stopping schedulers
     if queue_service is not None:
         try:

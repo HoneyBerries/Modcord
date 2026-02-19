@@ -16,20 +16,17 @@ from __future__ import annotations
 import asyncio
 from typing import Dict
 
+from modcord.database.database import database
+from modcord.database.db_connection import db_connection
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.datatypes.guild_settings import GuildSettings
-from modcord.database.db_connection import db_connection
-from modcord.database.database import database
-from modcord.settings.repositories import (
-    GuildSettingsRepository,
-    ModeratorRolesRepository,
-    ReviewChannelsRepository,
-    ChannelGuidelinesRepository,
-)
-from modcord.settings.repositories.guild_settings_repo import GuildSettingsRow
+from modcord.settings.repositories.channel_guidelines_repo import ChannelGuidelinesRepository
+from modcord.settings.repositories.guild_settings_repo import GuildSettingsRow, GuildSettingsRepository
 from modcord.util.logger import get_logger
 
 logger = get_logger("guild_settings_service")
+
+
 
 
 class GuildSettingsService:
@@ -43,8 +40,6 @@ class GuildSettingsService:
 
     def __init__(self) -> None:
         self._guild_settings_repo = GuildSettingsRepository()
-        self._moderator_roles_repo = ModeratorRolesRepository()
-        self._review_channels_repo = ReviewChannelsRepository()
         self._channel_guidelines_repo = ChannelGuidelinesRepository()
         # Per-guild locks: concurrent guilds don't block each other
         self._per_guild_locks: Dict[int, asyncio.Lock] = {}
@@ -61,7 +56,7 @@ class GuildSettingsService:
         logger.info("[GUILD SETTINGS SERVICE] Database initialized")
 
     # ------------------------------------------------------------------
-    # Load
+    # Load the DB
     # ------------------------------------------------------------------
 
     async def load_all(self) -> Dict[GuildID, GuildSettings]:
@@ -78,9 +73,7 @@ class GuildSettingsService:
 
             guild_ids_int = list(core_rows.keys())
 
-            # 2-4. Related tables — one query each, merges in Python
-            roles_by_guild = await self._moderator_roles_repo.get_for_guilds(conn, guild_ids_int)
-            channels_by_guild = await self._review_channels_repo.get_for_guilds(conn, guild_ids_int)
+            # 2. Related tables — one query each, merges in Python
             guidelines_by_guild = await self._channel_guidelines_repo.get_for_guilds(conn, guild_ids_int)
 
         result: Dict[GuildID, GuildSettings] = {}
@@ -88,8 +81,6 @@ class GuildSettingsService:
             guild_id = GuildID.from_int(gid_int)
             settings = _row_to_settings(
                 core,
-                moderator_role_ids=roles_by_guild.get(gid_int, set()),
-                review_channel_ids=channels_by_guild.get(gid_int, set()),
                 channel_guidelines=guidelines_by_guild.get(gid_int, {}),
             )
             result[guild_id] = settings
@@ -108,11 +99,9 @@ class GuildSettingsService:
             if core is None:
                 return None
 
-            roles = await self._moderator_roles_repo.get_for_guild(conn, guild_id)
-            channels = await self._review_channels_repo.get_for_guild(conn, guild_id)
             guidelines = await self._channel_guidelines_repo.get_for_guild(conn, guild_id)
 
-        return _row_to_settings(core, roles, channels, guidelines)
+        return _row_to_settings(core, guidelines)
 
     # ------------------------------------------------------------------
     # Save
@@ -130,12 +119,10 @@ class GuildSettingsService:
                 async with db_connection.transaction() as conn:
                     core_row = _settings_to_row(guild_id, settings)
                     await self._guild_settings_repo.upsert(conn, core_row)
-                    await self._moderator_roles_repo.replace(conn, guild_id, settings.moderator_role_ids)
-                    await self._review_channels_repo.replace(conn, guild_id, settings.review_channel_ids)
                     await self._channel_guidelines_repo.replace(conn, guild_id, settings.channel_guidelines)
                     # transaction() auto-commits on clean exit
 
-                logger.debug(
+                logger.info(
                     "[GUILD SETTINGS SERVICE] Persisted guild %s", str(guild_id)
                 )
                 return True
@@ -159,11 +146,6 @@ class GuildSettingsService:
             async with db_connection.transaction() as conn:
                 # CASCADE on guild_settings will remove roles/channels/guidelines
                 await self._guild_settings_repo.delete(conn, guild_id)
-                # Moderation history has no FK, delete it explicitly
-                await conn.execute(
-                    "DELETE FROM moderation_actions WHERE guild_id = ?",
-                    (int(guild_id),),
-                )
                 # transaction() auto-commits on clean exit
 
             logger.debug(
@@ -183,11 +165,10 @@ class GuildSettingsService:
 
 def _row_to_settings(
     core: GuildSettingsRow,
-    moderator_role_ids,
-    review_channel_ids,
     channel_guidelines,
 ) -> GuildSettings:
     """Build a GuildSettings from the raw repo rows."""
+    from modcord.datatypes.discord_datatypes import ChannelID
     settings = GuildSettings(guild_id=GuildID.from_int(core.guild_id))
     settings.ai_enabled = core.ai_enabled
     settings.rules = core.rules
@@ -196,10 +177,8 @@ def _row_to_settings(
     settings.auto_timeout_enabled = core.auto_timeout_enabled
     settings.auto_kick_enabled = core.auto_kick_enabled
     settings.auto_ban_enabled = core.auto_ban_enabled
-    settings.auto_review_enabled = core.auto_review_enabled
-    settings.moderator_role_ids = set(moderator_role_ids)
-    settings.review_channel_ids = set(review_channel_ids)
     settings.channel_guidelines = dict(channel_guidelines)
+    settings.mod_log_channel_id = ChannelID(core.mod_log_channel_id) if core.mod_log_channel_id else None
     return settings
 
 
@@ -214,7 +193,7 @@ def _settings_to_row(guild_id: GuildID, settings: GuildSettings) -> GuildSetting
         auto_timeout_enabled=settings.auto_timeout_enabled,
         auto_kick_enabled=settings.auto_kick_enabled,
         auto_ban_enabled=settings.auto_ban_enabled,
-        auto_review_enabled=settings.auto_review_enabled,
+        mod_log_channel_id=int(settings.mod_log_channel_id) if settings.mod_log_channel_id else None,
     )
 
 

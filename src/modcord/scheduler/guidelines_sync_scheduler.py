@@ -5,10 +5,10 @@ from __future__ import annotations
 import discord
 
 from modcord.configuration.app_configuration import app_config
-from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.datatypes.discord_datatypes import GuildID, ChannelID
-from modcord.util.discord import collector
 from modcord.scheduler.generic_sync_scheduler import GenericSyncScheduler
+from modcord.settings.guild_settings_manager import guild_settings_manager
+from modcord.util.discord import collector
 
 
 async def sync_all_channel_guidelines(guild: discord.Guild) -> None:

@@ -15,22 +15,21 @@ Key Features:
 
 from __future__ import annotations
 
+import json
 from typing import List
+
+import weave
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
-import weave
-import json
 
-from modcord.util.logger import get_logger
-from modcord.datatypes.action_datatypes import ActionData, ActionType
+from modcord.ai import llm_payload_builder
+from modcord.configuration.app_configuration import app_config
+from modcord.datatypes.action_datatypes import ActionData
+from modcord.datatypes.discord_datatypes import GuildID
 from modcord.datatypes.moderation_datatypes import ServerModerationBatch
 from modcord.moderation import moderation_parsing
-from modcord.ai import llm_payload_builder
-from modcord.datatypes.discord_datatypes import GuildID
-from modcord.configuration.app_configuration import app_config
 from modcord.settings.guild_settings_manager import guild_settings_manager
-
-
+from modcord.util.logger import get_logger
 
 logger = get_logger("llm_engine")
 
@@ -62,7 +61,7 @@ class LLMEngine:
             self._model_name,
         )
 
-    def generate_dynamic_system_prompt(self, guild_id: GuildID) -> str:
+    async def generate_dynamic_system_prompt(self, guild_id: GuildID) -> str:
         """Build the system prompt with guild-specific server rules.
 
         Channel-specific guidelines are now embedded per-channel in the
@@ -77,7 +76,7 @@ class LLMEngine:
         template = self._base_system_prompt
 
         # Resolve guild rules
-        guild_rules = (guild_settings_manager.get_cached_rules(guild_id) or app_config.server_rules).strip()
+        guild_rules = (await guild_settings_manager.get_rules(guild_id) or app_config.server_rules).strip()
 
         # Inject server rules; channel guidelines are in the payload
         prompt = template.replace("<|SERVER_RULES_INJECT|>", guild_rules)
@@ -106,7 +105,7 @@ class LLMEngine:
         logger.info("[MODERATION] Processing server batch for guild %s", batch.guild_id)
 
         # Build system prompt with guild rules (no channel guidelines)
-        system_prompt = self.generate_dynamic_system_prompt(batch.guild_id)
+        system_prompt = await self.generate_dynamic_system_prompt(batch.guild_id)
 
         # Convert batch to OpenAI messages with dynamic schema
         messages, dynamic_schema = llm_payload_builder.convert_batch_to_openai_messages(batch, system_prompt)
@@ -138,6 +137,12 @@ class LLMEngine:
             )
             
             response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
+
+            logger.debug(
+                "[LLM RESPONSE] Guild %s: \n\n%s",
+                batch.guild_id,
+                response_text,
+            )
 
         except Exception as exc:
             logger.error("[LLM ENGINE] API request failed for guild %s: %s", batch.guild_id, exc)

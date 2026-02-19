@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Dict, Set
-from modcord.datatypes.discord_datatypes import ChannelID, GuildID
+from typing import Dict, Optional
+
 from modcord.datatypes.action_datatypes import ActionType
+from modcord.datatypes.discord_datatypes import ChannelID, GuildID
 
 ACTION_FLAG_FIELDS: Dict[ActionType, str] = {
     ActionType.WARN: "auto_warn_enabled",
@@ -9,7 +10,6 @@ ACTION_FLAG_FIELDS: Dict[ActionType, str] = {
     ActionType.TIMEOUT: "auto_timeout_enabled",
     ActionType.KICK: "auto_kick_enabled",
     ActionType.BAN: "auto_ban_enabled",
-    ActionType.REVIEW: "auto_review_enabled",
 }
 
 
@@ -27,12 +27,12 @@ class GuildSettings:
     _auto_timeout_enabled: bool = True
     _auto_kick_enabled: bool = True
     _auto_ban_enabled: bool = True
-    _auto_review_enabled: bool = True
 
     # collections
-    moderator_role_ids: Set[int] = field(default_factory=set)
-    review_channel_ids: Set[ChannelID] = field(default_factory=set)
     channel_guidelines: Dict[ChannelID, str] = field(default_factory=dict)
+
+    # Mod-log channel for posting action embeds
+    mod_log_channel_id: Optional[ChannelID] = None
 
     # -------------------------
     # Properties (getters/setters)
@@ -77,11 +77,3 @@ class GuildSettings:
     @auto_ban_enabled.setter
     def auto_ban_enabled(self, value: bool) -> None:
         self._auto_ban_enabled = value
-
-    @property
-    def auto_review_enabled(self) -> bool:
-        return self._auto_review_enabled
-
-    @auto_review_enabled.setter
-    def auto_review_enabled(self, value: bool) -> None:
-        self._auto_review_enabled = value

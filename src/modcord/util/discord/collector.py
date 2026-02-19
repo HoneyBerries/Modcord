@@ -72,7 +72,7 @@ async def collect_rules(guild: discord.Guild) -> str:
         if is_rules_channel(ch):
             all_texts.extend(await collect_messages(ch))
     if all_texts:
-        logger.debug("Collected %d rule segments from guild %s", len(all_texts), guild.name)
+        logger.info("Collected %d rule segments from guild %s", len(all_texts), guild.name)
     return "\n\n".join(all_texts)
 
 

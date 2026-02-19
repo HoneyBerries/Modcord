@@ -33,7 +33,7 @@ class EventsListenerCog(commands.Cog):
 
     @commands.Cog.listener(name="on_ready")
     async def on_ready(self) -> None:
-        """Set bot presence and persist command list to disk."""
+        """Set bot presence and persist console list to disk."""
         if not self.bot.user:
             logger.warning(
                 "[EVENTS LISTENER] Bot partially connected — user info not yet available."
@@ -49,7 +49,7 @@ class EventsListenerCog(commands.Cog):
         )
         logger.info("Bot connected as %s (ID: %s)", self.bot.user, self.bot.user.id)
 
-        # Persist command list for stuff like top.gg and other bot listing sites that want to show our commands. This is a bit hacky but it works and it's not worth caring much just for this.
+        # Persist console list for stuff like top.gg and other bot listing sites that want to show our commands. This is a bit hacky but it works and it's not worth caring much just for this.
         await self._write_commands_file()
 
 

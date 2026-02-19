@@ -7,7 +7,7 @@ Handles only the guild_settings table — no joins, no related data.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 
 import aiosqlite
 
@@ -28,7 +28,7 @@ class GuildSettingsRow:
     auto_timeout_enabled: bool
     auto_kick_enabled: bool
     auto_ban_enabled: bool
-    auto_review_enabled: bool
+    mod_log_channel_id: Optional[int] = None
 
 
 class GuildSettingsRepository:
@@ -42,16 +42,14 @@ class GuildSettingsRepository:
             """
             SELECT guild_id, ai_enabled, rules,
                    auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
-                   auto_kick_enabled, auto_ban_enabled, auto_review_enabled
+                   auto_kick_enabled, auto_ban_enabled,
+                   mod_log_channel_id
             FROM guild_settings
             WHERE guild_id = ?
             """,
             (int(guild_id),),
         ) as cursor:
             row = await cursor.fetchone()
-
-        if row is None:
-            return None
 
         return GuildSettingsRow(
             guild_id=row[0],
@@ -62,7 +60,7 @@ class GuildSettingsRepository:
             auto_timeout_enabled=bool(row[5]),
             auto_kick_enabled=bool(row[6]),
             auto_ban_enabled=bool(row[7]),
-            auto_review_enabled=bool(row[8]),
+            mod_log_channel_id=row[8],
         )
 
     async def get_all(
@@ -73,7 +71,8 @@ class GuildSettingsRepository:
             """
             SELECT guild_id, ai_enabled, rules,
                    auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
-                   auto_kick_enabled, auto_ban_enabled, auto_review_enabled
+                   auto_kick_enabled, auto_ban_enabled,
+                   mod_log_channel_id
             FROM guild_settings
             """
         ) as cursor:
@@ -90,7 +89,7 @@ class GuildSettingsRepository:
                 auto_timeout_enabled=bool(row[5]),
                 auto_kick_enabled=bool(row[6]),
                 auto_ban_enabled=bool(row[7]),
-                auto_review_enabled=bool(row[8]),
+                mod_log_channel_id=row[8],
             )
 
         return result
@@ -104,7 +103,8 @@ class GuildSettingsRepository:
             INSERT INTO guild_settings (
                 guild_id, ai_enabled, rules,
                 auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
-                auto_kick_enabled, auto_ban_enabled, auto_review_enabled
+                auto_kick_enabled, auto_ban_enabled,
+                mod_log_channel_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(guild_id) DO UPDATE SET
                 ai_enabled           = excluded.ai_enabled,
@@ -114,7 +114,7 @@ class GuildSettingsRepository:
                 auto_timeout_enabled = excluded.auto_timeout_enabled,
                 auto_kick_enabled    = excluded.auto_kick_enabled,
                 auto_ban_enabled     = excluded.auto_ban_enabled,
-                auto_review_enabled  = excluded.auto_review_enabled
+                mod_log_channel_id   = excluded.mod_log_channel_id
             """,
             (
                 int(row.guild_id),
@@ -125,7 +125,7 @@ class GuildSettingsRepository:
                 1 if row.auto_timeout_enabled else 0,
                 1 if row.auto_kick_enabled else 0,
                 1 if row.auto_ban_enabled else 0,
-                1 if row.auto_review_enabled else 0,
+                row.mod_log_channel_id,
             ),
         )
 

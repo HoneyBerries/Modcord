@@ -4,15 +4,14 @@ Low-level Discord utility functions for Modcord.
 This module provides stateless helpers for Discord-specific operations, including message deletion, DM sending, permission checks, and moderation actions. All logic here is designed for use by higher-level bot components and should not maintain state.
 """
 
-
-import asyncio
 import datetime
-from typing import List, Union
+from typing import List, Tuple, Union
+
 import discord
-from modcord.settings.guild_settings_manager import guild_settings_manager
-from modcord.util.logger import get_logger
-from modcord.datatypes.discord_datatypes import MessageID, GuildID
+
+from modcord.datatypes.discord_datatypes import MessageID
 from modcord.util import image_utils
+from modcord.util.logger import get_logger
 
 logger = get_logger("discord_utils")
 
@@ -66,7 +65,7 @@ def bot_can_manage_messages(channel: discord.TextChannel, guild: discord.Guild) 
     except Exception:
         return False
 
-    return (permissions.manage_messages and permissions.read_messages and permissions.view_channel and permissions.read_message_history and permissions.send_messages)
+    return permissions.manage_messages and permissions.read_messages and permissions.view_channel and permissions.read_message_history and permissions.send_messages
 
 
 def iter_moderatable_channels(guild: discord.Guild):
@@ -196,84 +195,6 @@ def has_elevated_permissions(member: Union[discord.User, discord.Member]) -> boo
     return False
 
 
-def get_potential_moderator_roles(guild: discord.Guild) -> list[discord.Role]:
-    """
-    Get a list of roles in the guild that are likely moderator roles.
-
-    Args:
-        guild (discord.Guild): The guild to search.
-
-    Returns:
-        list[discord.Role]: List of potential moderator roles.
-    """
-    elevated_keywords = ("mod", "moderator", "admin", "staff", "owner")
-    potential_roles = []
-    
-    for role in guild.roles:
-        if role.is_default() or role.managed:
-            continue
-        
-        perms = role.permissions
-        if perms.administrator or perms.manage_guild or perms.moderate_members:
-            potential_roles.append(role)
-            continue
-        
-        name = role.name.lower()
-        if any(keyword in name for keyword in elevated_keywords):
-            potential_roles.append(role)
-    
-    return potential_roles
-
-
-def get_potential_review_channel(guild: discord.Guild) -> discord.TextChannel | None:
-    """
-    Find a suitable channel for moderation reviews based on name.
-
-    Args:
-        guild (discord.Guild): The guild to search.
-
-    Returns:
-        discord.TextChannel | None: The found channel or None.
-    """
-    keywords = ("moderator", "admin", "staff", "log", "review", "audit")
-    
-    for channel in guild.text_channels:
-        name = channel.name.lower()
-        # Check if name contains any keyword
-        if any(k in name for k in keywords):
-            # Verify bot can send messages there
-            if channel.permissions_for(guild.me).send_messages:
-                return channel
-    return None
-
-
-async def has_review_permission(guild_id: GuildID, user: discord.Member) -> bool:
-    """
-    Check if a user has moderator permissions for review actions.
-    
-    Checks both manage_guild permission and configured moderator roles.
-    
-    Args:
-        guild_id: ID of the guild to check permissions for
-        user: Discord member to check permissions for
-    
-    Returns:
-        bool: True if user has moderator permissions, False otherwise
-    """
-    
-    # Check if user has manage guild permission
-    if user.guild_permissions.manage_guild:
-        return True
-    
-    # Check if user has any of the configured moderator roles
-    settings = await guild_settings_manager.get_settings(guild_id)
-    if settings and settings.moderator_role_ids:
-        user_role_ids = {role.id for role in user.roles}
-        if any(role_id in user_role_ids for role_id in settings.moderator_role_ids):
-            return True
-    
-    return False
-
 
 def format_duration(seconds: int) -> str:
     """
@@ -375,60 +296,96 @@ async def delete_message(message: discord.Message) -> bool:
 
 
 
-async def delete_messages_by_ids(guild: discord.Guild, message_ids: tuple[MessageID, ...]) -> int:
-    """
-    Delete specific messages by their IDs across all moderatable channels in a guild, in parallel.
+async def delete_messages_from_channel(
+    channel: discord.TextChannel,
+    message_ids: Tuple[MessageID, ...],
+) -> int:
+    """Delete specific messages from a single channel.
+
+    Uses Discord's bulk-delete endpoint for messages younger than 14 days,
+    falling back to individual deletion for older messages.
 
     Args:
-        guild (discord.Guild): The guild to search for messages.
-        message_ids (tuple[MessageID, ...]): Tuple of message IDs.
+        channel: The text channel containing the messages.
+        message_ids: Message IDs to delete.
 
     Returns:
-        int: Number of messages deleted.
+        Number of messages successfully deleted.
     """
-    # Normalize input to a list
-    ids = [int(mid) for mid in message_ids]
+    if not message_ids:
+        return 0
 
-    pending_ids = set(ids)
-    channels = set(iter_moderatable_channels(guild))
+    now = discord.utils.utcnow()
+    bulk_cutoff = now - datetime.timedelta(days=14, minutes=-5)  # small buffer
 
-    async def fetch_and_delete(msg_id) -> bool:
-        """Fetch a message by ID across channels and attempt to delete it.
+    bulk_eligible: list[discord.Object] = []
+    old_ids: list[int] = []
 
-        Args:
-            msg_id (int): The message ID to find and delete.
+    for mid in message_ids:
+        int_id = int(mid)
+        # Snowflake → creation time (Discord epoch: 2015-01-01)
+        created_at = datetime.datetime.fromtimestamp(
+            ((int_id >> 22) + 1420070400000) / 1000,
+            tz=datetime.timezone.utc,
+        )
+        if created_at >= bulk_cutoff:
+            bulk_eligible.append(discord.Object(id=int_id))
+        else:
+            old_ids.append(int_id)
 
-        Returns:
-            bool: True if deletion succeeded, False otherwise."""
-        for channel in channels:
-            try:
-                msg = await channel.fetch_message(msg_id)
-                if await delete_message(msg):
-                    return True
-                
-            except discord.NotFound:
-                continue
+    deleted = 0
 
-            except Exception as exc:
-                logger.error(f"Error deleting message {msg_id} in channel {getattr(channel, 'name', channel.id)}: {exc}")
-                continue
+    # Bulk delete (batches of 100, Discord limit)
+    for i in range(0, len(bulk_eligible), 100):
+        batch = bulk_eligible[i : i + 100]
+        try:
+            await channel.delete_messages(batch)
+            deleted += len(batch)
+        except discord.NotFound:
+            # Some messages already gone — fall back to individual
+            for obj in batch:
+                try:
+                    msg = await channel.fetch_message(obj.id)
+                    await msg.delete()
+                    deleted += 1
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+                except Exception as exc:
+                    logger.error("Error deleting message %s individually: %s", obj.id, exc)
+        except discord.Forbidden:
+            logger.warning("Missing permissions to bulk-delete in #%s", channel.name)
+        except Exception as exc:
+            logger.error("Bulk delete error in #%s: %s", channel.name, exc)
 
-        logger.warning(f"Failed to locate message: {msg_id}")
-        return False
+    # Individual delete for old messages
+    for msg_id in old_ids:
+        try:
+            msg = await channel.fetch_message(msg_id)
+            await msg.delete()
+            deleted += 1
+        except discord.NotFound:
+            logger.debug("Old message %s not found in #%s", msg_id, channel.name)
+        except discord.Forbidden:
+            logger.warning("No permission to delete message %s in #%s", msg_id, channel.name)
+        except Exception as exc:
+            logger.error("Error deleting old message %s: %s", msg_id, exc)
 
-
-    # Run all fetch_and_delete tasks concurrently
-    results = await asyncio.gather(*(fetch_and_delete(msg_id) for msg_id in pending_ids))
-    return sum(results)
+    logger.debug(
+        "[DELETE] Deleted %d/%d messages in #%s",
+        deleted,
+        len(message_ids),
+        channel.name,
+    )
+    return deleted
 
 
 
 def has_permissions(application_context: discord.ApplicationContext, **required_permissions) -> bool:
     """
-    Check if the command issuer has all specified permissions in the guild.
+    Check if the console issuer has all specified permissions in the guild.
 
     Args:
-        application_context (discord.ApplicationContext): The command context.
+        application_context (discord.ApplicationContext): The console context.
         **required_permissions: Permission flags to check.
 
     Returns:

@@ -6,10 +6,12 @@ using ActionData as the canonical input.
 """
 
 import datetime
+
 import discord
+
 from modcord.datatypes.action_datatypes import ActionData, ActionType
-from modcord.util.logger import get_logger
 from modcord.util.discord import discord_utils
+from modcord.util.logger import get_logger
 
 logger = get_logger("action_embed")
 
@@ -21,7 +23,6 @@ ACTION_EMOJIS = {
     ActionType.TIMEOUT: "⏱️",
     ActionType.KICK: "👢",
     ActionType.BAN: "🔨",
-    ActionType.REVIEW: "🔍",
 }
 
 # Color mapping for action types
@@ -31,7 +32,6 @@ ACTION_COLORS = {
     ActionType.TIMEOUT: discord.Color.orange(),
     ActionType.KICK: discord.Color.red(),
     ActionType.BAN: discord.Color.dark_red(),
-    ActionType.REVIEW: discord.Color.blue(),
 }
 
 

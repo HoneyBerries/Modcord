@@ -208,5 +208,5 @@ class ConnectionManager:
         yield self.connection
 
 
-# ── Module-level singleton ───────────────────────────────────────────────────
+# Module-level singleton
 db_connection = ConnectionManager()

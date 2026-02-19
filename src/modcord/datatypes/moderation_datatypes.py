@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple
+
 import discord
 
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, DiscordUsername, GuildID, MessageID
 from modcord.datatypes.image_datatypes import ImageID, ImageLink
-from modcord.datatypes.action_datatypes import ActionData
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,39 +28,32 @@ class ModerationMessage:
 
 
 @dataclass(frozen=True, slots=True)
+class ModerationUserChannel:
+    """A single channel's messages belonging to one user."""
+    channel_id: ChannelID
+    channel_name: str
+    messages: Tuple[ModerationMessage, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ModerationUser:
     user_id: UserID
     username: DiscordUsername
     join_date: datetime
     discord_member: discord.Member = field(hash=False, compare=False)
     discord_guild: discord.Guild = field(hash=False, compare=False)
-    roles: Tuple[str, ...] = ()
-    messages: Tuple[ModerationMessage, ...] = ()
-    past_actions: Tuple[ActionData, ...] = ()
+    roles: Tuple[str, ...]
+    channels: Tuple[ModerationUserChannel, ...]
 
-    def add_message(self, message: ModerationMessage) -> ModerationUser:
-        return ModerationUser(
-            user_id=self.user_id,
-            username=self.username,
-            join_date=self.join_date,
-            discord_member=self.discord_member,
-            discord_guild=self.discord_guild,
-            roles=self.roles,
-            messages=self.messages + (message,),
-            past_actions=self.past_actions,
-        )
+    @property
+    def all_messages(self) -> Tuple[ModerationMessage, ...]:
+        """Flat view of all messages across every channel."""
+        return tuple(msg for ch in self.channels for msg in ch.messages)
 
-    def add_past_action(self, action: ActionData) -> ModerationUser:
-        return ModerationUser(
-            user_id=self.user_id,
-            username=self.username,
-            join_date=self.join_date,
-            discord_member=self.discord_member,
-            discord_guild=self.discord_guild,
-            roles=self.roles,
-            messages=self.messages,
-            past_actions=self.past_actions + (action,),
-        )
+    @property
+    def all_channel_ids(self) -> Tuple[ChannelID, ...]:
+        """All channel IDs this user has messages in."""
+        return tuple(ch.channel_id for ch in self.channels)
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,4 +98,4 @@ class ServerModerationBatch:
         )
 
     def is_empty(self) -> bool:
-        return not self.users or all(len(u.messages) == 0 for u in self.users)
+        return not self.users or all(len(u.channels) == 0 for u in self.users)

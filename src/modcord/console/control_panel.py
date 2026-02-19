@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-import os
 
 import discord
 from prompt_toolkit import print_formatted_text
@@ -15,7 +15,6 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.shortcuts import PromptSession
 
 from modcord.util.logger import get_logger
-
 
 # Box drawing helpers for aligned console output
 BOX_WIDTH = 60
@@ -42,24 +41,24 @@ def print_boxed_title(title: str, color: str = "") -> None:
 
 logger = get_logger("console")
 
-# Type alias for command handler functions
+# Type alias for console handler functions
 CommandHandler = Callable[["ConsoleControl", list[str]], Awaitable[None]]
 
 
 @dataclass
 class Command:
     """
-    Definition of a console command with handler and metadata.
+    Definition of a console console with handler and metadata.
     
     This dataclass encapsulates all information needed to register and execute
-    a console command, including its name, aliases, handler function, and help text.
+    a console console, including its name, aliases, handler function, and help text.
     
     Attributes:
-        name (str): Primary name of the command.
-        handler (CommandHandler): Async function to execute when command is invoked.
-        aliases (list[str]): Alternative names that can trigger this command.
+        name (str): Primary name of the console.
+        handler (CommandHandler): Async function to execute when console is invoked.
+        aliases (list[str]): Alternative names that can trigger this console.
         description (str): Human-readable description shown in help text.
-        usage (str): Optional usage string showing command syntax.
+        usage (str): Optional usage string showing console syntax.
     """
     name: str
     handler: CommandHandler
@@ -68,7 +67,7 @@ class Command:
     usage: str = ""
 
     def matches(self, input_cmd: str) -> bool:
-        """Check if input matches this command or any alias."""
+        """Check if input matches this console or any alias."""
         return input_cmd == self.name or input_cmd in self.aliases
 
 
@@ -193,7 +192,7 @@ async def cmd_help(control: ConsoleControl, args: list[str]) -> None:
     
     Args:
         control (ConsoleControl): The console control instance.
-        args (list[str]): Command arguments (unused for this command).
+        args (list[str]): Command arguments (unused for this console).
     """
     print_boxed_title("Console Commands Reference", "ansigreen")
     for cmd in COMMANDS:
@@ -217,7 +216,7 @@ async def cmd_status(control: ConsoleControl, args: list[str]) -> None:
     
     Args:
         control (ConsoleControl): The console control instance.
-        args (list[str]): Command arguments (unused for this command).
+        args (list[str]): Command arguments (unused for this console).
     """
 
     print_boxed_title("Bot Status", "ansimagenta")
@@ -246,7 +245,7 @@ async def cmd_guilds(control: ConsoleControl, args: list[str]) -> None:
     
     Args:
         control (ConsoleControl): The console control instance.
-        args (list[str]): Command arguments (unused for this command).
+        args (list[str]): Command arguments (unused for this console).
     """
     if not control.bot or not control.bot.guilds:
         console_print("No guilds found or bot not connected.", "ansiyellow")
@@ -271,7 +270,7 @@ async def cmd_clear(control: ConsoleControl, args: list[str]) -> None:
     
     Args:
         control (ConsoleControl): The console control instance.
-        args (list[str]): Command arguments (unused for this command).
+        args (list[str]): Command arguments (unused for this console).
     """
     os.system('cls' if os.name == 'nt' else 'clear')
     console_print("Console cleared.", "ansibrightcyan")
@@ -287,7 +286,7 @@ async def cmd_restart(control: ConsoleControl, args: list[str]) -> None:
     
     Args:
         control (ConsoleControl): The console control instance.
-        args (list[str]): Command arguments (unused for this command).
+        args (list[str]): Command arguments (unused for this console).
     """
     console_print("Restart requested. Bot will shut down and restart...", "ansiyellow")
     await _request_lifecycle_action(control, restart=True)
@@ -302,7 +301,7 @@ async def cmd_shutdown(control: ConsoleControl, args: list[str]) -> None:
     
     Args:
         control (ConsoleControl): The console control instance.
-        args (list[str]): Command arguments (unused for this command).
+        args (list[str]): Command arguments (unused for this console).
     """
     console_print("Shutdown requested.", "ansiyellow")
     await _request_lifecycle_action(control, restart=False)
@@ -354,14 +353,14 @@ COMMANDS: list[Command] = [
 
 async def handle_console_command(command: str, control: ConsoleControl) -> None:
     """
-    Parse and execute a console command line.
+    Parse and execute a console console line.
     
-    Splits the input into command name and arguments, finds the matching command
-    in the registry, and executes its handler. If no matching command is found,
+    Splits the input into console name and arguments, finds the matching console
+    in the registry, and executes its handler. If no matching console is found,
     displays an error message.
     
     Args:
-        command (str): The raw command line input from the user.
+        command (str): The raw console line input from the user.
         control (ConsoleControl): The console control instance to pass to handlers.
     """
     if not command.strip():
@@ -371,25 +370,25 @@ async def handle_console_command(command: str, control: ConsoleControl) -> None:
     cmd_name = parts[0].lower()
     args = parts[1:]
     
-    # Find matching command
+    # Find matching console
     for cmd in COMMANDS:
         if cmd.matches(cmd_name):
             try:
                 await cmd.handler(control, args)
             except Exception as exc:
-                logger.exception("Error executing command '%s': %s", cmd_name, exc)
-                console_print(f"Error executing command: {exc}", "ansibrightred")
+                logger.exception("Error executing console '%s': %s", cmd_name, exc)
+                console_print(f"Error executing console: {exc}", "ansibrightred")
             return
     
-    # No command found
-    console_print(f"Unknown command '{cmd_name}'. Type 'help' for available commands.", "ansibrightred")
+    # No console found
+    console_print(f"Unknown console '{cmd_name}'. Type 'help' for available commands.", "ansibrightred")
 
 async def run_console(control: ConsoleControl) -> None:
     """
     Run the interactive developer console until shutdown is requested.
     
     Creates a prompt_toolkit session and continuously reads user input, dispatching
-    commands until the shutdown event is triggered via command or keyboard interrupt.
+    commands until the shutdown event is triggered via console or keyboard interrupt.
     
     Args:
         control (ConsoleControl): The console control instance managing lifecycle.
