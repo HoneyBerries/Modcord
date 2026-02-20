@@ -39,9 +39,6 @@ ai_settings:
   # OpenAI-compatible API endpoint (vLLM, LM Studio, Ollama, etc.)
   base_url: "https://api.inference.wandb.ai/v1"
   
-  # API key for authentication (use "EMPTY" for local servers without auth)
-  api_key: "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"
-  
   # Model name/identifier to use for inference
   model_name: "moonshotai/Kimi-K2.5"
   

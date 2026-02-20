@@ -58,34 +58,30 @@ from modcord.services.moderation_queue_service import ModerationQueueService
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.console.control_panel import ConsoleControl, console_session
 from modcord.util.logger import get_logger, handle_exception
+from modcord.configuration.app_configuration import app_config
 
 
 logger = get_logger("main")
 
 
-def load_environment() -> str:
+def load_environment() -> tuple[str | None, str | None]:
     """
-    Load environment variables from .env file and return the Discord bot token.
+    Load environment variables from .env file and return tokens.
     
     Searches for a .env file in the base directory and loads all variables.
-    Validates that the required DISCORD_BOT_TOKEN is present.
     
     Returns:
-        str: Discord bot token extracted from the environment.
-    
-    Raises:
-        SystemExit: If DISCORD_BOT_TOKEN is not set in the environment.
+        tuple[str | None, str | None]: (discord_bot_token, openai_api_key)
     """
     load_dotenv(dotenv_path=BASE_DIR / ".env")
-    token = os.getenv("DISCORD_BOT_TOKEN")
-    if not token:
-        logger.critical("'DISCORD_BOT_TOKEN' environment variable not set. Bot cannot start.")
-        sys.exit(1)
-    return token
+    bot_token = os.getenv("DISCORD_BOT_TOKEN")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+
+    return bot_token, openai_api_key
 
 
 
-def load_cogs(discord_bot_instance: discord.Bot) -> ModerationQueueService:
+def load_cogs(discord_bot_instance: discord.Bot, openai_api_key: str) -> ModerationQueueService:
     """
     Register all Modcord cogs with the Discord bot instance.
 
@@ -102,9 +98,15 @@ def load_cogs(discord_bot_instance: discord.Bot) -> ModerationQueueService:
 
     Args:
         discord_bot_instance: The bot instance to attach cogs to.
+        openai_api_key: The OpenAI-compatible API key.
     """
     # --- Build the service layer ------------------------------------------
-    moderation_pipeline = ModerationPipeline(discord_bot_instance)
+    ai_settings = app_config.ai_settings
+    moderation_pipeline = ModerationPipeline(
+        bot=discord_bot_instance,
+        api_key=openai_api_key,
+        api_url=ai_settings.base_url,
+    )
     processing_service = MessageProcessingService(
         bot=discord_bot_instance,
         moderation_pipeline=moderation_pipeline)
@@ -122,9 +124,12 @@ def load_cogs(discord_bot_instance: discord.Bot) -> ModerationQueueService:
     return queue_service  # returned so shutdown_runtime can cancel workers
 
 
-def create_bot() -> tuple[discord.Bot, ModerationQueueService]:
+def create_bot(openai_api_key: str) -> tuple[discord.Bot, ModerationQueueService]:
     """
     Create and initialize the Discord bot instance with all cogs loaded.
+
+    Args:
+        openai_api_key: The OpenAI-compatible API key.
 
     Returns:
         A (bot, queue_service) tuple so the queue can be shut down cleanly.
@@ -138,7 +143,7 @@ def create_bot() -> tuple[discord.Bot, ModerationQueueService]:
     bot_intents.members = True
 
     bot = discord.Bot(intents=bot_intents)
-    queue_service = load_cogs(bot)
+    queue_service = load_cogs(bot, openai_api_key)
     return bot, queue_service
 
 
@@ -210,7 +215,14 @@ async def async_main() -> int:
     Returns:
         int: Process exit code (0 for normal exit, 1 for error).
     """
-    token = load_environment()
+    discord_bot_token, openai_api_key = load_environment()
+
+    if not discord_bot_token:
+        logger.critical("'DISCORD_BOT_TOKEN' environment variable not set. Bot cannot start.")
+        return 1
+
+    if not openai_api_key:
+        logger.warning("'OPENAI_API_KEY' environment variable not set. AI moderation will fail if triggered.")
 
     # Initialize a database and load guild settings (bot will be passed later for auto-population)
     try:
@@ -221,13 +233,13 @@ async def async_main() -> int:
         return 1
 
     try:
-        bot, queue_service = create_bot()
+        bot, queue_service = create_bot(openai_api_key or "EMPTY")
     except Exception as exc:
         logger.critical("Failed to initialize Discord bot: %s", exc)
         return 1
 
     control = ConsoleControl()
-    exit_code = await run_bot(bot, token, control, queue_service)
+    exit_code = await run_bot(bot, discord_bot_token, control, queue_service)
 
     return exit_code
 

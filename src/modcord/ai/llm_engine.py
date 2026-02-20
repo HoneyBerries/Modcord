@@ -16,6 +16,7 @@ Key Features:
 from __future__ import annotations
 
 import json
+import os
 from typing import List
 
 import weave
@@ -45,13 +46,18 @@ class LLMEngine:
     - Parsing responses into ActionData objects.
     """
 
-    def __init__(self) -> None:
-        """Initialize the LLMEngine with AsyncOpenAI client."""
+    def __init__(self, api_key: str, base_url: str) -> None:
+        """Initialize the LLMEngine with AsyncOpenAI client.
+
+        Args:
+            api_key: The OpenAI-compatible API key.
+            base_url: The OpenAI-compatible API base URL.
+        """
         ai_settings = app_config.ai_settings
         weave.init("modcord")
         self._client = AsyncOpenAI(
-            api_key=ai_settings.api_key,
-            base_url=ai_settings.base_url,
+            api_key=api_key,
+            base_url=base_url,
         )
         self._model_name = ai_settings.model_name
         self._base_system_prompt = app_config.system_prompt_template

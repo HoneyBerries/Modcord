@@ -28,11 +28,6 @@ class AISettings:
         return str(self.data.get("base_url", "http://localhost:8000/v1"))
 
     @property
-    def api_key(self) -> str:
-        """Return the API key for authentication."""
-        return str(self.data.get("api_key", "EMPTY"))
-
-    @property
     def model_name(self) -> str:
         """Return the model name/identifier to use for inference."""
         return str(self.data.get("model_name", ""))

@@ -26,9 +26,6 @@ from modcord.util.logger import get_logger
 
 logger = get_logger("moderation_engine")
 
-llm_engine = LLMEngine()
-
-
 class ModerationPipeline:
     """
     Engine for processing server-wide moderation batches through the AI pipeline.
@@ -40,14 +37,17 @@ class ModerationPipeline:
         bot: The Discord bot instance for API access.
     """
     
-    def __init__(self, bot: discord.Bot) -> None:
+    def __init__(self, bot: discord.Bot, api_key: str, api_url: str) -> None:
         """
         Initialize the moderation engine.
         
         Args:
             bot: Discord bot instance for API access and guild lookups.
+            api_key: The OpenAI-compatible API key.
+            api_url: The OpenAI-compatible API base URL.
         """
         self._bot = bot
+        self._llm_engine = LLMEngine(api_key=api_key, base_url=api_url)
     
     @property
     def bot(self) -> discord.Bot:
@@ -76,7 +76,7 @@ class ModerationPipeline:
             return
 
         # Get AI moderation decisions (single request for the whole server batch)
-        actions = await llm_engine.get_moderation_actions(batch)
+        actions = await self._llm_engine.get_moderation_actions(batch)
 
         if not actions:
             logger.debug("[PIPELINE] No actions returned for guild %s", batch.guild_id)
