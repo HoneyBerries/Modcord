@@ -5,63 +5,62 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- Linux Build Job ---
+  # --- Linux Build ---
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           python-version: "3.13"
-
-      - name: Compile ModCord (Linux)
+      - name: Compile
         run: |
           uv run --group build nuitka \
-            --standalone \
-            --output-dir=build \
-            --output-filename=ModCord \
-            --include-data-dir=config=config \
-            --include-data-files=.env.example=.env.example \
+            --standalone --output-dir=build --output-filename=ModCord \
+            --include-data-dir=config=config --include-data-files=.env.example=.env.example \
             src/modcord/main.py
-
-      - name: Upload Linux Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ModCord-Linux
           path: build/ModCord.dist/
-          if-no-files-found: error
 
-  # --- Windows Build Job ---
+  # --- Windows Build ---
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           python-version: "3.13"
-
-      - name: Compile ModCord (Windows)
-        # Using PowerShell syntax for multi-line commands
+      - name: Compile
         run: |
           uv run --group build nuitka `
-            --standalone `
-            --output-dir=build `
-            --output-filename=ModCord `
-            --include-data-dir=config=config `
-            --include-data-files=.env.example=.env.example `
+            --standalone --output-dir=build --output-filename=ModCord `
+            --include-data-dir=config=config --include-data-files=.env.example=.env.example `
             src/modcord/main.py
-
-      - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ModCord-Windows
           path: build/ModCord.dist/
-          if-no-files-found: error
+
+  # --- macOS Build ---
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - name: Compile
+        run: |
+          uv run --group build nuitka \
+            --standalone --output-dir=build --output-filename=ModCord \
+            --include-data-dir=config=config --include-data-files=.env.example=.env.example \
+            src/modcord/main.py
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ModCord-MacOS
+          path: build/ModCord.dist/
