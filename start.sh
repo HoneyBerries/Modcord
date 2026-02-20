@@ -36,43 +36,8 @@ if ! install_uv; then
     exit 1
 fi
 
-echo "Using uv to manage dependencies..."
+echo "Running bot via uv..."
 
-# Check if virtual environment already exists and is set up
-if [ -d ".venv" ] && [ -f ".venv/bin/activate" ] && [ -f ".venv/.setup_complete" ]; then
-    echo "Virtual environment already set up. Skipping installation..."
-else
-    # Create virtual environment if it doesn't exist
-    if [ ! -d ".venv" ]; then
-        echo "Creating virtual environment..."
-        uv venv
-        
-        if [ $? -ne 0 ]; then
-            echo "Failed to create virtual environment"
-            exit 1
-        fi
-    fi
+uv run modcord
 
-    # Activate the virtual environment
-    source .venv/bin/activate
-
-    # Install dependencies using uv
-    echo "Installing dependencies..."
-    uv pip install -r requirements.txt --index-strategy unsafe-best-match
-
-    if [ $? -ne 0 ]; then
-        echo "Failed to install dependencies with uv"
-        exit 1
-    fi
-
-    # Mark setup as complete
-    touch .venv/.setup_complete
-    echo "Setup complete!"
-fi
-
-# Activate the virtual environment
-source .venv/bin/activate
-
-echo "Running bot..."
-python src/modcord/main.py
 exit $?
