@@ -13,28 +13,19 @@ import sys
 from pathlib import Path
 
 def resolve_base_dir() -> Path:
-    """
-    Determine the base directory of the Modcord project.
-    
-    This function resolves the project root using multiple strategies to support
-    both development and compiled/deployed environments:
-    
-    1. MODCORD_HOME environment variable, if set
-    2. Executable's directory if running as compiled/frozen binary (PyInstaller, Nuitka)
-    3. Grandparent of this file's directory if running from source
-    
-    Returns:
-        Path: Resolved absolute path to the project base directory.
-    
-    Note:
-        The base directory is used as the working directory for the application.
-    """
+    # 1. Explicit override (best option)
     if env_home := os.getenv("MODCORD_HOME"):
         return Path(env_home).resolve()
 
-    if getattr(sys, "frozen", False) or getattr(sys, "compiled", False):
-        return Path(sys.argv[0]).resolve().parent
+    # 2. Always use executable dir when compiled
+    if getattr(sys, "frozen", False) or hasattr(sys, "executable"):
+        exe_dir = Path(sys.executable).parent
 
+        # Detect Nuitka standalone layout
+        if (exe_dir / "config").exists() and (exe_dir / "data").exists():
+            return exe_dir
+
+    # 3. Development mode: project root
     return Path(__file__).resolve().parents[2]
 
 BASE_DIR = resolve_base_dir()
