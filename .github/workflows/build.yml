@@ -1,0 +1,68 @@
+name: Build ModCord
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  # --- Linux Build Job ---
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Compile ModCord (Linux)
+        run: |
+          uv run --group build nuitka \
+            --standalone \
+            --output-dir=build \
+            --output-filename=ModCord \
+            --include-data-dir=config=config \
+            --include-data-files=.env.example=.env.example \
+            src/modcord/main.py
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ModCord-Linux
+          path: build/ModCord.dist/
+          if-no-files-found: error
+
+  # --- Windows Build Job ---
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Compile ModCord (Windows)
+        # Using PowerShell syntax for multi-line commands
+        run: |
+          uv run --group build nuitka `
+            --standalone `
+            --output-dir=build `
+            --output-filename=ModCord `
+            --include-data-dir=config=config `
+            --include-data-files=.env.example=.env.example `
+            src/modcord/main.py
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ModCord-Windows
+          path: build/ModCord.dist/
+          if-no-files-found: error
