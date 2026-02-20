@@ -33,7 +33,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ModCord-Linux
-          path: build/ModCord.dist/
+          path: build/main.dist/
           if-no-files-found: error
 
   # --- Windows Build ---
@@ -65,7 +65,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ModCord-Windows
-          path: build/ModCord.dist/
+          path: build/main.dist/
           if-no-files-found: error
 
   # --- macOS Build ---
@@ -96,5 +96,5 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ModCord-MacOS
-          path: build/ModCord.dist/
+          path: build/main.dist/
           if-no-files-found: error
