@@ -41,6 +41,9 @@ ai_settings:
   
   # Model name/identifier to use for inference
   model_name: "moonshotai/Kimi-K2.5"
+
+  # Timeout for the AI inference request (seconds)
+  timeout: 3600
   
   # =======================================
   # System prompt for the AI moderation model. Guides the model to output a JSON decision.
@@ -239,7 +242,7 @@ ai_settings:
 # These template rules apply to all servers unless overridden via bot commands.
 
 # Default server rules for all servers. Used if no server-specific rules are defined.
-default_server_rules: |
+generic_server_rules: |
   (These are just generic rules. You should not treat them as specific as regular server rules.)
   1. Be respectful to everyone.
   2. No spamming, excessive caps, or emoji.

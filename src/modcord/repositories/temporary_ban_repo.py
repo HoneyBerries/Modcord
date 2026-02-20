@@ -15,7 +15,7 @@ import aiosqlite
 
 from modcord.util.logger import get_logger
 
-logger = get_logger("tempban_storage")
+logger = get_logger("temporary_ban_repo")
 
 
 @dataclass

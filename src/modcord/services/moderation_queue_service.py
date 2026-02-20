@@ -40,6 +40,7 @@ class ModerationQueueService:
     def __init__(self) -> None:
         self._queues: dict[GuildID, asyncio.Queue[discord.Message]] = {}
         self._workers: dict[GuildID, asyncio.Task] = {}
+        self._processing_tasks: set[asyncio.Task] = set()
 
     # ------------------------------------------------------
     # Public API
@@ -74,14 +75,24 @@ class ModerationQueueService:
 
     async def shutdown(self) -> None:
         """Cancel all worker tasks gracefully during bot shutdown."""
+        # Shutdown per-guild workers first
         for task in self._workers.values():
             if not task.done():
                 task.cancel()
-        if self._workers:
-            await asyncio.gather(*self._workers.values(), return_exceptions=True)
+        
+        # Shutdown background processing tasks
+        for task in self._processing_tasks:
+            if not task.done():
+                task.cancel()
+
+        all_tasks = list(self._workers.values()) + list(self._processing_tasks)
+        if all_tasks:
+            await asyncio.gather(*all_tasks, return_exceptions=True)
+        
         self._workers.clear()
+        self._processing_tasks.clear()
         self._queues.clear()
-        logger.info("[QUEUE SERVICE] All guild workers shut down.")
+        logger.info("[QUEUE SERVICE] All guild workers and processing tasks shut down.")
 
     # -------------------------------------------------------
     # Internal helpers
@@ -140,11 +151,27 @@ class ModerationQueueService:
                 len({m.channel.id for m in messages}),
             )
 
-            try:
-                await processing_service.process_batch(messages)
-            except asyncio.CancelledError:
-                return
-            except Exception:
-                logger.exception(
-                    "Processing service raised an exception for guild %s batch", guild_id
-                )
+            # Fire-and-forget processing task so the worker can collect the next batch immediately
+            task = asyncio.create_task(
+                self._safe_process_batch(processing_service, messages, guild_id),
+                name=f"process-batch-guild-{guild_id}",
+            )
+            self._processing_tasks.add(task)
+            task.add_done_callback(self._processing_tasks.discard)
+
+
+    async def _safe_process_batch(
+        self,
+        processing_service: MessageProcessingService,
+        messages: List[discord.Message],
+        guild_id: GuildID,
+    ) -> None:
+        """Execute processing_service.process_batch with exception handling."""
+        try:
+            await processing_service.process_batch(messages)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception(
+                "Processing service raised an exception for guild %s batch", guild_id
+            )

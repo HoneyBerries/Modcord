@@ -1,3 +1,4 @@
+import sys
 from typing import Any, Dict
 
 
@@ -11,8 +12,8 @@ class AISettings:
     - system_prompt: The system prompt template
     """
 
-    def __init__(self, data: Dict[str, Any] | None = None) -> None:
-        self.data: Dict[str, Any] = data or {}
+    def __init__(self, data: Dict[str, Any]) -> None:
+        self.data: Dict[str, Any] = data
 
     def get(self, key: str, default: Any = None) -> Any:
         """Return the value for `key` or `default` if missing."""
@@ -31,3 +32,11 @@ class AISettings:
     def model_name(self) -> str:
         """Return the model name/identifier to use for inference."""
         return str(self.data.get("model_name", ""))
+
+    @property
+    def api_request_timeout(self) -> float:
+        """Return the api_request_timeout for AI API requests in seconds.
+        
+        Default is 60 seconds if not specified in config.
+        """
+        return float(self.data.get("api_request_timeout", sys.maxsize))

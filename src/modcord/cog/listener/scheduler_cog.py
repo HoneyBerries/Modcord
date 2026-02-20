@@ -9,7 +9,6 @@ Contains three cogs:
 from __future__ import annotations
 
 import asyncio
-import sys
 import time
 from typing import Awaitable, Callable
 
@@ -18,8 +17,8 @@ from discord.ext import commands, tasks
 
 from modcord.configuration.app_configuration import app_config
 from modcord.database.db_connection import db_connection
-from modcord.repositories.temporary_ban_repo import tempban_storage
 from modcord.datatypes.discord_datatypes import GuildID, ChannelID, UserID
+from modcord.repositories.temporary_ban_repo import tempban_storage
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.discord import collector
 from modcord.util.logger import get_logger

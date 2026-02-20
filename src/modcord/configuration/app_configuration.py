@@ -77,13 +77,13 @@ class AppConfig:
     # High-level shortcuts
     # --------------------------
     @property
-    def server_rules(self) -> str:
+    def generic_server_rules(self) -> str:
         """Return the configured server rules as a string (or empty string).
 
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        return str(self._data.get("server_rules") or self._data.get("default_server_rules", "") or "")
+        return self._data.get("generic_server_rules")
 
     @property
     def channel_guidelines(self) -> str:
@@ -92,7 +92,8 @@ class AppConfig:
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        return str(self._data.get("channel_guidelines") or self._data.get("default_channel_guidelines", "") or "")
+        return self._data.get("default_channel_guidelines", "")
+
 
     @property
     def system_prompt_template(self) -> str:
@@ -102,8 +103,8 @@ class AppConfig:
         format_system_prompt(...) to render with server rules inserted.
         """
         # Check ai_settings.system_prompt
-        ai_settings = self._data.get("ai_settings", {})
-        return str(ai_settings.get("system_prompt", "")) if isinstance(ai_settings, dict) else ""
+        ai_settings = self._data.get("ai_settings")
+        return ai_settings.get("system_prompt", "")
 
     @property
     def ai_settings(self) -> AISettings:
@@ -112,8 +113,8 @@ class AppConfig:
         The wrapper provides both attribute-style access for common fields and
         mapping semantics for backward compatibility.
         """
-        settings = self._data.get("ai_settings", {})
-        return AISettings(settings if isinstance(settings, dict) else {})
+        settings = self._data.get("ai_settings")
+        return AISettings(settings)
 
     @property
     def rules_sync_interval(self) -> float:

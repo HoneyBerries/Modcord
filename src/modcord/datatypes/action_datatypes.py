@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Tuple
 
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
 
@@ -48,6 +48,8 @@ class Actions:
             user_id=user_id,
             action=ActionType.WARN,
             reason=reason,
+            ban_duration=0,
+            timeout_duration=0,
         )
 
     @staticmethod
@@ -63,6 +65,7 @@ class Actions:
             action=ActionType.TIMEOUT,
             reason=reason,
             timeout_duration=duration_seconds,
+            ban_duration=0,
         )
 
     @staticmethod
@@ -76,6 +79,8 @@ class Actions:
             user_id=user_id,
             action=ActionType.KICK,
             reason=reason,
+            ban_duration=0,
+            timeout_duration=0,
         )
 
     @staticmethod
@@ -91,6 +96,7 @@ class Actions:
             action=ActionType.BAN,
             reason=reason,
             ban_duration=duration_seconds,
+            timeout_duration=0,
         )
 
     @staticmethod
@@ -104,6 +110,8 @@ class Actions:
             user_id=user_id,
             action=ActionType.UNBAN,
             reason=reason,
+            ban_duration=0,
+            timeout_duration=0,
         )
 
     @staticmethod
@@ -119,6 +127,8 @@ class Actions:
             action=ActionType.DELETE,
             channel_deletions=channel_deletions,
             reason=reason,
+            ban_duration=0,
+            timeout_duration=0,
         )
 
 

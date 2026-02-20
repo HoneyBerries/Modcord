@@ -109,33 +109,25 @@ def parse_batch_actions(
                 ch_id_str = str(ch_entry.get("channel_id", "")).strip()
                 if not ch_id_str:
                     continue
-                raw_mids = ch_entry.get("message_ids_to_delete") or []
-                mids = tuple(MessageID(mid) for mid in raw_mids if mid) if isinstance(raw_mids, list) else ()
+
+                raw_msg_ids = ch_entry.get("message_ids_to_delete")
+                msg_ids = tuple(MessageID(mid) for mid in raw_msg_ids if mid)
                 channel_deletions.append(
                     ChannelDeleteSpec(
                         channel_id=ChannelID(ch_id_str),
-                        message_ids=mids,
+                        message_ids=msg_ids,
                     )
                 )
 
+
         # ---- durations ----
-        try:
-            timeout_dur = int(item["timeout_duration"]) if item.get("timeout_duration") is not None and item["timeout_duration"] != "" else None
-        except (ValueError, TypeError):
-            timeout_dur = None
+        timeout_dur = int(item["timeout_duration"])
+        ban_dur = int(item["ban_duration"])
 
-        try:
-            ban_dur = int(item["ban_duration"]) if item.get("ban_duration") is not None and item["ban_duration"] != "" else None
-        except (ValueError, TypeError):
-            ban_dur = None
+        # reason
+        reason = item.get("reason")
 
-        reason = str(item.get("reason", "")).strip()
-
-        try:
-            action_type = ActionType(action_str)
-        except ValueError:
-            logger.warning("[PARSE] Unknown action type %r for user %s, defaulting to null", action_str, user_id)
-            action_type = ActionType.NULL
+        action_type = ActionType(action_str)
 
         actions.append(
             ActionData(

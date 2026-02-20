@@ -8,7 +8,7 @@ This module coordinates the entire moderation pipeline using an OpenAI-compatibl
 
 Key Features:
 - Uses AsyncOpenAI client for inference (compatible with vLLM, LM Studio, etc.).
-- Supports multimodal inputs (text + images via URLs).
+- Supports multimodal inputs (text and images via URLs).
 - Handles per-guild server rules dynamically (channel guidelines in payload).
 - One API call per server per batch for token efficiency.
 """
@@ -16,7 +16,6 @@ Key Features:
 from __future__ import annotations
 
 import json
-import os
 from typing import List
 
 import weave
@@ -47,7 +46,7 @@ class LLMEngine:
     """
 
     def __init__(self, api_key: str, base_url: str) -> None:
-        """Initialize the LLMEngine with AsyncOpenAI client.
+        """Initialize the LLMEngine with an AsyncOpenAI client.
 
         Args:
             api_key: The OpenAI-compatible API key.
@@ -60,11 +59,13 @@ class LLMEngine:
             base_url=base_url,
         )
         self._model_name = ai_settings.model_name
+        self._api_request_timeout = ai_settings.api_request_timeout
         self._base_system_prompt = app_config.system_prompt_template
         logger.info(
-            "[LLM ENGINE] Initialized with base_url=%s, model=%s",
+            "[LLM ENGINE] Initialized with base_url=%s, model=%s, api_request_timeout=%.1fs",
             ai_settings.base_url,
             self._model_name,
+            self._api_request_timeout,
         )
 
     async def generate_dynamic_system_prompt(self, guild_id: GuildID) -> str:
@@ -82,10 +83,11 @@ class LLMEngine:
         template = self._base_system_prompt
 
         # Resolve guild rules
-        guild_rules = (await guild_settings_manager.get_rules(guild_id) or app_config.server_rules).strip()
+        guild_rules = await guild_settings_manager.get_rules(guild_id) or app_config.generic_server_rules
 
         # Inject server rules; channel guidelines are in the payload
         prompt = template.replace("<|SERVER_RULES_INJECT|>", guild_rules)
+
         return prompt
 
 
@@ -139,6 +141,7 @@ class LLMEngine:
                 messages=messages,
                 response_format=response_format,
                 reasoning_effort="low",
+                timeout=self._api_request_timeout,
                 #extra_body={'thinking': {'type': 'disabled'}, 'chat_template_kwargs': {"thinking": False}},
             )
             
