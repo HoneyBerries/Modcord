@@ -9,58 +9,92 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v5
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           python-version: "3.13"
-      - name: Compile
+
+      - name: Compile ModCord (Linux)
         run: |
           uv run --group build nuitka \
-            --standalone --output-dir=build --output-filename=ModCord \
-            --include-data-dir=config=config --include-data-files=.env.example=.env.example \
+            --standalone \
+            --output-dir=build \
+            --output-filename=ModCord \
+            --assume-yes-for-downloads \
+            --include-data-dir=config=config \
+            --include-data-files=.env.example=.env.example \
             src/modcord/main.py
-      - uses: actions/upload-artifact@v6
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v6
         with:
           name: ModCord-Linux
           path: build/ModCord.dist/
+          if-no-files-found: error
 
   # --- Windows Build ---
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v5
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           python-version: "3.13"
-      - name: Compile
+
+      - name: Compile ModCord (Windows)
+        shell: bash
         run: |
-          uv run --group build nuitka `
-            --standalone --output-dir=build --output-filename=ModCord `
-            --include-data-dir=config=config --include-data-files=.env.example=.env.example `
+          uv run --group build nuitka \
+            --standalone \
+            --output-dir=build \
+            --output-filename=ModCord \
+            --assume-yes-for-downloads \
+            --include-data-dir=config=config \
+            --include-data-files=.env.example=.env.example \
             src/modcord/main.py
-      - uses: actions/upload-artifact@v6
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v6
         with:
           name: ModCord-Windows
           path: build/ModCord.dist/
+          if-no-files-found: error
 
   # --- macOS Build ---
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v5
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           python-version: "3.13"
-      - name: Compile
+
+      - name: Compile ModCord (macOS)
         run: |
           uv run --group build nuitka \
-            --standalone --output-dir=build --output-filename=ModCord \
-            --include-data-dir=config=config --include-data-files=.env.example=.env.example \
+            --standalone \
+            --output-dir=build \
+            --output-filename=ModCord \
+            --assume-yes-for-downloads \
+            --include-data-dir=config=config \
+            --include-data-files=.env.example=.env.example \
             src/modcord/main.py
-      - uses: actions/upload-artifact@v6
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v6
         with:
           name: ModCord-MacOS
           path: build/ModCord.dist/
+          if-no-files-found: error

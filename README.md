@@ -1,7 +1,6 @@
 # Modcord — Discord Moderation Bot
 
-[![Run Tests](https://github.com/HoneyBerries/Modcord/actions/workflows/tests.yaml/badge.svg)](https://github.com/HoneyBerries/Modcord/actions/workflows/tests.yaml)
-[![Coverage](https://codecov.io/gh/HoneyBerries/Modcord/branch/main/graph/badge.svg?token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/HoneyBerries/Modcord)
+[![Build](https://github.com/HoneyBerries/Modcord/actions/workflows/build.yaml/badge.svg)](https://github.com/HoneyBerries/Modcord/actions/workflows/tests.yaml)
 [![License: Modcord Custom License](https://img.shields.io/badge/license-Modcord%20Custom%20License-blue.svg)](LICENSE.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/honeyberries/modcord)](https://github.com/honeyberries/modcord/commits)
