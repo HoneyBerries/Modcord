@@ -17,15 +17,9 @@ def resolve_base_dir() -> Path:
     if env_home := os.getenv("MODCORD_HOME"):
         return Path(env_home).resolve()
 
-    # 2. Always use executable dir when compiled
-    if getattr(sys, "frozen", False) or hasattr(sys, "executable"):
-        exe_dir = Path(sys.executable).parent
+    if "__compiled__" in globals():
+        return Path(sys.argv[0]).resolve().parent
 
-        # Detect Nuitka standalone layout
-        if (exe_dir / "config").exists() and (exe_dir / "data").exists():
-            return exe_dir
-
-    # 3. Development mode: project root
     return Path(__file__).resolve().parents[2]
 
 BASE_DIR = resolve_base_dir()
