@@ -54,11 +54,7 @@ class GuildSettingsManager:
         if not self._db_initialized:
             await guild_settings_service.initialize()
             self._db_initialized = True
-            logger.info("[GUILD SETTINGS MANAGER] Database initialized")
 
-    async def shutdown(self) -> None:
-        """No-op — nothing to flush without a cache."""
-        logger.info("[GUILD SETTINGS MANAGER] Shutdown complete")
 
     # ------------------------------------------------------------------
     # Core API

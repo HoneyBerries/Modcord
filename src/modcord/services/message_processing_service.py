@@ -7,7 +7,7 @@ from modcord.datatypes.discord_datatypes import GuildID, UserID, DiscordUsername
 from modcord.datatypes.moderation_datatypes import (
     ModerationMessage, ModerationUserChannel, ModerationUser,
     ChannelContext, ServerModerationBatch)
-from modcord.history.discord_history_fetcher import fetch_history_context
+from modcord.util.discord.history_fetcher import fetch_history_context
 from modcord.moderation.moderation_pipeline import ModerationPipeline
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util import image_utils
@@ -57,7 +57,7 @@ class MessageProcessingService:
         history_by_channel = {}
         for ch_id_int, msgs in mod_messages_by_channel.items():
             exclude_ids = {m.message_id for m in msgs}
-            history = await fetch_history_context(self.bot, ch_id_int, exclude_ids, history_limit=50)
+            history = await fetch_history_context(self.bot, ch_id_int, exclude_ids, history_limit=96)
             if history:
                 history_by_channel[ch_id_int] = history
 

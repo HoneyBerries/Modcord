@@ -54,7 +54,7 @@ class Actions:
     def timeout(
         guild_id: GuildID,
         user_id: UserID,
-        duration_minutes: int,
+        duration_seconds: int,
         reason: str,
     ) -> ActionData:
         return ActionData(
@@ -62,7 +62,7 @@ class Actions:
             user_id=user_id,
             action=ActionType.TIMEOUT,
             reason=reason,
-            timeout_duration=duration_minutes,
+            timeout_duration=duration_seconds,
         )
 
     @staticmethod
@@ -82,7 +82,7 @@ class Actions:
     def ban(
         guild_id: GuildID,
         user_id: UserID,
-        duration_minutes: int,
+        duration_seconds: int,
         reason: str,
     ) -> ActionData:
         return ActionData(
@@ -90,7 +90,7 @@ class Actions:
             user_id=user_id,
             action=ActionType.BAN,
             reason=reason,
-            ban_duration=duration_minutes,
+            ban_duration=duration_seconds,
         )
 
     @staticmethod
@@ -128,6 +128,8 @@ class ActionData:
 
     channel_deletions maps each channel to the specific message IDs
     that should be deleted in that channel.
+
+    timeout_duration and ban_duration are ALWAYS in SECONDS — never minutes or hours.
     """
 
     guild_id: GuildID
@@ -135,8 +137,8 @@ class ActionData:
     action: ActionType
     reason: str
 
-    timeout_duration: Optional[int] = None
-    ban_duration: Optional[int] = None
+    timeout_duration: int
+    ban_duration: int
 
     channel_deletions: Tuple[ChannelDeleteSpec, ...] = field(default_factory=tuple)
 

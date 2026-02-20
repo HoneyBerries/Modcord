@@ -20,12 +20,11 @@ from modcord.database.database import database
 from modcord.database.db_connection import db_connection
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.datatypes.guild_settings import GuildSettings
-from modcord.settings.repositories.channel_guidelines_repo import ChannelGuidelinesRepository
-from modcord.settings.repositories.guild_settings_repo import GuildSettingsRow, GuildSettingsRepository
+from modcord.repositories.channel_guidelines_repo import ChannelGuidelinesRepository
+from modcord.repositories.guild_options_repo import GuildSettingsRow, GuildOptionsRepository
 from modcord.util.logger import get_logger
 
 logger = get_logger("guild_settings_service")
-
 
 
 
@@ -39,7 +38,7 @@ class GuildSettingsService:
     """
 
     def __init__(self) -> None:
-        self._guild_settings_repo = GuildSettingsRepository()
+        self._guild_settings_repo = GuildOptionsRepository()
         self._channel_guidelines_repo = ChannelGuidelinesRepository()
         # Per-guild locks: concurrent guilds don't block each other
         self._per_guild_locks: Dict[int, asyncio.Lock] = {}

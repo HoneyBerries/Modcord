@@ -1,27 +1,8 @@
 """Image processing utilities for moderation."""
 
-import hashlib
-
 import discord
 from modcord.datatypes.image_datatypes import ImageLink, ImageID
 from modcord.datatypes.moderation_datatypes import ModerationImage
-from modcord.util.logger import get_logger
-
-logger = get_logger("image_utils")
-
-
-def generate_image_hash_id(image_url: ImageLink) -> ImageID:
-    """
-    Generate a unique 8-character ImageID for an image based on its URL.
-    
-    Args:
-        image_url: The URL of the image (as ImageLink type).
-        
-    Returns:
-        ImageID: First 8 characters of SHA3-512 hash wrapped in ImageID.
-    """
-    hash_obj = hashlib.sha3_512(str(image_url).encode('utf-8'))
-    return ImageID(hash_obj.hexdigest()[:8])
 
 
 def is_image_attachment(attachment: discord.Attachment) -> bool:
@@ -68,7 +49,7 @@ def extract_images_for_moderation(message: discord.Message) -> list[ModerationIm
             continue
         
         image_url = ImageLink.from_url(attachment.url)
-        image_id = generate_image_hash_id(image_url)
+        image_id = ImageID.from_url(image_url)
         
         images.append(ModerationImage(
             image_id=image_id,

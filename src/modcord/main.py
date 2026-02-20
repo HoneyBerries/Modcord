@@ -50,15 +50,13 @@ import discord
 from dotenv import load_dotenv
 
 from modcord.cog.commands import debug_cmds, settings_cmds
-from modcord.cog.listener import message_listener, events_listener
+from modcord.cog.listener import message_listener, events_listener, scheduler_cog
 from modcord.database import database as db
 from modcord.moderation.moderation_pipeline import ModerationPipeline
 from modcord.services.message_processing_service import MessageProcessingService
 from modcord.services.moderation_queue_service import ModerationQueueService
 from modcord.settings.guild_settings_manager import guild_settings_manager
-from modcord.scheduler.rules_sync_scheduler import rules_sync_scheduler
-from modcord.scheduler.guidelines_sync_scheduler import guidelines_sync_scheduler
-from modcord.console.control_panel import ConsoleControl, close_bot_instance, console_session
+from modcord.console.control_panel import ConsoleControl, console_session
 from modcord.util.logger import get_logger, handle_exception
 
 
@@ -85,28 +83,6 @@ def load_environment() -> str:
         sys.exit(1)
     return token
 
-
-def build_intents() -> discord.Intents:
-    """
-    Construct the Discord intents required for Modcord to function.
-    
-    Enables the following intents:
-    - message_content: Read message text for moderation
-    - guilds: Access guild information
-    - messages: Receive message events
-    - reactions: Handle reaction events
-    - members: Access member information and events
-    
-    Returns:
-        discord.Intents: Configured intents object for bot initialization.
-    """
-    intents = discord.Intents.default()
-    intents.message_content = True
-    intents.guilds = True
-    intents.messages = True
-    intents.reactions = True
-    intents.members = True
-    return intents
 
 
 def load_cogs(discord_bot_instance: discord.Bot) -> ModerationQueueService:
@@ -139,6 +115,7 @@ def load_cogs(discord_bot_instance: discord.Bot) -> ModerationQueueService:
     events_listener.setup(discord_bot_instance)
     message_listener.setup(discord_bot_instance, queue_service, processing_service)
     settings_cmds.setup(discord_bot_instance)
+    scheduler_cog.setup(discord_bot_instance)
 
     logger.info("[MAIN] All cogs loaded successfully.")
 
@@ -152,17 +129,18 @@ def create_bot() -> tuple[discord.Bot, ModerationQueueService]:
     Returns:
         A (bot, queue_service) tuple so the queue can be shut down cleanly.
     """
-    bot = discord.Bot(intents=build_intents())
+
+    bot_intents = discord.Intents.default()
+    bot_intents.message_content = True
+    bot_intents.guilds = True
+    bot_intents.messages = True
+    bot_intents.reactions = True
+    bot_intents.members = True
+
+    bot = discord.Bot(intents=bot_intents)
     queue_service = load_cogs(bot)
     return bot, queue_service
 
-
-async def _start_schedulers_when_ready(bot: discord.Bot) -> None:
-    """Wait for bot to be ready, then start background sync schedulers."""
-    await bot.wait_until_ready()
-    logger.info("[MAIN] Bot ready, starting background schedulers…")
-    rules_sync_scheduler.start(bot)
-    guidelines_sync_scheduler.start(bot)
 
 
 async def run_bot(
@@ -180,8 +158,9 @@ async def run_bot(
     Args:
         bot (discord.Bot): The initialized bot instance to run.
         token (str): Discord bot authentication token.
-        control (ConsoleControl): Console control for handling shutdown/restart requests.
-    
+        control (ConsoleControl): Console control for shutdown signalling.
+        queue_service (ModerationQueueService): Queue service for background workers.
+
     Returns:
         int: Exit code (0 for success, 1 for error).
     """
@@ -191,8 +170,6 @@ async def run_bot(
 
     try:
         async with console_session(control):
-            # Start scheduler initialization task (runs after bot.wait_until_ready())
-            scheduler_task = asyncio.create_task(_start_schedulers_when_ready(bot))
             try:
                 await bot.start(token)
             except asyncio.CancelledError:
@@ -200,73 +177,22 @@ async def run_bot(
             except Exception as exc:
                 logger.critical("Discord bot runtime error: %s", exc)
                 exit_code = 1
-            finally:
-                scheduler_task.cancel()
     finally:
         control.set_bot(None)
-        await shutdown_runtime(bot, queue_service)
+        await shutdown_runtime(queue_service)
 
     return exit_code
 
 
 async def shutdown_runtime(
-    bot: discord.Bot,
-    queue_service: ModerationQueueService | None = None,
+    queue_service: ModerationQueueService,
 ) -> None:
-    """
-    Gracefully shutdown all Modcord subsystems and clean up resources.
-
-    Shutdown order
-    --------------
-    1. Discord connection (stop receiving events)
-    2. Per-channel queue workers (ModerationQueueService)
-    3. Background schedulers
-    4. Guild settings manager (persist pending changes)
-    5. Database (WAL checkpoint + lock release)
-    6. Garbage collection
-
-    Args:
-        bot: The bot instance to shut down.
-        queue_service: Optional queue service whose workers need cancelling.
-    """
-    # Cancel queue workers before stopping schedulers
+    """Gracefully shut down all Modcord subsystems."""
     if queue_service is not None:
-        try:
-            await queue_service.shutdown()
-        except Exception as exc:
-            logger.exception("Error during queue service shutdown: %s", exc)
+        await queue_service.shutdown()
 
-    # Stop background tasks in proper order
-    try:
-        await rules_sync_scheduler.shutdown()
-    except Exception as exc:
-        logger.exception("Error during rules sync scheduler shutdown: %s", exc)
+    await db.database.shutdown()
 
-    try:
-        await guidelines_sync_scheduler.shutdown()
-    except Exception as exc:
-        logger.exception("Error during guidelines sync scheduler shutdown: %s", exc)
-
-    # Persist any pending guild settings
-    try:
-        await guild_settings_manager.shutdown()
-    except Exception as exc:
-        logger.exception("Error during guild settings shutdown: %s", exc)
-
-    # Checkpoint WAL and release database lock
-    try:
-        await db.database.shutdown()
-    except Exception as exc:
-        logger.exception("Error during database shutdown: %s", exc)
-
-    # Final cleanup
-    try:
-        import gc
-        gc.collect()
-    except Exception as exc:
-        logger.exception("Garbage collection during shutdown failed: %s", exc)
-    
-    # This should be the absolute last log message before exit
     logger.info("[MAIN] Shutdown complete.")
 
 
@@ -277,17 +203,16 @@ async def async_main() -> int:
     Coordinates the complete startup sequence:
     1. Load environment variables and bot token
     2. Initialize database and load guild settings
-    3. Create Discord bot instance and load cogs
+    3. Create a Discord bot instance and load cogs
     4. Initialize AI moderation engine
-    5. Run bot with interactive console
-    6. Handle restart requests
-    
+    5. Run bot with an interactive console
+
     Returns:
-        int: Process exit code (0 for normal exit, 1 for error, -1 for restart).
+        int: Process exit code (0 for normal exit, 1 for error).
     """
     token = load_environment()
 
-    # Initialize database and load guild settings (bot will be passed later for auto-population)
+    # Initialize a database and load guild settings (bot will be passed later for auto-population)
     try:
         logger.info("[MAIN] Initializing database and loading guild settings...")
         await guild_settings_manager.async_init()
@@ -304,21 +229,15 @@ async def async_main() -> int:
     control = ConsoleControl()
     exit_code = await run_bot(bot, token, control, queue_service)
 
-    if control.is_restart_requested():
-        logger.info("[MAIN] Restart requested, returning exit code -1 to trigger restart")
-        return -1
-
     return exit_code
 
 
 def main() -> int:
     """
-    Main entry point that runs the async event loop and handles process lifecycle.
-    
-    Executes the async_main coroutine and handles special exit codes:
-    - Exit code -1 triggers a process restart using os.execv
-    - Other exit codes are returned normally
-    
+    Main entry point that runs the async event loop and handles the process lifecycle.
+
+    Executes the async_main coroutine and returns the exit code.
+
     Handles KeyboardInterrupt for graceful shutdown and SystemExit for
     explicit exit requests.
     
@@ -328,29 +247,16 @@ def main() -> int:
     logger.info("[MAIN] Starting Discord Moderation Bot…")
     try:
         exit_code = asyncio.run(async_main())
-
-        if exit_code == -1:
-            logger.info("[MAIN] Restart requested; replacing current process with new instance.")
-            # Use os.execv to replace the current process, preserving stdin/stdout/stderr
-            # This ensures the interactive console continues working after restart
-            os.execv(sys.executable, [sys.executable] + sys.argv)
-            return 0
-
         return exit_code
+
     except KeyboardInterrupt:
         logger.info("[MAIN] Shutdown requested by user.")
         return 0
+
     except SystemExit as exit_exc:
         code = exit_exc.code
-        if isinstance(code, int):
-            return code
-        if code is None:
-            return 1
-        try:
-            return int(code)
-        except (ValueError, TypeError):
-            logger.warning("[MAIN] SystemExit.code is not an int (%r); defaulting to 1", code)
-            return 1
+        return code
+
     except Exception as exc:
         logger.critical("An unexpected error occurred while running the bot: %s", exc)
         return 1

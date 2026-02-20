@@ -18,7 +18,7 @@ from modcord.ai.llm_engine import LLMEngine
 from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.datatypes.guild_settings import GuildSettings
-from modcord.datatypes.moderation_datatypes import ServerModerationBatch, ModerationUser
+from modcord.datatypes.moderation_datatypes import ServerModerationBatch
 from modcord.moderation import moderation_helper
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.discord import discord_utils
@@ -90,7 +90,7 @@ class ModerationPipeline:
 
     async def _apply_batch_action(
         self,
-        action: ActionData,
+        action_data: ActionData,
         batch: ServerModerationBatch,
         settings: GuildSettings | None = None,
     ) -> bool:
@@ -98,7 +98,7 @@ class ModerationPipeline:
         Apply a moderation action to a user in the batch.
         
         Args:
-            action: ActionData containing action type and parameters.
+            action_data: ActionData containing action type and parameters.
             batch: Server batch containing the target user.
             settings: Guild settings for notification channel resolution.
         
@@ -107,17 +107,17 @@ class ModerationPipeline:
         """
         logger.debug(
             "[PIPELINE] Applying action %s for user %s in guild %s",
-            action.action.value,
-            action.user_id,
+            action_data.action.value,
+            action_data.user_id,
             batch.guild_id
         )
         
-        if action.action is ActionType.NULL or not action.user_id:
+        if action_data.action is ActionType.NULL or not action_data.user_id:
             logger.debug("[PIPELINE] Skipping: action is NULL or no user_id")
             return False
 
         # Find target user with Discord context
-        target_user = moderation_helper.find_target_user_in_batch(batch, action.user_id)
+        target_user = moderation_helper.find_target_user_in_batch(batch, action_data.user_id)
         if target_user is None:
             logger.warning(
                 "[PIPELINE] Batch has %d users: %s",
@@ -131,27 +131,27 @@ class ModerationPipeline:
 
         guild_id = GuildID.from_guild(guild)
 
-        if not await guild_settings_manager.is_action_allowed(guild_id, action.action):
-            logger.warning(
+        if not await guild_settings_manager.is_action_allowed(guild_id, action_data.action):
+            logger.debug(
                 "[PIPELINE] Action %s not allowed in guild %s",
-                action.action.value,
-                int(guild_id)
+                action_data.action.name,
+                guild_id
             )
             return False
 
         if guild.owner_id == member.id or discord_utils.has_elevated_permissions(member):
             logger.debug(
                 "[PIPELINE] Skipping action for user %s: elevated permissions",
-                action.user_id
+                action_data.user_id
             )
             return False
 
         try:
             # Derive notification channel (mod-log > user channel > batch fallback)
-            notification_channel = _resolve_notification_channel(guild, batch, target_user, settings)
+            notification_channel = _resolve_notification_channel(guild, settings)
             
             result = await moderation_helper.apply_action(
-                action=action,
+                action=action_data,
                 member=member,
                 bot=self._bot,
                 notification_channel=notification_channel,
@@ -159,8 +159,8 @@ class ModerationPipeline:
             
             logger.debug(
                 "[PIPELINE] Applied action %s for user %s: %s",
-                action.action.value,
-                action.user_id,
+                action_data.action.value,
+                action_data.user_id,
                 result
             )
             return result
@@ -168,38 +168,30 @@ class ModerationPipeline:
         except discord.Forbidden:
             logger.warning(
                 "Permission error applying action %s for user %s",
-                action.action.value,
-                action.user_id
+                action_data.action.value,
+                action_data.user_id
             )
             return False
         
         except Exception as e:
             logger.error(
                 "Error applying action %s for user %s: %s",
-                action.action.value,
-                action.user_id,
+                action_data.action.value,
+                action_data.user_id,
                 e,
                 exc_info=True)
             return False
 
 
-def _resolve_notification_channel(
-    guild: discord.Guild,
-    batch: ServerModerationBatch,
-    target_user: ModerationUser,
-    settings: GuildSettings | None = None,
-) -> discord.TextChannel | None:
+def _resolve_notification_channel(guild: discord.Guild, settings: GuildSettings) -> discord.TextChannel | None:
     """Derive the best channel to post a notification embed in.
 
     Priority:
     1. Configured mod-log channel (``settings.mod_log_channel_id``)
-    2. First channel from the user's message channels in this batch
-    3. First channel context in the batch
+    2. Default system channel set for the guild
 
     Args:
         guild: Discord guild object.
-        batch: Server batch with channel metadata.
-        target_user: ModerationUser whose channels we inspect.
         settings: Optional guild settings for mod-log channel.
 
     Returns:
@@ -211,17 +203,5 @@ def _resolve_notification_channel(
         if isinstance(ch, discord.TextChannel):
             return ch
 
-    # 2. First channel from the user's channels
-    if target_user.channels:
-        first_ch = target_user.channels[0]
-        ch = guild.get_channel(int(first_ch.channel_id))
-        if isinstance(ch, discord.TextChannel):
-            return ch
-
-    # 3. Fallback: first channel in the batch
-    for ctx in batch.channels.values():
-        ch = guild.get_channel(int(ctx.channel_id))
-        if isinstance(ch, discord.TextChannel):
-            return ch
-
-    return None
+    # 2. Just use the default system channel
+    return guild.system_channel

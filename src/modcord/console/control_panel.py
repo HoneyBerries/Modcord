@@ -94,25 +94,21 @@ class ConsoleControl:
     """
     Manager for console-driven bot lifecycle controls.
     
-    This class coordinates shutdown and restart requests from the interactive console,
+    This class coordinates shutdown requests from the interactive console,
     maintaining state flags and providing access to the Discord bot instance.
     
     Attributes:
         shutdown_event (asyncio.Event): Event that signals shutdown request.
-        restart_event (asyncio.Event): Event that signals restart request.
-    
+
     Methods:
         set_bot: Set the Discord bot instance reference.
         request_shutdown: Signal that the bot should shut down.
-        request_restart: Signal that the bot should restart.
         stop: Alias for request_shutdown.
         is_shutdown_requested: Check if shutdown has been requested.
-        is_restart_requested: Check if restart has been requested.
     """
 
     def __init__(self) -> None:
         self.shutdown_event = asyncio.Event()
-        self.restart_event = asyncio.Event()
         self._bot: discord.Bot | None = None
 
     def set_bot(self, bot: discord.Bot | None) -> None:
@@ -125,23 +121,18 @@ class ConsoleControl:
     def request_shutdown(self) -> None:
         self.shutdown_event.set()
 
-    def request_restart(self) -> None:
-        self.restart_event.set()
-
     def stop(self) -> None:
         self.shutdown_event.set()
 
     def is_shutdown_requested(self) -> bool:
         return self.shutdown_event.is_set()
 
-    def is_restart_requested(self) -> bool:
-        return self.restart_event.is_set()
 
 
 async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False) -> None:
     """
     Gracefully close the Discord bot connection if active.
-    
+
     Sets the bot's status to offline before closing to indicate proper shutdown.
     All exceptions during closure are caught and logged to prevent crashes during
     shutdown.
@@ -165,18 +156,15 @@ async def close_bot_instance(bot: discord.Bot | None, *, log_close: bool = False
         logger.exception("Error while closing Discord bot: %s", exc)
 
 
-async def _request_lifecycle_action(control: ConsoleControl, *, restart: bool) -> None:
+async def _request_shutdown(control: ConsoleControl) -> None:
     """
-    Internal helper to trigger shutdown or restart from console commands.
-    
-    Sets the appropriate event flags and closes the bot connection gracefully.
-    
+    Internal helper to trigger shutdown from console commands.
+
+    Sets the shutdown event flag and closes the bot connection gracefully.
+
     Args:
         control (ConsoleControl): The control object managing lifecycle state.
-        restart (bool): If True, sets restart flag; otherwise only sets shutdown flag.
     """
-    if restart:
-        control.request_restart()
     control.request_shutdown()
     await close_bot_instance(control.bot)
 
@@ -254,10 +242,10 @@ async def cmd_guilds(control: ConsoleControl, args: list[str]) -> None:
 
     title = f"Connected Guilds ({len(control.bot.guilds)})"
     print_boxed_title(title, "ansiblue")
-    
+
     for guild in control.bot.guilds:
         console_print(f"  • {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
-    
+
     console_print("")
 
 
@@ -267,7 +255,7 @@ async def cmd_clear(control: ConsoleControl, args: list[str]) -> None:
     
     Uses platform-appropriate commands ('cls' on Windows, 'clear' on Unix-like systems)
     to clear the terminal screen.
-    
+
     Args:
         control (ConsoleControl): The console control instance.
         args (list[str]): Command arguments (unused for this console).
@@ -275,21 +263,6 @@ async def cmd_clear(control: ConsoleControl, args: list[str]) -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
     console_print("Console cleared.", "ansibrightcyan")
 
-
-async def cmd_restart(control: ConsoleControl, args: list[str]) -> None:
-    """
-    Request a full bot restart.
-    
-    Triggers both restart and shutdown flags, causing the bot to shut down cleanly
-    and then restart with a fresh process. The main loop will detect the restart
-    flag and handle process replacement.
-    
-    Args:
-        control (ConsoleControl): The console control instance.
-        args (list[str]): Command arguments (unused for this console).
-    """
-    console_print("Restart requested. Bot will shut down and restart...", "ansiyellow")
-    await _request_lifecycle_action(control, restart=True)
 
 
 async def cmd_shutdown(control: ConsoleControl, args: list[str]) -> None:
@@ -304,7 +277,7 @@ async def cmd_shutdown(control: ConsoleControl, args: list[str]) -> None:
         args (list[str]): Command arguments (unused for this console).
     """
     console_print("Shutdown requested.", "ansiyellow")
-    await _request_lifecycle_action(control, restart=False)
+    await _request_shutdown(control)
 
 
 # ==================== Command Registry ====================
@@ -333,12 +306,6 @@ COMMANDS: list[Command] = [
         handler=cmd_clear,
         aliases=["cls"],
         description="Clear the console screen",
-    ),
-    Command(
-        name="restart",
-        handler=cmd_restart,
-        aliases=["reboot"],
-        description="Fully restart the entire bot (useful during development)",
     ),
     Command(
         name="shutdown",

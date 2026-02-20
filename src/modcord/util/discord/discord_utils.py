@@ -3,8 +3,7 @@ Low-level Discord utility functions for Modcord.
 
 This module provides stateless helpers for Discord-specific operations, including message deletion, DM sending, permission checks, and moderation actions. All logic here is designed for use by higher-level bot components and should not maintain state.
 """
-
-import datetime
+import sys
 from typing import List, Tuple, Union
 
 import discord
@@ -31,19 +30,19 @@ DURATIONS = {
     "2 hours": 120,
     "1 day": 24 * 60,
     "1 week": 7 * 24 * 60,
-    PERMANENT_DURATION: 0,
+    PERMANENT_DURATION: sys.maxsize,
 }
 
 DURATION_CHOICES = list(DURATIONS.keys())
 
 DELETE_MESSAGE_CHOICES = [
     discord.OptionChoice(name="Don't Delete Any", value=0),
-    discord.OptionChoice(name="Previous Hour", value=60),
-    discord.OptionChoice(name="Previous 6 Hours", value=6 * 60),
-    discord.OptionChoice(name="Previous 12 Hours", value=12 * 60),
-    discord.OptionChoice(name="Previous 24 Hours", value=24 * 60),
-    discord.OptionChoice(name="Previous 3 Days", value=3 * 24 * 60),
-    discord.OptionChoice(name="Previous 7 Days", value=7 * 24 * 60),
+    discord.OptionChoice(name="Previous Hour", value=60 * 60),
+    discord.OptionChoice(name="Previous 6 Hours", value=6 * 60 * 60),
+    discord.OptionChoice(name="Previous 12 Hours", value=12 * 60 * 60),
+    discord.OptionChoice(name="Previous 24 Hours", value=24 * 60 * 60),
+    discord.OptionChoice(name="Previous 3 Days", value=3 * 24 * 60 * 60),
+    discord.OptionChoice(name="Previous 7 Days", value=7 * 24 * 60 * 60),
 ]
 
 
@@ -139,8 +138,7 @@ def should_process_message(
     
     Args:
         message (discord.Message): The Discord message to check.
-        check_guild (bool): If True, reject messages not in a guild. Default True.
-    
+
     Returns:
         bool: True if the message should be processed, False otherwise.
     """
@@ -221,176 +219,25 @@ def format_duration(seconds: int) -> str:
         return f"{days} day{'s' if days != 1 else ''}"
 
 
-def parse_duration_to_minutes(human_readable_duration: str) -> int:
-    """
-    Convert a human-readable duration label to its value in minutes.
-
-    Args:
-        human_readable_duration (str): Duration label from DURATION_CHOICES.
-
-    Returns:
-        int: Duration in minutes, or 0 if not found.
-    """
-    return DURATIONS.get(human_readable_duration, 0)
-
-
-async def delete_recent_messages(guild, member, seconds) -> int:
-    """
-    Delete recent messages from a member across all moderatable channels within a time window.
-
-    Args:
-        guild (discord.Guild): The guild to search for messages.
-        member (discord.Member): The member whose messages are deleted.
-        seconds (int): Time window in seconds to look back.
-
-    Returns:
-        int: Number of messages deleted.
-    """
-    if seconds <= 0:
-        raise ValueError("Seconds must be greater than 0 for message deletion.")
-
-    window_start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=seconds)
-    deleted_count = 0
-
-    for channel in iter_moderatable_channels(guild):
-        try:
-            async for message in channel.history(after=window_start):
-                if message.author.id == member.id:
-                    await delete_message(message)
-                    deleted_count += 1
-
-        except Exception as exc:
-            logger.warning(f"Error deleting messages in {channel}: {exc}")
-
-    return deleted_count
-
-
-
-async def delete_message(message: discord.Message) -> bool:
-    """
-    Attempt to delete a Discord message, suppressing recoverable errors.
-
-    Args:
-        message (discord.Message): The message to delete.
-
-    Returns:
-        bool: True if deletion succeeded, False otherwise.
-    """
-    # Safety check to prevent DM message deletion which would raise an error
-    if isinstance(message.channel, Union[discord.DMChannel, discord.PartialMessageable]):
-        logger.error(f"Cannot delete message in DM channel: {message.id}")
-        assert False, "Attempted to delete a message in a DM channel, which is ILLEGAL."
-    
-    try:
-        await message.delete()
-        return True
-    
-    except discord.NotFound:
-        logger.warning(f"Message ID {message.id} not found in channel: {message.channel.name}")
-    except discord.Forbidden:
-        logger.warning(f"No permission to delete message {message.id}")
-    except Exception as exc:
-        logger.error(f"Error deleting message {message.id}: {exc}")
-
-    return False
-
 
 
 async def delete_messages_from_channel(
-    channel: discord.TextChannel,
-    message_ids: Tuple[MessageID, ...],
+    channel: discord.TextChannel | discord.Thread,
+    message_ids: Tuple[MessageID, ...]
 ) -> int:
-    """Delete specific messages from a single channel.
+    """Delete specific messages from a channel individually."""
+    num_deleted = 0
 
-    Uses Discord's bulk-delete endpoint for messages younger than 14 days,
-    falling back to individual deletion for older messages.
-
-    Args:
-        channel: The text channel containing the messages.
-        message_ids: Message IDs to delete.
-
-    Returns:
-        Number of messages successfully deleted.
-    """
-    if not message_ids:
-        return 0
-
-    now = discord.utils.utcnow()
-    bulk_cutoff = now - datetime.timedelta(days=14, minutes=-5)  # small buffer
-
-    bulk_eligible: list[discord.Object] = []
-    old_ids: list[int] = []
-
-    for mid in message_ids:
-        int_id = int(mid)
-        # Snowflake → creation time (Discord epoch: 2015-01-01)
-        created_at = datetime.datetime.fromtimestamp(
-            ((int_id >> 22) + 1420070400000) / 1000,
-            tz=datetime.timezone.utc,
-        )
-        if created_at >= bulk_cutoff:
-            bulk_eligible.append(discord.Object(id=int_id))
-        else:
-            old_ids.append(int_id)
-
-    deleted = 0
-
-    # Bulk delete (batches of 100, Discord limit)
-    for i in range(0, len(bulk_eligible), 100):
-        batch = bulk_eligible[i : i + 100]
+    for msg_id in message_ids:
         try:
-            await channel.delete_messages(batch)
-            deleted += len(batch)
-        except discord.NotFound:
-            # Some messages already gone — fall back to individual
-            for obj in batch:
-                try:
-                    msg = channel.get_partial_message(obj.id)
-                    await msg.delete()
-                    deleted += 1
-                except (discord.NotFound, discord.Forbidden):
-                    pass
-                except Exception as exc:
-                    logger.error("Error deleting message %s individually: %s", obj.id, exc)
-        except discord.Forbidden:
-            logger.warning("Missing permissions to bulk-delete in #%s", channel.name)
-        except Exception as exc:
-            logger.error("Bulk delete error in #%s: %s", channel.name, exc)
-
-    # Individual delete for old messages
-    for msg_id in old_ids:
-        try:
-            msg = channel.get_partial_message(msg_id)
+            msg = channel.get_partial_message(int(msg_id))
             await msg.delete()
-            deleted += 1
+            num_deleted += 1
         except discord.NotFound:
-            logger.debug("Old message %s not found in #%s", msg_id, channel.name)
+            continue  # message already num_deleted
         except discord.Forbidden:
-            logger.warning("No permission to delete message %s in #%s", msg_id, channel.name)
+            continue  # no permission
         except Exception as exc:
-            logger.error("Error deleting old message %s: %s", msg_id, exc)
+            print(f"Error deleting message {msg_id}: {exc}")
 
-    logger.debug(
-        "[DELETE] Deleted %d/%d messages in #%s",
-        deleted,
-        len(message_ids),
-        channel.name,
-    )
-    return deleted
-
-
-
-def has_permissions(application_context: discord.ApplicationContext, **required_permissions) -> bool:
-    """
-    Check if the console issuer has all specified permissions in the guild.
-
-    Args:
-        application_context (discord.ApplicationContext): The console context.
-        **required_permissions: Permission flags to check.
-
-    Returns:
-        bool: True if all permissions are present, False otherwise.
-    """
-    if not isinstance(application_context.author, discord.Member):
-        return False
-    return all(getattr(application_context.author.guild_permissions, permission_name, False) for permission_name in required_permissions)
+    return num_deleted

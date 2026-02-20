@@ -71,31 +71,6 @@ class EventsListenerCog(commands.Cog):
 
 
 
-    @commands.Cog.listener(name="on_guild_remove")
-    async def on_guild_remove(self, guild: discord.Guild) -> None:
-        """Delete all guild data when the bot leaves a server."""
-        guild_id = GuildID(guild.id)
-        logger.debug(
-            "[EVENTS LISTENER] Bot removed from guild: %s (ID: %s)", guild.name, guild.id
-        )
-
-        # We actually don't delete the data as it's kinda pointless and has no meaning in life.
-        return
-
-        success = await guild_settings_manager.delete(guild_id)
-        if success:
-            logger.info(
-                "[EVENTS LISTENER] Cleaned up data for guild '%s' (ID: %s)",
-                guild.name,
-                guild.id,
-            )
-        else:
-            logger.error(
-                "[EVENTS LISTENER] Failed to clean up data for guild '%s' (ID: %s)",
-                guild.name,
-                guild.id,
-            )
-
     # ------------------------------------------------------------------
     # These methods don't really do anything — they just log the events for now. But it's nice to have them here in case we want to add side effects later.
     # ------------------------------------------------------------------

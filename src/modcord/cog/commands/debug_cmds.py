@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.settings.guild_settings_manager import guild_settings_manager
+from modcord.util.discord import collector
 from modcord.util.logger import get_logger
 
 logger = get_logger("debug_commands")
@@ -58,19 +59,22 @@ class DebugCog(commands.Cog):
 
     @debug.command(name="refresh_rules", description="Manually refresh the server rules cache")
     async def refresh_rules(self, application_context: discord.ApplicationContext) -> None:
+        """Manually refresh the server rules cache from the rules channel."""
+        await application_context.defer(ephemeral=True)
 
         guild = application_context.guild
         # Null safety check - should never be null in a guild console, but just in case
         if not guild:
-            await application_context.respond(
+            await application_context.send_followup(
                 content="This console must be used in a guild.",
                 ephemeral=True
             )
             return
 
-        settings = await guild_settings_manager.get_settings(GuildID(guild.id))
+        rules_text = await collector.collect_rules(guild)
+        settings = await guild_settings_manager.update(GuildID(guild.id), rules=rules_text)
 
-        await self._respond_rules(application_context, settings.rules, f"Rules cache refreshed for {guild.name}")
+        await self._respond_rules_followup(application_context, settings.rules, f"Rules cache refreshed for {guild.name}")
 
 
     @debug.command(name="show_rules", description="Display the current server rules")
@@ -101,9 +105,34 @@ class DebugCog(commands.Cog):
             )
             return
 
-        trimmed_rules = rules[:1000] + "... (truncated)"
+        trimmed_rules = rules[:1000] + "... (truncated)" if len(rules) > 1000 else rules
 
         await application_context.respond(
+            content=(
+                f"{header}\n\n"
+                f"Length: {len(rules)} chars\n\n"
+                f"{trimmed_rules}"
+            ),
+            ephemeral=True
+        )
+
+    async def _respond_rules_followup(
+        self,
+        application_context: discord.ApplicationContext,
+        rules: str | None,
+        header: str
+    ) -> None:
+        """Shared helper to respond with rules using followup."""
+        if not rules:
+            await application_context.send_followup(
+                content="No rules set.",
+                ephemeral=True
+            )
+            return
+
+        trimmed_rules = rules[:1000] + "... (truncated)" if len(rules) > 1000 else rules
+
+        await application_context.send_followup(
             content=(
                 f"{header}\n\n"
                 f"Length: {len(rules)} chars\n\n"

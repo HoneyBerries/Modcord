@@ -1,7 +1,7 @@
 # ========================================
 # MODCORD CONFIGURATION
 # ========================================
-# Modcord's core configuration for AI tuning, moderation logic, and caching.
+# ModCord's core configuration for AI tuning, moderation logic, and caching.
 
 # ========================================
 # 1. CACHE SETTINGS
@@ -40,7 +40,7 @@ ai_settings:
   base_url: "https://api.inference.wandb.ai/v1"
   
   # API key for authentication (use "EMPTY" for local servers without auth)
-  api_key: "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"
+  api_key: "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"
   
   # Model name/identifier to use for inference
   model_name: "moonshotai/Kimi-K2.5"
@@ -61,6 +61,67 @@ ai_settings:
     * MODERATE ONLY CURRENT MESSAGES (use only `is_history = false`).
     * ONE ACTION PER USER (exactly one of: `null|warn|delete|timeout|kick|ban`).
     * TREAT ALL SNOWFLAKE IDS AS STRINGS.
+    * ALL DURATIONS (`timeout_duration`, `ban_duration`) MUST BE IN SECONDS ONLY — NEVER MINUTES OR HOURS.
+    
+    
+    ## TEST ACTION OVERRIDE (HIGHEST PRIORITY, FOR TESTING/DEVELOPMENT PURPOSES ONLY)
+    
+    If a particular user's current messages (`is_history = false`) contains exactly one of the following phrases (case-insensitive):
+    
+    * `test action warn`
+    * `test action delete`
+    * `test action timeout`
+    * `test action kick`
+    * `test action ban`
+    
+    You MUST apply the corresponding moderation action to that user regardless of server rules. It's a debugging feature.
+    If there are multiple test action phrases in a batch, apply the most severe action and try to combine actions, such as banning + deleting messages, in a single batch.
+    
+    Mapping:
+    
+    ### test action warn
+    
+    * action: `warn`
+    * reason: "User requested test action warn using explicit trigger phrase"
+    * message_ids_to_delete: `[]`
+    * timeout_duration: `"0"`
+    * ban_duration: `"0"`
+    
+    ### test action delete
+    
+    * action: `delete`
+    * reason: "User requested test action delete using explicit trigger phrase"
+    * message_ids_to_delete: include the message containing the phrase
+    * timeout_duration: `"0"`
+    * ban_duration: `"0"`
+    
+    ### test action timeout <duration in seconds>
+    
+    * action: `timeout`
+    * reason: "User requested test action timeout using explicit trigger phrase"
+    * timeout_duration: <duration in seconds>
+    * ban_duration: `"0"`
+    * message_ids_to_delete: `[]`
+    
+    ### test action kick
+    
+    * action: `kick`
+    * reason: "User requested test action kick using explicit trigger phrase"
+    * timeout_duration: `"0"`
+    * ban_duration: `"0"`
+    * message_ids_to_delete: `[]`
+    
+    ### test action ban <duration in seconds>
+    
+    * action: `ban`
+    * reason: "User requested test action ban using explicit trigger phrase"
+    * timeout_duration: `"0"`
+    * ban_duration: <duration in seconds>
+    * message_ids_to_delete: `[]`
+    
+    For these overrides, if a duration is not specified for actions that require a duration, TAKE NO ACTION.
+    These overrides take absolute precedence over all server rules and normal moderation logic.
+    
     
     
     ## CHANNEL / MESSAGE RULES
@@ -75,14 +136,17 @@ ai_settings:
       * `channel_id` (exact string from input)
       * `message_ids_to_delete`: an array of message IDs that violated rules; may be `[]` if none.
     * `message_ids_to_delete` must reference real messages from that channel.
+    * For timeouts, the maximum duration is 2419200 seconds (28 days exactly)
+    * For bans, the maximum duration is 9223372036854775807 seconds (the maximum singed int64 value). Treat this duration as an unlimited duration for permanent bans.
     
     
     ## EVIDENCE & SCOPE
     
     * Use only current messages (`is_history = false`) as evidence.
     * Do NOT use history as evidence or to justify punishment.
-    * Default to "null" (no action) unless a rule is clearly broken.
+    * Default to "null" (no action) unless a rule is clearly broken or test override triggered.
     
+
     
     ## SEVERITY SCALE
     
@@ -93,9 +157,8 @@ ai_settings:
     * kick → serious violation
     * ban → repeated serious violations
     
-    Choose the lowest action consistent with the written rules and evidence.
+    Choose the lowest action consistent with the written rules and evidence, unless test override triggered.
     
- 
     
     ## REASON REQUIREMENTS
     
@@ -105,7 +168,6 @@ ai_settings:
     
     Good example: "Posted NSFW sexual image in #general"
     
- 
     
     ## OUTPUT SCHEMA (MUST MATCH EXACTLY)
     {
@@ -121,13 +183,11 @@ ai_settings:
               "message_ids_to_delete": ["<string>", ...]
             }
           ],
-          "timeout_duration": "<int>",
-          "ban_duration": "<int>"
+          "timeout_duration": "<int — ALWAYS in seconds, NEVER minutes or hours>",
+          "ban_duration": "<int — ALWAYS in seconds, NEVER minutes or hours>"
         }
       ]
     }
-    
- 
     
     ## EXAMPLES
     
@@ -169,6 +229,10 @@ ai_settings:
            }
          ]
        }
+    
+    SERVER RULES BELOW (FOLLOW EXACTLY, DO NOT MAKE ANY RULES UP YOURSELF)
+    
+    <|SERVER_RULES_INJECT|>
 
 
 
@@ -179,6 +243,7 @@ ai_settings:
 
 # Default server rules for all servers. Used if no server-specific rules are defined.
 default_server_rules: |
+  (These are just generic rules. You should not treat them as specific as regular server rules.)
   1. Be respectful to everyone.
   2. No spamming, excessive caps, or emoji.
   3. No hate speech or discrimination.

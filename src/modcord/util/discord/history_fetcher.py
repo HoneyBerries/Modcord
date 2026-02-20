@@ -7,7 +7,7 @@ from modcord.datatypes.moderation_datatypes import ModerationMessage
 from modcord.util import logger
 from modcord.util.discord import discord_utils
 
-logger = logger.get_logger("discord_history_fetcher")
+logger = logger.get_logger("history_fetcher")
 
 async def fetch_history_context(
     bot,
@@ -24,7 +24,7 @@ async def fetch_history_context(
     results: List[ModerationMessage] = []
 
     try:
-        async for msg in channel.history(limit=history_limit*2):
+        async for msg in channel.history(limit=history_limit):
             if (
                 MessageID.from_message(msg) in exclude_ids
                 or not discord_utils.should_process_message(msg)

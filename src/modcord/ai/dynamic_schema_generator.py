@@ -30,8 +30,8 @@ def build_server_moderation_schema(
                   "message_ids_to_delete": ["<mid>", ...]
                 }
               ],
-              "timeout_duration": <int>,
-              "ban_duration": <int>
+              "timeout_duration": <int (seconds)>,
+              "ban_duration": <int (seconds)>
             }
           ]
         }
@@ -143,8 +143,8 @@ def build_server_moderation_schema(
                 },
                 "reason": {"type": "string"},
                 "channels": channels_constraint,
-                "timeout_duration": {"type": "integer", "minimum": 0, "maximum": 60 * 24 * 7},
-                "ban_duration": {"type": "integer", "minimum": -1, "maximum": 60 * 24 * 365},
+                "timeout_duration": {"type": "integer", "minimum": 0, "maximum": 28 * 24 * 60 * 60},  # max 28 days in seconds
+                "ban_duration": {"type": "integer", "minimum": -1, "maximum": 365 * 24 * 60 * 60},  # max 1 year in seconds
             },
             "required": ["user_id", "action", "reason", "channels", "timeout_duration", "ban_duration"],
             "additionalProperties": False,

@@ -1,7 +1,5 @@
 import logging
-import os
 import sys
-import warnings
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -223,29 +221,6 @@ def handle_exception(exception_type, exception_instance, exception_traceback) ->
         sys.__excepthook__(exception_type, exception_instance, exception_traceback)
     else:
         logging.error("Uncaught exception", exc_info=(exception_type, exception_instance, exception_traceback))
-
-
-# -------------------- Suppress Noisy Libraries --------------------
-NOISY_LOGGERS = [
-    "vllm", "vllm.engine", "vllm.client", "transformers", "urllib3",
-    "torch", "torch.distributed", "c10d", "gloo",
-    # Silence Discord internals and networking layers that spam INFO messages
-    "discord", "discord.gateway", "discord.Bot", "discord.http",
-    "websockets", "aiohttp", "cuda"
-]
-
-for noisy_logger in NOISY_LOGGERS:
-    lg = logging.getLogger(noisy_logger)
-    lg.setLevel(logging.ERROR)
-    lg.propagate = False
-    # Clear any handlers libraries may have added so output does not bypass our handler
-    lg.handlers = []
-
-os.environ.setdefault("GLOG_minloglevel", "2")   # 0=INFO,1=WARNING,2=ERROR
-os.environ.setdefault("NCCL_DEBUG", "ERROR")
-
-# Suppress repetitive user warnings from vllm
-warnings.filterwarnings("ignore", category=UserWarning, module=r"vllm.*")
 
 
 # Set global exception hook

@@ -120,14 +120,14 @@ def parse_batch_actions(
 
         # ---- durations ----
         try:
-            timeout_dur = int(item["timeout_duration"]) if item.get("timeout_duration") not in (None, "") else 0
+            timeout_dur = int(item["timeout_duration"]) if item.get("timeout_duration") is not None and item["timeout_duration"] != "" else None
         except (ValueError, TypeError):
-            timeout_dur = 0
+            timeout_dur = None
 
         try:
-            ban_dur = int(item["ban_duration"]) if item.get("ban_duration") not in (None, "") else 0
+            ban_dur = int(item["ban_duration"]) if item.get("ban_duration") is not None and item["ban_duration"] != "" else None
         except (ValueError, TypeError):
-            ban_dur = 0
+            ban_dur = None
 
         reason = str(item.get("reason", "")).strip()
 

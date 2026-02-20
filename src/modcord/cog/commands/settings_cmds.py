@@ -16,7 +16,7 @@ from discord.ext import commands
 
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.settings.guild_settings_manager import guild_settings_manager
-from modcord.ui.guild_settings_ui import build_full_settings_embed, FullSettingsView
+from modcord.ui.guild_options_embed_ui import build_full_settings_embed, FullSettingsView
 from modcord.util.logger import get_logger
 
 logger = get_logger("settings_commands")

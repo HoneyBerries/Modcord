@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from typing import List
-
 import discord
 
 from modcord.util.discord import discord_utils
@@ -29,8 +28,10 @@ RULE_CHANNEL_PATTERN = re.compile(
 
 
 def is_rules_channel(channel: discord.abc.GuildChannel) -> bool:
-    """Return True if channel name matches the rules pattern."""
-    return bool(channel.name and RULE_CHANNEL_PATTERN.search(channel.name))
+    return (
+        channel == channel.guild.rules_channel
+        or RULE_CHANNEL_PATTERN.search(channel.name)
+    )
 
 
 async def collect_messages(channel: discord.TextChannel) -> List[str]:

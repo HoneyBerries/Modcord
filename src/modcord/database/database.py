@@ -73,8 +73,8 @@ class Database:
             logger.info("[DATABASE] Ready at %s", self.db_path)
             return True
 
-        except Exception:
-            logger.exception("[DATABASE] Initialization failed")
+        except Exception as e:
+            logger.error("[DATABASE] Initialization failed, %s", e, exc_info=True)
             return False
 
     async def shutdown(self) -> None:
@@ -88,7 +88,7 @@ class Database:
 
         self._initialized = False
         await db_connection.close()
-        logger.info("[DATABASE] Shutdown complete")
+        logger.info("[DATABASE] Database Shutdown completed successfully")
 
 # Global singleton
 database = Database()

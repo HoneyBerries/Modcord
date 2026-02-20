@@ -38,6 +38,14 @@ class SchemaManager:
                     PRIMARY KEY (guild_id, channel_id),
                     FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS temporary_bans (
+                    guild_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    unban_at INTEGER NOT NULL,
+                    reason TEXT NOT NULL DEFAULT 'Ban duration expired.',
+                    PRIMARY KEY (guild_id, user_id)
+                );
             """)
 
             # Indexes

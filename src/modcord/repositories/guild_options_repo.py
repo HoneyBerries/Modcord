@@ -31,7 +31,7 @@ class GuildSettingsRow:
     mod_log_channel_id: Optional[int] = None
 
 
-class GuildSettingsRepository:
+class GuildOptionsRepository:
     """CRUD for the guild_settings table only."""
 
     async def get(
