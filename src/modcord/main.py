@@ -104,7 +104,7 @@ def load_cogs(discord_bot_instance: discord.Bot, openai_api_key: str) -> Moderat
     ai_settings = app_config.ai_settings
     moderation_pipeline = ModerationPipeline(
         bot=discord_bot_instance,
-        api_key=openai_api_key,
+        openai_api_key=openai_api_key,
         api_url=ai_settings.base_url,
     )
     processing_service = MessageProcessingService(

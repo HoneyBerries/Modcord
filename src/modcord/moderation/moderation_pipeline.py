@@ -13,6 +13,7 @@ Features:
 """
 
 import discord
+from openai import api_key
 
 from modcord.ai.llm_engine import LLMEngine
 from modcord.datatypes.action_datatypes import ActionData, ActionType
@@ -35,19 +36,21 @@ class ModerationPipeline:
     
     Attributes:
         bot: The Discord bot instance for API access.
+        api_key: The OpenAI-compatible API key.
+        api_url: The OpenAI-compatible API base URL.
     """
     
-    def __init__(self, bot: discord.Bot, api_key: str, api_url: str) -> None:
+    def __init__(self, bot: discord.Bot, openai_api_key: str, api_url: str) -> None:
         """
         Initialize the moderation engine.
         
         Args:
             bot: Discord bot instance for API access and guild lookups.
-            api_key: The OpenAI-compatible API key.
+            openai_api_key: The OpenAI-compatible API key.
             api_url: The OpenAI-compatible API base URL.
         """
         self._bot = bot
-        self._llm_engine = LLMEngine(api_key=api_key, base_url=api_url)
+        self._llm_engine = LLMEngine(api_key=openai_api_key, base_url=api_url)
     
     @property
     def bot(self) -> discord.Bot:
