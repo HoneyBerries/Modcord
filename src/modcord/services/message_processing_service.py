@@ -13,7 +13,7 @@ from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util import image_utils
 from modcord.util.logger import get_logger
 
-logger = get_logger("message_processing_service")
+logger = get_logger("MESSAGE PROCESSING SERVICE")
 
 class MessageProcessingService:
     """Processes Discord messages into ServerModerationBatch for AI moderation."""
@@ -57,7 +57,7 @@ class MessageProcessingService:
         history_by_channel = {}
         for ch_id_int, msgs in mod_messages_by_channel.items():
             exclude_ids = {m.message_id for m in msgs}
-            history = await fetch_history_context(self.bot, ch_id_int, exclude_ids, history_limit=96)
+            history = await fetch_history_context(self.bot, ch_id_int, exclude_ids, history_limit=9)
             if history:
                 history_by_channel[ch_id_int] = history
 
@@ -83,6 +83,7 @@ class MessageProcessingService:
 
         batch = ServerModerationBatch(
             guild_id=GuildID(guild.id),
+            guild_name=guild.name,
             channels=channels,
             users=users,
             history_users=history_users
@@ -95,7 +96,8 @@ class MessageProcessingService:
 
         await self.pipeline.execute(batch)
 
-    async def _convert_message(self, message):
+    @staticmethod
+    async def _convert_message(message):
         if not message.guild or not message.channel:
             return None
         images = image_utils.extract_images_for_moderation(message)
@@ -109,7 +111,8 @@ class MessageProcessingService:
             images=tuple(images)
         )
 
-    async def _group_by_user(self, messages_by_channel, channel_contexts, guild):
+    @staticmethod
+    async def _group_by_user(messages_by_channel, channel_contexts, guild):
         user_channels_map = defaultdict(list)
         first_seen = {}
 

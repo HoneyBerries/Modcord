@@ -4,10 +4,10 @@ import discord
 
 from modcord.datatypes.discord_datatypes import ChannelID, MessageID, UserID, GuildID
 from modcord.datatypes.moderation_datatypes import ModerationMessage
-from modcord.util import logger
+from modcord.util.logger import get_logger
 from modcord.util.discord import discord_utils
 
-logger = logger.get_logger("history_fetcher")
+logger = get_logger("HISTORY FETCHER")
 
 async def fetch_history_context(
     bot,

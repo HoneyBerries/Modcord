@@ -19,7 +19,7 @@ from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.ui.guild_options_embed_ui import build_full_settings_embed, FullSettingsView
 from modcord.util.logger import get_logger
 
-logger = get_logger("settings_commands")
+logger = get_logger("GUILD SETTINGS CMDS")
 
 
 class GuildSettingsCog(commands.Cog):
@@ -27,16 +27,18 @@ class GuildSettingsCog(commands.Cog):
 
     def __init__(self, discord_bot_instance):
         self.discord_bot_instance = discord_bot_instance
-        logger.info("[GUILD SETTINGS CMDS] Settings cog loaded")
+        logger.info("Settings cog loaded")
 
-    async def _ensure_guild_context(self, ctx: discord.ApplicationContext) -> bool:
+    @staticmethod
+    async def _ensure_guild_context(ctx: discord.ApplicationContext) -> bool:
         if not ctx.guild_id:
             await ctx.defer(ephemeral=True)
             await ctx.send_followup("This console can only be used in a server.")
             return False
         return True
 
-    def _has_manage_permission(self, ctx: discord.ApplicationContext) -> bool:
+    @staticmethod
+    def _has_manage_permission(ctx: discord.ApplicationContext) -> bool:
         if not isinstance(ctx.user, discord.Member):
             return False
         return ctx.user.guild_permissions.manage_guild

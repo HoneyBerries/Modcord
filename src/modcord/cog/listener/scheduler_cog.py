@@ -23,7 +23,7 @@ from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.discord import collector
 from modcord.util.logger import get_logger
 
-logger = get_logger("scheduler_cog")
+logger = get_logger("SCHEDULER COG")
 
 _UNBAN_POLL_SECONDS = 5
 
@@ -158,9 +158,9 @@ class UnbanSchedulerCog(commands.Cog):
     # Public API
     # ------------------------------------------------------------------
 
+    @staticmethod
     async def schedule(
-        self,
-        guild: discord.Guild,
+            guild: discord.Guild,
         user_id: UserID,
         duration_seconds: float,
         *,
@@ -196,7 +196,8 @@ class UnbanSchedulerCog(commands.Cog):
             user_id, guild.id, unban_at,
         )
 
-    async def cancel(self, guild_id: int, user_id: UserID) -> bool:
+    @staticmethod
+    async def cancel(guild_id: int, user_id: UserID) -> bool:
         """Remove a pending unban. Returns True if a row was deleted."""
         async with db_connection.transaction() as conn:
             exists = await tempban_storage.exists(conn, guild_id, str(user_id))
@@ -245,9 +246,9 @@ class UnbanSchedulerCog(commands.Cog):
     # Internal
     # ------------------------------------------------------------------
 
+    @staticmethod
     async def _lift_ban(
-        self,
-        guild: discord.Guild,
+            guild: discord.Guild,
         user_id: UserID,
         reason: str,
     ) -> None:
@@ -255,9 +256,10 @@ class UnbanSchedulerCog(commands.Cog):
         try:
             await guild.unban(discord.Object(id=int(user_id)), reason=reason)
             logger.debug("[UNBAN_SCHEDULER] Unbanned %s in guild %s", user_id, guild.id)
+
         except discord.NotFound:
             logger.warning(
-                "[UNBAN_SCHEDULER] %s not found in ban list for guild %s – already unbanned?",
+                "[UNBAN_SCHEDULER] %s not found in ban list for guild %s – maybe they left the server?",
                 user_id, guild.id,
             )
 

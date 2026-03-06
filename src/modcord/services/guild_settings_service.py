@@ -24,7 +24,7 @@ from modcord.repositories.channel_guidelines_repo import ChannelGuidelinesReposi
 from modcord.repositories.guild_options_repo import GuildSettingsRow, GuildOptionsRepository
 from modcord.util.logger import get_logger
 
-logger = get_logger("guild_settings_service")
+logger = get_logger("GUILD SETTINGS SERVICE")
 
 
 
@@ -49,10 +49,11 @@ class GuildSettingsService:
             self._per_guild_locks[gid] = asyncio.Lock()
         return self._per_guild_locks[gid]
 
-    async def initialize(self) -> None:
+    @staticmethod
+    async def initialize() -> None:
         """Initialize the underlying database (schema creation)."""
         await database.initialize()
-        logger.info("[GUILD SETTINGS SERVICE] Database initialized")
+        logger.info("Database initialized")
 
     # ------------------------------------------------------------------
     # Load the DB
@@ -84,7 +85,7 @@ class GuildSettingsService:
             )
             result[guild_id] = settings
 
-        logger.info("[GUILD SETTINGS SERVICE] Loaded %d guilds from database", len(result))
+        logger.info("Loaded %d guilds from database", len(result))
         return result
 
     async def fetch(self, guild_id: GuildID) -> GuildSettings | None:
@@ -122,12 +123,12 @@ class GuildSettingsService:
                     # transaction() auto-commits on clean exit
 
                 logger.info(
-                    "[GUILD SETTINGS SERVICE] Persisted guild %s", str(guild_id)
+                    "Persisted guild %s", str(guild_id)
                 )
                 return True
             except Exception:
                 logger.exception(
-                    "[GUILD SETTINGS SERVICE] Failed to persist guild %s", str(guild_id)
+                    "Failed to persist guild %s", str(guild_id)
                 )
                 return False
 
@@ -148,12 +149,12 @@ class GuildSettingsService:
                 # transaction() auto-commits on clean exit
 
             logger.debug(
-                "[GUILD SETTINGS SERVICE] Deleted all data for guild %s", str(guild_id)
+                "Deleted all data for guild %s", str(guild_id)
             )
             return True
         except Exception:
             logger.exception(
-                "[GUILD SETTINGS SERVICE] Failed to delete guild %s", str(guild_id)
+                "Failed to delete guild %s", str(guild_id)
             )
             return False
 

@@ -14,13 +14,14 @@ the 256 MB page cache configured on the connection.
 """
 from typing import Any, Dict
 
+from modcord.configuration.app_configuration import app_config
 from modcord.datatypes.action_datatypes import ActionType
 from modcord.datatypes.discord_datatypes import GuildID, ChannelID
 from modcord.datatypes.guild_settings import GuildSettings, ACTION_FLAG_FIELDS
 from modcord.services.guild_settings_service import guild_settings_service
 from modcord.util.logger import get_logger
 
-logger = get_logger("guild_settings_manager")
+logger = get_logger("GUILD SETTINGS MANAGER")
 
 
 class GuildSettingsManager:
@@ -43,7 +44,7 @@ class GuildSettingsManager:
 
     def __init__(self) -> None:
         self._db_initialized = False
-        logger.info("[GUILD SETTINGS MANAGER] Initialized")
+        logger.info("Initialized")
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -60,7 +61,8 @@ class GuildSettingsManager:
     # Core API
     # ------------------------------------------------------------------
 
-    async def get_settings(self, guild_id: GuildID) -> GuildSettings:
+    @staticmethod
+    async def get_settings(guild_id: GuildID) -> GuildSettings:
         """
         Retrieve settings for a guild, creating defaults if missing.
 
@@ -83,16 +85,23 @@ class GuildSettingsManager:
 
     async def get_rules(self, guild_id: GuildID) -> str:
         """
-        Fetch just the rules string for a guild directly from the DB.
+        Fetch the rules string for a guild.
+
+        Resolution order:
+        1. Rules stored in the database (set by the periodic sync from Discord channels).
+        2. ``generic_server_rules`` from the application config as a last resort.
 
         Args:
             guild_id: The guild ID.
 
         Returns:
-            The rules string, or an empty string if none are set.
+            The rules string, guaranteed to be non-empty if a config default exists.
         """
         settings = await self.get_settings(guild_id)
-        return settings.rules
+
+        if settings.rules:
+            return settings.rules
+        return app_config.generic_server_rules
 
     async def get_guidelines(self, guild_id: GuildID) -> Dict[ChannelID, str]:
         """
@@ -131,14 +140,15 @@ class GuildSettingsManager:
                 setattr(settings, field_name, value)
             else:
                 logger.warning(
-                    "[GUILD SETTINGS MANAGER] Unknown field %s for guild %s",
+                    "Unknown field %s for guild %s",
                     field_name, int(guild_id)
                 )
 
         await self.save(guild_id, settings)
         return settings
 
-    async def save(self, guild_id: GuildID, settings: GuildSettings) -> None:
+    @staticmethod
+    async def save(guild_id: GuildID, settings: GuildSettings) -> None:
         """
         Persist guild settings to the database.
 
@@ -152,11 +162,12 @@ class GuildSettingsManager:
         success = await guild_settings_service.save(guild_id, settings)
         if not success:
             logger.error(
-                "[GUILD SETTINGS MANAGER] Failed to persist guild %s",
+                "Failed to persist guild %s",
                 int(guild_id)
             )
 
-    async def delete(self, guild_id: GuildID) -> bool:
+    @staticmethod
+    async def delete(guild_id: GuildID) -> bool:
         """
         Delete all data for a guild from the database.
 
@@ -192,7 +203,7 @@ class GuildSettingsManager:
         field_name = ACTION_FLAG_FIELDS.get(action)
         if field_name is None:
             logger.warning(
-                "[GUILD SETTINGS MANAGER] Unsupported action %s for guild %s — defaulting to allowed",
+                "Unsupported action %s for guild %s — defaulting to allowed",
                 action, guild_id
             )
             return True
@@ -218,7 +229,7 @@ class GuildSettingsManager:
         field_name = ACTION_FLAG_FIELDS.get(action)
         if field_name is None:
             logger.warning(
-                "[GUILD SETTINGS MANAGER] Unsupported action %s for guild %s",
+                "Unsupported action %s for guild %s",
                 action, guild_id
             )
             return False

@@ -10,9 +10,7 @@ from discord.ext import commands
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.discord import collector
-from modcord.util.logger import get_logger
 
-logger = get_logger("debug_commands")
 
 class DebugCog(commands.Cog):
     """Cog for debug commands."""
@@ -91,9 +89,9 @@ class DebugCog(commands.Cog):
 
 
     # Helper function for sending the rules response, used by both refresh_rules and show_rules
+    @staticmethod
     async def _respond_rules(
-        self,
-        application_context: discord.ApplicationContext,
+            application_context: discord.ApplicationContext,
         rules: str | None,
         header: str
     ) -> None:
@@ -116,9 +114,9 @@ class DebugCog(commands.Cog):
             ephemeral=True
         )
 
+    @staticmethod
     async def _respond_rules_followup(
-        self,
-        application_context: discord.ApplicationContext,
+            application_context: discord.ApplicationContext,
         rules: str | None,
         header: str
     ) -> None:

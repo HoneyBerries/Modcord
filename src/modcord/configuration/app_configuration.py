@@ -8,7 +8,7 @@ import yaml
 from modcord.configuration.ai_settings import AISettings
 from modcord.util.logger import get_logger
 
-logger = get_logger("app_configuration")
+logger = get_logger("APP CONFIGURATION")
 
 
 CONFIG_PATH = Path("./config/app_config.yml").resolve()
@@ -83,16 +83,16 @@ class AppConfig:
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        return self._data.get("generic_server_rules")
+        return self._data.get("generic_server_rules", "")
 
     @property
-    def channel_guidelines(self) -> str:
+    def generic_channel_guidelines(self) -> str:
         """Return the configured default channel guidelines as a string (or empty string).
 
         The value is coerced to a string so callers can safely embed it into
         prompts without additional checks.
         """
-        return self._data.get("default_channel_guidelines", "")
+        return self._data.get("generic_channel_guidelines", "")
 
 
     @property

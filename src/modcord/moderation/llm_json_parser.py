@@ -12,7 +12,7 @@ from modcord.datatypes.action_datatypes import ActionData, ActionType, ChannelDe
 from modcord.datatypes.discord_datatypes import ChannelID, UserID, GuildID, MessageID
 from modcord.util.logger import get_logger
 
-logger = get_logger("moderation_parsing")
+logger = get_logger("LLM JSON PARSER")
 
 
 def _extract_json_payload(raw: str) -> Any:

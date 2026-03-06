@@ -257,4 +257,4 @@ generic_server_rules: |
 
 
 # Default channel guidelines for all channels. Used if no channel-specific guidelines are defined.
-default_channel_guidelines: "No specific guidelines."
+generic_channel_guidelines: "No specific guidelines."

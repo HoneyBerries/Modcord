@@ -10,9 +10,6 @@ import discord
 
 from modcord.datatypes.discord_datatypes import MessageID
 from modcord.util import image_utils
-from modcord.util.logger import get_logger
-
-logger = get_logger("discord_utils")
 
 # ==========================================
 # Duration/constants and choices (moved here so discord_utils is self-contained)

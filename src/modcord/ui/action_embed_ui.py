@@ -13,7 +13,7 @@ from modcord.datatypes.action_datatypes import ActionData, ActionType
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
-logger = get_logger("action_embed_ui")
+logger = get_logger("ACTION EMBED UI")
 
 
 # Emoji mapping for action types

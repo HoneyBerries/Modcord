@@ -17,7 +17,7 @@ from modcord.datatypes.discord_datatypes import GuildID
 from modcord.services.message_processing_service import MessageProcessingService
 from modcord.util.logger import get_logger
 
-logger = get_logger("moderation_queue_service")
+logger = get_logger("MODERATION QUEUE SERVICE")
 
 
 class ModerationQueueService:
@@ -160,9 +160,9 @@ class ModerationQueueService:
             task.add_done_callback(self._processing_tasks.discard)
 
 
+    @staticmethod
     async def _safe_process_batch(
-        self,
-        processing_service: MessageProcessingService,
+            processing_service: MessageProcessingService,
         messages: List[discord.Message],
         guild_id: GuildID,
     ) -> None:

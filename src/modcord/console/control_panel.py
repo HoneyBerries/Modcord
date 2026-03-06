@@ -39,7 +39,7 @@ def print_boxed_title(title: str, color: str = "") -> None:
     for line in (top, mid, bot):
         console_print(line, color)
 
-logger = get_logger("console")
+logger = get_logger("CONSOLE")
 
 # Type alias for console handler functions
 CommandHandler = Callable[["ConsoleControl", list[str]], Awaitable[None]]

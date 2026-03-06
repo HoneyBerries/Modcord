@@ -26,7 +26,7 @@ from modcord.database.db_connection import db_connection
 from modcord.database.db_schema import SchemaManager
 from modcord.util.logger import get_logger
 
-logger = get_logger("database")
+logger = get_logger("DATABASE")
 
 DB_PATH = Path("./data/app.db").resolve()
 

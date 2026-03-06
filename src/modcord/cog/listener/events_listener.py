@@ -17,7 +17,7 @@ from modcord.datatypes.discord_datatypes import GuildID
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.logger import get_logger
 
-logger = get_logger("events_listener")
+logger = get_logger("EVENTS LISTENER")
 
 
 class EventsListenerCog(commands.Cog):
@@ -25,7 +25,7 @@ class EventsListenerCog(commands.Cog):
 
     def __init__(self, bot: discord.Bot) -> None:
         self.bot = bot
-        logger.info("[EVENTS LISTENER] Events listener cog loaded")
+        logger.info("Events listener cog loaded")
 
     # ------------------------------------------------------------------
     # Lifecycle events
@@ -36,7 +36,7 @@ class EventsListenerCog(commands.Cog):
         """Set bot presence and persist console list to disk."""
         if not self.bot.user:
             logger.warning(
-                "[EVENTS LISTENER] Bot partially connected — user info not yet available."
+                "Bot partially connected — user info not yet available."
             )
             return
 
@@ -58,13 +58,13 @@ class EventsListenerCog(commands.Cog):
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """Initialise and persist default settings for a newly joined guild."""
         guild_id = GuildID(guild.id)
-        logger.debug("[EVENTS LISTENER] Bot joined guild: %s (ID: %s)", guild.name, guild.id)
+        logger.debug("Bot joined guild: %s (ID: %s)", guild.name, guild.id)
 
         settings = await guild_settings_manager.get_settings(guild_id)
         await guild_settings_manager.save(guild_id, settings)
 
         logger.info(
-            "[EVENTS LISTENER] Initialized settings for guild '%s' — AI=%s",
+            "Initialized settings for guild '%s' — AI=%s",
             guild.name,
             "enabled" if settings.ai_enabled else "disabled",
         )
@@ -83,9 +83,9 @@ class EventsListenerCog(commands.Cog):
             await loop.run_in_executor(
                 None, _write_json, "data/commands.json", commands_data
             )
-            logger.debug("[EVENTS LISTENER] commands.json updated.")
+            logger.debug("commands.json updated.")
         except Exception:
-            logger.exception("[EVENTS LISTENER] Failed to write commands.json")
+            logger.exception("Failed to write commands.json")
 
 
 def _write_json(path: str, data: object) -> None:

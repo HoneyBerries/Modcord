@@ -18,7 +18,7 @@ from modcord.ui import action_embed_ui
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
-logger = get_logger("moderation_helper")
+logger = get_logger("MODERATION HELPER")
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +144,8 @@ async def apply_action(
     
     This is the single entry point for executing moderation actions. It:
     1. Deletes messages if specified in ActionData
-    2. Applies the moderation action (timeout, kick, ban, etc.)
+    2. Applies the moderation action (
+    timeout, kick, ban, etc.)
     3. Sends notifications via DM and channel
     4. Logs the action to the database
     5. Schedules follow-up tasks (e.g., unban for temp bans)

@@ -48,7 +48,7 @@ import aiosqlite
 
 from modcord.util.logger import get_logger
 
-logger = get_logger("database_connection")
+logger = get_logger("DB CONNECTION")
 
 # ── Pragmas applied once when the connection is opened ──────────────────────
 _PRAGMAS = [

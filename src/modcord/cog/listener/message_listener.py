@@ -15,7 +15,7 @@ from modcord.services.moderation_queue_service import ModerationQueueService
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
-logger = get_logger("message_listener_cog")
+logger = get_logger("MESSAGE LISTENER")
 
 
 class MessageListenerCog(commands.Cog):
@@ -41,7 +41,7 @@ class MessageListenerCog(commands.Cog):
         self.bot = bot
         self._queue_service = queue_service
         self._processing_service = processing_service
-        logger.info("[MESSAGE LISTENER] Message listener cog loaded")
+        logger.info("Message listener cog loaded")
 
     # ------------------------------------------------------------------
     # Event handlers — keep these as small as possible

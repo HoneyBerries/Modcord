@@ -1,5 +1,5 @@
 """
-Repository for the channel_guidelines table.
+Repository for the generic_channel_guidelines table.
 """
 
 from __future__ import annotations
@@ -15,21 +15,23 @@ logger = get_logger("channel_guidelines_repo")
 
 
 class ChannelGuidelinesRepository:
-    """CRUD for the channel_guidelines table."""
+    """CRUD for the generic_channel_guidelines table."""
 
+    @staticmethod
     async def get_for_guild(
-        self, conn: aiosqlite.Connection, guild_id: GuildID
+            conn: aiosqlite.Connection, guild_id: GuildID
     ) -> Dict[ChannelID, str]:
         """Return all channel guidelines for a single guild."""
         async with conn.execute(
-            "SELECT channel_id, guidelines FROM channel_guidelines WHERE guild_id = ?",
+            "SELECT channel_id, guidelines FROM generic_channel_guidelines WHERE guild_id = ?",
             (int(guild_id),),
         ) as cursor:
             rows = await cursor.fetchall()
         return {ChannelID.from_int(row[0]): row[1] for row in rows}
 
+    @staticmethod
     async def get_for_guilds(
-        self, conn: aiosqlite.Connection, guild_ids: List[int]
+            conn: aiosqlite.Connection, guild_ids: List[int]
     ) -> Dict[int, Dict[ChannelID, str]]:
         """Return channel guidelines for multiple guilds in one query."""
         if not guild_ids:
@@ -37,7 +39,7 @@ class ChannelGuidelinesRepository:
 
         placeholders = ",".join("?" * len(guild_ids))
         async with conn.execute(
-            f"SELECT guild_id, channel_id, guidelines FROM channel_guidelines WHERE guild_id IN ({placeholders})",
+            f"SELECT guild_id, channel_id, guidelines FROM generic_channel_guidelines WHERE guild_id IN ({placeholders})",
             guild_ids,
         ) as cursor:
             rows = await cursor.fetchall()
@@ -47,19 +49,19 @@ class ChannelGuidelinesRepository:
             result[guild_id_int][ChannelID.from_int(channel_id_int)] = guidelines
         return result
 
+    @staticmethod
     async def replace(
-        self,
-        conn: aiosqlite.Connection,
+            conn: aiosqlite.Connection,
         guild_id: GuildID,
         guidelines: Dict[ChannelID, str],
     ) -> None:
         """Replace all channel guidelines for a guild atomically."""
         gid = int(guild_id)
         await conn.execute(
-            "DELETE FROM channel_guidelines WHERE guild_id = ?", (gid,)
+            "DELETE FROM generic_channel_guidelines WHERE guild_id = ?", (gid,)
         )
         if guidelines:
             await conn.executemany(
-                "INSERT INTO channel_guidelines (guild_id, channel_id, guidelines) VALUES (?, ?, ?)",
+                "INSERT INTO generic_channel_guidelines (guild_id, channel_id, guidelines) VALUES (?, ?, ?)",
                 [(gid, int(ch), text) for ch, text in guidelines.items()],
             )

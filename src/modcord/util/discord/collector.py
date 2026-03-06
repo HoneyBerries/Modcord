@@ -12,10 +12,11 @@ import re
 from typing import List
 import discord
 
+from modcord.configuration.app_configuration import app_config
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
-logger = get_logger("collector")
+logger = get_logger("RULES & GUIDELINES COLLECTOR")
 
 
 RULE_CHANNEL_PATTERN = re.compile(
@@ -30,7 +31,7 @@ RULE_CHANNEL_PATTERN = re.compile(
 def is_rules_channel(channel: discord.abc.GuildChannel) -> bool:
     return (
         channel == channel.guild.rules_channel
-        or RULE_CHANNEL_PATTERN.search(channel.name)
+        or bool(RULE_CHANNEL_PATTERN.search(channel.name))
     )
 
 
@@ -60,21 +61,53 @@ async def collect_messages(channel: discord.TextChannel) -> List[str]:
 
 async def collect_rules(guild: discord.Guild) -> str:
     """
-    Gather rules text from all rule-like channels in a guild.
+    Gather rules text for a guild using the following priority order:
+
+    1. Dedicated rules channel (``guild.rules_channel``) — set via Community settings.
+    2. Any channel whose name matches ``RULE_CHANNEL_PATTERN``.
+    3. ``generic_server_rules`` from the application config.
 
     Args:
         guild: The guild to scan.
 
     Returns:
-        Concatenated rules text, or empty string if none found.
+        Rules text, guaranteed to be non-empty if a config default exists.
     """
+    # Priority 1: dedicated rules channel set by Discord Community settings
+    if guild.rules_channel is not None:
+        dedicated_texts = await collect_messages(guild.rules_channel)
+        if dedicated_texts:
+            logger.info(
+                "Collected %d rule segments from dedicated rules channel in guild %s",
+                len(dedicated_texts), guild.name,
+            )
+            return "\n\n".join(dedicated_texts)
+        logger.debug(
+            "Dedicated rules channel found but empty in guild %s — falling back to regex scan",
+            guild.name,
+        )
+
+    # Priority 2: regex-matched rule-like channels (skip the dedicated one if already tried)
     all_texts: List[str] = []
+
     for ch in guild.text_channels:
-        if is_rules_channel(ch):
+        if RULE_CHANNEL_PATTERN.search(ch.name):
             all_texts.extend(await collect_messages(ch))
-    if all_texts:
-        logger.info("Collected %d rule segments from guild %s", len(all_texts), guild.name)
-    return "\n\n".join(all_texts)
+
+
+    if len(all_texts) != 0:
+        logger.debug(
+            "Collected %d rule segments via regex scan in guild %s",
+            len(all_texts), guild.name,
+        )
+        return "\n\n".join(all_texts)
+
+    # Priority 3: fall back to the generic rules from the application config
+    generic = app_config.generic_server_rules
+
+    logger.debug("No rules channels found in guild %s — using generic config rules", guild.name)
+
+    return generic
 
 
 def collect_channel_topic(channel: discord.TextChannel) -> str:
@@ -87,6 +120,4 @@ def collect_channel_topic(channel: discord.TextChannel) -> str:
     Returns:
         The trimmed topic string, or empty string if not set.
     """
-    if channel.topic and (text := channel.topic.strip()):
-        return text
-    return ""
+    return (channel.topic or "").strip() or app_config.generic_channel_guidelines

@@ -34,7 +34,7 @@ import asyncio
 import discord
 from dotenv import load_dotenv
 
-from modcord.cog.commands import debug_cmds, settings_cmds
+from modcord.cog.commands import debug_cmds, guild_settings_cmds
 from modcord.cog.listener import message_listener, events_listener, scheduler_cog
 from modcord.database import database as db
 from modcord.moderation.moderation_pipeline import ModerationPipeline
@@ -46,7 +46,7 @@ from modcord.util.logger import get_logger, handle_exception
 from modcord.configuration.app_configuration import app_config
 
 
-logger = get_logger("main")
+logger = get_logger("MAIN")
 
 
 def load_environment() -> tuple[str | None, str | None]:
@@ -101,10 +101,10 @@ def load_cogs(discord_bot_instance: discord.Bot, openai_api_key: str) -> Moderat
     debug_cmds.setup(discord_bot_instance)
     events_listener.setup(discord_bot_instance)
     message_listener.setup(discord_bot_instance, queue_service, processing_service)
-    settings_cmds.setup(discord_bot_instance)
+    guild_settings_cmds.setup(discord_bot_instance)
     scheduler_cog.setup(discord_bot_instance)
 
-    logger.info("[MAIN] All cogs loaded successfully.")
+    logger.info("All cogs loaded successfully.")
 
     return queue_service  # returned so shutdown_runtime can cancel workers
 
@@ -154,7 +154,7 @@ async def run_bot(
     Returns:
         int: Exit code (0 for success, 1 for error).
     """
-    logger.info("[MAIN] Attempting to run Discord bot with console control…")
+    logger.info("Attempting to run Discord bot with console control…")
     control.set_bot(bot)
     exit_code = 0
 
@@ -163,7 +163,7 @@ async def run_bot(
             try:
                 await bot.start(token)
             except asyncio.CancelledError:
-                logger.info("[MAIN] Discord bot start cancelled; shutting down")
+                logger.info("Discord bot start cancelled; shutting down")
             except Exception as exc:
                 logger.critical("Discord bot runtime error: %s", exc)
                 exit_code = 1
@@ -183,7 +183,7 @@ async def shutdown_runtime(
 
     await db.database.shutdown()
 
-    logger.info("[MAIN] Shutdown complete.")
+    logger.info("Shutdown complete.")
 
 
 async def async_main() -> int:
@@ -211,7 +211,7 @@ async def async_main() -> int:
 
     # Initialize a database and load guild settings (bot will be passed later for auto-population)
     try:
-        logger.info("[MAIN] Initializing database and loading guild settings...")
+        logger.info("Initializing database and loading guild settings...")
         await guild_settings_manager.async_init()
     except Exception as exc:
         logger.critical("Failed to initialize database: %s", exc)
@@ -241,13 +241,13 @@ def main() -> int:
     Returns:
         int: Process exit code to return to the operating system.
     """
-    logger.info("[MAIN] Starting Discord Moderation Bot…")
+    logger.info("Starting Discord Moderation Bot…")
     try:
         exit_code = asyncio.run(async_main())
         return exit_code
 
     except KeyboardInterrupt:
-        logger.info("[MAIN] Shutdown requested by user.")
+        logger.info("Shutdown requested by user.")
         return 0
 
     except SystemExit as exit_exc:

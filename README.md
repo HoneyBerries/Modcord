@@ -20,7 +20,7 @@ Follow these steps to get Modcord running on your local machine for development 
 
 ### Prerequisites
 
-- Python 3.12.x
+- Python 3.11 - 3.13
 - A Discord bot token (create one at the [Discord Developer Portal](https://discord.com/developers/applications))
 - An OpenAI-compatible API key and model endpoint
 

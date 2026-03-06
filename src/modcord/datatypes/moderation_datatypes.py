@@ -69,6 +69,7 @@ class ChannelContext:
 class ServerModerationBatch:
     """A batch of messages across all channels in a guild for server-wide AI moderation."""
     guild_id: GuildID
+    guild_name: str
     channels: Dict[ChannelID, ChannelContext] = field(default_factory=dict)
     users: Tuple[ModerationUser, ...] = ()
     history_users: Tuple[ModerationUser, ...] = ()
@@ -76,6 +77,7 @@ class ServerModerationBatch:
     def add_user(self, user: ModerationUser) -> ServerModerationBatch:
         return ServerModerationBatch(
             guild_id=self.guild_id,
+            guild_name=self.guild_name,
             channels=self.channels,
             users=self.users + (user,),
             history_users=self.history_users,
@@ -84,6 +86,7 @@ class ServerModerationBatch:
     def extend_users(self, new_users: Tuple[ModerationUser, ...]) -> ServerModerationBatch:
         return ServerModerationBatch(
             guild_id=self.guild_id,
+            guild_name=self.guild_name,
             channels=self.channels,
             users=self.users + new_users,
             history_users=self.history_users,
@@ -92,6 +95,7 @@ class ServerModerationBatch:
     def set_history(self, new_history: Tuple[ModerationUser, ...]) -> ServerModerationBatch:
         return ServerModerationBatch(
             guild_id=self.guild_id,
+            guild_name=self.guild_name,
             channels=self.channels,
             users=self.users,
             history_users=new_history,

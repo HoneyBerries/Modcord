@@ -4,7 +4,7 @@ from modcord.datatypes.discord_datatypes import ChannelID, UserID, MessageID
 from modcord.datatypes.moderation_datatypes import ServerModerationBatch
 from modcord.util.logger import get_logger
 
-logger = get_logger("dynamic_schema_generator")
+logger = get_logger("DYNAMIC SCHEMA GENERATOR")
 
 
 def build_server_moderation_schema(

@@ -13,7 +13,6 @@ Features:
 """
 
 import discord
-from openai import api_key
 
 from modcord.ai.llm_engine import LLMEngine
 from modcord.datatypes.action_datatypes import ActionData, ActionType
@@ -25,7 +24,7 @@ from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.discord import discord_utils
 from modcord.util.logger import get_logger
 
-logger = get_logger("moderation_engine")
+logger = get_logger("MODERATION PIPELINE")
 
 class ModerationPipeline:
     """
@@ -36,7 +35,7 @@ class ModerationPipeline:
     
     Attributes:
         bot: The Discord bot instance for API access.
-        api_key: The OpenAI-compatible API key.
+        openai_api_key: The OpenAI-compatible API key.
         api_url: The OpenAI-compatible API base URL.
     """
     

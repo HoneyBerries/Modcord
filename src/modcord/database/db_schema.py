@@ -2,7 +2,7 @@ import aiosqlite
 
 from modcord.util.logger import get_logger
 
-logger = get_logger("database_schema")
+logger = get_logger("DB SCHEMA")
 
 
 class SchemaManager:
@@ -29,7 +29,7 @@ class SchemaManager:
                 );
 
 
-                CREATE TABLE IF NOT EXISTS channel_guidelines (
+                CREATE TABLE IF NOT EXISTS generic_channel_guidelines (
                     guild_id INTEGER NOT NULL,
                     channel_id INTEGER NOT NULL,
                     guidelines TEXT NOT NULL DEFAULT '',
@@ -50,7 +50,7 @@ class SchemaManager:
 
             # Indexes
             await db.executescript("""
-                CREATE INDEX IF NOT EXISTS idx_channel_guidelines_guild ON channel_guidelines(guild_id);
+                CREATE INDEX IF NOT EXISTS idx_channel_guidelines_guild ON generic_channel_guidelines(guild_id);
             """)
 
             # Triggers
@@ -64,10 +64,10 @@ class SchemaManager:
                 END;
 
                 CREATE TRIGGER IF NOT EXISTS update_channel_guidelines_timestamp
-                AFTER UPDATE ON channel_guidelines
+                AFTER UPDATE ON generic_channel_guidelines
                 FOR EACH ROW
                 BEGIN
-                    UPDATE channel_guidelines SET updated_at = CURRENT_TIMESTAMP
+                    UPDATE generic_channel_guidelines SET updated_at = CURRENT_TIMESTAMP
                     WHERE guild_id = NEW.guild_id AND channel_id = NEW.channel_id;
                 END;
             """)

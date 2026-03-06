@@ -15,7 +15,7 @@ import aiosqlite
 
 from modcord.util.logger import get_logger
 
-logger = get_logger("temporary_ban_repo")
+logger = get_logger("TEMPORARY BANS REPO")
 
 
 @dataclass
@@ -27,7 +27,7 @@ class TemporaryBanRecord:
     reason: str
 
 
-class TemporaryBanRepo:
+class TemporaryBanRepository:
     """Low-level CRUD for the ``temporary_bans`` table."""
 
     # ------------------------------------------------------------------
@@ -107,5 +107,4 @@ class TemporaryBanRepo:
 
 
 # Module-level singleton
-tempban_storage = TemporaryBanRepo()
-
+tempban_storage = TemporaryBanRepository()

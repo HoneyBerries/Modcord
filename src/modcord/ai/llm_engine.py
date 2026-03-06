@@ -19,6 +19,9 @@ import json
 from typing import List
 
 import weave
+
+weave.init("modcord")
+
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
 
@@ -27,11 +30,11 @@ from modcord.configuration.app_configuration import app_config
 from modcord.datatypes.action_datatypes import ActionData
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.datatypes.moderation_datatypes import ServerModerationBatch
-from modcord.moderation import moderation_parsing
+from modcord.moderation import llm_json_parser
 from modcord.settings.guild_settings_manager import guild_settings_manager
 from modcord.util.logger import get_logger
 
-logger = get_logger("llm_engine")
+logger = get_logger("LLM ENGINE")
 
 
 class LLMEngine:
@@ -53,7 +56,6 @@ class LLMEngine:
             base_url: The OpenAI-compatible API base URL.
         """
         ai_settings = app_config.ai_settings
-        weave.init("modcord")
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
@@ -62,7 +64,7 @@ class LLMEngine:
         self._api_request_timeout = ai_settings.api_request_timeout
         self._base_system_prompt = app_config.system_prompt_template
         logger.info(
-            "[LLM ENGINE] Initialized with base_url=%s, model=%s, api_request_timeout=%.1fs",
+            "Initialized with base_url=%s, model=%s, api_request_timeout=%.1fs",
             ai_settings.base_url,
             self._model_name,
             self._api_request_timeout,
@@ -90,7 +92,7 @@ class LLMEngine:
 
         return prompt
 
-
+    @weave.op(name="Moderation Inference", call_display_name=lambda inputs: f"Guild {inputs['batch'].guild_name}", eager_call_start=True, enable_code_capture=True)
     async def get_moderation_actions(
         self,
         batch: ServerModerationBatch,
@@ -110,7 +112,7 @@ class LLMEngine:
         Returns:
             List of ActionData objects parsed from the AI response.
         """
-        logger.info("[MODERATION] Processing server batch for guild %s", batch.guild_id)
+        logger.info("Processing server batch for guild %s", batch.guild_id)
 
         # Build system prompt with guild rules (no channel guidelines)
         system_prompt = await self.generate_dynamic_system_prompt(batch.guild_id)
@@ -128,12 +130,6 @@ class LLMEngine:
             },
         )
 
-        logger.debug(
-            "[SCHEMA DEBUG] Guild %s: %s",
-            batch.guild_id,
-            json.dumps(dynamic_schema, indent=2),
-        )
-
         # Make API request
         try:
             response = await self._client.chat.completions.create(
@@ -148,17 +144,17 @@ class LLMEngine:
             response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
 
             logger.debug(
-                "[LLM RESPONSE] Guild %s: \n\n%s",
+                "Guild %s: \n\n%s",
                 batch.guild_id,
                 response_text,
             )
 
         except Exception as exc:
-            logger.error("[LLM ENGINE] API request failed for guild %s: %s", batch.guild_id, exc)
+            logger.error("API request failed for guild %s: %s", batch.guild_id, exc)
             response_text = f"null: api error - {exc}"
 
         # Parse response into actions
-        actions = moderation_parsing.parse_batch_actions(
+        actions = llm_json_parser.parse_batch_actions(
             response_text,
             batch.guild_id,
             dynamic_schema,

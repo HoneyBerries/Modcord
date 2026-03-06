@@ -7,11 +7,12 @@ from pathlib import Path
 from prompt_toolkit import print_formatted_text
 from prompt_toolkit.formatted_text import ANSI
 
+
 # -------------------- Configuration --------------------
-LOGS_DIR: Path = (Path(__file__).parents[3] / "logs").resolve()
+LOGS_DIR: Path = Path("logs/").resolve()
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-LOG_FORMAT: str = "[%(asctime)s] [%(levelname)s] [%(name)s:%(funcName)s:%(lineno)d] %(message)s"
+LOG_FORMAT: str = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
 DATE_FORMAT: str = "%Y-%m-%d %H-%M-%S"
 
 LOG_COLORS = {
@@ -25,6 +26,8 @@ RESET_COLOR = "\033[0m"
 
 # Global variable to store the log file path (initialized on first use)
 LOG_FILEPATH: Path | None = None
+
+
 
 # -------------------- Formatters --------------------
 class ColorFormatter(logging.Formatter):
@@ -143,47 +146,6 @@ def get_log_filepath() -> Path:
     return LOG_FILEPATH
 
 
-def setup_logger(logger_name: str) -> logging.Logger:
-    """Configure and return a logger with console and rotating file handlers.
-
-    Parameters
-    ----------
-    logger_name:
-        Name of the logger to configure.
-
-    Returns
-    -------
-    logging.Logger
-        Configured logger instance.
-    """
-    logger = logging.getLogger(logger_name)
-
-    if logger.handlers:
-        return logger
-
-    base_level = logging.DEBUG
-    logger.setLevel(base_level)
-    logger.propagate = False
-
-    # Console handler using prompt_toolkit integration
-    console_handler = PromptToolkitHandler(formatter=color_formatter)
-    console_handler.setLevel(base_level)
-    logger.addHandler(console_handler)
-
-
-    # File handler (DEBUG level) - use shared log file path
-    log_filepath = get_log_filepath()
-    file_handler = RotatingFileHandler(
-        log_filepath,
-        encoding="utf-8"
-    )
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(plain_formatter)
-    logger.addHandler(file_handler)
-
-    return logger
-
-
 def get_logger(logger_name: str) -> logging.Logger:
     """Retrieve a logger configured for Modcord, creating it if necessary.
 
@@ -197,7 +159,31 @@ def get_logger(logger_name: str) -> logging.Logger:
     logging.Logger
         Logger instance ready for use.
     """
-    return setup_logger(logger_name)
+    logger = logging.getLogger(logger_name)
+
+    if logger.handlers:
+        return logger
+
+    base_level = logging.INFO
+    logger.setLevel(base_level)
+    logger.propagate = False
+
+    # Console handler using prompt_toolkit integration
+    console_handler = PromptToolkitHandler(formatter=color_formatter)
+    console_handler.setLevel(base_level)
+    logger.addHandler(console_handler)
+
+    # File handler (DEBUG level) - use shared log file path
+    log_filepath = get_log_filepath()
+    file_handler = RotatingFileHandler(
+        log_filepath,
+        encoding="utf-8"
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(plain_formatter)
+    logger.addHandler(file_handler)
+
+    return logger
 
 
 # -------------------- Exception Handling --------------------

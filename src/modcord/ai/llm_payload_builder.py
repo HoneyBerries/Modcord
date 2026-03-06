@@ -32,7 +32,7 @@ from modcord.util.format_utils import humanize_timestamp
 from modcord.util.logger import get_logger
 from . import dynamic_schema_generator
 
-logger = get_logger("llm_payload_builder")
+logger = get_logger("LLM PAYLOAD BUILDER")
 
 
 def merge_users_with_history(
@@ -144,6 +144,7 @@ def convert_batch_to_openai_messages(
 
     json_payload = {
         "guild_id": str(batch.guild_id),
+        "guild_name": batch.guild_name,
         "message_count": total_messages,
         "unique_user_count": len(user_map),
         "users": users_data,

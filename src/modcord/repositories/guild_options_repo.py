@@ -14,7 +14,7 @@ import aiosqlite
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.util.logger import get_logger
 
-logger = get_logger("guild_settings_repo")
+logger = get_logger("GUILD OPTIONS REPO")
 
 
 @dataclass
@@ -34,8 +34,9 @@ class GuildSettingsRow:
 class GuildOptionsRepository:
     """CRUD for the guild_settings table only."""
 
+    @staticmethod
     async def get(
-        self, conn: aiosqlite.Connection, guild_id: GuildID
+            conn: aiosqlite.Connection, guild_id: GuildID
     ) -> GuildSettingsRow | None:
         """Fetch a single guild's core settings row."""
         async with conn.execute(
@@ -66,8 +67,9 @@ class GuildOptionsRepository:
             mod_log_channel_id=row[8],
         )
 
+    @staticmethod
     async def get_all(
-        self, conn: aiosqlite.Connection
+            conn: aiosqlite.Connection
     ) -> Dict[int, GuildSettingsRow]:
         """Fetch all guilds' core settings rows keyed by guild_id int."""
         async with conn.execute(
@@ -97,8 +99,9 @@ class GuildOptionsRepository:
 
         return result
 
+    @staticmethod
     async def upsert(
-        self, conn: aiosqlite.Connection, row: GuildSettingsRow
+            conn: aiosqlite.Connection, row: GuildSettingsRow
     ) -> None:
         """Insert or update a guild's core settings row."""
         await conn.execute(
@@ -132,8 +135,9 @@ class GuildOptionsRepository:
             ),
         )
 
+    @staticmethod
     async def delete(
-        self, conn: aiosqlite.Connection, guild_id: GuildID
+            conn: aiosqlite.Connection, guild_id: GuildID
     ) -> None:
         """Delete a guild row (CASCADE removes related rows)."""
         await conn.execute(
