@@ -164,14 +164,14 @@ def get_logger(logger_name: str) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    console_level = logging.INFO
+    console_log_level = logging.INFO
 
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
 
     # Console handler using prompt_toolkit integration
     console_handler = PromptToolkitHandler(formatter=color_formatter)
-    console_handler.setLevel(console_level)
+    console_handler.setLevel(console_log_level)
     logger.addHandler(console_handler)
 
     # File handler (DEBUG level) - use shared log file path

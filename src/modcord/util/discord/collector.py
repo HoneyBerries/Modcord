@@ -77,7 +77,7 @@ async def collect_rules(guild: discord.Guild) -> str:
     if guild.rules_channel is not None:
         dedicated_texts = await collect_messages(guild.rules_channel)
         if dedicated_texts:
-            logger.info(
+            logger.debug(
                 "Collected %d rule segments from dedicated rules channel in guild %s",
                 len(dedicated_texts), guild.name,
             )

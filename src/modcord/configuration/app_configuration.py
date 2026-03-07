@@ -155,9 +155,7 @@ class AppConfig:
         Provides context for violations. Default is 0 messages.
         """
         moderation_config = self._data.get("moderation", {})
-
-        return int(moderation_config.get("history_context_messages"))
-
+        return int(moderation_config.get("history_context_messages", 0)) if isinstance(moderation_config, dict) else 0
 
 
 # Shared application-wide configuration instance
