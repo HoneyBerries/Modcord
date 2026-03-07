@@ -91,7 +91,7 @@ class LLMEngine:
 
         return prompt
 
-    @weave.op(name="Moderation Inference", eager_call_start=True, enable_code_capture=True)
+    @weave.op(name="Moderation Inference", call_display_name=lambda call: f"Guild {call.kwargs['batch'].guild_name}", eager_call_start=True, enable_code_capture=True)
     async def get_moderation_actions(
         self,
         batch: ServerModerationBatch,
