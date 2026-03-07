@@ -126,6 +126,7 @@ def convert_batch_to_openai_messages(
                     "timestamp": humanize_timestamp(msg.timestamp),
                     "content": msg.content or ("[Images only]" if image_ids else ""),
                     "image_ids": image_ids,
+                    "is_history": msg.is_history,
                 })
                 total_messages += 1
 

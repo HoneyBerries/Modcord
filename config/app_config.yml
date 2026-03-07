@@ -23,9 +23,6 @@ moderation:
   # Lower = faster response, higher = better API efficiency.
   moderation_batch_seconds: 30
 
-  # Historical lookback (days) for past moderation actions.
-  # Used by AI to determine punishment escalation. Set to 0 to disable.
-  past_actions_lookback_days: 7
 
   # Number of recent messages to fetch for context (including historical messages).
   # Provides context for violations. Recommended: 8-20.
@@ -244,16 +241,12 @@ ai_settings:
 # Default server rules for all servers. Used if no server-specific rules are defined.
 generic_server_rules: |
   (These are just generic rules. You should not treat them as specific as regular server rules.)
-  1. Be respectful to everyone.
-  2. No spamming, excessive caps, or emoji.
+  
+  1. Be respectful to other users and the server.
+  2. No spamming.
   3. No hate speech or discrimination.
-  4. Keep content safe for all ages; no NSFW, violence, or illegal content.
-  5. Don’t share personal info.
-  6. Follow Discord’s Terms of Service.
-  7. No advertising or self-promotion without permission.
-  8. Use channels properly and follow pinned guidelines.
-  9. Report serious issues to moderators.
-  10. Repeated rule-breaking may lead to warnings, timeouts, or bans.
+  4. Keep content safe for all ages unless explicitly allowed in the channel guidelines.
+  5. Follow Discord's Terms of Service.
 
 
 # Default channel guidelines for all channels. Used if no channel-specific guidelines are defined.

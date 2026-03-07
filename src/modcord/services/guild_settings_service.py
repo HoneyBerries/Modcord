@@ -122,7 +122,7 @@ class GuildSettingsService:
                     await self._channel_guidelines_repo.replace(conn, guild_id, settings.channel_guidelines)
                     # transaction() auto-commits on clean exit
 
-                logger.info(
+                logger.debug(
                     "Persisted guild %s", str(guild_id)
                 )
                 return True

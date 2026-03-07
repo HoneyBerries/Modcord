@@ -15,7 +15,6 @@ Key Features:
 
 from __future__ import annotations
 
-import json
 from typing import List
 
 import weave
@@ -92,7 +91,7 @@ class LLMEngine:
 
         return prompt
 
-    @weave.op(name="Moderation Inference", call_display_name=lambda inputs: f"Guild {inputs['batch'].guild_name}", eager_call_start=True, enable_code_capture=True)
+    @weave.op(name="Moderation Inference", eager_call_start=True, enable_code_capture=True)
     async def get_moderation_actions(
         self,
         batch: ServerModerationBatch,

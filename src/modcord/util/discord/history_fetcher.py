@@ -41,6 +41,7 @@ async def fetch_history_context(
                     guild_id=GuildID.from_guild(msg.guild),
                     channel_id=ChannelID.from_channel(msg.channel),
                     images=(),
+                    is_history=True,
                 )
             )
             if len(results) >= history_limit:

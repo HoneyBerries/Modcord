@@ -25,6 +25,7 @@ class ModerationMessage:
     guild_id: GuildID
     channel_id: ChannelID
     images: Tuple[ModerationImage, ...] = ()
+    is_history: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,15 +46,6 @@ class ModerationUser:
     roles: Tuple[str, ...]
     channels: Tuple[ModerationUserChannel, ...]
 
-    @property
-    def all_messages(self) -> Tuple[ModerationMessage, ...]:
-        """Flat view of all messages across every channel."""
-        return tuple(msg for ch in self.channels for msg in ch.messages)
-
-    @property
-    def all_channel_ids(self) -> Tuple[ChannelID, ...]:
-        """All channel IDs this user has messages in."""
-        return tuple(ch.channel_id for ch in self.channels)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,32 +66,6 @@ class ServerModerationBatch:
     users: Tuple[ModerationUser, ...] = ()
     history_users: Tuple[ModerationUser, ...] = ()
 
-    def add_user(self, user: ModerationUser) -> ServerModerationBatch:
-        return ServerModerationBatch(
-            guild_id=self.guild_id,
-            guild_name=self.guild_name,
-            channels=self.channels,
-            users=self.users + (user,),
-            history_users=self.history_users,
-        )
-
-    def extend_users(self, new_users: Tuple[ModerationUser, ...]) -> ServerModerationBatch:
-        return ServerModerationBatch(
-            guild_id=self.guild_id,
-            guild_name=self.guild_name,
-            channels=self.channels,
-            users=self.users + new_users,
-            history_users=self.history_users,
-        )
-
-    def set_history(self, new_history: Tuple[ModerationUser, ...]) -> ServerModerationBatch:
-        return ServerModerationBatch(
-            guild_id=self.guild_id,
-            guild_name=self.guild_name,
-            channels=self.channels,
-            users=self.users,
-            history_users=new_history,
-        )
 
     def is_empty(self) -> bool:
         return not self.users or all(len(u.channels) == 0 for u in self.users)

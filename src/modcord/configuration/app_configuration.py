@@ -147,31 +147,17 @@ class AppConfig:
         moderation_config = self._data.get("moderation", {})
         return float(moderation_config.get("moderation_batch_seconds", INFINITY)) if isinstance(moderation_config, dict) else INFINITY
 
-    @property
-    def past_actions_lookback_days(self) -> int:
-        """Return the historical context lookback in days.
-
-        Used by AI to determine punishment escalation.
-        Default is 7 days.
-        """
-        moderation_config = self._data.get("moderation", {})
-        return int(moderation_config.get("past_actions_lookback_days", 0)) if isinstance(moderation_config, dict) else 0
-
-    @property
-    def past_actions_lookback_minutes(self) -> int:
-        """Return the historical context lookback converted to minutes."""
-        return self.past_actions_lookback_days * 24 * 60
 
     @property
     def history_context_messages(self) -> int:
         """Return the number of recent messages to fetch for context.
 
-        Provides context for violations. Default is 8 messages.
+        Provides context for violations. Default is 0 messages.
         """
         moderation_config = self._data.get("moderation", {})
-        if isinstance(moderation_config, dict):
-            return int(moderation_config.get("history_context_messages", 8))
-        return 8
+
+        return int(moderation_config.get("history_context_messages"))
+
 
 
 # Shared application-wide configuration instance
