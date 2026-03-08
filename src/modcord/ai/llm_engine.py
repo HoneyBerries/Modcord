@@ -91,10 +91,9 @@ class LLMEngine:
 
         return prompt
 
-    @weave.op(name="Moderation Inference", call_display_name=lambda call: f"Guild {call.kwargs['batch'].guild_name}", eager_call_start=True, enable_code_capture=True)
     async def get_moderation_actions(
-        self,
-        batch: ServerModerationBatch,
+            self,
+            batch: ServerModerationBatch,
     ) -> List[ActionData]:
         """
         Get moderation actions from AI for a server-wide batch.
@@ -130,27 +129,16 @@ class LLMEngine:
         )
 
         # Make API request
-        try:
-            response = await self._client.chat.completions.create(
-                model=self._model_name,
-                messages=messages,
-                response_format=response_format,
-                reasoning_effort="low",
-                timeout=self._api_request_timeout,
-                #extra_body={'thinking': {'type': 'disabled'}, 'chat_template_kwargs': {"thinking": False}},
-            )
-            
-            response_text = response.choices[0].message.content or "None, I don't know why. Report this as a bug to the developers!!!"
+        response = await self.create_completion(messages, response_format, self._model_name, "low",
+                                                self._api_request_timeout)
+        response_text = (response.choices[0].message.content
+                         or "None, I don't know why. Report this as a bug to the developers!!!")
 
-            logger.debug(
-                "Guild %s: \n\n%s",
-                batch.guild_id,
-                response_text,
-            )
-
-        except Exception as exc:
-            logger.error("API request failed for guild %s: %s", batch.guild_id, exc)
-            response_text = f"null: api error - {exc}"
+        logger.debug(
+            "Guild %s: \n\n%s",
+            batch.guild_id,
+            response_text,
+        )
 
         # Parse response into actions
         actions = llm_json_parser.parse_batch_actions(
@@ -160,3 +148,22 @@ class LLMEngine:
         )
 
         return actions
+
+
+    @weave.op(name="LLM Inference", call_display_name="Modcord Inference LLM Request", enable_code_capture=True,
+              eager_call_start=True)
+    async def create_completion(self, message, response_format, model, reasoning_effort, timeout, extra_body=None):
+        try:
+            return await self._client.chat.completions.create(
+                model=model,
+                messages=message,
+                response_format=response_format,
+                reasoning_effort=reasoning_effort,
+                temperature=0.7,
+                seed=0,
+                timeout=timeout,
+                extra_body=extra_body,
+            )
+
+        except Exception as e:
+            logger.error("Error during LLM inference: %s", e)
