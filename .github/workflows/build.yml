@@ -1,4 +1,6 @@
 name: Build ModCord
+permissions:
+  contents: read
 on:
   push:
   pull_request:
