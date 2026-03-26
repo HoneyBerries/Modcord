@@ -28,7 +28,7 @@ class GuildSettingsRow:
     auto_timeout_enabled: bool
     auto_kick_enabled: bool
     auto_ban_enabled: bool
-    mod_log_channel_id: Optional[int] = None
+    audit_log_channel_id: Optional[int] = None
 
 
 class GuildOptionsRepository:
@@ -44,7 +44,7 @@ class GuildOptionsRepository:
             SELECT guild_id, ai_enabled, rules,
                    auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
                    auto_kick_enabled, auto_ban_enabled,
-                   mod_log_channel_id
+                   audit_log_channel_id
             FROM guild_settings
             WHERE guild_id = ?
             """,
@@ -64,7 +64,7 @@ class GuildOptionsRepository:
             auto_timeout_enabled=bool(row[5]),
             auto_kick_enabled=bool(row[6]),
             auto_ban_enabled=bool(row[7]),
-            mod_log_channel_id=row[8],
+            audit_log_channel_id=row[8],
         )
 
     @staticmethod
@@ -77,7 +77,7 @@ class GuildOptionsRepository:
             SELECT guild_id, ai_enabled, rules,
                    auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
                    auto_kick_enabled, auto_ban_enabled,
-                   mod_log_channel_id
+                   audit_log_channel_id
             FROM guild_settings
             """
         ) as cursor:
@@ -94,7 +94,7 @@ class GuildOptionsRepository:
                 auto_timeout_enabled=bool(row[5]),
                 auto_kick_enabled=bool(row[6]),
                 auto_ban_enabled=bool(row[7]),
-                mod_log_channel_id=row[8],
+                audit_log_channel_id=row[8],
             )
 
         return result
@@ -110,7 +110,7 @@ class GuildOptionsRepository:
                 guild_id, ai_enabled, rules,
                 auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
                 auto_kick_enabled, auto_ban_enabled,
-                mod_log_channel_id
+                audit_log_channel_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(guild_id) DO UPDATE SET
                 ai_enabled           = excluded.ai_enabled,
@@ -120,7 +120,7 @@ class GuildOptionsRepository:
                 auto_timeout_enabled = excluded.auto_timeout_enabled,
                 auto_kick_enabled    = excluded.auto_kick_enabled,
                 auto_ban_enabled     = excluded.auto_ban_enabled,
-                mod_log_channel_id   = excluded.mod_log_channel_id
+                audit_log_channel_id   = excluded.audit_log_channel_id
             """,
             (
                 int(row.guild_id),
@@ -131,7 +131,7 @@ class GuildOptionsRepository:
                 1 if row.auto_timeout_enabled else 0,
                 1 if row.auto_kick_enabled else 0,
                 1 if row.auto_ban_enabled else 0,
-                row.mod_log_channel_id,
+                row.audit_log_channel_id,
             ),
         )
 

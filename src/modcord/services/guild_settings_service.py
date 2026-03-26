@@ -178,7 +178,7 @@ def _row_to_settings(
     settings.auto_kick_enabled = core.auto_kick_enabled
     settings.auto_ban_enabled = core.auto_ban_enabled
     settings.channel_guidelines = dict(channel_guidelines)
-    settings.mod_log_channel_id = ChannelID(core.mod_log_channel_id) if core.mod_log_channel_id else None
+    settings.audit_log_channel_id = ChannelID(core.audit_log_channel_id) if core.audit_log_channel_id else None
     return settings
 
 
@@ -193,7 +193,7 @@ def _settings_to_row(guild_id: GuildID, settings: GuildSettings) -> GuildSetting
         auto_timeout_enabled=settings.auto_timeout_enabled,
         auto_kick_enabled=settings.auto_kick_enabled,
         auto_ban_enabled=settings.auto_ban_enabled,
-        mod_log_channel_id=int(settings.mod_log_channel_id) if settings.mod_log_channel_id else None,
+        audit_log_channel_id=int(settings.audit_log_channel_id) if settings.audit_log_channel_id else None,
     )
 
 

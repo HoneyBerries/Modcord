@@ -23,7 +23,7 @@ class SchemaManager:
                     auto_timeout_enabled INTEGER NOT NULL DEFAULT 1,
                     auto_kick_enabled INTEGER NOT NULL DEFAULT 1,
                     auto_ban_enabled INTEGER NOT NULL DEFAULT 1,
-                    mod_log_channel_id INTEGER DEFAULT NULL,
+                    audit_log_channel_id INTEGER DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );

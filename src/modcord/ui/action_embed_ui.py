@@ -3,6 +3,13 @@ Embed creation utilities for moderation notifications.
 
 This module provides utilities for creating Discord embeds for moderation actions,
 using ActionData as the canonical input.
+
+Changes from v1:
+  - User avatar set as embed thumbnail for quick visual identification.
+  - Inline field layout groups related info side-by-side.
+  - User ID shown below the mention for audit trail convenience.
+  - Duration field only rendered when meaningful (> 0 seconds).
+  - Color palette unchanged; emoji mapping unchanged.
 """
 
 import datetime
@@ -16,7 +23,10 @@ from modcord.util.logger import get_logger
 logger = get_logger("ACTION EMBED UI")
 
 
-# Emoji mapping for action types
+# ──────────────────────────────────────────────────────────────
+# Mappings
+# ──────────────────────────────────────────────────────────────
+
 ACTION_EMOJIS = {
     ActionType.WARN: "⚠️",
     ActionType.DELETE: "🗑️",
@@ -25,7 +35,6 @@ ACTION_EMOJIS = {
     ActionType.BAN: "🔨",
 }
 
-# Color mapping for action types
 ACTION_COLORS = {
     ActionType.WARN: discord.Color.gold(),
     ActionType.DELETE: discord.Color.orange(),
@@ -34,6 +43,10 @@ ACTION_COLORS = {
     ActionType.BAN: discord.Color.dark_red(),
 }
 
+
+# ──────────────────────────────────────────────────────────────
+# Builder
+# ──────────────────────────────────────────────────────────────
 
 async def create_action_embed(
     action: ActionData,
@@ -44,54 +57,64 @@ async def create_action_embed(
 ) -> discord.Embed:
     """
     Create an embed for a moderation action using ActionData.
-    
+
     Args:
-        action: ActionData containing action type, reason, and other details
-        user: Target user
-        guild: Guild context
-        admin: Admin/bot user for footer attribution
-        duration: Optional duration timedelta (computed from action if not provided)
-    
+        action:   ActionData containing action type, reason, and other details.
+        user:     Target user (Member in the guild).
+        guild:    Guild context.
+        admin:    Admin or bot user responsible for the action.
+        duration: Optional timedelta for timed actions (timeout / temp-ban).
+                  Computed from action fields if not provided.
+
     Returns:
-        discord.Embed: Formatted embed with action details, duration, and expiry time
+        discord.Embed formatted with action details, inline field layout,
+        user avatar thumbnail, and (where relevant) duration + expiry.
     """
     emoji = ACTION_EMOJIS.get(action.action, "⚙️")
     color = ACTION_COLORS.get(action.action, discord.Color.red())
     action_name = action.action.value.capitalize()
-    
+
     embed = discord.Embed(
-        title=f"{emoji} {action_name} Issued",
+        title=f"{emoji}  {action_name} Issued",
         color=color,
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
+        timestamp=datetime.datetime.now(datetime.timezone.utc),
     )
-    
-    # User field with mention and ID
-    embed.add_field(
-        name="User Punished",
-        value=f"{user.mention}",
-        inline=True
-    )
-    
-    # Reason field
+
+    # User avatar as thumbnail — makes the offender immediately recognisable
+    # in a busy Audit Log feed.
+    avatar_url = user.display_avatar.url
+    embed.set_thumbnail(url=avatar_url)
+
+    # ── User row (inline pair: mention | ID) ──────────────────
+    embed.add_field(name="User", value=user.mention, inline=True)
+    embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
+
+    # Empty inline field to force the next field onto a new visual row
+    # (Discord renders 3 inline fields per row).
+    embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+    # ── Admin row ─────────────────────────────────────────────
+    embed.add_field(name="Moderator", value=admin.mention, inline=True)
+    embed.add_field(name="Moderator ID", value=f"`{admin.id}`", inline=True)
+    embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+    # ── Reason (full width) ───────────────────────────────────
     embed.add_field(name="Reason", value=action.reason, inline=False)
-    
-    # Duration and expiry for timeout/ban actions
+
+    # ── Duration + expiry (timed actions only) ────────────────
     if duration and duration.total_seconds() > 0:
         duration_str = discord_utils.format_duration(int(duration.total_seconds()))
-        
-        # Calculate expiry timestamp
+
         now = datetime.datetime.now(datetime.timezone.utc)
         expires_at = now + duration
         expires_unix = int(expires_at.timestamp())
-        
-        # Format: "30 mins (Expires: <relative timestamp>)"
-        duration_with_expiry = f"{duration_str} (Expires: <t:{expires_unix}:R>)"
-        
-        embed.add_field(name="Duration", value=duration_with_expiry, inline=False)
-    
-    embed.add_field(name="Admin", value=admin.mention, inline=True)
-    
-    # Add guild name in the footer
-    embed.set_footer(text=f"Guild: {guild.name}")
-    
+
+        embed.add_field(
+            name="Duration",
+            value=f"{duration_str}  ·  Expires <t:{expires_unix}:R>",
+            inline=False,
+        )
+
+    embed.set_footer(text=f"{guild.name}  •  {guild.id}")
+
     return embed

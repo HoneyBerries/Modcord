@@ -32,7 +32,7 @@ class GuildSettings:
     channel_guidelines: Dict[ChannelID, str] = field(default_factory=dict)
 
     # Mod-log channel for posting action embeds
-    mod_log_channel_id: Optional[ChannelID] = None
+    audit_log_channel_id: Optional[ChannelID] = None
 
     # -------------------------
     # Properties (getters/setters)

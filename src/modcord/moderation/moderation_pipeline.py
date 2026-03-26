@@ -189,7 +189,7 @@ def _resolve_notification_channel(guild: discord.Guild, settings: GuildSettings)
     """Derive the best channel to post a notification embed in.
 
     Priority:
-    1. Configured mod-log channel (``settings.mod_log_channel_id``)
+    1. Configured mod-log channel (``settings.audit_log_channel_id``)
     2. Default system channel set for the guild
 
     Args:
@@ -200,8 +200,8 @@ def _resolve_notification_channel(guild: discord.Guild, settings: GuildSettings)
         A TextChannel if one can be resolved, otherwise None.
     """
     # 1. Configured mod-log channel
-    if settings and settings.mod_log_channel_id:
-        ch = guild.get_channel(int(settings.mod_log_channel_id))
+    if settings and settings.audit_log_channel_id:
+        ch = guild.get_channel(int(settings.audit_log_channel_id))
         if isinstance(ch, discord.TextChannel):
             return ch
 

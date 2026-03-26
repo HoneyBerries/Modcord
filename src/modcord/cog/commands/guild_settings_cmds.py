@@ -16,7 +16,7 @@ from discord.ext import commands
 
 from modcord.datatypes.discord_datatypes import GuildID
 from modcord.settings.guild_settings_manager import guild_settings_manager
-from modcord.ui.guild_options_embed_ui import build_full_settings_embed, FullSettingsView
+from modcord.ui.guild_options_embed_ui import build_ai_embed, SettingsRootView
 from modcord.util.logger import get_logger
 
 logger = get_logger("GUILD SETTINGS CMDS")
@@ -51,21 +51,20 @@ class GuildSettingsCog(commands.Cog):
             return False
         return True
 
-
     @commands.slash_command(
         name="settings",
         description="Open an interactive panel to configure Modcord for this server.",
     )
     async def settings_panel(self, ctx: discord.ApplicationContext):
-        """Send a single embed with all settings and interactive buttons."""
+        """Send the settings panel, defaulting to the AI category."""
         if not await self._check_permissions(ctx):
             return
 
         guild_id = GuildID(ctx.guild_id)
         settings = await guild_settings_manager.get_settings(guild_id)
 
-        embed = build_full_settings_embed(settings)
-        view = FullSettingsView(guild_id, settings)
+        embed = build_ai_embed(settings)
+        view = SettingsRootView(guild_id, settings)
 
         await ctx.respond(embed=embed, view=view, ephemeral=True)
 
@@ -80,11 +79,9 @@ class GuildSettingsCog(commands.Cog):
         guild_id = GuildID(ctx.guild_id)
         settings = await guild_settings_manager.get_settings(guild_id)
 
-        # Convert settings to JSON string
         json_dump = settings.dict() if hasattr(settings, "dict") else str(settings)
         json_str = json.dumps(json_dump, indent=2) if isinstance(json_dump, dict) else str(json_dump)
 
-        # Create an in-memory file
         file_buffer = io.BytesIO(json_str.encode("utf-8"))
         file_buffer.seek(0)
         discord_file = discord.File(fp=file_buffer, filename=f"guild_{guild_id}_settings.txt")
@@ -92,8 +89,9 @@ class GuildSettingsCog(commands.Cog):
         await ctx.respond(
             content="Here is the current guild settings:",
             file=discord_file,
-            ephemeral=True
+            ephemeral=True,
         )
+
 
 def setup(discord_bot_instance):
     discord_bot_instance.add_cog(GuildSettingsCog(discord_bot_instance))
