@@ -49,7 +49,7 @@ ACTION_UI_LABELS = {
 ACTION_UI_EMOJIS = {
     ActionType.WARN: "⚠️",
     ActionType.DELETE: "🗑️",
-    ActionType.TIMEOUT: "⏲️",
+    ActionType.TIMEOUT: "⏱️",
     ActionType.KICK: "👢",
     ActionType.BAN: "🔨",
 }
@@ -66,7 +66,7 @@ class SettingsCategory(str, Enum):
 CATEGORY_META: dict[SettingsCategory, dict] = {
     SettingsCategory.AI: {
         "label": "AI Moderation",
-        "emoji": "🤖",
+        "emoji": "📊",
         "description": "Enable or disable AI-driven moderation",
     },
     SettingsCategory.ACTIONS: {
@@ -76,7 +76,7 @@ CATEGORY_META: dict[SettingsCategory, dict] = {
     },
     SettingsCategory.AUDIT_LOG: {
         "label": "Audit Log Channel",
-        "emoji": "📋",
+        "emoji": "🗒️",
         "description": "Where moderation events are logged",
     },
 }
@@ -96,13 +96,13 @@ def _base_embed(title: str, description: str, color: discord.Color) -> discord.E
 
 
 def build_ai_embed(settings: GuildSettings) -> discord.Embed:
-    status = "**Enabled** ✅" if settings.ai_enabled else "**Disabled** ❌"
+    status = "**Enabled**" if settings.ai_enabled else "**Disabled**"
     embed = _base_embed(
-        title="🤖  AI Moderation",
+        title="AI Moderation Settings",
         description=(
             f"Current status: {status}\n\n"
-            "When enabled, the bot uses an AI model to evaluate messages "
-            "and automatically trigger moderation actions."
+            "When enabled, the bot uses an LLM to review messages "
+            "and trigger moderation actions if necessary."
         ),
         color=discord.Color.blurple() if settings.ai_enabled else discord.Color.greyple(),
     )
@@ -112,7 +112,7 @@ def build_ai_embed(settings: GuildSettings) -> discord.Embed:
 
 def build_actions_embed(settings: GuildSettings) -> discord.Embed:
     embed = _base_embed(
-        title="⚙️  Automatic Actions",
+        title="Automatic Actions Settings",
         description="Toggle which moderation actions the bot is allowed to apply automatically.",
         color=discord.Color.og_blurple(),
     )
@@ -123,6 +123,7 @@ def build_actions_embed(settings: GuildSettings) -> discord.Embed:
             value="Enabled ✅" if enabled else "Disabled ❌",
             inline=True,
         )
+
     embed.set_footer(text="Click an action button to toggle it.")
     return embed
 
@@ -134,12 +135,13 @@ def build_audit_log_embed(settings: GuildSettings) -> discord.Embed:
         else "*Not configured*"
     )
     embed = _base_embed(
-        title="📋  Audit Log Channel",
+        title="Audit Log Channel Settings",
         description="All automatic moderation events will be posted to this channel.",
         color=discord.Color.teal(),
     )
     embed.add_field(name="Current Channel", value=channel_value, inline=False)
     embed.set_footer(text="Use the channel select or Clear button to update.")
+
     return embed
 
 
@@ -158,7 +160,7 @@ EMBED_BUILDERS: dict[SettingsCategory, Callable[[GuildSettings], discord.Embed]]
 class AIControlView(discord.ui.View):
     """Controls shown when the AI category is active."""
 
-    def __init__(self, parent: "SettingsRootView"):
+    def __init__(self, parent: SettingsRootView):
         super().__init__(timeout=None)
         self.parent = parent
         s = parent.settings
@@ -166,7 +168,7 @@ class AIControlView(discord.ui.View):
         btn = discord.ui.Button(
             label="Disable AI" if s.ai_enabled else "Enable AI",
             style=discord.ButtonStyle.danger if s.ai_enabled else discord.ButtonStyle.success,
-            emoji="🤖",
+            emoji="📊",
             row=0,
         )
         btn.callback = self._toggle_ai
@@ -176,18 +178,20 @@ class AIControlView(discord.ui.View):
     async def _toggle_ai(self, interaction: discord.Interaction):
         s = self.parent.settings
         s.ai_enabled = not s.ai_enabled
+
         await guild_settings_manager.update(self.parent.guild_id, ai_enabled=s.ai_enabled)
         self._btn.label = "Disable AI" if s.ai_enabled else "Enable AI"
         self._btn.style = (
             discord.ButtonStyle.danger if s.ai_enabled else discord.ButtonStyle.success
         )
+
         await self.parent.refresh(interaction)
 
 
 class ActionsControlView(discord.ui.View):
     """Controls shown when the Actions category is active."""
 
-    def __init__(self, parent: "SettingsRootView"):
+    def __init__(self, parent: SettingsRootView):
         super().__init__(timeout=None)
         self.parent = parent
         self._btns: dict[ActionType, discord.ui.Button] = {}
@@ -195,13 +199,16 @@ class ActionsControlView(discord.ui.View):
         for action in ACTION_UI_ORDER:
             enabled = getattr(parent.settings, ACTION_FLAG_FIELDS[action], True)
             btn = discord.ui.Button(
-                label=f"{ACTION_UI_EMOJIS[action]} {ACTION_UI_LABELS[action]} {'✅' if enabled else '❌'}",
-                style=discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary,
+                label=f"{ACTION_UI_LABELS[action]}",
+                style=discord.ButtonStyle.success if enabled else discord.ButtonStyle.red,
+                emoji=ACTION_UI_EMOJIS[action],
                 row=0,
             )
+
             btn.callback = self._make_toggle(action)
             self.add_item(btn)
             self._btns[action] = btn
+
 
     def _make_toggle(self, action: ActionType) -> Callable[[discord.Interaction], Awaitable[None]]:
         async def callback(interaction: discord.Interaction):
@@ -220,10 +227,12 @@ class ActionsControlView(discord.ui.View):
         return callback
 
 
+
+
 class AuditLogControlView(discord.ui.View):
     """Controls shown when the Mod Log category is active."""
 
-    def __init__(self, parent: "SettingsRootView"):
+    def __init__(self, parent: SettingsRootView):
         super().__init__(timeout=None)
         self.parent = parent
 
@@ -259,6 +268,8 @@ class AuditLogControlView(discord.ui.View):
         )
         self.parent.settings.audit_log_channel_id = None
         await self.parent.refresh(interaction)
+
+
 
 
 CONTROL_VIEWS: dict[

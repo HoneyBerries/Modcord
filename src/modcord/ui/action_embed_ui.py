@@ -4,6 +4,8 @@ Embed creation utilities for moderation notifications.
 This module provides utilities for creating Discord embeds for moderation actions,
 using ActionData as the canonical input.
 
+No interactive components — no persistence changes needed.
+
 Changes from v1:
   - User avatar set as embed thumbnail for quick visual identification.
   - Inline field layout groups related info side-by-side.
@@ -85,18 +87,11 @@ async def create_action_embed(
     avatar_url = user.display_avatar.url
     embed.set_thumbnail(url=avatar_url)
 
-    # ── User row (inline pair: mention | ID) ──────────────────
+    # ── User row ──────────────────────────────────────────────
     embed.add_field(name="User", value=user.mention, inline=True)
-    embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
-
-    # Empty inline field to force the next field onto a new visual row
-    # (Discord renders 3 inline fields per row).
-    embed.add_field(name="\u200b", value="\u200b", inline=True)
 
     # ── Admin row ─────────────────────────────────────────────
     embed.add_field(name="Moderator", value=admin.mention, inline=True)
-    embed.add_field(name="Moderator ID", value=f"`{admin.id}`", inline=True)
-    embed.add_field(name="\u200b", value="\u200b", inline=True)
 
     # ── Reason (full width) ───────────────────────────────────
     embed.add_field(name="Reason", value=action.reason, inline=False)
@@ -115,6 +110,6 @@ async def create_action_embed(
             inline=False,
         )
 
-    embed.set_footer(text=f"{guild.name}  •  {guild.id}")
+    embed.set_footer(text=guild.name)
 
     return embed
