@@ -8,7 +8,7 @@ buildscript {
     }
     dependencies {
         classpath(libs.postgresql)
-        classpath("org.liquibase:liquibase-core:4.31.0")
+        classpath(libs.liquibase.core)
     }
 }
 

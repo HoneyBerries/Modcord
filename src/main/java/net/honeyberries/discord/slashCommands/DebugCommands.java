@@ -10,7 +10,7 @@ import net.dv8tion.jda.api.interactions.commands.build.*;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.GuildRulesRepository;
-import net.honeyberries.datatypes.action.GuildRules;
+import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -63,8 +63,8 @@ public class DebugCommands extends ListenerAdapter {
 
         String commandName = event.getSubcommandName();
         switch (Objects.requireNonNull(commandName)) {
-            case "refresh-rules-and-guidelines" -> handleRefreshRulesAndGuidelines(event);
-            case "show-rules-and-guidelines" -> handleShowRulesAndGuidelines(event);
+            case "refresh-rules-and-guidelinesText" -> handleRefreshRulesAndGuidelines(event);
+            case "show-rules-and-guidelinesText" -> handleShowRulesAndGuidelines(event);
             case "purge" -> handlePurge(event);
             default -> event.reply("Unknown command").setEphemeral(true).queue();
         }
@@ -80,11 +80,11 @@ public class DebugCommands extends ListenerAdapter {
                 return;
             }
 
-            event.reply("Rules and guidelines refreshed successfully!").setEphemeral(true).queue();
+            event.reply("Rules and guidelinesText refreshed successfully!").setEphemeral(true).queue();
             logger.debug("Refreshed rules for guild: {}", guildId.value());
         } catch (Exception e) {
-            logger.error("Error refreshing rules and guidelines", e);
-            event.reply("Failed to refresh rules and guidelines").setEphemeral(true).queue();
+            logger.error("Error refreshing rules and guidelinesText", e);
+            event.reply("Failed to refresh rules and guidelinesText").setEphemeral(true).queue();
         }
     }
 
@@ -102,8 +102,8 @@ public class DebugCommands extends ListenerAdapter {
             event.reply(message).setEphemeral(true).queue();
             logger.debug("Showed rules for guild: {}", guildId.value());
         } catch (Exception e) {
-            logger.error("Error showing rules and guidelines", e);
-            event.reply("Failed to retrieve rules and guidelines").setEphemeral(true).queue();
+            logger.error("Error showing rules and guidelinesText", e);
+            event.reply("Failed to retrieve rules and guidelinesText").setEphemeral(true).queue();
         }
     }
 

@@ -1,9 +1,11 @@
 package net.honeyberries.discord.listener;
 
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.events.message.MessageDeleteEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.message.MessageUpdateEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.honeyberries.datatypes.discord.MessageID;
 import net.honeyberries.message.HistoryFetcher;
 import net.honeyberries.message.MessageFilter;
 import net.honeyberries.services.GlobalMessageProcessingService;
@@ -47,6 +49,16 @@ public class MessageListener extends ListenerAdapter {
             GlobalMessageProcessingService.getInstance().addMessage(guild, event.getMessage(), false);
         }
 
+    }
+
+    @Override
+    public void onMessageDelete(@NotNull MessageDeleteEvent event) {
+        logger.debug("Deleted message ID: {}", event.getMessageId());
+
+        MessageID messageID = new MessageID(event.getMessageIdLong());
+        Guild guild = event.getGuild();
+
+        GlobalMessageProcessingService.getInstance().removeMessage(guild, messageID);
     }
 
 }

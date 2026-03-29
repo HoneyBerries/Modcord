@@ -1,0 +1,208 @@
+{
+  "guild": {
+    "id": "987654321",
+    "name": "TechSupport Community Discord"
+  },
+  "context": {
+    "channels": [
+      {
+        "id": "111111111",
+        "name": "#general",
+        "guidelines": "Be respectful and civil. No spam, harassment, or NSFW content. Keep conversations on-topic.",
+        "message_count": 5
+      },
+      {
+        "id": "222222222",
+        "name": "#announcements",
+        "guidelines": "Official server announcements only. Read-only for most members. Discussion not allowed.",
+        "message_count": 2
+      },
+      {
+        "id": "333333333",
+        "name": "#off-topic",
+        "guidelines": "Off-topic discussions allowed. Still enforce respectful behavior and no spam.",
+        "message_count": 3
+      },
+      {
+        "id": "444444444",
+        "name": "#support",
+        "guidelines": "Tech support requests only. Be descriptive when asking for help. No self-promotion.",
+        "message_count": 2
+      }
+    ]
+  },
+  "users_for_moderation": [
+    {
+      "user_id": "111111111",
+      "username": "ToxicJohn",
+      "join_date": "2024-01-15T10:30:00",
+      "roles": [
+        "@everyone",
+        "Member"
+      ],
+      "channels": [
+        {
+          "channel_id": "111111111",
+          "channel_name": "#general",
+          "messages": [
+            {
+              "message_id": "msg_001",
+              "timestamp": "2026-03-29T14:25:00",
+              "content": "this server is garbage and all the mods are incompetent"
+            },
+            {
+              "message_id": "msg_002",
+              "timestamp": "2026-03-29T14:26:15",
+              "content": "seriously, ban the stupid admins already"
+            },
+            {
+              "message_id": "msg_003",
+              "timestamp": "2026-03-29T14:27:45",
+              "content": "I hope this place dies lol"
+            }
+          ]
+        },
+        {
+          "channel_id": "222222222",
+          "channel_name": "#announcements",
+          "messages": [
+            {
+              "message_id": "msg_004",
+              "timestamp": "2026-03-29T15:00:00",
+              "content": "shut up nobody asked"
+            },
+            {
+              "message_id": "msg_005",
+              "timestamp": "2026-03-29T15:02:30",
+              "content": "these announcements are so boring"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "user_id": "222222222",
+      "username": "SpammerBot",
+      "join_date": "2025-12-20T08:00:00",
+      "roles": [
+        "@everyone"
+      ],
+      "channels": [
+        {
+          "channel_id": "333333333",
+          "channel_name": "#off-topic",
+          "messages": [
+            {
+              "message_id": "msg_006",
+              "timestamp": "2026-03-29T15:30:00",
+              "content": "BUY CRYPTO NOW!!! CLICK HERE!!! FREE MONEY!!!"
+            },
+            {
+              "message_id": "msg_007",
+              "timestamp": "2026-03-29T15:31:15",
+              "content": "Visit my site: [scam-link.xyz] for FREE ROBUX"
+            },
+            {
+              "message_id": "msg_008",
+              "timestamp": "2026-03-29T15:32:45",
+              "content": "DON'T MISS OUT! LIMITED TIME OFFER!"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "user_id": "333333333",
+      "username": "Harasser99",
+      "join_date": "2026-02-10T14:15:00",
+      "roles": [
+        "@everyone"
+      ],
+      "channels": [
+        {
+          "channel_id": "111111111",
+          "channel_name": "#general",
+          "messages": [
+            {
+              "message_id": "msg_009",
+              "timestamp": "2026-03-29T16:00:00",
+              "content": "@user1 you're so dumb, go kill yourself"
+            }
+          ]
+        },
+        {
+          "channel_id": "444444444",
+          "channel_name": "#support",
+          "messages": [
+            {
+              "message_id": "msg_010",
+              "timestamp": "2026-03-29T16:05:00",
+              "content": "nice problem lmao, you're such a noob"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "user_history": [
+    {
+      "user_id": "111111111",
+      "username": "ToxicJohn",
+      "join_date": "2024-01-15T10:30:00",
+      "roles": [
+        "@everyone",
+        "Member"
+      ],
+      "channels": [
+        {
+          "channel_id": "111111111",
+          "channel_name": "#general",
+          "messages": [
+            {
+              "message_id": "msg_100",
+              "timestamp": "2026-03-28T16:00:00",
+              "content": "wow that update sucked, pretty disappointed"
+            },
+            {
+              "message_id": "msg_101",
+              "timestamp": "2026-03-27T12:30:00",
+              "content": "moderators are useless at their job"
+            },
+            {
+              "message_id": "msg_102",
+              "timestamp": "2026-03-26T09:15:00",
+              "content": "this community is terrible"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "user_id": "222222222",
+      "username": "SpammerBot",
+      "join_date": "2025-12-20T08:00:00",
+      "roles": [
+        "@everyone"
+      ],
+      "channels": [
+        {
+          "channel_id": "111111111",
+          "channel_name": "#general",
+          "messages": [
+            {
+              "message_id": "msg_103",
+              "timestamp": "2026-03-25T11:00:00",
+              "content": "CLICK HERE FOR AMAZING DEALS!!!"
+            },
+            {
+              "message_id": "msg_104",
+              "timestamp": "2026-03-24T13:20:00",
+              "content": "CHECK OUT THIS LINK [suspicious-site.ru]"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

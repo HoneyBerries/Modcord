@@ -1,6 +1,6 @@
 package net.honeyberries.database;
 
-import net.honeyberries.datatypes.action.GuildRules;
+import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -21,7 +21,7 @@ public class GuildRulesRepository {
     }
 
 
-    public boolean addOrReplaceRulesToDatabase(GuildRules guildRules) {
+    public boolean addOrReplaceGuildRulesToDatabase(GuildRules guildRules) {
         try {
             database.transaction(conn -> {
                 String sql = """

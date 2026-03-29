@@ -49,6 +49,13 @@ public class GlobalMessageProcessingService {
     }
 
 
+    public void removeMessage(Guild guild, MessageID messageID) {
+        GuildID guildId = GuildID.fromGuild(guild);
+
+        guildQueues.computeIfAbsent(guildId, id -> new GuildMessageMap()).removeMessage(messageID);
+    }
+
+
     public List<ActionData> getActionDataFromAI(GuildMessageMap guildMessageMap) {
         //TODO: Implement the AI logic to generate action data based on the messages in the queue.
         return List.of();

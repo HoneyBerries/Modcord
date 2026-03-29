@@ -26,7 +26,7 @@ public class AppConfig {
     private static final double INFINITY = Double.POSITIVE_INFINITY;
     
     private final Path configPath;
-    private Map<String, Object> data;
+    protected Map<String, Object> data;
 
     private static final AppConfig INSTANCE = new AppConfig(CONFIG_PATH);
     
@@ -53,7 +53,7 @@ public class AppConfig {
      * @return The loaded configuration as a Map, or an empty map on error
      */
     @NotNull
-    private Map<String, Object> loadFromDisk() {
+    protected Map<String, Object> loadFromDisk() {
         try {
             String content = Files.readString(configPath, StandardCharsets.UTF_8);
             Yaml yaml = new Yaml();
@@ -106,12 +106,12 @@ public class AppConfig {
     }
     
     /**
-     * Returns the configured default channel guidelines as a string (or empty string).
+     * Returns the configured default channel guidelinesText as a string (or empty string).
      * <p>
      * The value is coerced to a string so callers can safely embed it into
      * prompts without additional checks.
      * 
-     * @return The channel guidelines string, or empty string if not configured
+     * @return The channel guidelinesText string, or empty string if not configured
      */
     @NotNull
     public String getGenericChannelGuidelines() {
@@ -121,7 +121,7 @@ public class AppConfig {
             return value.toString();
         }
 
-        throw new RuntimeException("Default channel guidelines not configured");
+        throw new RuntimeException("Default channel guidelinesText not configured");
     }
     
     /**
@@ -281,9 +281,9 @@ public class AppConfig {
     }
     
     /**
-     * Returns the channel guidelines sync interval in seconds.
+     * Returns the channel guidelinesText sync interval in seconds.
      * <p>
-     * This is the interval at which channel guidelines are synced from Discord.
+     * This is the interval at which channel guidelinesText are synced from Discord.
      * Default is never (INFINITY).
      * 
      * @return The sync interval in seconds, or INFINITY if not configured
@@ -298,7 +298,7 @@ public class AppConfig {
                 return ((Number) value).doubleValue();
             }
         }
-        throw new RuntimeException("Channel guidelines cache refresh not configured");
+        throw new RuntimeException("Channel guidelinesText cache refresh not configured");
     }
     
     /**

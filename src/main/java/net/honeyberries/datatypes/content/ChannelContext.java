@@ -13,7 +13,7 @@ public record ChannelContext(
         int messageCount
 ) {
     /**
-     * Convenience constructor with default guidelines and message count.
+     * Convenience constructor with default guidelinesText and message count.
      */
     public ChannelContext(
             @NotNull ChannelID channelId,

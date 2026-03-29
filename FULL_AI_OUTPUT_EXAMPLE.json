@@ -1,0 +1,53 @@
+{
+  "guild_id": "987654321",
+  "users": [
+    {
+      "user_id": "111111111",
+      "action": "timeout",
+      "reason": "Repeated hostile comments about moderators and staff",
+      "channels": [
+        {
+          "channel_id": "111111111",
+          "message_ids_to_delete": ["msg_001", "msg_002", "msg_003"]
+        },
+        {
+          "channel_id": "222222222",
+          "message_ids_to_delete": ["msg_004", "msg_005"]
+        }
+      ],
+      "timeout_duration": "3600",
+      "ban_duration": "-1"
+    },
+    {
+      "user_id": "222222222",
+      "action": "ban",
+      "reason": "Repeated spam pattern with scams and suspicious links",
+      "channels": [
+        {
+          "channel_id": "333333333",
+          "message_ids_to_delete": ["msg_006", "msg_007", "msg_008"]
+        }
+      ],
+      "timeout_duration": "0",
+      "ban_duration": "604800"
+    },
+    {
+      "user_id": "333333333",
+      "action": "kick",
+      "reason": "Direct harassment and personal attacks on users",
+      "channels": [
+        {
+          "channel_id": "111111111",
+          "message_ids_to_delete": ["msg_009"]
+        },
+        {
+          "channel_id": "444444444",
+          "message_ids_to_delete": ["msg_010"]
+        }
+      ],
+      "timeout_duration": "0",
+      "ban_duration": "-1"
+    }
+  ]
+}
+

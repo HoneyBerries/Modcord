@@ -1,6 +1,5 @@
-package net.honeyberries.datatypes.action;
+package net.honeyberries.datatypes.content;
 
-import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 
 /**

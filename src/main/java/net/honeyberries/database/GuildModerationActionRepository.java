@@ -22,10 +22,15 @@ import java.util.UUID;
 public class GuildModerationActionRepository {
 
     Logger logger = LoggerFactory.getLogger(GuildModerationActionRepository.class);
+    private static final GuildModerationActionRepository INSTANCE = new GuildModerationActionRepository();
     private final Database database;
 
     public GuildModerationActionRepository() {
         this.database = Database.getInstance();
+    }
+
+    public static GuildModerationActionRepository getInstance() {
+        return INSTANCE;
     }
 
 
@@ -109,7 +114,7 @@ public class GuildModerationActionRepository {
         }
     }
 
-    public List<ActionData> getActionsByGuild(long guildId) {
+    public List<ActionData> getActionsByGuild(GuildID guildId) {
         String sql = """
             SELECT *
             FROM guild_moderation_actions
@@ -122,7 +127,7 @@ public class GuildModerationActionRepository {
                 List<ActionData> actions = new ArrayList<>();
 
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId);
+                    ps.setLong(1, guildId.value());
 
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
