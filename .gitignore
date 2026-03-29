@@ -52,3 +52,6 @@ bin/
 ### Log Files ###
 /logs
 *.log
+
+# Other files to ignore
+/Modcord-old-python-version
