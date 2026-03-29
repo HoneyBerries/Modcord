@@ -5,39 +5,32 @@ import io.github.cdimascio.dotenv.Dotenv;
 public class TokenManager {
 
     private static final Dotenv dotenv = Dotenv.configure()
-            .filename(".env") // optional, defaults to .env
+            .filename(".env")
+            .ignoreIfMissing() // avoids crash if .env doesn't exist
             .load();
 
-    /**
-     * Get the Discord bot token from .env
-     */
+    private static String getEnvVar(String key) {
+        // Try .env first
+        String value = dotenv.get(key).strip();
+        // If missing, try system environment variables
+        if (value.isEmpty()) {
+            value = System.getenv(key);
+        }
+        if (value == null || value.isEmpty()) {
+            throw new IllegalStateException(key + " is not set in .env or system environment variables");
+        }
+        return value;
+    }
+
     public static String getDiscordBotToken() {
-        String token = dotenv.get("DISCORD_BOT_TOKEN");
-        if (token == null || token.isEmpty()) {
-            throw new IllegalStateException("DISCORD_BOT_TOKEN is not set in .env");
-        }
-        return token;
+        return getEnvVar("DISCORD_BOT_TOKEN");
     }
 
-    /**
-     * Get the OpenAI API key from .env
-     */
     public static String getOpenAIKey() {
-        String key = dotenv.get("OPENAI_API_KEY");
-        if (key == null || key.isEmpty()) {
-            throw new IllegalStateException("OPENAI_API_KEY is not set in .env");
-        }
-        return key;
+        return getEnvVar("OPENAI_API_KEY");
     }
 
-    /**
-     * Get the PostgreSQL database password from .env
-     */
     public static String getDBPassword() {
-        String password = dotenv.get("POSTGRES_DB_PASSWORD");
-        if (password == null || password.isEmpty()) {
-            throw new IllegalStateException("POSTGRES_DB_PASSWORD is not set in .env");
-        }
-        return password;
+        return getEnvVar("POSTGRES_DB_PASSWORD");
     }
 }
