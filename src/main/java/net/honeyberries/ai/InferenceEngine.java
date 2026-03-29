@@ -42,10 +42,6 @@ public class InferenceEngine {
     }
 
 
-
-
-
-
     /**
      * Sends a chat completion request with a system prompt and user message.
      *
@@ -53,12 +49,23 @@ public class InferenceEngine {
      * @param responseFormat The expected response format schema for structured output.
      * @return A CompletableFuture resolving to the response text.
      */
-    private CompletableFuture<String> generateResponse(List<ChatCompletionMessageParam> messages, ResponseFormatJsonSchema responseFormat) {
+    protected CompletableFuture<String> generateResponse(List<ChatCompletionMessageParam> messages, @Nullable ResponseFormatJsonSchema responseFormat) {
 
-        ChatCompletionCreateParams params = ChatCompletionCreateParams.builder()
+        ChatCompletionCreateParams params;
+
+        if (responseFormat != null) {
+            params = ChatCompletionCreateParams.builder()
+                .model(modelName)
+                .messages(messages)
+                .responseFormat(responseFormat)
+                .build();
+        } else {
+            params = ChatCompletionCreateParams.builder()
                 .model(modelName)
                 .messages(messages)
                 .build();
+        }
+
 
         return openAIClient.chat().completions().create(params)
             .thenApply(this::extractResponseText)
