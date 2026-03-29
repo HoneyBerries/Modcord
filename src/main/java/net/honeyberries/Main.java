@@ -29,7 +29,7 @@ public class Main {
         } catch (InterruptedException e) {
             main.logger.error("Failed to set up Discord bot", e);
         } finally {
-            if (args.length != 0 && args[0].equalsIgnoreCase("test")) {
+            if (args.length != 0 && args[0].equalsIgnoreCase("--test")) {
                 Thread.startVirtualThread(() -> {
                     try {
                         Thread.sleep(5000); // Wait for 5 seconds before shutting down

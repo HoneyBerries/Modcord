@@ -4,7 +4,10 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.util.TokenManager;
-import org.flywaydb.core.Flyway;
+import liquibase.Liquibase;
+import liquibase.database.DatabaseFactory;
+import liquibase.database.jvm.JdbcConnection;
+import liquibase.resource.ClassLoaderResourceAccessor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,24 +124,16 @@ public class Database {
         }
 
         try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                Flyway flyway = Flyway.configure()
-                        .dataSource(dataSource)
-                        .load();
+            liquibase.database.Database database = DatabaseFactory.getInstance()
+                    .findCorrectDatabaseImplementation(new JdbcConnection(conn));
 
-                logger.info("Running database migrations");
-                flyway.migrate();
-                conn.commit();
-
+            try (Liquibase liquibase = new Liquibase("db/changelog/db.changelog-master.xml",
+                    new ClassLoaderResourceAccessor(), database)) {
+                logger.info("Running database migrations via Liquibase");
+                liquibase.update();
                 logger.info("Database migrations completed successfully");
-            } catch (SQLException e) {
-                conn.rollback();
-                throw e;
-            } finally {
-                conn.setAutoCommit(true);
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             closePoolSilently();
             throw new DatabaseException("Schema initialization failed", e);
         }
@@ -168,7 +163,7 @@ public class Database {
 
         initialized = false;
         closePoolSilently();
-        logger.info("Shutdown completed successfully");
+        logger.info("Database shutdown completed successfully");
     }
 
     private void closePoolSilently() {

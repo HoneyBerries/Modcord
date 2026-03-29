@@ -7,8 +7,8 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath(libs.flyway.database.postgresql)
         classpath(libs.postgresql)
+        classpath("org.liquibase:liquibase-core:4.31.0")
     }
 }
 
@@ -24,7 +24,7 @@ val envProps = Properties().apply {
 plugins {
     id("java")
     alias(libs.plugins.com.gradleup.shadow)
-    alias(libs.plugins.org.flywaydb.flyway)
+    alias(libs.plugins.org.liquibase.gradle)
 }
 
 group = "net.honeyberries"
@@ -38,7 +38,6 @@ dependencies {
     implementation(libs.openai.java)
     implementation(libs.jda)
 
-    // Logging and config
     implementation(libs.snakeyaml)
     implementation(libs.slf4j.api)
     implementation(libs.logback.classic)
@@ -47,17 +46,20 @@ dependencies {
     implementation(libs.dotenv.java)
     implementation(libs.dotenv.kotlin)
 
-    // Database stuff
     implementation(libs.postgresql)
     implementation(libs.hikari.cp)
-    implementation(libs.flyway.core)
-    implementation(libs.flyway.database.postgresql)
+    implementation(libs.liquibase.core)
 
-    // Console
     implementation(libs.picocli)
     implementation(libs.jline)
 
-
+    // Liquibase runtime classpath
+    liquibaseRuntime(libs.liquibase.core)
+    liquibaseRuntime(libs.postgresql)
+    liquibaseRuntime(libs.slf4j.api)
+    liquibaseRuntime(libs.logback.classic)
+    liquibaseRuntime(libs.picocli)
+    liquibaseRuntime(libs.apache.commons.lang3)
 
     testImplementation(platform(Testing.junit.bom))
     testImplementation(Testing.junit.jupiter)
@@ -72,12 +74,17 @@ java {
 }
 
 
-flyway {
-    url = "jdbc:postgresql://modcord-test-db.postgres.database.azure.com:5432/postgres"
-    user = "ModcordTestAdmin"
-    password = envProps.getProperty("POSTGRES_DB_PASSWORD")
-        ?: throw GradleException("DB password not set in .env")
-    schemas = arrayOf("public")
+
+liquibase {
+    activities.register("main") {
+        arguments = mapOf(
+            "changelogFile" to "./db/changelog/db.changelog-master.xml",
+            "searchPath" to "src/main/resources",
+            "url" to "jdbc:postgresql://modcord-test-db.postgres.database.azure.com:5432/postgres",
+            "username" to "ModcordTestAdmin",
+            "password" to envProps.getProperty("POSTGRES_DB_PASSWORD")
+        )
+    }
 }
 
 
@@ -94,16 +101,19 @@ tasks.named<ShadowJar>("shadowJar") {
 
 tasks.register<JavaExec>("run") {
     group = "application"
-    description = "Runs a single Java class"
+    description = "Runs the bot normally"
 
-    // Fully-qualified class name
     mainClass.set("net.honeyberries.Main")
-
-    // Classpath to include compiled classes + dependencies
     classpath = sourceSets["main"].runtimeClasspath
+}
 
-    // Optional: pass arguments
-    // args("arg1", "arg2")
+tasks.register<JavaExec>("runTest") {
+    group = "application"
+    description = "Runs the bot with --test flag (auto-shuts down after 5 seconds)"
+
+    mainClass.set("net.honeyberries.Main")
+    classpath = sourceSets["main"].runtimeClasspath
+    args("--test")
 }
 
 

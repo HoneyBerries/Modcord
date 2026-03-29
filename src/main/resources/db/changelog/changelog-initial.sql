@@ -1,12 +1,7 @@
--- ============================================
--- Flyway Migration: Initialize Database Schema
--- Tables: guild_preferences, guild_channel_guidelines, guild_rules, guild_moderation_actions, guild_moderation_action_deletions
--- ============================================
+-- liquibase formatted sql
 
-
--- ==========================
--- Table: guild_preferences
--- ==========================
+-- changeset modcord:1
+-- comment: Create tables
 CREATE TABLE IF NOT EXISTS guild_preferences (
     guild_id BIGINT PRIMARY KEY,
     ai_enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -17,14 +12,10 @@ CREATE TABLE IF NOT EXISTS guild_preferences (
     auto_kick_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     auto_ban_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     audit_log_channel_id BIGINT,
-
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- ==========================
--- Table: guild_channel_guidelines
--- ==========================
 CREATE TABLE IF NOT EXISTS guild_channel_guidelines (
     guild_id BIGINT NOT NULL,
     channel_id BIGINT NOT NULL,
@@ -38,9 +29,6 @@ CREATE TABLE IF NOT EXISTS guild_channel_guidelines (
         ON DELETE CASCADE
 );
 
--- ==========================
--- Table: guild_rules
--- ==========================
 CREATE TABLE IF NOT EXISTS guild_rules (
     guild_id BIGINT NOT NULL,
     rules_channel_id BIGINT NOT NULL,
@@ -54,14 +42,11 @@ CREATE TABLE IF NOT EXISTS guild_rules (
         ON DELETE CASCADE
 );
 
--- ==========================
--- Table: guild_moderation_actions
--- ==========================
 CREATE TABLE IF NOT EXISTS guild_moderation_actions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- unique UUID per action
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     guild_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
-    action TEXT NOT NULL,            -- ActionType stored as text
+    action TEXT NOT NULL,
     reason TEXT NOT NULL DEFAULT '',
     timeout_duration BIGINT NOT NULL DEFAULT 0,
     ban_duration BIGINT NOT NULL DEFAULT 0,
@@ -73,11 +58,8 @@ CREATE TABLE IF NOT EXISTS guild_moderation_actions (
         ON DELETE CASCADE
 );
 
--- ==========================
--- Table: guild_moderation_action_deletions
--- ==========================
 CREATE TABLE IF NOT EXISTS guild_moderation_action_deletions (
-    action_id UUID NOT NULL,          -- FK to guild_moderation_actions.id
+    action_id UUID NOT NULL,
     channel_id BIGINT NOT NULL,
     message_id BIGINT NOT NULL,
     PRIMARY KEY (action_id, channel_id, message_id),
@@ -87,9 +69,8 @@ CREATE TABLE IF NOT EXISTS guild_moderation_action_deletions (
         ON DELETE CASCADE
 );
 
--- ==========================
--- Trigger Function (reusable)
--- ==========================
+-- changeset modcord:2 splitStatements:false
+-- comment: Create update timestamp function
 CREATE OR REPLACE FUNCTION fn_update_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -98,25 +79,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- ==========================
--- Triggers for automatic updated_at
--- ==========================
+-- changeset modcord:3
+-- comment: Create update timestamp triggers
 CREATE TRIGGER trg_guild_preferences_update
-BEFORE UPDATE ON guild_preferences
-FOR EACH ROW
-EXECUTE FUNCTION fn_update_timestamp();
+    BEFORE UPDATE ON guild_preferences
+    FOR EACH ROW EXECUTE FUNCTION fn_update_timestamp();
 
 CREATE TRIGGER trg_guild_channel_guidelines_update
-BEFORE UPDATE ON guild_channel_guidelines
-FOR EACH ROW
-EXECUTE FUNCTION fn_update_timestamp();
+    BEFORE UPDATE ON guild_channel_guidelines
+    FOR EACH ROW EXECUTE FUNCTION fn_update_timestamp();
 
 CREATE TRIGGER trg_guild_rules_update
-BEFORE UPDATE ON guild_rules
-FOR EACH ROW
-EXECUTE FUNCTION fn_update_timestamp();
+    BEFORE UPDATE ON guild_rules
+    FOR EACH ROW EXECUTE FUNCTION fn_update_timestamp();
 
 CREATE TRIGGER trg_guild_moderation_actions_update
-BEFORE UPDATE ON guild_moderation_actions
-FOR EACH ROW
-EXECUTE FUNCTION fn_update_timestamp();
+    BEFORE UPDATE ON guild_moderation_actions
+    FOR EACH ROW EXECUTE FUNCTION fn_update_timestamp();
