@@ -11,9 +11,9 @@ public class TokenManager {
 
     private static String getEnvVar(String key) {
         // Try .env first
-        String value = dotenv.get(key).strip();
+        String value = dotenv.get(key);
         // If missing, try system environment variables
-        if (value.isEmpty()) {
+        if (value == null || value.isBlank()) {
             value = System.getenv(key);
         }
         if (value == null || value.isEmpty()) {
