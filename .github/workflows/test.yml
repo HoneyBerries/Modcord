@@ -7,6 +7,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    env:
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      POSTGRES_DB_PASSWORD: ${{ secrets.POSTGRES_DB_PASSWORD }}
+
     steps:
       - uses: actions/checkout@v6
 
