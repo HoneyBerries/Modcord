@@ -1,5 +1,6 @@
 package net.honeyberries.ai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import net.honeyberries.datatypes.action.ActionData;
@@ -24,6 +25,8 @@ public class ActionDataJSONParser {
     private static final Logger logger = LoggerFactory.getLogger(ActionDataJSONParser.class);
     private static final ObjectMapper mapper = new ObjectMapper();
 
+    private static final ActionDataJSONParser INSTANCE = new ActionDataJSONParser();
+
     /**
      * Maps the AI's lowercase action strings to ActionType enum values.
      * "null" -> ActionType.NULL, "ban" -> ActionType.BAN, etc.
@@ -37,6 +40,11 @@ public class ActionDataJSONParser {
             "ban",     ActionType.BAN
     );
 
+    public static ActionDataJSONParser getInstance() {
+        return INSTANCE;
+    }
+
+
     /**
      * Parses the AI's JSON output into a list of ActionData.
      *
@@ -45,15 +53,9 @@ public class ActionDataJSONParser {
      * @throws ActionDataParseException if the JSON is malformed or missing required fields.
      */
     @NotNull
-    public List<ActionData> parse(@NotNull String json, GuildID guildId) {
-        try {
-            JsonNode root = mapper.readTree(json);
-            return parseUsers(root.get("users"), guildId);
-        } catch (ActionDataParseException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ActionDataParseException("Failed to parse AI JSON output", e);
-        }
+    public List<ActionData> parse(@NotNull String json, GuildID guildId) throws JsonProcessingException {
+        JsonNode root = mapper.readTree(json);
+        return parseUsers(root.get("users"), guildId);
     }
 
     private List<ActionData> parseUsers(JsonNode usersNode, GuildID guildId) {

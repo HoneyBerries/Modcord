@@ -46,7 +46,7 @@ public class GuildRulesRepository {
     }
 
     @Nullable
-    public GuildRules getGuildRules(GuildID guildId) {
+    public GuildRules getGuildRulesFromCache(GuildID guildId) {
         String sql = """
             SELECT guild_id, rules_channel_id, rules_text
             FROM guild_rules

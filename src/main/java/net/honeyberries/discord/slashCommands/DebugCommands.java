@@ -73,7 +73,7 @@ public class DebugCommands extends ListenerAdapter {
     private void handleRefreshRulesAndGuidelines(@NotNull SlashCommandInteractionEvent event) {
         try {
             GuildID guildId = new GuildID(Objects.requireNonNull(event.getGuild()).getIdLong());
-            GuildRules rules = rulesRepo.getGuildRules(guildId);
+            GuildRules rules = rulesRepo.getGuildRulesFromCache(guildId);
 
             if (rules == null) {
                 event.reply("No rules found for this guild. Please set rules first.").setEphemeral(true).queue();
@@ -91,7 +91,7 @@ public class DebugCommands extends ListenerAdapter {
     private void handleShowRulesAndGuidelines(@NotNull SlashCommandInteractionEvent event) {
         try {
             GuildID guildId = new GuildID(Objects.requireNonNull(event.getGuild()).getIdLong());
-            GuildRules rules = rulesRepo.getGuildRules(guildId);
+            GuildRules rules = rulesRepo.getGuildRulesFromCache(guildId);
 
             if (rules == null) {
                 event.reply("No rules found for this guild.").setEphemeral(true).queue();

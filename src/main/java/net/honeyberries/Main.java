@@ -11,15 +11,24 @@ import net.honeyberries.database.Database;
 import net.honeyberries.discord.slashCommands.DebugCommands;
 import net.honeyberries.discord.slashCommands.StatusCommands;
 import net.honeyberries.discord.listener.MessageListener;
+import net.honeyberries.task.ChannelGuidelinesTask;
+import net.honeyberries.task.GuildRulesTask;
+import net.honeyberries.task.UnbanWatcherTask;
+import net.honeyberries.util.JDAManager;
 import net.honeyberries.util.TokenManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Paths;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class Main {
 
-    Logger logger = LoggerFactory.getLogger(Main.class);
-    JDA discordBot;
+    private Logger logger = LoggerFactory.getLogger(Main.class);
+    private JDA discordBot;
+
+    ScheduledExecutorService scheduler;
 
     static void main(String[] args) {
         Main main = new Main();
@@ -61,6 +70,9 @@ public class Main {
         .build();
 
         discordBot.awaitReady();
+        
+        // Store JDA instance for global access
+        JDAManager.getInstance().setJDA(discordBot);
 
         logger.info("Discord bot is connected as {}", discordBot.getSelfUser().getName());
 
@@ -90,14 +102,29 @@ public class Main {
     }
 
 
+    private void setupTasks() {
+        scheduler = Executors.newScheduledThreadPool(4);
+
+        scheduler.scheduleAtFixedRate(new UnbanWatcherTask(), 0, 1, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(new GuildRulesTask(), 0, 5, TimeUnit.MINUTES);
+        scheduler.scheduleAtFixedRate(new ChannelGuidelinesTask(), 0, 5, TimeUnit.MINUTES);
+    }
+
+
     private void shutdown() {
+        logger.info("Program shutdown initiated");
+
+        logger.info("Stopping tasks");
+        scheduler.shutdown();
+
         logger.info("Shutting down bot");
         if (discordBot != null) {
             discordBot.shutdown();
-            logger.info("Bot shutdown complete");
         }
+
         logger.info("Shutting down database");
         Database.getInstance().shutdown();
+
         logger.info("Program shutdown complete");
     }
 

@@ -48,7 +48,7 @@ public class InferenceEngine {
      * @param responseFormat The expected response format schema for structured output, or null.
      * @return A CompletableFuture resolving to the response text, or null on error.
      */
-    protected CompletableFuture<String> generateResponse(
+    public CompletableFuture<String> generateResponse(
             List<ChatCompletionMessageParam> messages,
             @Nullable ResponseFormatJsonSchema responseFormat) {
 

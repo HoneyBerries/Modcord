@@ -21,10 +21,10 @@ public class DynamicSystemPrompt {
 
 
     @NotNull
-    private ChatCompletionMessageParam createDynamicSystemPrompt(GuildID guildId) {
+    public ChatCompletionMessageParam createDynamicSystemPrompt(GuildID guildId) {
         String template = AppConfig.getInstance().getSystemPromptTemplate();
 
-        GuildRules guildRules = GuildRulesRepository.getInstance().getGuildRules(guildId);
+        GuildRules guildRules = GuildRulesRepository.getInstance().getGuildRulesFromCache(guildId);
         String guildRulesText = (guildRules != null && guildRules.rulesText() != null)
             ? guildRules.rulesText()
             : AppConfig.getInstance().getGenericServerRules();

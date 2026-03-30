@@ -89,28 +89,19 @@ public class DynamicSchemaGenerator {
         ObjectNode schemaNode = buildSchema(batch);
 
         Map<String, Object> schemaMap;
-        try {
-            schemaMap = mapper.convertValue(schemaNode, new TypeReference<>() {});
-        } catch (IllegalArgumentException e) {
-            throw new DynamicSchemaGeneratorParseException(
-                    "Failed to convert schema ObjectNode to Map for guild: " + batch.guildId(), e);
-        }
 
-        try {
-            ResponseFormatJsonSchema.JsonSchema jsonSchema =
-                    ResponseFormatJsonSchema.JsonSchema.builder()
-                            .name("moderation_output")
-                            .strict(true)
-                            .putAdditionalProperty("schema", JsonValue.from(schemaMap))
-                            .build();
+        schemaMap = mapper.convertValue(schemaNode, new TypeReference<>() {});
 
-            return ResponseFormatJsonSchema.builder()
-                    .jsonSchema(jsonSchema)
-                    .build();
-        } catch (Exception e) {
-            throw new DynamicSchemaGeneratorParseException(
-                    "Failed to build ResponseFormatJsonSchema for guild: " + batch.guildId(), e);
-        }
+        ResponseFormatJsonSchema.JsonSchema jsonSchema =
+                ResponseFormatJsonSchema.JsonSchema.builder()
+                        .name("moderation_output")
+                        .strict(true)
+                        .putAdditionalProperty("schema", JsonValue.from(schemaMap))
+                        .build();
+
+        return ResponseFormatJsonSchema.builder()
+                .jsonSchema(jsonSchema)
+                .build();
     }
 
     // -------------------------------------------------------------------------
