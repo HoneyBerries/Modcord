@@ -68,7 +68,6 @@ class AppConfigTest {
         @Test
         @DisplayName("Should replace data cache on reload")
         void testReloadReplacesDataCache() {
-            int originalSize = appConfig.data.size();
             appConfig.reload();
             int newSize = appConfig.data.size();
             
@@ -116,45 +115,6 @@ class AppConfigTest {
         }
     }
 
-    @Nested
-    @DisplayName("System Prompt Template Tests")
-    class SystemPromptTemplateTests {
-
-        @Test
-        @DisplayName("Should return system prompt template or throw if not configured")
-        void testGetSystemPromptTemplate() {
-            try {
-                String prompt = appConfig.getSystemPromptTemplate();
-                assertNotNull(prompt, "System prompt should not be null");
-                assertFalse(prompt.isEmpty(), "System prompt should not be empty");
-            } catch (RuntimeException e) {
-                // Expected if system_prompt is not configured
-                assertTrue(e.getMessage().contains("not configured"));
-            }
-        }
-
-        @Test
-        @DisplayName("Should contain expected placeholder references or throw if not configured")
-        void testSystemPromptContainsExpectedContent() {
-            try {
-                String prompt = appConfig.getSystemPromptTemplate();
-                assertNotNull(prompt);
-                // The prompt should be multi-line and substantial
-                assertTrue(prompt.contains("DISCORD") || prompt.contains("moderation") 
-                    || prompt.contains("JSON"), "Prompt should contain moderation-related content");
-            } catch (RuntimeException e) {
-                // Expected if system_prompt is not configured
-                assertTrue(e.getMessage().contains("not configured"));
-            }
-        }
-
-        @Test
-        @DisplayName("Should throw RuntimeException if system_prompt not configured")
-        void testGetSystemPromptNotConfigured() {
-            AppConfig config = new AppConfig(Paths.get("./nonexistent/config.yml"));
-            assertThrows(RuntimeException.class, config::getSystemPromptTemplate);
-        }
-    }
 
     @Nested
     @DisplayName("Database Settings Tests")

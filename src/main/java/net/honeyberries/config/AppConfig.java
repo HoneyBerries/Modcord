@@ -22,11 +22,14 @@ import java.util.Map;
  */
 public class AppConfig {
     private static final Logger logger = LoggerFactory.getLogger(AppConfig.class);
+
     private static final Path CONFIG_PATH = Paths.get("./config/app_config.yml").toAbsolutePath();
-    private static final double INFINITY = Double.POSITIVE_INFINITY;
-    
+    private static final Path SYSTEM_PROMPT_PATH = Paths.get("./config/system_prompt.md").toAbsolutePath();
+
     private final Path configPath;
     protected Map<String, Object> data;
+    private String cachedSystemPrompt;
+    private boolean systemPromptLoaded = false;
 
     private static final AppConfig INSTANCE = new AppConfig(CONFIG_PATH);
     
@@ -79,6 +82,8 @@ public class AppConfig {
      */
     public void reload() {
         this.data = new HashMap<>(loadFromDisk());
+        this.cachedSystemPrompt = null;
+        this.systemPromptLoaded = false;
     }
 
     
@@ -125,28 +130,34 @@ public class AppConfig {
     }
     
     /**
-     * Returns the configured system prompt template (or empty string).
+     * Returns the configured system prompt template from system_prompt.md file.
      * <p>
-     * Templates are expected to use format string placeholders. Use
-     * the AI preferences to render with server rules_text inserted.
+     * Lazily loads and caches the system prompt from the dedicated system_prompt.md file.
      * 
-     * @return The system prompt template, or empty string if not configured
+     * @return The system prompt template
      */
     @NotNull
     public String getSystemPromptTemplate() {
-        // Check ai_settings.system_prompt
-        Object aiSettingsObj = data.get("ai_settings");
-        if (aiSettingsObj instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> aiSettings = (Map<String, Object>) aiSettingsObj;
-            Object prompt = aiSettings.get("system_prompt");
-
-            if (prompt != null) {
-                return prompt.toString();
+        if (systemPromptLoaded) {
+            if (cachedSystemPrompt != null) {
+                return cachedSystemPrompt;
             }
+            throw new RuntimeException("System prompt template not found");
         }
-
-        throw new RuntimeException("System prompt template not configured");
+        
+        try {
+            cachedSystemPrompt = Files.readString(SYSTEM_PROMPT_PATH, StandardCharsets.UTF_8);
+            systemPromptLoaded = true;
+            return cachedSystemPrompt;
+        } catch (IOException e) {
+            systemPromptLoaded = true;
+            logger.error("System prompt file {} not found.", SYSTEM_PROMPT_PATH, e);
+            throw new RuntimeException("System prompt template not found", e);
+        } catch (Exception e) {
+            systemPromptLoaded = true;
+            logger.error("Failed to load system prompt {}: {}", SYSTEM_PROMPT_PATH, e.getMessage(), e);
+            throw new RuntimeException("Failed to load system prompt", e);
+        }
     }
     
     // --------------------------

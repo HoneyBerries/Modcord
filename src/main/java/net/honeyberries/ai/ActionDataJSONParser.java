@@ -45,24 +45,15 @@ public class ActionDataJSONParser {
      * @throws ActionDataParseException if the JSON is malformed or missing required fields.
      */
     @NotNull
-    public List<ActionData> parse(@NotNull String json) {
+    public List<ActionData> parse(@NotNull String json, GuildID guildId) {
         try {
             JsonNode root = mapper.readTree(json);
-            GuildID guildId = parseGuildId(root);
             return parseUsers(root.get("users"), guildId);
         } catch (ActionDataParseException e) {
             throw e;
         } catch (Exception e) {
             throw new ActionDataParseException("Failed to parse AI JSON output", e);
         }
-    }
-
-    private GuildID parseGuildId(JsonNode root) {
-        JsonNode guildIdNode = root.get("guild_id");
-        if (guildIdNode == null || guildIdNode.isNull()) {
-            throw new ActionDataParseException("Missing guild_id in AI output");
-        }
-        return new GuildID(guildIdNode.asText());
     }
 
     private List<ActionData> parseUsers(JsonNode usersNode, GuildID guildId) {

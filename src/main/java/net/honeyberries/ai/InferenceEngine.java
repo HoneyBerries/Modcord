@@ -22,7 +22,7 @@ public class InferenceEngine {
     private final String modelName;
     private final OpenAIClientAsync openAIClient;
 
-    private static final InferenceEngine INSTANCE = new  InferenceEngine();
+    private static final InferenceEngine INSTANCE = new InferenceEngine();
 
     public InferenceEngine() {
         String apiKey = TokenManager.getOpenAIKey();
@@ -41,44 +41,33 @@ public class InferenceEngine {
         return INSTANCE;
     }
 
-
     /**
-     * Sends a chat completion request with a system prompt and user message.
+     * Sends a chat completion request.
      *
-     * @param messages The list of messages to send, excluding the system prompt which will be prepended.
-     * @param responseFormat The expected response format schema for structured output.
-     * @return A CompletableFuture resolving to the response text.
+     * @param messages       The list of messages (system prompt should be first if needed).
+     * @param responseFormat The expected response format schema for structured output, or null.
+     * @return A CompletableFuture resolving to the response text, or null on error.
      */
-    protected CompletableFuture<String> generateResponse(List<ChatCompletionMessageParam> messages, @Nullable ResponseFormatJsonSchema responseFormat) {
+    protected CompletableFuture<String> generateResponse(
+            List<ChatCompletionMessageParam> messages,
+            @Nullable ResponseFormatJsonSchema responseFormat) {
 
-        ChatCompletionCreateParams params;
+        ChatCompletionCreateParams.Builder builder = ChatCompletionCreateParams.builder()
+                .model(modelName)
+                .messages(messages);
 
         if (responseFormat != null) {
-            params = ChatCompletionCreateParams.builder()
-                .model(modelName)
-                .messages(messages)
-                .responseFormat(responseFormat)
-                .build();
-        } else {
-            params = ChatCompletionCreateParams.builder()
-                .model(modelName)
-                .messages(messages)
-                .build();
+            builder.responseFormat(responseFormat);
         }
 
-
-        return openAIClient.chat().completions().create(params)
-            .thenApply(this::extractResponseText)
-            .exceptionally(e -> {
-                logger.error("Error during LLM inference: {}", e.getMessage(), e);
-                return null;
-            }
-        );
+        return openAIClient.chat().completions().create(builder.build())
+                .thenApply(this::extractResponseText)
+                .exceptionally(e -> {
+                    logger.error("Error during LLM inference: {}", e.getMessage(), e);
+                    return null;
+                });
     }
 
-    /**
-     * Extracts the text content from the first choice in the completion response.
-     */
     @Nullable
     private String extractResponseText(ChatCompletion completion) {
         String response = completion.choices().stream()
@@ -87,8 +76,7 @@ public class InferenceEngine {
                 .orElseGet(() -> {
                     logger.warn("No content in LLM response");
                     return null;
-                }
-            );
+                });
 
         logger.debug("LLM response: \n\n{}", response);
         return response;

@@ -83,20 +83,34 @@ public class DynamicSchemaGenerator {
     // -------------------------------------------------------------------------
 
     @NotNull
-    public ResponseFormatJsonSchema createDynamicOutputSchema(GuildModerationBatch batch) {
+    public ResponseFormatJsonSchema createDynamicOutputSchema(@NotNull GuildModerationBatch batch)
+            throws DynamicSchemaGeneratorParseException {
+
         ObjectNode schemaNode = buildSchema(batch);
-        Map<String, Object> schemaMap = mapper.convertValue(schemaNode, new TypeReference<>() {});
 
-        ResponseFormatJsonSchema.JsonSchema jsonSchema =
-                ResponseFormatJsonSchema.JsonSchema.builder()
-                        .name("moderation_output")
-                        .strict(true)
-                        .putAdditionalProperty("schema", JsonValue.from(schemaMap))
-                        .build();
+        Map<String, Object> schemaMap;
+        try {
+            schemaMap = mapper.convertValue(schemaNode, new TypeReference<>() {});
+        } catch (IllegalArgumentException e) {
+            throw new DynamicSchemaGeneratorParseException(
+                    "Failed to convert schema ObjectNode to Map for guild: " + batch.guildId(), e);
+        }
 
-        return ResponseFormatJsonSchema.builder()
-                .jsonSchema(jsonSchema)
-                .build();
+        try {
+            ResponseFormatJsonSchema.JsonSchema jsonSchema =
+                    ResponseFormatJsonSchema.JsonSchema.builder()
+                            .name("moderation_output")
+                            .strict(true)
+                            .putAdditionalProperty("schema", JsonValue.from(schemaMap))
+                            .build();
+
+            return ResponseFormatJsonSchema.builder()
+                    .jsonSchema(jsonSchema)
+                    .build();
+        } catch (Exception e) {
+            throw new DynamicSchemaGeneratorParseException(
+                    "Failed to build ResponseFormatJsonSchema for guild: " + batch.guildId(), e);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -104,8 +118,19 @@ public class DynamicSchemaGenerator {
     // -------------------------------------------------------------------------
 
     @NotNull
-    private ObjectNode buildSchema(GuildModerationBatch batch) {
+    private ObjectNode buildSchema(@NotNull GuildModerationBatch batch)
+            throws DynamicSchemaGeneratorParseException {
+
+        if (batch.guildId() == null) {
+            throw new DynamicSchemaGeneratorParseException(
+                    "Batch has a null guildId — cannot build schema");
+        }
+
         String guildId = batch.guildId().toString();
+        if (guildId.isBlank()) {
+            throw new DynamicSchemaGeneratorParseException(
+                    "Batch has a blank guildId — cannot build schema");
+        }
 
         if (batch.isEmpty()) {
             logger.warn("Empty batch.users — no users to moderate");
@@ -221,5 +246,18 @@ public class DynamicSchemaGenerator {
         rootProps.set("guild_id", stringEnum(guildId));
         rootProps.set("users", fixedArray(userSchemas));
         return seal(root, "guild_id", "users");
+    }
+
+    // -------------------------------------------------------------------------
+    // Exception
+    // -------------------------------------------------------------------------
+
+    public static class DynamicSchemaGeneratorParseException extends RuntimeException {
+        public DynamicSchemaGeneratorParseException(String message) {
+            super(message);
+        }
+        public DynamicSchemaGeneratorParseException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

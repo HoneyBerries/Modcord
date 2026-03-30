@@ -48,17 +48,20 @@
             {
               "message_id": "msg_001",
               "timestamp": "2026-03-29T14:25:00",
-              "content": "this server is garbage and all the mods are incompetent"
+              "content": "this server is garbage and all the mods are incompetent",
+              "image_ids": ["550e8400-e29b-41d4-a716-446655440000"]
             },
             {
               "message_id": "msg_002",
               "timestamp": "2026-03-29T14:26:15",
-              "content": "seriously, ban the stupid admins already"
+              "content": "seriously, ban the stupid admins already",
+              "image_ids": []
             },
             {
               "message_id": "msg_003",
               "timestamp": "2026-03-29T14:27:45",
-              "content": "I hope this place dies lol"
+              "content": "I hope this place dies lol",
+              "image_ids": []
             }
           ]
         },
@@ -69,12 +72,14 @@
             {
               "message_id": "msg_004",
               "timestamp": "2026-03-29T15:00:00",
-              "content": "shut up nobody asked"
+              "content": "shut up nobody asked",
+              "image_ids": []
             },
             {
               "message_id": "msg_005",
               "timestamp": "2026-03-29T15:02:30",
-              "content": "these announcements are so boring"
+              "content": "these announcements are so boring",
+              "image_ids": []
             }
           ]
         }
@@ -95,17 +100,20 @@
             {
               "message_id": "msg_006",
               "timestamp": "2026-03-29T15:30:00",
-              "content": "BUY CRYPTO NOW!!! CLICK HERE!!! FREE MONEY!!!"
+              "content": "BUY CRYPTO NOW!!! CLICK HERE!!! FREE MONEY!!!",
+              "image_ids": ["660e8400-e29b-41d4-a716-446655440001", "770e8400-e29b-41d4-a716-446655440002", "880e8400-e29b-41d4-a716-446655440003"]
             },
             {
               "message_id": "msg_007",
               "timestamp": "2026-03-29T15:31:15",
-              "content": "Visit my site: [scam-link.xyz] for FREE ROBUX"
+              "content": "Visit my site: [scam-link.xyz] for FREE ROBUX",
+              "image_ids": []
             },
             {
               "message_id": "msg_008",
               "timestamp": "2026-03-29T15:32:45",
-              "content": "DON'T MISS OUT! LIMITED TIME OFFER!"
+              "content": "DON'T MISS OUT! LIMITED TIME OFFER!",
+              "image_ids": []
             }
           ]
         }
@@ -126,7 +134,8 @@
             {
               "message_id": "msg_009",
               "timestamp": "2026-03-29T16:00:00",
-              "content": "@user1 you're so dumb, go kill yourself"
+              "content": "@user1 you're so dumb, go kill yourself",
+              "image_ids": ["990e8400-e29b-41d4-a716-446655440004"]
             }
           ]
         },
@@ -137,7 +146,8 @@
             {
               "message_id": "msg_010",
               "timestamp": "2026-03-29T16:05:00",
-              "content": "nice problem lmao, you're such a noob"
+              "content": "nice problem lmao, you're such a noob",
+              "image_ids": []
             }
           ]
         }
@@ -161,17 +171,20 @@
             {
               "message_id": "msg_100",
               "timestamp": "2026-03-28T16:00:00",
-              "content": "wow that update sucked, pretty disappointed"
+              "content": "wow that update sucked, pretty disappointed",
+              "image_ids": []
             },
             {
               "message_id": "msg_101",
               "timestamp": "2026-03-27T12:30:00",
-              "content": "moderators are useless at their job"
+              "content": "moderators are useless at their job",
+              "image_ids": []
             },
             {
               "message_id": "msg_102",
               "timestamp": "2026-03-26T09:15:00",
-              "content": "this community is terrible"
+              "content": "this community is terrible",
+              "image_ids": []
             }
           ]
         }
@@ -192,12 +205,14 @@
             {
               "message_id": "msg_103",
               "timestamp": "2026-03-25T11:00:00",
-              "content": "CLICK HERE FOR AMAZING DEALS!!!"
+              "content": "CLICK HERE FOR AMAZING DEALS!!!",
+              "image_ids": []
             },
             {
               "message_id": "msg_104",
               "timestamp": "2026-03-24T13:20:00",
-              "content": "CHECK OUT THIS LINK [suspicious-site.ru]"
+              "content": "CHECK OUT THIS LINK [suspicious-site.ru]",
+              "image_ids": []
             }
           ]
         }
