@@ -1,10 +1,13 @@
 package net.honeyberries.discord.slashCommands;
 
+import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.OptionData;
@@ -21,144 +24,119 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Slash command handler for managing moderation exclusions.
+ *
+ * <p>Requires the invoking member to have {@link Permission#MANAGE_SERVER}.
  */
 public class ExcludeCommand extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(ExcludeCommand.class);
-    private final ExcludedUsersRepository excludedUsersRepository = ExcludedUsersRepository.getInstance();
+    private final ExcludedUsersRepository repository = ExcludedUsersRepository.getInstance();
 
     public void registerExcludeCommands(@NotNull CommandListUpdateAction commands) {
-        SubcommandData addSubcommand = new SubcommandData("add", "Exclude a user or role from moderation")
-                .addOptions(
-                        new OptionData(OptionType.USER, "user", "User to exclude", false),
-                        new OptionData(OptionType.ROLE, "role", "Role to exclude", false)
-                );
-
-        SubcommandData removeSubcommand = new SubcommandData("remove", "Remove a user or role exclusion")
-                .addOptions(
-                        new OptionData(OptionType.USER, "user", "User to unexclude", false),
-                        new OptionData(OptionType.ROLE, "role", "Role to unexclude", false)
-                );
+        OptionData userOption = new OptionData(OptionType.USER, "user", "Target user", false);
+        OptionData roleOption = new OptionData(OptionType.ROLE, "role", "Target role", false);
 
         SlashCommandData excludeCommand = Commands.slash("exclude", "Manage moderation exclusions")
-                .addSubcommands(addSubcommand, removeSubcommand);
+                .addSubcommands(
+                        new SubcommandData("add", "Exclude a user or role from moderation")
+                                .addOptions(userOption, roleOption),
+                        new SubcommandData("remove", "Remove a user or role exclusion")
+                                .addOptions(userOption, roleOption)
+                );
 
         commands.addCommands(excludeCommand);
-        logger.info("Registered /exclude with subcommands: add, remove");
+        logger.info("Registered /exclude command");
     }
 
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
-        if (!event.getName().equals("exclude")) {
+        if (!event.getName().equals("exclude")) return;
+
+        Guild guild = event.getGuild();
+        if (guild == null) {
+            reply(event, "This command can only be used in servers!");
             return;
         }
 
-        if (!event.isFromGuild()) {
-            event.reply("This command can only be used in servers!").setEphemeral(true).queue();
-            return;
-        }
-
-        if (!canPerformExcludeAction(event)) {
-            event.reply("You are not allowed to use this command.").setEphemeral(true).queue();
+        Member member = event.getMember();
+        if (member == null || !member.hasPermission(Permission.MANAGE_SERVER)) {
+            reply(event, "You need the **Manage Server** permission to use this command.");
             return;
         }
 
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
-            event.reply("Please specify a subcommand.").setEphemeral(true).queue();
+            reply(event, "Please specify a subcommand.");
             return;
         }
+
+        User user = event.getOption("user", OptionMapping::getAsUser);
+        Role role = event.getOption("role", OptionMapping::getAsRole);
+
+        if (user == null && role == null) {
+            reply(event, "Please provide either a user or a role.");
+            return;
+        }
+
+        GuildID guildID = new GuildID(guild.getIdLong());
 
         try {
             switch (subcommand) {
-                case "add" -> handleAdd(event);
-                case "remove" -> handleRemove(event);
-                default -> event.reply("Unknown subcommand").setEphemeral(true).queue();
+                case "add"    -> handleAdd(event, guildID, user, role);
+                case "remove" -> handleRemove(event, guildID, user, role);
+                default       -> reply(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
-            logger.error("Failed processing /exclude {}", subcommand, e);
-            event.reply("Failed to process exclusion command.").setEphemeral(true).queue();
+            logger.error("Unexpected error in /exclude {}", subcommand, e);
+            reply(event, "An unexpected error occurred. Please try again.");
         }
     }
 
-    private void handleAdd(@NotNull SlashCommandInteractionEvent event) {
-        Guild guild = event.getGuild();
-        if (guild == null) {
-            event.reply("This command can only be used in servers!").setEphemeral(true).queue();
-            return;
-        }
-
-        GuildID guildID = new GuildID(guild.getIdLong());
-        User user = event.getOption("user", null, option -> option.getAsUser());
-        Role role = event.getOption("role", null, option -> option.getAsRole());
-
-        if (user == null && role == null) {
-            event.reply("Provide either a user or a role.").setEphemeral(true).queue();
-            return;
-        }
-
-        // User-level exclusions take priority when both options are provided.
+    private void handleAdd(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull GuildID guildID,
+            User user,
+            Role role
+    ) {
         if (user != null) {
-            boolean success = excludedUsersRepository.markExcluded(guildID, UserID.fromUser(user));
-            if (success) {
-                String message = role != null
-                        ? "Excluded user " + user.getAsMention() + ". User priority applied over role option."
-                        : "Excluded user " + user.getAsMention() + ".";
-                event.reply(message).setEphemeral(true).queue();
-            } else {
-                event.reply("Failed to exclude user.").setEphemeral(true).queue();
-            }
+            boolean success = repository.markExcluded(guildID, UserID.fromUser(user));
+            reply(event, success
+                    ? "Excluded user " + user.getAsMention() + "."
+                    : "Failed to exclude user. Please try again.");
             return;
         }
 
-        boolean success = excludedUsersRepository.markExcluded(guildID, RoleID.fromRole(role));
-        if (success) {
-            event.reply("Excluded role " + role.getAsMention() + ".").setEphemeral(true).queue();
-        } else {
-            event.reply("Failed to exclude role.").setEphemeral(true).queue();
-        }
+        boolean success = repository.markExcluded(guildID, RoleID.fromRole(role));
+        reply(event, success
+                ? "Excluded role " + role.getAsMention() + "."
+                : "Failed to exclude role. Please try again.");
     }
 
-    private void handleRemove(@NotNull SlashCommandInteractionEvent event) {
-        Guild guild = event.getGuild();
-        if (guild == null) {
-            event.reply("This command can only be used in servers!").setEphemeral(true).queue();
-            return;
-        }
-
-        GuildID guildID = new GuildID(guild.getIdLong());
-        User user = event.getOption("user", null, option -> option.getAsUser());
-        Role role = event.getOption("role", null, option -> option.getAsRole());
-
-        if (user == null && role == null) {
-            event.reply("Provide either a user or a role.").setEphemeral(true).queue();
-            return;
-        }
-
-        // User-level exclusions take priority when both options are provided.
+    private void handleRemove(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull GuildID guildID,
+            User user,
+            Role role
+    ) {
         if (user != null) {
-            boolean success = excludedUsersRepository.unmarkExcluded(guildID, UserID.fromUser(user));
-            if (success) {
-                String message = role != null
-                        ? "Removed exclusion for user " + user.getAsMention() + ". User priority applied over role option."
-                        : "Removed exclusion for user " + user.getAsMention() + ".";
-                event.reply(message).setEphemeral(true).queue();
-            } else {
-                event.reply("Failed to remove user exclusion.").setEphemeral(true).queue();
-            }
+            boolean success = repository.unmarkExcluded(guildID, UserID.fromUser(user));
+            reply(event, success
+                    ? "Removed exclusion for user " + user.getAsMention() + "."
+                    : "Failed to remove user exclusion. Please try again.");
             return;
         }
 
-        boolean success = excludedUsersRepository.unmarkExcluded(guildID, RoleID.fromRole(role));
-        if (success) {
-            event.reply("Removed exclusion for role " + role.getAsMention() + ".").setEphemeral(true).queue();
-        } else {
-            event.reply("Failed to remove role exclusion.").setEphemeral(true).queue();
-        }
+        boolean success = repository.unmarkExcluded(guildID, RoleID.fromRole(role));
+        reply(event, success
+                ? "Removed exclusion for role " + role.getAsMention() + "."
+                : "Failed to remove role exclusion. Please try again.");
     }
 
-    private boolean canPerformExcludeAction(@NotNull SlashCommandInteractionEvent event) {
-        // TODO: Add real permission checks for exclusion management.
-        return true;
+    /**
+     * Sends an ephemeral reply. All user-facing replies go through here to
+     * ensure consistent behaviour and avoid repeating {@code setEphemeral(true)}.
+     */
+    private static void reply(@NotNull SlashCommandInteractionEvent event, @NotNull String message) {
+        event.reply(message).setEphemeral(true).queue();
     }
 }

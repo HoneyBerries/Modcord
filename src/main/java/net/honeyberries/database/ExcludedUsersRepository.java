@@ -179,7 +179,7 @@ public class ExcludedUsersRepository {
     public boolean unmarkExcluded(@NotNull GuildID guildID, @NotNull UserID userID) {
         String sql = """
             DELETE FROM guild_moderation_exemptions
-            WHERE guild_id = ? AND user_id = ? AND role_id IS NULL
+            WHERE guild_id = ? AND user_id = ?
         """;
 
         try {
@@ -209,7 +209,7 @@ public class ExcludedUsersRepository {
     public boolean unmarkExcluded(@NotNull GuildID guildID, @NotNull RoleID roleID) {
         String sql = """
             DELETE FROM guild_moderation_exemptions
-            WHERE guild_id = ? AND role_id = ? AND user_id IS NULL
+            WHERE guild_id = ? AND role_id = ?
         """;
 
         try {
