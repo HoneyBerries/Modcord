@@ -66,7 +66,7 @@ public class GuildRulesTask implements Runnable {
                 logger.warn("GuildRulesTask completed with {} updated, {} skipped, {} failed out of {} guilds",
                     updatedCount, skippedCount, failedCount, results.size());
             } else {
-                logger.debug("GuildRulesTask completed with {} updated and {} skipped out of {} guilds",
+                logger.info("GuildRulesTask completed with {} updated and {} skipped out of {} guilds",
                     updatedCount, skippedCount, results.size());
             }
 
