@@ -81,12 +81,12 @@ public class Database {
 
     @FunctionalInterface
     public interface StatementBinder {
-        void bind(PreparedStatement stmt) throws SQLException;
+        void bind(PreparedStatement stmt);
     }
 
     @FunctionalInterface
     public interface RowMapper<T> {
-        T map(ResultSet rs) throws SQLException;
+        T map(ResultSet rs);
     }
 
     // ──────────────────────────────────────────────────────────────────

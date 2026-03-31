@@ -212,9 +212,9 @@ public class GuildMessageProcessingService {
         return allHistory;
     }
 
-    private List<ModerationUser> buildModerationUsers(List<ModerationMessage> msgs) {
+    private List<ModerationUser> buildModerationUsers(List<ModerationMessage> messages) {
         Map<UserID, Map<ChannelID, List<ModerationMessage>>> userChannelMap = new HashMap<>();
-        for (ModerationMessage msg : msgs) {
+        for (ModerationMessage msg : messages) {
             userChannelMap
                     .computeIfAbsent(msg.userId(), k -> new HashMap<>())
                     .computeIfAbsent(msg.channelId(), k -> new ArrayList<>())

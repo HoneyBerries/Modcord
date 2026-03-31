@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 
 public class GuildListener extends ListenerAdapter {
 
-    Logger logger = LoggerFactory.getLogger(GuildListener.class);
+    private final Logger logger = LoggerFactory.getLogger(GuildListener.class);
 
     @Override
     public void onGuildJoin(@NotNull GuildJoinEvent event) {

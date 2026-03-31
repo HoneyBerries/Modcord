@@ -15,13 +15,13 @@ import org.slf4j.LoggerFactory;
 
 public class MessageListener extends ListenerAdapter {
 
-    Logger logger = LoggerFactory.getLogger(MessageListener.class);
+    private final Logger logger = LoggerFactory.getLogger(MessageListener.class);
 
     @Override
     public void onMessageReceived(@NotNull MessageReceivedEvent event) {
         logger.debug("Received message: {}", event.getMessage().getContentDisplay());
 
-        if (!MessageFilter.shouldIncludeMessageForModeration(event.getMessage())) {
+        if (MessageFilter.shouldExcludeMessageForModeration(event.getMessage())) {
             return;
         }
 
@@ -36,7 +36,7 @@ public class MessageListener extends ListenerAdapter {
     public void onMessageUpdate(@NotNull MessageUpdateEvent event) {
         logger.debug("Edited message: {}", event.getMessage().getContentDisplay());
 
-        if (!MessageFilter.shouldIncludeMessageForModeration(event.getMessage())) {
+        if (MessageFilter.shouldExcludeMessageForModeration(event.getMessage())) {
             return;
         }
 

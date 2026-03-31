@@ -14,7 +14,7 @@ import java.sql.SQLException;
 
 public class GuildPreferencesRepository {
 
-    Logger logger = LoggerFactory.getLogger(GuildPreferencesRepository.class);
+    private final Logger logger = LoggerFactory.getLogger(GuildPreferencesRepository.class);
     private final Database database;
 
     private static final GuildPreferencesRepository INSTANCE = new GuildPreferencesRepository();

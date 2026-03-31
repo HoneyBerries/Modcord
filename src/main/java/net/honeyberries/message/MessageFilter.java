@@ -33,18 +33,18 @@ public class MessageFilter {
     }
 
     /**
-     * Determines if a message should be queued for moderation processing.
+     * Determines if a message should be excluded from moderation processing.
      * Requires a guild member author and excludes webhook and voice messages to focus on user-generated text.
      *
      * @param message message to inspect; must not be {@code null}
-     * @return {@code true} if the message comes from a guild member and is eligible for moderation
+     * @return {@code true} if the message comes from a guild member and is not eligible for moderation
      * @throws NullPointerException if {@code message} is {@code null}
      */
-    public static boolean shouldIncludeMessageForModeration(@NotNull Message message) {
+    public static boolean shouldExcludeMessageForModeration(@NotNull Message message) {
         Objects.requireNonNull(message, "message must not be null");
-        return message.getAuthor() instanceof Member
-                && message.isFromGuild()
-                && !message.isVoiceMessage()
-                && !message.isWebhookMessage();
+        return !(message.getAuthor() instanceof Member)
+                || !message.isFromGuild()
+                || message.isVoiceMessage()
+                || message.isWebhookMessage();
     }
 }

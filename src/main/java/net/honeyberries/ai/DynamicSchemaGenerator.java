@@ -112,11 +112,6 @@ public class DynamicSchemaGenerator {
     private ObjectNode buildSchema(@NotNull GuildModerationBatch batch)
             throws DynamicSchemaGeneratorParseException {
 
-        if (batch.guildId() == null) {
-            throw new DynamicSchemaGeneratorParseException(
-                    "Batch has a null guildId — cannot build schema");
-        }
-
         String guildId = batch.guildId().toString();
         if (guildId.isBlank()) {
             throw new DynamicSchemaGeneratorParseException(
@@ -197,16 +192,16 @@ public class DynamicSchemaGenerator {
 
         for (Map.Entry<ChannelID, Set<MessageID>> chEntry : chMap.entrySet()) {
             ChannelID channelId = chEntry.getKey();
-            List<String> sortedMids = chEntry.getValue().stream()
+            List<String> sortedMessageIds = chEntry.getValue().stream()
                     .map(MessageID::toString)
                     .sorted()
                     .toList();
 
             ObjectNode midConstraint = typeNode("array");
-            if (!sortedMids.isEmpty()) {
+            if (!sortedMessageIds.isEmpty()) {
                 ObjectNode items = midConstraint.putObject("items").put("type", "string");
                 ArrayNode enumArr = items.putArray("enum");
-                sortedMids.forEach(enumArr::add);
+                sortedMessageIds.forEach(enumArr::add);
             } else {
                 midConstraint.putObject("items").put("type", "string");
                 midConstraint.put("maxItems", 0);

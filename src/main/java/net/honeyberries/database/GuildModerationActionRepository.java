@@ -21,7 +21,7 @@ import java.util.UUID;
 
 public class GuildModerationActionRepository {
 
-    Logger logger = LoggerFactory.getLogger(GuildModerationActionRepository.class);
+    private final Logger logger = LoggerFactory.getLogger(GuildModerationActionRepository.class);
     private static final GuildModerationActionRepository INSTANCE = new GuildModerationActionRepository();
     private final Database database;
 

@@ -98,20 +98,20 @@ public class HistoryFetcher {
     }
 
 
-    /**
-     * ============== THREE TIME WINDOWS ==============
-     * <p>
-     * 1. PAST HISTORY:         [far past, now - maxAge]
-     *    → Too old, ignore/archive
-     * <p>
-     * 2. HISTORY CONTEXT:      [now - maxAge, now - queueDuration]
-     *    → Background context for AI (fetched when queue triggers)
-     * <p>
-     * 3. NOW (Current Queue):  [now - queueDuration, now]
-     *    → Fresh messages accumulated during queue wait
-     * <p>
-     * When queue triggers: send HISTORY CONTEXT + NOW to AI for moderation
-     * ================================================
+    /*
+      ============== THREE TIME WINDOWS ==============
+
+      1. PAST HISTORY:         [far past, now - maxAge]
+         → Too old, ignore/archive
+
+      2. HISTORY CONTEXT:      [now - maxAge, now - queueDuration]
+         → Background context for AI (fetched when queue triggers)
+
+      3. NOW (Current Queue):  [now - queueDuration, now]
+         → Fresh messages accumulated during queue wait
+
+      When queue triggers: send HISTORY CONTEXT + NOW to AI for moderation
+      ================================================
      */
 
     /**
@@ -175,7 +175,7 @@ public class HistoryFetcher {
     /**
      * Checks if message is in the NOW window (current queue period).
      * Window: [now - queueDuration, now]
-     *
+     * <p>
      * These are fresh messages that have accumulated while the queue was waiting.
      * These are the primary messages to be moderated.
      *

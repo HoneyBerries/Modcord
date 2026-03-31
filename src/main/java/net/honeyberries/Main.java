@@ -37,7 +37,7 @@ public class Main {
      *
      * @param args command-line arguments; {@code --test} triggers automatic shutdown
      */
-    public static void main(@NotNull String[] args) {
+    static void main(@NotNull String[] args) {
         Objects.requireNonNull(args, "args must not be null");
         Main main = new Main();
         try {
@@ -79,7 +79,7 @@ public class Main {
      * @throws InterruptedException if the calling thread is interrupted while waiting for the bot to become ready
      */
     private void setupDiscordBot() throws InterruptedException {
-        discordBot = JDAManager.getInstance().initializeBot();
+        discordBot = JDAManager.getInstance().getJDA();
     }
 
     /**

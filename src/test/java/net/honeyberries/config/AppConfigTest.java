@@ -219,7 +219,7 @@ class AppConfigTest {
         @DisplayName("AI endpoint should be a valid URL format")
         void testAIEndpointFormat() {
             String endpoint = appConfig.getAIEndpoint();
-            assertTrue(endpoint.startsWith("http://") || endpoint.startsWith("https://"),
+            assertTrue(endpoint.startsWith("https://") || endpoint.startsWith("https://"),
                 "Endpoint should be a valid URL");
         }
 

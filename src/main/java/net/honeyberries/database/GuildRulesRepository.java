@@ -11,7 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 
 public class GuildRulesRepository {
-    Logger logger = LoggerFactory.getLogger(GuildRulesRepository.class);
+    private final Logger logger = LoggerFactory.getLogger(GuildRulesRepository.class);
     private final Database database;
 
     private static final GuildRulesRepository INSTANCE = new GuildRulesRepository();
