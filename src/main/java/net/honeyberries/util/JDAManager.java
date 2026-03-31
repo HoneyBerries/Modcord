@@ -1,18 +1,22 @@
 package net.honeyberries.util;
 
 import net.dv8tion.jda.api.JDA;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Singleton manager for accessing the JDA bot instance globally.
  */
 public class JDAManager {
+
+    @NotNull
     private static final JDAManager INSTANCE = new JDAManager();
     private JDA jda;
 
     private JDAManager() {
     }
 
+    @NotNull
     public static JDAManager getInstance() {
         return INSTANCE;
     }
@@ -29,7 +33,7 @@ public class JDAManager {
      * Gets the JDA instance.
      * @return The JDA instance, or null if not initialized
      */
-    @Nullable
+    @NotNull
     public JDA getJDA() {
         return jda;
     }

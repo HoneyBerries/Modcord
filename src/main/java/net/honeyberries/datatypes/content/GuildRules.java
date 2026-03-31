@@ -1,5 +1,6 @@
 package net.honeyberries.datatypes.content;
 
+import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 
 /**
@@ -10,5 +11,6 @@ import net.honeyberries.datatypes.discord.GuildID;
  */
 public record GuildRules(
         GuildID guildId,
+        ChannelID rulesChannelId,
         String rulesText
 ) { }

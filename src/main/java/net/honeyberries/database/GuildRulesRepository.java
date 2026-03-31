@@ -1,6 +1,7 @@
 package net.honeyberries.database;
 
 import net.honeyberries.datatypes.content.GuildRules;
+import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -62,6 +63,7 @@ public class GuildRulesRepository {
                         if (rs.next()) {
                             return new GuildRules(
                                 new GuildID(rs.getLong("guild_id")),
+                                new ChannelID(rs.getLong("rules_channel_id")),
                                 rs.getString("rules_text")
                             );
                         }

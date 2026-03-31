@@ -8,7 +8,7 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.honeyberries.datatypes.discord.MessageID;
 import net.honeyberries.message.HistoryFetcher;
 import net.honeyberries.message.MessageFilter;
-import net.honeyberries.services.GlobalProcessingService;
+import net.honeyberries.services.GlobalOrchestrationService;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +27,7 @@ public class MessageListener extends ListenerAdapter {
 
         Guild guild = event.getGuild();
 
-        GlobalProcessingService.getInstance().addMessage(guild, event.getMessage(), false);
+        GlobalOrchestrationService.getInstance().addMessage(guild, event.getMessage(), false);
 
     }
 
@@ -46,7 +46,7 @@ public class MessageListener extends ListenerAdapter {
 
         if (shouldBeUpdated) {
             logger.debug("Message is in current context window. Updating message.");
-            GlobalProcessingService.getInstance().updateMessage(guild, event.getMessage(), false);
+            GlobalOrchestrationService.getInstance().updateMessage(guild, event.getMessage(), false);
         }
 
     }
@@ -58,7 +58,7 @@ public class MessageListener extends ListenerAdapter {
         MessageID messageID = new MessageID(event.getMessageIdLong());
         Guild guild = event.getGuild();
 
-        GlobalProcessingService.getInstance().removeMessage(guild, messageID);
+        GlobalOrchestrationService.getInstance().removeMessage(guild, messageID);
     }
 
 }

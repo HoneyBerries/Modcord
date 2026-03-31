@@ -44,59 +44,59 @@ public class HistoryFetcher {
         Set<MessageID> seen = new HashSet<>(currentMessageIds);
 
         return channel.getHistory()
-                .retrievePast(msgLimit)
-                .submit()
-                .thenApply(messages -> {
-                    List<ModerationMessage> result = new ArrayList<>();
+            .retrievePast(msgLimit)
+            .submit()
+            .thenApply(messages -> {
+                List<ModerationMessage> result = new ArrayList<>();
 
-                    for (Message msg : messages) {
-                        OffsetDateTime msgTime = msg.getTimeCreated();
+                for (Message msg : messages) {
+                    OffsetDateTime msgTime = msg.getTimeCreated();
 
-                        // Stop if we've gone too far back (past HISTORY CONTEXT window)
-                        if (msgTime.isBefore(cutoffOld)) {
-                            break;
-                        }
-
-                        // Skip if message is in NOW window (too recent for history context)
-                        if (!msgTime.isBefore(cutoffNew)) {
-                            continue;
-                        }
-
-                        MessageID id = MessageID.fromMessage(msg);
-
-                        if (seen.contains(id)) continue;
-                        if (!MessageFilter.shouldIncludeMessageForContext(msg)) continue;
-
-                        boolean hasText = !msg.getContentDisplay().isBlank();
-                        boolean hasMedia = !msg.getAttachments().isEmpty() || !msg.getEmbeds().isEmpty();
-
-                        if (!hasText && !hasMedia) continue;
-
-                        result.add(ModerationMessage.fromMessage(msg, true).markAsHistory());
+                    // Stop if we've gone too far back (past HISTORY CONTEXT window)
+                    if (msgTime.isBefore(cutoffOld)) {
+                        continue;
                     }
 
-                    Collections.reverse(result);
-                    return result;
-                })
-                .exceptionally(e -> {
-                    logger.warn("Failed to fetch history context for channel {}: {}", channel.getId(), e.getMessage());
-                    return List.of();
-                });
+                    // Skip if message is in NOW window (too recent for history context)
+                    if (!msgTime.isBefore(cutoffNew)) {
+                        continue;
+                    }
+
+                    MessageID id = MessageID.fromMessage(msg);
+
+                    if (seen.contains(id)) continue;
+                    if (!MessageFilter.shouldIncludeMessageForContext(msg)) continue;
+
+                    boolean hasText = !msg.getContentDisplay().isBlank();
+                    boolean hasMedia = !msg.getAttachments().isEmpty() || !msg.getEmbeds().isEmpty();
+
+                    if (!hasText && !hasMedia) continue;
+
+                    result.add(ModerationMessage.fromMessage(msg, true).markAsHistory());
+                }
+
+                Collections.reverse(result);
+                return result;
+            })
+            .exceptionally(e -> {
+                logger.warn("Failed to fetch history context for channel {}: {}", channel.getId(), e.getMessage());
+                return List.of();
+            });
     }
 
 
     /**
      * ============== THREE TIME WINDOWS ==============
-     *
+     * <p>
      * 1. PAST HISTORY:         [far past, now - maxAge]
      *    → Too old, ignore/archive
-     *
+     * <p>
      * 2. HISTORY CONTEXT:      [now - maxAge, now - queueDuration]
      *    → Background context for AI (fetched when queue triggers)
-     *
+     * <p>
      * 3. NOW (Current Queue):  [now - queueDuration, now]
      *    → Fresh messages accumulated during queue wait
-     *
+     * <p>
      * When queue triggers: send HISTORY CONTEXT + NOW to AI for moderation
      * ================================================
      */
@@ -150,7 +150,7 @@ public class HistoryFetcher {
     /**
      * Checks if message is in the NOW window (current queue period).
      * Window: [now - queueDuration, now]
-     * 
+     *
      * These are fresh messages that have accumulated while the queue was waiting.
      * These are the primary messages to be moderated.
      */
@@ -158,7 +158,7 @@ public class HistoryFetcher {
         double queueDurationSeconds = AppConfig.getInstance().getModerationQueueDuration();
         long queueDurationMillis = Math.round(queueDurationSeconds * 1000);
         Duration queueDuration = Duration.ofMillis(queueDurationMillis);
-        
+
         OffsetDateTime cutoff = OffsetDateTime.now().minus(queueDuration);
         return !message.getTimeCreated().isBefore(cutoff);
     }

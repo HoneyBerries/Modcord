@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 public class Main {
 
-    private Logger logger = LoggerFactory.getLogger(Main.class);
+    private final Logger logger = LoggerFactory.getLogger(Main.class);
     private JDA discordBot;
 
     ScheduledExecutorService scheduler;
@@ -35,6 +35,7 @@ public class Main {
         try {
             main.setupDatabase();
             main.setupDiscordBot();
+            main.setupTasks();
         } catch (InterruptedException e) {
             main.logger.error("Failed to set up Discord bot", e);
         } finally {
@@ -103,7 +104,7 @@ public class Main {
 
 
     private void setupTasks() {
-        scheduler = Executors.newScheduledThreadPool(4);
+        scheduler = Executors.newScheduledThreadPool(8);
 
         scheduler.scheduleAtFixedRate(new UnbanWatcherTask(), 0, 1, TimeUnit.SECONDS);
         scheduler.scheduleAtFixedRate(new GuildRulesTask(), 0, 5, TimeUnit.MINUTES);
