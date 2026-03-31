@@ -7,10 +7,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Persistent per-guild configuration values.
- * Immutable record version for reading from DB.
+ * Immutable record version for reading from DB and passing through orchestration layers without mutation.
+ * Encapsulates feature toggles and channel hooks so moderation behavior can be tailored per guild.
  */
 public record GuildPreferences(
         @NotNull GuildID guildId,
@@ -23,7 +25,8 @@ public record GuildPreferences(
         boolean autoBanEnabled,
         @Nullable ChannelID auditLogChannelId
 ) {
-    public static final Map<ActionType, String> ACTION_FLAG_FIELDS = Map.ofEntries(
+    /** Mapping of moderation actions to their corresponding database flag columns. */
+    public static final @NotNull Map<ActionType, String> ACTION_FLAG_FIELDS = Map.ofEntries(
             Map.entry(ActionType.WARN, "auto_warn_enabled"),
             Map.entry(ActionType.DELETE, "auto_delete_enabled"),
             Map.entry(ActionType.TIMEOUT, "auto_timeout_enabled"),
@@ -32,7 +35,28 @@ public record GuildPreferences(
     );
 
     /**
+     * Validates required values for persisted preferences.
+     *
+     * @param guildId           guild that owns these preferences; must not be {@code null}
+     * @param aiEnabled         whether AI moderation is enabled
+     * @param rulesChannelID    optional channel containing rules
+     * @param autoWarnEnabled   toggle for automatic warns
+     * @param autoDeleteEnabled toggle for automatic message deletion
+     * @param autoTimeoutEnabled toggle for automatic timeouts
+     * @param autoKickEnabled   toggle for automatic kicks
+     * @param autoBanEnabled    toggle for automatic bans
+     * @param auditLogChannelId optional audit log channel
+     * @throws NullPointerException if {@code guildId} is {@code null}
+     */
+    public GuildPreferences {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+    }
+
+    /**
      * Constructor with defaults.
+     *
+     * @param guildId guild that owns these preferences; must not be {@code null}
+     * @throws NullPointerException if {@code guildId} is {@code null}
      */
     public GuildPreferences(@NotNull GuildID guildId) {
         this(
