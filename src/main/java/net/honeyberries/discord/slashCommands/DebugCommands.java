@@ -98,6 +98,11 @@ public class DebugCommands extends ListenerAdapter {
                 return;
             }
 
+            if (rules.rulesText() == null || rules.rulesText().isBlank()) {
+                event.reply("No rules are currently configured for this guild.").setEphemeral(true).queue();
+                return;
+            }
+
             String message = "**Current Guild Rules:**\n\n" + rules.rulesText();
             event.reply(message).setEphemeral(true).queue();
             logger.debug("Showed rules for guild: {}", guildId.value());

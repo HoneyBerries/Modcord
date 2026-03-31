@@ -7,6 +7,9 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
 public class GuildRulesRepository {
     Logger logger = LoggerFactory.getLogger(GuildRulesRepository.class);
     private final Database database;
@@ -33,9 +36,19 @@ public class GuildRulesRepository {
                         rules_text = EXCLUDED.rules_text
                 """;
 
-                try (var ps = conn.prepareStatement(sql)) {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setLong(1, guildRules.guildId().value());
-                    ps.setString(3, guildRules.rulesText());
+                    if (guildRules.rulesChannelId() != null) {
+                        ps.setLong(2, guildRules.rulesChannelId().value());
+                    } else {
+                        ps.setNull(2, java.sql.Types.BIGINT);
+                    }
+
+                    if (guildRules.rulesText() != null) {
+                        ps.setString(3, guildRules.rulesText());
+                    } else {
+                        ps.setNull(3, java.sql.Types.VARCHAR);
+                    }
                     ps.executeUpdate();
                 }
             });
@@ -56,14 +69,17 @@ public class GuildRulesRepository {
 
         try {
             return database.query(conn -> {
-                try (var ps = conn.prepareStatement(sql)) {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setLong(1, guildId.value());
 
-                    try (var rs = ps.executeQuery()) {
+                    try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
+                            long rulesChannelRaw = rs.getLong("rules_channel_id");
+                            ChannelID rulesChannelId = rs.wasNull() ? null : new ChannelID(rulesChannelRaw);
+
                             return new GuildRules(
                                 new GuildID(rs.getLong("guild_id")),
-                                new ChannelID(rs.getLong("rules_channel_id")),
+                                rulesChannelId,
                                 rs.getString("rules_text")
                             );
                         }

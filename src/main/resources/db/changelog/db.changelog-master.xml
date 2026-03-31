@@ -7,6 +7,7 @@
 
     <include file="db/changelog/changelog-initial.sql"/>
     <include file="db/changelog/changelog-v2.sql"/>
+    <include file="db/changelog/changelog-v3.sql"/>
 
 
 

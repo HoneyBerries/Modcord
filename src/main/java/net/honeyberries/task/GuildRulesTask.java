@@ -5,10 +5,12 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.database.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.message.EmbedParser;
 import net.honeyberries.util.JDAManager;
 import org.jetbrains.annotations.Nullable;
@@ -16,7 +18,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -26,6 +27,12 @@ import java.util.stream.Collectors;
  * the rules_channel_id set by users.
  */
 public class GuildRulesTask implements Runnable {
+
+    private enum UpdateOutcome {
+        UPDATED,
+        SKIPPED,
+        FAILED
+    }
 
     private final Logger logger = LoggerFactory.getLogger(GuildRulesTask.class);
     private final JDA jda = JDAManager.getInstance().getJDA();
@@ -38,21 +45,21 @@ public class GuildRulesTask implements Runnable {
         logger.info("GuildRulesTask started");
 
         try {
-            // Collect all results from updateGuildRules for each guild
-            List<Boolean> results = jda.getGuilds().parallelStream()
+            // Collect outcomes from updateGuildRules for each guild
+            List<UpdateOutcome> results = jda.getGuilds().parallelStream()
                 .map(this::updateGuildRules)
                 .toList();
 
-            // Check if all operations succeeded
-            boolean allSuccessful = results.stream().allMatch(Boolean::booleanValue);
+            long updatedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.UPDATED).count();
+            long skippedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.SKIPPED).count();
+            long failedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.FAILED).count();
 
-            if (allSuccessful) {
-                logger.debug("GuildRulesTask completed successfully for all {} guilds", results.size());
-
+            if (failedCount > 0) {
+                logger.warn("GuildRulesTask completed with {} updated, {} skipped, {} failed out of {} guilds",
+                    updatedCount, skippedCount, failedCount, results.size());
             } else {
-                long failedCount = results.stream().filter(success -> !success).count();
-                logger.warn("GuildRulesTask completed with {} failures out of {} guilds",
-                        failedCount, results.size());
+                logger.debug("GuildRulesTask completed with {} updated and {} skipped out of {} guilds",
+                    updatedCount, skippedCount, results.size());
             }
 
         } catch (Exception e) {
@@ -66,22 +73,55 @@ public class GuildRulesTask implements Runnable {
      *
      * @param guild The guild to update rules for
      */
-    private boolean updateGuildRules(Guild guild) {
+    private UpdateOutcome updateGuildRules(Guild guild) {
         try {
             GuildID guildId = GuildID.fromGuild(guild);
+
+            // Ensure guild exists in guild_preferences table before inserting guild rules
+            // This prevents foreign key constraint violations
+            GuildPreferences existingPreferences = GuildPreferencesRepository.getInstance()
+                .getGuildPreferences(guildId);
+            
+            if (existingPreferences == null) {
+                logger.debug("Guild {} not found in database, creating default preferences", guildId.value());
+                GuildPreferences defaultPreferences = new GuildPreferences(guildId);
+                boolean preferencesCreated = GuildPreferencesRepository.getInstance()
+                    .addOrUpdateGuildPreferences(defaultPreferences);
+
+                if (!preferencesCreated) {
+                    logger.warn("Failed to create guild preferences for guild: {}, skipping rules update", guildId.value());
+                    return UpdateOutcome.FAILED;
+                }
+            }
 
             // Get current rules for the guild
             // IMPORTANT: this GuildRules could be stale, so do not assume its current rules text
             // is updated
 
-            ChannelID rulesChannelID = Objects.requireNonNull(GuildRulesRepository.getInstance()
-                    .getGuildRulesFromCache(guildId)).rulesChannelId();
+            GuildRules cachedRules = GuildRulesRepository.getInstance().getGuildRulesFromCache(guildId);
+            ChannelID rulesChannelID = cachedRules != null ? cachedRules.rulesChannelId() : null;
+
+            if (rulesChannelID == null) {
+                GuildPreferences latestPreferences = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
+                rulesChannelID = latestPreferences != null ? latestPreferences.rulesChannelID() : null;
+            }
+
+            if (rulesChannelID == null) {
+                logger.debug("No rules channel configured for guild: {} ({}), storing unconfigured state", guild.getName(), guildId.value());
+                boolean success = GuildRulesRepository.getInstance()
+                    .addOrReplaceGuildRulesToDatabase(new GuildRules(guildId, null, null));
+                if (!success) {
+                    logger.warn("Failed to persist unconfigured rules state for guild: {} ({})", guild.getName(), guildId.value());
+                    return UpdateOutcome.FAILED;
+                }
+                return UpdateOutcome.SKIPPED;
+            }
 
             String updatedRules = getGuildRulesFromDiscord(guild, rulesChannelID);
 
             if (updatedRules == null || updatedRules.isBlank()) {
                 logger.debug("No rules found for guild: {} ({}).", guild.getName(), guildId.value());
-                return false;
+                return UpdateOutcome.SKIPPED;
             }
 
             GuildRules currentGuildRules = new GuildRules(guildId, rulesChannelID, updatedRules);
@@ -90,14 +130,15 @@ public class GuildRulesTask implements Runnable {
 
             if (success) {
                 logger.debug("Updated rules for guild: {} ({})", guild.getName(), guildId.value());
+                return UpdateOutcome.UPDATED;
             } else {
                 logger.warn("Failed to update rules for guild: {} ({})", guild.getName(), guildId.value());
+                return UpdateOutcome.FAILED;
             }
-            return success;
 
         } catch (Exception e) {
             logger.error("Error updating rules for guild {}", guild.getId(), e);
-            return false;
+            return UpdateOutcome.FAILED;
         }
     }
 

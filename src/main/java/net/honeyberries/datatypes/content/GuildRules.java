@@ -2,6 +2,8 @@ package net.honeyberries.datatypes.content;
 
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Represents a guild rule stored in the database.
@@ -10,7 +12,7 @@ import net.honeyberries.datatypes.discord.GuildID;
  * Also tracks creation and update timestamps.
  */
 public record GuildRules(
-        GuildID guildId,
-        ChannelID rulesChannelId,
-        String rulesText
+        @NotNull GuildID guildId,
+        @Nullable ChannelID rulesChannelId,
+        @Nullable String rulesText
 ) { }

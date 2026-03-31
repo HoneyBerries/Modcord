@@ -25,7 +25,7 @@ public class DynamicSystemPrompt {
         String template = AppConfig.getInstance().getSystemPromptTemplate();
 
         GuildRules guildRules = GuildRulesRepository.getInstance().getGuildRulesFromCache(guildId);
-        String guildRulesText = (guildRules != null && guildRules.rulesText() != null)
+        String guildRulesText = (guildRules != null && guildRules.rulesText() != null && !guildRules.rulesText().isBlank())
             ? guildRules.rulesText()
             : AppConfig.getInstance().getGenericServerRules();
 

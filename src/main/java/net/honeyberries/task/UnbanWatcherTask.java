@@ -22,7 +22,7 @@ public class UnbanWatcherTask implements Runnable {
 
     @Override
     public void run() {
-        logger.info("UnbanWatcherTask started");
+        logger.debug("UnbanWatcherTask started");
 
         try {
             List<GuildID> guildIds = getAllGuildIdsWithBans();

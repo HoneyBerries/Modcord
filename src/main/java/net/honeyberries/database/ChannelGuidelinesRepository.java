@@ -5,10 +5,14 @@ import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 public class ChannelGuidelinesRepository {
 
-    Logger logger = org.slf4j.LoggerFactory.getLogger(ChannelGuidelinesRepository.class);
+    private final Logger logger = LoggerFactory.getLogger(ChannelGuidelinesRepository.class);
     private final Database database = Database.getInstance();
 
     private static final ChannelGuidelinesRepository INSTANCE = new ChannelGuidelinesRepository();
@@ -28,10 +32,14 @@ public class ChannelGuidelinesRepository {
                         guidelines = EXCLUDED.guidelines
                 """;
 
-                try (var ps = conn.prepareStatement(sql)) {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setLong(1, channelGuidelines.guildId().value());
                     ps.setLong(2, channelGuidelines.channelId().value());
-                    ps.setString(3, channelGuidelines.guidelinesText());
+                    if (channelGuidelines.guidelinesText() != null) {
+                        ps.setString(3, channelGuidelines.guidelinesText());
+                    } else {
+                        ps.setNull(3, java.sql.Types.VARCHAR);
+                    }
                     ps.executeUpdate();
                 }
             });
@@ -43,7 +51,7 @@ public class ChannelGuidelinesRepository {
     }
 
     @Nullable
-     public ChannelGuidelines getChannelGuidelines(GuildID guildId, ChannelID channelId) {
+    public ChannelGuidelines getChannelGuidelines(GuildID guildId, ChannelID channelId) {
         String sql = """
             SELECT guild_id, channel_id, guidelines
             FROM guild_channel_guidelines
@@ -52,10 +60,10 @@ public class ChannelGuidelinesRepository {
 
         try {
             return database.query(conn -> {
-                try (var ps = conn.prepareStatement(sql)) {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setLong(1, guildId.value());
                     ps.setLong(2, channelId.value());
-                    try (var rs = ps.executeQuery()) {
+                    try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
                             return new ChannelGuidelines(
                                     new GuildID(rs.getLong("guild_id")),

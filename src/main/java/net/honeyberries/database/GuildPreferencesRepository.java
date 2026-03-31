@@ -57,7 +57,14 @@ public class GuildPreferencesRepository {
                 try (PreparedStatement ps = conn.prepareStatement(upsertSql)) {
                     ps.setLong(1, guildPreferences.guildId().value());
                     ps.setBoolean(2, guildPreferences.aiEnabled());
-                    ps.setLong(3, guildPreferences.rulesChannelID().value());
+                    
+                    ChannelID rulesChannelID = guildPreferences.rulesChannelID();
+                    if (rulesChannelID != null) {
+                        ps.setLong(3, rulesChannelID.value());
+                    } else {
+                        ps.setNull(3, java.sql.Types.BIGINT);
+                    }
+                    
                     ps.setBoolean(4, guildPreferences.autoWarnEnabled());
                     ps.setBoolean(5, guildPreferences.autoDeleteEnabled());
                     ps.setBoolean(6, guildPreferences.autoTimeoutEnabled());

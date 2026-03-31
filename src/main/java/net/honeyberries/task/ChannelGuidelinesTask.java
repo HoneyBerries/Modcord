@@ -4,9 +4,11 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.database.ChannelGuidelinesRepository;
+import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.datatypes.content.ChannelGuidelines;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.util.JDAManager;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -20,6 +22,12 @@ import java.util.List;
  */
 public class ChannelGuidelinesTask implements Runnable {
 
+    private enum UpdateOutcome {
+        UPDATED,
+        SKIPPED,
+        FAILED
+    }
+
     private final Logger logger = LoggerFactory.getLogger(ChannelGuidelinesTask.class);
     private final JDA jda = JDAManager.getInstance().getJDA();
 
@@ -28,35 +36,62 @@ public class ChannelGuidelinesTask implements Runnable {
         logger.info("ChannelGuidelinesTask started");
 
         try {
-            List<Boolean> results = jda.getGuilds().parallelStream()
+            List<UpdateOutcome> results = jda.getGuilds().parallelStream()
                 .flatMap(guild -> guild.getTextChannels().parallelStream()
                     .map(channel -> updateChannelGuidelines(guild, channel)))
                 .toList();
 
-            boolean allSuccessful = results.stream().allMatch(Boolean::booleanValue);
+            long updatedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.UPDATED).count();
+            long skippedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.SKIPPED).count();
+            long failedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.FAILED).count();
 
-            if (allSuccessful) {
-                logger.debug("ChannelGuidelinesTask completed successfully for {} channels", results.size());
+            if (failedCount > 0) {
+                logger.warn("ChannelGuidelinesTask completed with {} updated, {} skipped, {} failed out of {} channels",
+                    updatedCount, skippedCount, failedCount, results.size());
             } else {
-                long failedCount = results.stream().filter(success -> !success).count();
-                logger.warn("ChannelGuidelinesTask completed with {} failures out of {} channels",
-                    failedCount, results.size());
+                logger.debug("ChannelGuidelinesTask completed with {} updated and {} skipped out of {} channels",
+                    updatedCount, skippedCount, results.size());
             }
         } catch (Exception e) {
             logger.error("Error in ChannelGuidelinesTask", e);
         }
     }
 
-    private boolean updateChannelGuidelines(Guild guild, TextChannel channel) {
+    private UpdateOutcome updateChannelGuidelines(Guild guild, TextChannel channel) {
         try {
             GuildID guildId = GuildID.fromGuild(guild);
             ChannelID channelId = new ChannelID(channel.getIdLong());
 
+            // Ensure guild exists in guild_preferences table before inserting channel guidelines
+            // This prevents foreign key constraint violations
+            GuildPreferences existingPreferences = GuildPreferencesRepository.getInstance()
+                .getGuildPreferences(guildId);
+            
+            if (existingPreferences == null) {
+                logger.debug("Guild {} not found in database, creating default preferences", guildId.value());
+                GuildPreferences defaultPreferences = new GuildPreferences(guildId);
+                boolean preferencesCreated = GuildPreferencesRepository.getInstance()
+                    .addOrUpdateGuildPreferences(defaultPreferences);
+                
+                if (!preferencesCreated) {
+                    logger.warn("Failed to create guild preferences for guild: {}, skipping channel guidelines", guildId.value());
+                    return UpdateOutcome.FAILED;
+                }
+            }
+
             String updatedGuidelinesText = getChannelGuidelinesText(channel);
 
             if (updatedGuidelinesText == null || updatedGuidelinesText.isBlank()) {
-                logger.debug("No updatedGuidelines found for channel: {} in guild: {}", channel.getName(), guildId.value());
-                return false;
+                logger.debug("No channel topic configured for channel: {} in guild: {}, storing unconfigured state",
+                    channel.getName(), guildId.value());
+                ChannelGuidelines unconfiguredGuidelines = new ChannelGuidelines(guildId, channelId, null);
+                boolean success = ChannelGuidelinesRepository.getInstance()
+                    .addOrReplaceChannelGuidelinesToDatabase(unconfiguredGuidelines);
+                if (!success) {
+                    logger.warn("Failed to persist unconfigured guidelines state for channel: {} ({})", channel.getName(), channelId.value());
+                    return UpdateOutcome.FAILED;
+                }
+                return UpdateOutcome.SKIPPED;
             }
 
             ChannelGuidelines updatedGuidelines = new ChannelGuidelines(guildId, channelId, updatedGuidelinesText);
@@ -64,15 +99,16 @@ public class ChannelGuidelinesTask implements Runnable {
                 .addOrReplaceChannelGuidelinesToDatabase(updatedGuidelines);
 
             if (success) {
-                logger.debug("Updated updatedGuidelines for channel: {} ({})", channel.getName(), channelId.value());
+                logger.debug("Updated guidelines for channel: {} ({})", channel.getName(), channelId.value());
+                return UpdateOutcome.UPDATED;
             } else {
-                logger.warn("Failed to update updatedGuidelines for channel: {} ({})", channel.getName(), channelId.value());
+                logger.warn("Failed to update guidelines for channel: {} ({})", channel.getName(), channelId.value());
+                return UpdateOutcome.FAILED;
             }
-            return success;
 
         } catch (Exception e) {
             logger.error("Error updating guidelines for channel {}", channel.getId(), e);
-            return false;
+            return UpdateOutcome.FAILED;
         }
     }
 

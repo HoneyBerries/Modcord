@@ -15,7 +15,7 @@ import java.util.Map;
 public record GuildPreferences(
         @NotNull GuildID guildId,
         boolean aiEnabled,
-        ChannelID rulesChannelID,
+        @Nullable ChannelID rulesChannelID,
         boolean autoWarnEnabled,
         boolean autoDeleteEnabled,
         boolean autoTimeoutEnabled,
