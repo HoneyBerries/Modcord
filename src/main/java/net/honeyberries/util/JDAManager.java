@@ -15,18 +15,23 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Singleton manager for accessing the JDA bot instance globally.
+ * Handles lazy initialization, listener registration, and slash command synchronization so callers only request the ready client.
  */
 public class JDAManager {
 
-    @NotNull
-    private static final JDAManager INSTANCE = new JDAManager();
+    private static final @NotNull JDAManager INSTANCE = new JDAManager();
     private final Logger logger = LoggerFactory.getLogger(JDAManager.class);
 
-    private JDA jda;
+    private @Nullable JDA jda;
 
     private JDAManager() {
     }
 
+    /**
+     * Returns the shared manager instance.
+     *
+     * @return singleton {@link JDAManager}
+     */
     @NotNull
     public static JDAManager getInstance() {
         return INSTANCE;
@@ -34,6 +39,7 @@ public class JDAManager {
 
     /**
      * Initializes the Discord bot, registers listeners, and syncs slash commands.
+     * If the bot has already been created, the existing instance is returned.
      *
      * @return ready JDA instance
      * @throws InterruptedException if startup is interrupted
@@ -80,10 +86,11 @@ public class JDAManager {
 
 
     /**
-     * Gets the JDA instance.
-     * @return The JDA instance, or null if not initialized
+     * Gets the initialized JDA instance if available.
+     *
+     * @return the JDA instance, or {@code null} if {@link #initializeBot()} has not been called yet
      */
-    @NotNull
+    @Nullable
     public JDA getJDA() {
         return jda;
     }

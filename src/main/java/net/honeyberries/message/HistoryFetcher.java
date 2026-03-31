@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.discord.MessageID;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +14,12 @@ import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+import static java.util.Objects.requireNonNull;
+
+/**
+ * Retrieves historical Discord messages for context-aware moderation.
+ * Exposes helper predicates for the three moderation windows (past, history context, now) and a bulk fetcher for context messages.
+ */
 public class HistoryFetcher {
 
     private static final Logger logger = LoggerFactory.getLogger(HistoryFetcher.class);
@@ -23,11 +30,17 @@ public class HistoryFetcher {
      * <p>
      * These messages are fetched when the queue triggers to provide background context
      * to the AI about older conversations. They are NOT the primary messages being moderated.
+     *
+     * @param channel            text channel to retrieve from; must not be {@code null}
+     * @param currentMessageIds  identifiers already queued in the current batch to avoid duplicates; must not be {@code null}
+     * @return future containing context messages in chronological order (or empty list on failure)
      */
-    public static CompletableFuture<List<ModerationMessage>> fetchHistoryContextMessages(
-            TextChannel channel,
-            List<MessageID> currentMessageIds
+    public static @NotNull CompletableFuture<List<ModerationMessage>> fetchHistoryContextMessages(
+            @NotNull TextChannel channel,
+            @NotNull List<MessageID> currentMessageIds
     ) {
+        requireNonNull(channel, "channel must not be null");
+        requireNonNull(currentMessageIds, "currentMessageIds must not be null");
         double maxAgeSeconds = AppConfig.getInstance().getHistoryContextMaxAge();
         double queueDurationSeconds = AppConfig.getInstance().getModerationQueueDuration();
         int msgLimit = Math.toIntExact(AppConfig.getInstance().getHistoryContextMaxMessages());
@@ -105,8 +118,12 @@ public class HistoryFetcher {
      * Checks if message is within the active context window (recent, usable for AI context).
      * Window: [cutoff (now - maxAge), now]
      * This is HISTORY CONTEXT + NOW combined.
+     *
+     * @param message message to evaluate; must not be {@code null}
+     * @return {@code true} if the message is recent enough for consideration
      */
-    public static boolean isInCurrentContextWindow(Message message) {
+    public static boolean isInCurrentContextWindow(@NotNull Message message) {
+        requireNonNull(message, "message must not be null");
         double maxAgeSeconds = AppConfig.getInstance().getHistoryContextMaxAge();
         long millis = Math.round(maxAgeSeconds * 1000);
         Duration maxAge = Duration.ofMillis(millis);
@@ -118,8 +135,12 @@ public class HistoryFetcher {
     /**
      * Checks if message is in the past history (older than the context window, too old to use).
      * Window: [far past, now - maxAge]
+     *
+     * @param message message to evaluate; must not be {@code null}
+     * @return {@code true} if the message is older than the maximum context age
      */
-    public static boolean isPastHistoryWindow(Message message) {
+    public static boolean isPastHistoryWindow(@NotNull Message message) {
+        requireNonNull(message, "message must not be null");
         return !isInCurrentContextWindow(message);
     }
 
@@ -129,8 +150,12 @@ public class HistoryFetcher {
      * <p>
      * These are messages BEFORE the current queue period started.
      * Useful for providing context to the AI about older conversations.
+     *
+     * @param message message to evaluate; must not be {@code null}
+     * @return {@code true} if the message falls in the history context window
      */
-    public static boolean isInHistoryContextWindow(Message message) {
+    public static boolean isInHistoryContextWindow(@NotNull Message message) {
+        requireNonNull(message, "message must not be null");
         double maxAgeSeconds = AppConfig.getInstance().getHistoryContextMaxAge();
         double queueDurationSeconds = AppConfig.getInstance().getModerationQueueDuration();
         
@@ -153,8 +178,12 @@ public class HistoryFetcher {
      *
      * These are fresh messages that have accumulated while the queue was waiting.
      * These are the primary messages to be moderated.
+     *
+     * @param message message to evaluate; must not be {@code null}
+     * @return {@code true} if the message falls in the current queue window
      */
-    public static boolean isInNowWindow(Message message) {
+    public static boolean isInNowWindow(@NotNull Message message) {
+        requireNonNull(message, "message must not be null");
         double queueDurationSeconds = AppConfig.getInstance().getModerationQueueDuration();
         long queueDurationMillis = Math.round(queueDurationSeconds * 1000);
         Duration queueDuration = Duration.ofMillis(queueDurationMillis);
