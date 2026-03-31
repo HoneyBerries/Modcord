@@ -1,13 +1,14 @@
 package net.honeyberries.datatypes.discord;
 
 import net.dv8tion.jda.api.entities.User;
+import net.honeyberries.util.JDAManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
 /**
- * Strongly typed wrapper around a Discord user snowflake.
- * Helps prevent accidental mixing of user identifiers with other ids while still supporting JDA interop helpers.
+ * Strongly typed wrapper for a Discord user snowflake.
+ * Ensures user identifiers remain distinct from other ids and centralizes conversion logic.
  */
 public record UserID(long value) {
 
@@ -36,6 +37,16 @@ public record UserID(long value) {
         long id = Long.parseLong(string);
         this(id);
     }
+
+
+    /**
+     * Resolves the current {@code UserID} to its corresponding Discord user in JDA.
+     * @return the {@link User} associated with the stored identifier, or {@code null} if no such user exists
+     */
+    public User toUser() {
+        return JDAManager.getInstance().getJDA().retrieveUserById(value).complete();
+    }
+
 
     /**
      * Returns the snowflake identifier rendered as an unsigned decimal string.

@@ -34,14 +34,7 @@ public class ChannelGuidelinesTask implements Runnable {
     public void run() {
         logger.info("ChannelGuidelinesTask started");
 
-        JDA jda;
-        try {
-            jda = JDAManager.getInstance().getJDA();
-        } catch (InterruptedException e) {
-            logger.error("Interrupted while getting JDA instance. This should not happen under normal circumstances", e);
-            Thread.currentThread().interrupt();
-            return;
-        }
+        JDA jda = JDAManager.getInstance().getJDA();
 
         try {
             List<UpdateOutcome> results = jda.getGuilds().parallelStream()

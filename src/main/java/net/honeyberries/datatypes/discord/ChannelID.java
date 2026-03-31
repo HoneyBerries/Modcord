@@ -1,6 +1,8 @@
 package net.honeyberries.datatypes.discord;
 
+import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
+import net.honeyberries.util.JDAManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -37,6 +39,17 @@ public record ChannelID(long value) {
         long id = Long.parseLong(string);
         this(id);
     }
+
+
+    /**
+     * Resolves the current {@code ChannelID} to its corresponding Discord channel in JDA.
+     *
+     * @return the {@link Channel} associated with the stored identifier, or {@code null} if no such channel exists
+     */
+    public Channel toChannel() {
+        return JDAManager.getInstance().getJDA().getGuildChannelById(value);
+    }
+
 
     /**
      * Returns the snowflake identifier rendered as an unsigned decimal string.

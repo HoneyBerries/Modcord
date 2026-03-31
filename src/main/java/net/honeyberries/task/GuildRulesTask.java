@@ -43,14 +43,7 @@ public class GuildRulesTask implements Runnable {
     public void run() {
         logger.info("GuildRulesTask started");
 
-        JDA jda;
-        try {
-            jda = JDAManager.getInstance().getJDA();
-        } catch (InterruptedException e) {
-            logger.error("Interrupted while getting JDA instance. This should never happen under normal circumstances", e);
-            Thread.currentThread().interrupt();
-            return;
-        }
+        JDA jda = JDAManager.getInstance().getJDA();
 
         try {
             // Collect outcomes from updateGuildRules for each guild
