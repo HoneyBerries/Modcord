@@ -34,23 +34,6 @@ public record GuildPreferences(
             Map.entry(ActionType.BAN, "auto_ban_enabled")
     );
 
-    /**
-     * Validates required values for persisted preferences.
-     *
-     * @param guildId           guild that owns these preferences; must not be {@code null}
-     * @param aiEnabled         whether AI moderation is enabled
-     * @param rulesChannelID    optional channel containing rules
-     * @param autoWarnEnabled   toggle for automatic warns
-     * @param autoDeleteEnabled toggle for automatic message deletion
-     * @param autoTimeoutEnabled toggle for automatic timeouts
-     * @param autoKickEnabled   toggle for automatic kicks
-     * @param autoBanEnabled    toggle for automatic bans
-     * @param auditLogChannelId optional audit log channel
-     * @throws NullPointerException if {@code guildId} is {@code null}
-     */
-    public GuildPreferences {
-        Objects.requireNonNull(guildId, "guildId must not be null");
-    }
 
     /**
      * Constructor with defaults.

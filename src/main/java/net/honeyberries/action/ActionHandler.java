@@ -35,8 +35,7 @@ public class ActionHandler {
     private final Logger logger = LoggerFactory.getLogger(ActionHandler.class);
     private final JDA jda = JDAManager.getInstance().getJDA();
 
-    private ActionHandler() {
-    }
+    private ActionHandler() {}
 
     public static ActionHandler getInstance() {
         return INSTANCE;
@@ -49,17 +48,25 @@ public class ActionHandler {
             return false;
         }
 
+        // DM the user before the action is applied. Once a user is kicked or banned
+        // they no longer share a guild with the bot, which prevents DMs from being sent.
+        sendUserDmBestEffort(guild, actionData);
+
         boolean deletionsApplied = applyMessageDeletions(guild, actionData);
         boolean actionApplied = applyModerationAction(guild, actionData);
 
-        if (!actionApplied) {
-            return false;
+        if (actionApplied) {
+            // Audit log targets a guild channel, so shared guild is not required.
+            // Post after the action so the log reflects what actually happened.
+            sendAuditLogBestEffort(guild, actionData);
         }
 
-        // Notification failures are intentionally non-fatal.
-        sendNotificationsBestEffort(guild, actionData);
-        return deletionsApplied;
+        return actionApplied && deletionsApplied;
     }
+
+    // -------------------------------------------------------------------------
+    // Message deletions
+    // -------------------------------------------------------------------------
 
     private boolean applyMessageDeletions(Guild guild, ActionData actionData) {
         boolean success = true;
@@ -69,9 +76,7 @@ public class ActionHandler {
             if (!(channel instanceof MessageChannel messageChannel)) {
                 logger.warn(
                         "Failed to delete message {} in guild {}: channel {} unavailable or not message-capable",
-                        deletion.messageId(),
-                        guild.getId(),
-                        deletion.channelId()
+                        deletion.messageId(), guild.getId(), deletion.channelId()
                 );
                 success = false;
                 continue;
@@ -88,21 +93,24 @@ public class ActionHandler {
         return success;
     }
 
-    private boolean applyModerationAction(Guild guild, ActionData actionData) {
-        long userId = actionData.userId().value();
+    // -------------------------------------------------------------------------
+    // Moderation actions
+    // -------------------------------------------------------------------------
 
+    private boolean applyModerationAction(Guild guild, ActionData actionData) {
         try {
             return switch (actionData.action()) {
-                case NULL -> true;
-                case DELETE -> true;
-                case WARN -> true;
+                case NULL, DELETE, WARN -> true;
                 case TIMEOUT -> applyTimeout(guild, actionData);
-                case KICK -> applyKick(guild, actionData);
-                case BAN -> applyBan(guild, actionData);
-                case UNBAN -> applyUnban(guild, actionData);
+                case KICK    -> applyKick(guild, actionData);
+                case BAN     -> applyBan(guild, actionData);
+                case UNBAN   -> applyUnban(guild, actionData);
             };
         } catch (Exception e) {
-            logActionFailure(actionData.action().name().toLowerCase() + " user " + userId, actionData, guild, e);
+            logActionFailure(
+                    actionData.action().name().toLowerCase() + " user " + actionData.userId().value(),
+                    actionData, guild, e
+            );
             return false;
         }
     }
@@ -110,13 +118,15 @@ public class ActionHandler {
     private boolean applyTimeout(Guild guild, ActionData actionData) {
         Member member = guild.retrieveMemberById(actionData.userId().value()).complete();
         if (member == null) {
-            logger.warn("Failed to timeout user {} in guild {}: member not found", actionData.userId(), guild.getId());
+            logger.warn("Failed to timeout user {} in guild {}: member not found",
+                    actionData.userId(), guild.getId());
             return false;
         }
 
         long timeoutSeconds = actionData.timeoutDuration();
         if (timeoutSeconds <= 0) {
-            logger.warn("Failed to timeout user {} in guild {}: invalid timeout duration {}", actionData.userId(), guild.getId(), timeoutSeconds);
+            logger.warn("Failed to timeout user {} in guild {}: invalid timeout duration {}",
+                    actionData.userId(), guild.getId(), timeoutSeconds);
             return false;
         }
 
@@ -129,7 +139,8 @@ public class ActionHandler {
     private boolean applyKick(Guild guild, ActionData actionData) {
         Member member = guild.retrieveMemberById(actionData.userId().value()).complete();
         if (member == null) {
-            logger.warn("Failed to kick user {} in guild {}: member not found", actionData.userId(), guild.getId());
+            logger.warn("Failed to kick user {} in guild {}: member not found",
+                    actionData.userId(), guild.getId());
             return false;
         }
 
@@ -153,66 +164,99 @@ public class ActionHandler {
         return true;
     }
 
-    private void sendNotificationsBestEffort(Guild guild, ActionData actionData) {
+    // -------------------------------------------------------------------------
+    // Notifications
+    // -------------------------------------------------------------------------
+
+    /**
+     * Sends a DM to the target user. Must be called BEFORE the moderation action
+     * is applied so the user still shares a guild with the bot (required for DMs).
+     */
+    private void sendUserDmBestEffort(Guild guild, ActionData actionData) {
         if (actionData.action() == ActionType.NULL || actionData.action() == ActionType.DELETE) {
             return;
         }
 
-        User target;
-        try {
-            target = jda.retrieveUserById(actionData.userId().value()).complete();
-        } catch (Exception e) {
-            logger.warn("Failed to resolve user {} for action notification in guild {}", actionData.userId(), guild.getId(), e);
-            return;
-        }
+        User target = resolveUser(actionData, guild);
+        if (target == null) return;
 
-        MessageCreateData embedMessage = buildNotificationEmbed(guild, actionData, target);
+        MessageCreateData embed = buildNotificationEmbed(guild, actionData, target);
 
         try {
-            target.openPrivateChannel().complete().sendMessage(embedMessage).complete();
+            target.openPrivateChannel().complete().sendMessage(embed).complete();
         } catch (Exception e) {
             logger.warn("Failed to DM user {} for action {}", actionData.userId(), actionData.id(), e);
+        }
+    }
+
+    /**
+     * Posts the action embed to the guild's configured audit log channel.
+     * Must be called AFTER the moderation action is applied so the log only
+     * reflects actions that actually succeeded.
+     */
+    private void sendAuditLogBestEffort(Guild guild, ActionData actionData) {
+        if (actionData.action() == ActionType.NULL || actionData.action() == ActionType.DELETE) {
+            return;
         }
 
         try {
             if (!Database.getInstance().isHealthy()) {
-                logger.debug("Skipping audit notification lookup for action {} because database is unavailable", actionData.id());
+                logger.debug("Skipping audit log for action {} — database unavailable", actionData.id());
                 return;
             }
 
-            GuildPreferences preferences = GuildPreferencesRepository.getInstance().getGuildPreferences(actionData.guildId());
+            GuildPreferences preferences = GuildPreferencesRepository.getInstance()
+                    .getGuildPreferences(actionData.guildId());
             if (preferences == null || preferences.auditLogChannelId() == null) {
                 return;
             }
 
             Channel auditChannel = guild.getGuildChannelById(preferences.auditLogChannelId().value());
-            if (auditChannel instanceof MessageChannel messageChannel) {
-                messageChannel.sendMessage(embedMessage).complete();
-            } else {
+            if (!(auditChannel instanceof MessageChannel messageChannel)) {
                 logger.warn("Audit log channel {} is missing or not message-capable in guild {}",
                         preferences.auditLogChannelId(), guild.getId());
+                return;
             }
+
+            User target = resolveUser(actionData, guild);
+            if (target == null) return;
+
+            messageChannel.sendMessage(buildNotificationEmbed(guild, actionData, target)).complete();
         } catch (Exception e) {
             logger.warn("Failed to post audit embed for action {} in guild {}", actionData.id(), guild.getId(), e);
         }
     }
 
-    private MessageCreateData buildNotificationEmbed(Guild guild, ActionData actionData, User target) {
-        String moderatorMention = "<@" + actionData.moderatorId().value() + ">";
+    private User resolveUser(ActionData actionData, Guild guild) {
+        try {
+            return jda.retrieveUserById(actionData.userId().value()).complete();
+        } catch (Exception e) {
+            logger.warn("Failed to resolve user {} for notification in guild {}",
+                    actionData.userId(), guild.getId(), e);
+            return null;
+        }
+    }
 
+    // -------------------------------------------------------------------------
+    // Embed builder
+    // -------------------------------------------------------------------------
+
+    private MessageCreateData buildNotificationEmbed(Guild guild, ActionData actionData, User target) {
         EmbedBuilder embed = new EmbedBuilder()
                 .setTitle(actionEmoji(actionData.action()) + " " + actionData.action().name() + " Issued")
                 .setColor(actionColor(actionData.action()))
                 .setTimestamp(Instant.now())
                 .addField("User", "<@" + target.getId() + ">", true)
-                .addField("Moderator", moderatorMention, true)
+                .addField("Moderator", "<@" + actionData.moderatorId().value() + ">", true)
                 .addField("Reason", actionData.reason(), false)
                 .setThumbnail(target.getEffectiveAvatarUrl())
                 .setFooter(guild.getName());
 
         if (actionData.action() == ActionType.TIMEOUT && actionData.timeoutDuration() > 0) {
             Instant expiresAt = Instant.now().plusSeconds(actionData.timeoutDuration());
-            embed.addField("Duration", formatDuration(actionData.timeoutDuration()) + " - expires " + TimeFormat.RELATIVE.format(expiresAt), false);
+            embed.addField("Duration",
+                    formatDuration(actionData.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                    false);
         }
 
         if (actionData.action() == ActionType.BAN && actionData.banDuration() > 0) {
@@ -220,84 +264,74 @@ public class ActionHandler {
                 embed.addField("Duration", "Permanent", false);
             } else {
                 Instant expiresAt = Instant.now().plusSeconds(actionData.banDuration());
-                embed.addField("Duration", formatDuration(actionData.banDuration()) + " - expires " + TimeFormat.RELATIVE.format(expiresAt), false);
+                embed.addField("Duration",
+                        formatDuration(actionData.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                        false);
             }
         }
 
         return new MessageCreateBuilder().setEmbeds(embed.build()).build();
     }
 
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
     private String actionEmoji(ActionType actionType) {
         return switch (actionType) {
-            case WARN -> "⚠️";
-            case DELETE -> "🗑️";
+            case WARN    -> "⚠️";
+            case DELETE  -> "🗑️";
             case TIMEOUT -> "⏱️";
-            case KICK -> "👢";
-            case BAN -> "🔨";
-            case UNBAN -> "✅";
-            case NULL -> "⚙️";
+            case KICK    -> "👢";
+            case BAN     -> "🔨";
+            case UNBAN   -> "✅";
+            case NULL    -> "⚙️";
         };
     }
 
     private Color actionColor(ActionType actionType) {
         return switch (actionType) {
-            case WARN -> Color.YELLOW;
+            case WARN            -> Color.YELLOW;
             case DELETE, TIMEOUT -> Color.ORANGE;
-            case KICK -> Color.RED;
-            case BAN -> new Color(139, 0, 0);
-            case UNBAN -> Color.GREEN;
-            case NULL -> Color.GRAY;
+            case KICK            -> Color.RED;
+            case BAN             -> new Color(139, 0, 0);
+            case UNBAN           -> Color.GREEN;
+            case NULL            -> Color.GRAY;
         };
     }
 
     private String formatDuration(long seconds) {
-        long days = seconds / 86400;
-        long hours = (seconds % 86400) / 3600;
+        long days    = seconds / 86400;
+        long hours   = (seconds % 86400) / 3600;
         long minutes = (seconds % 3600) / 60;
-        long secs = seconds % 60;
+        long secs    = seconds % 60;
 
         StringBuilder sb = new StringBuilder();
-        if (days > 0) sb.append(days).append("d ");
-        if (hours > 0) sb.append(hours).append("h ");
+        if (days    > 0) sb.append(days).append("d ");
+        if (hours   > 0) sb.append(hours).append("h ");
         if (minutes > 0) sb.append(minutes).append("m ");
-        if (secs > 0 || sb.isEmpty()) sb.append(secs).append("s");
+        if (secs    > 0 || sb.isEmpty()) sb.append(secs).append("s");
         return sb.toString().trim();
     }
 
     private void logActionFailure(String operation, ActionData actionData, Guild guild, Exception e) {
+        String template = "Failed to {} for user {} in guild {} (actionId={}, moderatorId={})";
+
         if (isPermissionFailure(e)) {
-            logger.warn(
-                    "Permission denied while trying to {} for user {} in guild {} (actionId={}, moderatorId={})",
-                    operation,
-                    actionData.userId(),
-                    guild.getId(),
-                    actionData.id(),
-                    actionData.moderatorId(),
-                    e
-            );
+            logger.warn("Permission denied while trying to " + template.substring(template.indexOf("to ") + 3),
+                    operation, actionData.userId(), guild.getId(), actionData.id(), actionData.moderatorId(), e);
             return;
         }
 
-        logger.warn(
-                "Failed to {} for user {} in guild {} (actionId={}, moderatorId={})",
-                operation,
-                actionData.userId(),
-                guild.getId(),
-                actionData.id(),
-                actionData.moderatorId(),
-                e
-        );
+        logger.warn(template, operation, actionData.userId(), guild.getId(),
+                actionData.id(), actionData.moderatorId(), e);
     }
 
     private boolean isPermissionFailure(Exception e) {
-        if (e instanceof InsufficientPermissionException) {
-            return true;
+        if (e instanceof InsufficientPermissionException) return true;
+        if (e instanceof ErrorResponseException err) {
+            return err.getErrorResponse() == ErrorResponse.MISSING_PERMISSIONS;
         }
-
-        if (e instanceof ErrorResponseException errorResponseException) {
-            return errorResponseException.getErrorResponse() == ErrorResponse.MISSING_PERMISSIONS;
-        }
-
         return false;
     }
 }

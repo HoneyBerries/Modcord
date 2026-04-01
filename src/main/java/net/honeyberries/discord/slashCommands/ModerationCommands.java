@@ -19,6 +19,7 @@ import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.database.GuildModerationActionsRepository;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -174,6 +175,12 @@ public class ModerationCommands extends ListenerAdapter {
                 timeoutDuration,
                 banDuration
         );
+
+        boolean persisted = GuildModerationActionsRepository.getInstance().addActionToDatabase(actionData);
+        if (!persisted) {
+            logger.warn("Failed to persist manual moderation action {} for user {} in guild {}",
+                    actionType, targetUser.getIdLong(), guild.getIdLong());
+        }
 
         boolean applied = ActionHandler.getInstance().processAction(actionData);
         if (!applied) {
