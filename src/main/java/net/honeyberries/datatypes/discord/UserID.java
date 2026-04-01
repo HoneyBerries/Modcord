@@ -1,8 +1,9 @@
 package net.honeyberries.datatypes.discord;
 
 import net.dv8tion.jda.api.entities.User;
-import net.honeyberries.util.JDAManager;
+import net.honeyberries.discord.JDAManager;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -43,6 +44,7 @@ public record UserID(long value) {
      * Resolves the current {@code UserID} to its corresponding Discord user in JDA.
      * @return the {@link User} associated with the stored identifier, or {@code null} if no such user exists
      */
+    @Nullable
     public User toUser() {
         return JDAManager.getInstance().getJDA().retrieveUserById(value).complete();
     }

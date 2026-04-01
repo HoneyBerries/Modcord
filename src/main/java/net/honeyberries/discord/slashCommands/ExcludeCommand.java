@@ -22,6 +22,8 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.stream.Collectors;
+
 /**
  * Slash command handler for managing moderation exclusions.
  *
@@ -41,16 +43,19 @@ public class ExcludeCommand extends ListenerAdapter {
                         new SubcommandData("add", "Exclude a user or role from moderation")
                                 .addOptions(userOption, roleOption),
                         new SubcommandData("remove", "Remove a user or role exclusion")
-                                .addOptions(userOption, roleOption)
+                                .addOptions(userOption, roleOption),
+                        new SubcommandData("list", "Show excluded users and roles")
                 );
 
+
         commands.addCommands(excludeCommand);
-        logger.info("Registered /exclude command");
+        logger.info("Registered /exclude commands");
     }
 
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
-        if (!event.getName().equals("exclude")) return;
+        String commandName = event.getName();
+        if (!commandName.equals("exclude")) return;
 
         Guild guild = event.getGuild();
         if (guild == null) {
@@ -70,17 +75,27 @@ public class ExcludeCommand extends ListenerAdapter {
             return;
         }
 
-        User user = event.getOption("user", OptionMapping::getAsUser);
-        Role role = event.getOption("role", OptionMapping::getAsRole);
-
-        if (user == null && role == null) {
-            reply(event, "Please provide either a user or a role.");
-            return;
-        }
-
         GuildID guildID = new GuildID(guild.getIdLong());
 
         try {
+            if (subcommand.equals("list")) {
+                handleList(event, guild, guildID);
+                return;
+            }
+
+            User user = event.getOption("user", OptionMapping::getAsUser);
+            Role role = event.getOption("role", OptionMapping::getAsRole);
+
+            if (user == null && role == null) {
+                reply(event, "Please provide either a user or a role.");
+                return;
+            }
+
+            if (user != null && role != null) {
+                reply(event, "Please provide either a user or a role, not both.");
+                return;
+            }
+
             switch (subcommand) {
                 case "add"    -> handleAdd(event, guildID, user, role);
                 case "remove" -> handleRemove(event, guildID, user, role);
@@ -130,6 +145,52 @@ public class ExcludeCommand extends ListenerAdapter {
         reply(event, success
                 ? "Removed exclusion for role " + role.getAsMention() + "."
                 : "Failed to remove role exclusion. Please try again.");
+    }
+
+    private void handleList(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull Guild guild,
+            @NotNull GuildID guildID
+    ) {
+        ExcludedUsersRepository.ExcludedEntities excluded = repository.getExcludedEntities(guildID);
+
+        if (excluded.userIDs().isEmpty() && excluded.roleIDs().isEmpty()) {
+            reply(event, "There are no excluded users or roles in this server.");
+            return;
+        }
+
+        String usersSection = excluded.userIDs().isEmpty()
+                ? "None"
+                : excluded.userIDs().stream()
+                .map(userID -> formatUserMention(guild, userID))
+                .collect(Collectors.joining("\n"));
+
+        String rolesSection = excluded.roleIDs().isEmpty()
+                ? "None"
+                : excluded.roleIDs().stream()
+                .map(roleID -> formatRoleMention(guild, roleID))
+                .collect(Collectors.joining("\n"));
+
+        String message = "**Excluded users (higher priority):**\n"
+                + usersSection
+                + "\n\n**Excluded roles:**\n"
+                + rolesSection;
+
+        reply(event, message);
+    }
+
+    private static String formatUserMention(@NotNull Guild guild, UserID userId) {
+        if (guild.retrieveMemberById(userId.value()).complete() != null) {
+            return "- <@" + userId.value() + ">";
+        }
+        return "- <@" + userId.value() + "> (not in server)";
+    }
+
+    private static String formatRoleMention(@NotNull Guild guild, RoleID roleId) {
+        if (guild.getRoleById(roleId.value()) != null) {
+            return "- <@&" + roleId.value() + ">";
+        }
+        return "- <@&" + roleId.value() + "> (deleted role)";
     }
 
     /**

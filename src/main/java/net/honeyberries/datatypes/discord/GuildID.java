@@ -2,8 +2,9 @@ package net.honeyberries.datatypes.discord;
 
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
-import net.honeyberries.util.JDAManager;
+import net.honeyberries.discord.JDAManager;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -39,7 +40,7 @@ public record GuildID(long value) {
         this(id);
     }
 
-
+    @Nullable
     public Guild toGuild() {
         JDA jda = JDAManager.getInstance().getJDA();
         return jda.getGuildById(value);

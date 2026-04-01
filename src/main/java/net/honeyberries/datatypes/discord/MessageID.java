@@ -2,8 +2,9 @@ package net.honeyberries.datatypes.discord;
 
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
-import net.honeyberries.util.JDAManager;
+import net.honeyberries.discord.JDAManager;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -47,6 +48,7 @@ public record MessageID(long value) {
      * @return the {@link Message} corresponding to this {@code MessageID}
      * @throws NullPointerException if the provided {@code channelId} is {@code null}, or if either the channel or the message could not be found
      */
+    @Nullable
     public Message toMessage(@NotNull ChannelID channelId) {
         JDA jda = JDAManager.getInstance().getJDA();
         return Objects.requireNonNull(jda.getTextChannelById(channelId.value()))

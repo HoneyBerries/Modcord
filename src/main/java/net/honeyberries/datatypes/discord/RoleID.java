@@ -3,6 +3,7 @@ package net.honeyberries.datatypes.discord;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Role;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -55,6 +56,7 @@ public record RoleID(long value) {
      * @param guild the guild containing the role; must not be {@code null}
      * @return the role if found in the guild, otherwise {@code null}
      */
+    @Nullable
     public Role getRole(@NotNull Guild guild) {
         Objects.requireNonNull(guild, "guild must not be null");
         return guild.getRoleById(value);

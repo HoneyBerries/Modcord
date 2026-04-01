@@ -224,7 +224,7 @@ public class GuildMessageProcessingService {
         List<ModerationUser> result = new ArrayList<>();
         for (Map.Entry<UserID, Map<ChannelID, List<ModerationMessage>>> userEntry : userChannelMap.entrySet()) {
             UserID userId = userEntry.getKey();
-            Member member = guild.getMemberById(userId.value());
+            Member member = guild.retrieveMemberById(userId.value()).complete();
             if (member == null) continue;
 
             List<ModerationUserChannel> channels = userEntry.getValue().entrySet().stream()

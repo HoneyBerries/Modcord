@@ -63,8 +63,8 @@ public class DebugCommands extends ListenerAdapter {
 
         String commandName = event.getSubcommandName();
         switch (Objects.requireNonNull(commandName)) {
-            case "refresh-rules-and-guidelinesText" -> handleRefreshRulesAndGuidelines(event);
-            case "show-rules-and-guidelinesText" -> handleShowRulesAndGuidelines(event);
+            case "refresh-rules-and-guidelines" -> handleRefreshRulesAndGuidelines(event);
+            case "show-rules-and-guidelines" -> handleShowRulesAndGuidelines(event);
             case "purge" -> handlePurge(event);
             default -> event.reply("Unknown command").setEphemeral(true).queue();
         }
@@ -80,7 +80,7 @@ public class DebugCommands extends ListenerAdapter {
                 return;
             }
 
-            event.reply("Rules and guidelinesText refreshed successfully!").setEphemeral(true).queue();
+            event.reply("Rules and guidelines text refreshed successfully!").setEphemeral(true).queue();
             logger.debug("Refreshed rules for guild: {}", guildId.value());
         } catch (Exception e) {
             logger.error("Error refreshing rules and guidelinesText", e);

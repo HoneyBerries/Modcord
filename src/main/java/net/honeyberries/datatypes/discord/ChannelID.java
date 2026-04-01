@@ -2,8 +2,9 @@ package net.honeyberries.datatypes.discord;
 
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
-import net.honeyberries.util.JDAManager;
+import net.honeyberries.discord.JDAManager;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -46,6 +47,7 @@ public record ChannelID(long value) {
      *
      * @return the {@link Channel} associated with the stored identifier, or {@code null} if no such channel exists
      */
+    @Nullable
     public Channel toChannel() {
         return JDAManager.getInstance().getJDA().getGuildChannelById(value);
     }

@@ -6,7 +6,7 @@ import net.honeyberries.database.Database;
 import net.honeyberries.task.ChannelGuidelinesTask;
 import net.honeyberries.task.GuildRulesTask;
 import net.honeyberries.task.UnbanWatcherTask;
-import net.honeyberries.util.JDAManager;
+import net.honeyberries.discord.JDAManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
