@@ -8,8 +8,10 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.honeyberries.action.ActionHandler;
 import net.honeyberries.ai.*;
 import net.honeyberries.config.AppConfig;
+import net.honeyberries.database.GuildModerationActionRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.content.ModerationUser;
@@ -118,10 +120,25 @@ public class GuildMessageProcessingService {
     // -------------------------------------------------------------------------
 
     /** Full pipeline: fetch context, call AI, apply actions. */
-    public boolean processAndApply() {
+    public boolean runPipeline() {
         List<ActionData> actions = getActionDataFromAI();
         if (actions.isEmpty()) return false;
-        return processActions(actions);
+        
+        // log actions to database
+        actions.parallelStream().forEach(
+                action -> GuildModerationActionRepository.getInstance().
+                addActionToDatabase(action));
+
+        // Now handle the actions and then return true if success and false if failed.
+        return actions.parallelStream().allMatch(actionData -> {
+                try {
+                    ActionHandler.getInstance().processAction(actionData);
+                    return true;
+                } catch (Exception e) {
+                    logger.error("Failed to process action {}", actionData, e);
+                    return false;
+                }
+            });
     }
 
     private List<ActionData> getActionDataFromAI() {
@@ -253,7 +270,6 @@ public class GuildMessageProcessingService {
     }
 
     private boolean processActions(List<ActionData> actions) {
-        // TODO: apply actions to the guild
-        return false;
+
     }
 }

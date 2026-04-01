@@ -37,7 +37,11 @@ public class GlobalOrchestrationService {
 
     public void processGuild(Guild guild) {
         logger.info("Triggering processing for guild {}", guild.getId());
-        getOrCreate(guild).processAndApply();
+        boolean success = getOrCreate(guild).runPipeline();
+
+        if (!success) {
+            logger.warn("Failed to process guild {}", guild.getId());
+        }
     }
 
     private GuildMessageProcessingService getOrCreate(Guild guild) {
