@@ -19,17 +19,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public class GuildModerationActionRepository {
+public class GuildModerationActionsRepository {
 
-    private final Logger logger = LoggerFactory.getLogger(GuildModerationActionRepository.class);
-    private static final GuildModerationActionRepository INSTANCE = new GuildModerationActionRepository();
+    private final Logger logger = LoggerFactory.getLogger(GuildModerationActionsRepository.class);
+    private static final GuildModerationActionsRepository INSTANCE = new GuildModerationActionsRepository();
     private final Database database;
 
-    public GuildModerationActionRepository() {
+    public GuildModerationActionsRepository() {
         this.database = Database.getInstance();
     }
 
-    public static GuildModerationActionRepository getInstance() {
+    public static GuildModerationActionsRepository getInstance() {
         return INSTANCE;
     }
 
@@ -42,26 +42,25 @@ public class GuildModerationActionRepository {
     public boolean addActionToDatabase(ActionData actionData) {
         try {
             database.transaction(conn -> {
-                // 1️⃣ Insert into guild_moderation_actions
                 String insertActionSql = """
                     INSERT INTO guild_moderation_actions (
-                        id, guild_id, user_id, action, reason,
+                        action_id, guild_id, user_id, moderator_id, action, reason,
                         timeout_duration, ban_duration
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
                 try (PreparedStatement ps = conn.prepareStatement(insertActionSql)) {
                     ps.setObject(1, actionData.id());
                     ps.setLong(2, actionData.guildId().value());
                     ps.setLong(3, actionData.userId().value());
-                    ps.setString(4, actionData.action().name());
-                    ps.setString(5, actionData.reason());
-                    ps.setLong(6, actionData.timeoutDuration());
-                    ps.setLong(7, actionData.banDuration());
+                    ps.setLong(4, actionData.moderatorId().value());
+                    ps.setString(5, actionData.action().name());
+                    ps.setString(6, actionData.reason());
+                    ps.setLong(7, actionData.timeoutDuration());
+                    ps.setLong(8, actionData.banDuration());
                     ps.executeUpdate();
                 }
 
-                // 2️⃣ Insert deletions into guild_moderation_action_deletions
                 String insertDeletionSql = """
                     INSERT INTO guild_moderation_action_deletions (
                         action_id, channel_id, message_id
@@ -92,7 +91,7 @@ public class GuildModerationActionRepository {
         String sql = """
             SELECT *
             FROM guild_moderation_actions
-            WHERE id = ?
+            WHERE action_id = ?
         """;
 
         try {
@@ -119,7 +118,7 @@ public class GuildModerationActionRepository {
             SELECT *
             FROM guild_moderation_actions
             WHERE guild_id = ?
-            ORDER BY id DESC
+            ORDER BY action_id DESC
         """;
 
         try {
@@ -149,7 +148,7 @@ public class GuildModerationActionRepository {
             SELECT *
             FROM guild_moderation_actions
             WHERE guild_id = ? AND user_id = ?
-            ORDER BY id DESC
+            ORDER BY action_id DESC
         """;
 
         try {
@@ -180,7 +179,7 @@ public class GuildModerationActionRepository {
             SELECT *
             FROM guild_moderation_actions
             WHERE guild_id = ?
-            ORDER BY id DESC
+            ORDER BY action_id DESC
             LIMIT ?
         """;
 
@@ -208,12 +207,13 @@ public class GuildModerationActionRepository {
     }
 
     private ActionData mapAction(ResultSet rs) throws SQLException {
-        UUID actionId = (UUID) rs.getObject("id");
+        UUID actionId = (UUID) rs.getObject("action_id");
 
         ActionDataBuilder builder = new ActionDataBuilder(
             actionId,
             new GuildID(rs.getLong("guild_id")),
             new UserID(rs.getLong("user_id")),
+            new UserID(rs.getLong("moderator_id")),
             ActionType.valueOf(rs.getString("action")),
             rs.getString("reason"),
             rs.getLong("timeout_duration"),

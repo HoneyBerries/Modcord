@@ -1,7 +1,7 @@
 package net.honeyberries.task;
 
 import net.honeyberries.database.Database;
-import net.honeyberries.database.GuildModerationActionRepository;
+import net.honeyberries.database.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -17,7 +17,7 @@ import java.util.UUID;
 public class UnbanWatcherTask implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(UnbanWatcherTask.class);
-    private final GuildModerationActionRepository actionRepository = GuildModerationActionRepository.getInstance();
+    private final GuildModerationActionsRepository actionRepository = GuildModerationActionsRepository.getInstance();
     private final Database database = Database.getInstance();
 
     @Override
@@ -112,7 +112,7 @@ public class UnbanWatcherTask implements Runnable {
         String sql = """
             SELECT created_at
             FROM guild_moderation_actions
-            WHERE id = ?
+            WHERE action_id = ?
         """;
 
         try {

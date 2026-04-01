@@ -6,6 +6,10 @@
     <file url="file://$PROJECT_DIR$/src/main/resources/db/changelog/changelog-initial.sql" value="eba6f1b7-84f4-4241-a066-9c6bf11efe33" />
     <file url="file://$PROJECT_DIR$/src/main/resources/db/changelog/changelog-v2.sql" value="eba6f1b7-84f4-4241-a066-9c6bf11efe33" />
     <file url="file://$PROJECT_DIR$/src/main/resources/db/changelog/changelog-v3.sql" value="eba6f1b7-84f4-4241-a066-9c6bf11efe33" />
+    <file url="file://$PROJECT_DIR$/src/main/resources/db/changelog/changelog-v4.sql" value="eba6f1b7-84f4-4241-a066-9c6bf11efe33" />
     <file url="file://$PROJECT_DIR$/src/main/resources/db/changelog/changelog-v5.sql" value="eba6f1b7-84f4-4241-a066-9c6bf11efe33" />
+    <file url="file://$PROJECT_DIR$/src/main/resources/db/changelog/changelog-v6.sql" value="eba6f1b7-84f4-4241-a066-9c6bf11efe33" />
+    <file url="file://$PROJECT_DIR$/src/main/resources/db/changelog/changelog-v7.sql" value="eba6f1b7-84f4-4241-a066-9c6bf11efe33" />
+    <file url="file://$PROJECT_DIR$/src/main/resources/db/changelog/changelog-v8.sql" value="eba6f1b7-84f4-4241-a066-9c6bf11efe33" />
   </component>
 </project>

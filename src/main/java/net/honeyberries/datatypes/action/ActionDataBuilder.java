@@ -17,6 +17,7 @@ public class ActionDataBuilder {
     private final @NotNull UUID id;
     private final @NotNull GuildID guildId;
     private final @NotNull UserID userId;
+    private final @NotNull UserID moderatorId;
     private final @NotNull ActionType action;
     private final @NotNull String reason;
     private final long timeoutDuration;
@@ -29,6 +30,7 @@ public class ActionDataBuilder {
      * @param id              unique identifier for the moderation action; must not be {@code null}
      * @param guildId         guild being moderated; must not be {@code null}
      * @param userId          user receiving the action; must not be {@code null}
+     * @param moderatorId     moderator performing the action; must not be {@code null}
      * @param action          action to perform; must not be {@code null}
      * @param reason          textual reason returned by the AI; must not be {@code null}
      * @param timeoutDuration timeout duration in seconds (0 if not used)
@@ -39,6 +41,7 @@ public class ActionDataBuilder {
             @NotNull UUID id,
             @NotNull GuildID guildId,
             @NotNull UserID userId,
+            @NotNull UserID moderatorId,
             @NotNull ActionType action,
             @NotNull String reason,
             long timeoutDuration,
@@ -47,6 +50,7 @@ public class ActionDataBuilder {
         this.id = Objects.requireNonNull(id, "id must not be null");
         this.guildId = Objects.requireNonNull(guildId, "guildId must not be null");
         this.userId = Objects.requireNonNull(userId, "userId must not be null");
+        this.moderatorId = Objects.requireNonNull(moderatorId, "moderatorId must not be null");
         this.action = Objects.requireNonNull(action, "action must not be null");
         this.reason = Objects.requireNonNull(reason, "reason must not be null");
         this.timeoutDuration = timeoutDuration;
@@ -74,6 +78,7 @@ public class ActionDataBuilder {
                 id,
                 guildId,
                 userId,
+                moderatorId,
                 action,
                 reason,
                 timeoutDuration,

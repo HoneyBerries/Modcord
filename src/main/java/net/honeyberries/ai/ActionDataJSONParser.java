@@ -53,24 +53,25 @@ public class ActionDataJSONParser {
      * @throws ActionDataParseException if the JSON is malformed or missing required fields.
      */
     @NotNull
-    public List<ActionData> parse(@NotNull String json, GuildID guildId) throws JsonProcessingException {
+    public List<ActionData> parse(@NotNull String json, GuildID guildId, @NotNull UserID moderatorId)
+            throws JsonProcessingException {
         JsonNode root = mapper.readTree(json);
-        return parseUsers(root.get("users"), guildId);
+        return parseUsers(root.get("users"), guildId, moderatorId);
     }
 
-    private List<ActionData> parseUsers(JsonNode usersNode, GuildID guildId) {
+    private List<ActionData> parseUsers(JsonNode usersNode, GuildID guildId, @NotNull UserID moderatorId) {
         if (usersNode == null || !usersNode.isArray()) {
             throw new ActionDataParseException("Missing or invalid 'users' array in AI output");
         }
 
         List<ActionData> results = new ArrayList<>();
         for (JsonNode userNode : usersNode) {
-            results.add(parseUser(userNode, guildId));
+            results.add(parseUser(userNode, guildId, moderatorId));
         }
         return results;
     }
 
-    private ActionData parseUser(JsonNode userNode, GuildID guildId) {
+    private ActionData parseUser(JsonNode userNode, GuildID guildId, @NotNull UserID moderatorId) {
         UserID userId     = new UserID(requireText(userNode, "user_id"));
         ActionType action = parseActionType(requireText(userNode, "action"));
         String reason     = requireText(userNode, "reason");
@@ -80,7 +81,7 @@ public class ActionDataJSONParser {
         UUID id = UUID.randomUUID();
 
         ActionDataBuilder builder = new ActionDataBuilder(
-                id, guildId, userId, action, reason, timeoutDuration, banDuration
+                id, guildId, userId, moderatorId, action, reason, timeoutDuration, banDuration
         );
 
         JsonNode channelsNode = userNode.get("channels");

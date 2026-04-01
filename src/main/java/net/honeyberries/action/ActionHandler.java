@@ -198,12 +198,14 @@ public class ActionHandler {
     }
 
     private MessageCreateData buildNotificationEmbed(Guild guild, ActionData actionData, User target) {
+        String moderatorMention = "<@" + actionData.moderatorId().value() + ">";
+
         EmbedBuilder embed = new EmbedBuilder()
                 .setTitle(actionEmoji(actionData.action()) + " " + actionData.action().name() + " Issued")
                 .setColor(actionColor(actionData.action()))
                 .setTimestamp(Instant.now())
                 .addField("User", "<@" + target.getId() + ">", true)
-                .addField("Moderator", jda.getSelfUser().getAsMention(), true)
+                .addField("Moderator", moderatorMention, true)
                 .addField("Reason", actionData.reason(), false)
                 .setThumbnail(target.getEffectiveAvatarUrl())
                 .setFooter(guild.getName());
@@ -265,22 +267,24 @@ public class ActionHandler {
     private void logActionFailure(String operation, ActionData actionData, Guild guild, Exception e) {
         if (isPermissionFailure(e)) {
             logger.warn(
-                    "Permission denied while trying to {} for user {} in guild {} (actionId={})",
+                    "Permission denied while trying to {} for user {} in guild {} (actionId={}, moderatorId={})",
                     operation,
                     actionData.userId(),
                     guild.getId(),
                     actionData.id(),
+                    actionData.moderatorId(),
                     e
             );
             return;
         }
 
         logger.warn(
-                "Failed to {} for user {} in guild {} (actionId={})",
+                "Failed to {} for user {} in guild {} (actionId={}, moderatorId={})",
                 operation,
                 actionData.userId(),
                 guild.getId(),
                 actionData.id(),
+                actionData.moderatorId(),
                 e
         );
     }

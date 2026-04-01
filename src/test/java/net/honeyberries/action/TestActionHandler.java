@@ -120,6 +120,7 @@ public class TestActionHandler {
                 UUID.randomUUID(),
                 new GuildID(TEST_GUILD_ID),
                 new UserID(userId),
+                new UserID(TEST_ACCOUNT_1_ID),
                 actionType,
                 "Integration test action from TestActionHandler",
                 timeoutDuration,

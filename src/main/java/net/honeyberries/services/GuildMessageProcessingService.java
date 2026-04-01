@@ -11,7 +11,7 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.action.ActionHandler;
 import net.honeyberries.ai.*;
 import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.GuildModerationActionRepository;
+import net.honeyberries.database.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.content.ModerationUser;
@@ -126,7 +126,7 @@ public class GuildMessageProcessingService {
         
         // log actions to database
         actions.parallelStream().forEach(
-                action -> GuildModerationActionRepository.getInstance().
+                action -> GuildModerationActionsRepository.getInstance().
                 addActionToDatabase(action));
 
         // Now handle the actions and then return true if success and false if failed.
@@ -188,7 +188,8 @@ public class GuildMessageProcessingService {
         }
 
         try {
-            return ActionDataJSONParser.getInstance().parse(response, guildId);
+            UserID moderatorId = UserID.fromUser(guild.getJDA().getSelfUser());
+            return ActionDataJSONParser.getInstance().parse(response, guildId, moderatorId);
         } catch (JsonProcessingException e) {
             logger.error("Failed to parse AI response for guild {}", guildId, e);
             return List.of();
