@@ -130,15 +130,11 @@ public class GuildMessageProcessingService {
                 addActionToDatabase(action));
 
         // Now handle the actions and then return true if success and false if failed.
-        return actions.parallelStream().allMatch(actionData -> {
-                try {
-                    ActionHandler.getInstance().processAction(actionData);
-                    return true;
-                } catch (Exception e) {
-                    logger.error("Failed to process action {}", actionData, e);
-                    return false;
-                }
-            });
+        return actions.parallelStream()
+            .map(actionData -> {
+                return ActionHandler.getInstance().processAction(actionData);
+            })
+            .reduce(true, Boolean::logicalAnd);
     }
 
     private List<ActionData> getActionDataFromAI() {
@@ -269,7 +265,4 @@ public class GuildMessageProcessingService {
         return result;
     }
 
-    private boolean processActions(List<ActionData> actions) {
-
-    }
 }
