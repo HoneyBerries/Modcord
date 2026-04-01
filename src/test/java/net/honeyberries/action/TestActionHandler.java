@@ -36,12 +36,6 @@ public class TestActionHandler {
 
     private final ActionHandler actionHandler = ActionHandler.getInstance();
 
-    @AfterEach
-    void clearTimeouts() {
-        Guild guild = getGuildOrSkip();
-        clearTimeoutIfPresent(guild, TEST_ACCOUNT_2_ID);
-        clearTimeoutIfPresent(guild, TEST_ACCOUNT_3_ID);
-    }
 
     @BeforeAll
     static void setup() {
@@ -94,16 +88,16 @@ public class TestActionHandler {
         counts.put(ActionType.NULL, 0);
 
         int trials = 900;
+        ActionType lastPicked = ActionType.NULL; // <-- track the last pick inside the loop
         for (int i = 0; i < trials; i++) {
-            ActionType picked = pickRandomActionForAccount3();
-            counts.computeIfPresent(picked, (k, v) -> v + 1);
+            lastPicked = pickRandomActionForAccount3();
+            counts.computeIfPresent(lastPicked, (k, v) -> v + 1);
         }
 
         double warnRatio = counts.get(ActionType.WARN) / (double) trials;
         double timeoutRatio = counts.get(ActionType.TIMEOUT) / (double) trials;
         double nullRatio = counts.get(ActionType.NULL) / (double) trials;
 
-        // Keep a practical tolerance window for random tests to reduce flakiness.
         Assertions.assertTrue(warnRatio > 0.25 && warnRatio < 0.42,
                 "WARN ratio should be near 1/3; actual=" + warnRatio);
         Assertions.assertTrue(timeoutRatio > 0.25 && timeoutRatio < 0.42,
@@ -111,13 +105,14 @@ public class TestActionHandler {
         Assertions.assertTrue(nullRatio > 0.25 && nullRatio < 0.42,
                 "NULL ratio should be near 1/3; actual=" + nullRatio);
 
-        ActionType selectedAction = pickRandomActionForAccount3();
-        long timeoutSeconds = selectedAction == ActionType.TIMEOUT ? 120 : 0;
-        ActionData actionData = createAction(TEST_ACCOUNT_3_ID, selectedAction, timeoutSeconds, 0);
+        // Re-use lastPicked instead of calling pickRandomActionForAccount3() again,
+        // which was generating a second independent action and causing double-application.
+        long timeoutSeconds = lastPicked == ActionType.TIMEOUT ? 120 : 0;
+        ActionData actionData = createAction(TEST_ACCOUNT_3_ID, lastPicked, timeoutSeconds, 0);
 
         boolean applied = actionHandler.processAction(actionData);
         Assertions.assertTrue(applied,
-                "Random action should apply successfully for test account 3 when picked action is " + selectedAction);
+                "Random action should apply successfully for test account 3 when picked action is " + lastPicked);
     }
 
     private ActionData createAction(long userId, ActionType actionType, long timeoutDuration, long banDuration) {
