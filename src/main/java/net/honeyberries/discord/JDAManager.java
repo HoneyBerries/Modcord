@@ -11,6 +11,7 @@ import net.honeyberries.discord.listener.RoleListener;
 import net.honeyberries.discord.listener.UserListener;
 import net.honeyberries.discord.slashCommands.DebugCommands;
 import net.honeyberries.discord.slashCommands.ExcludeCommand;
+import net.honeyberries.discord.slashCommands.ModerationCommands;
 import net.honeyberries.discord.slashCommands.StatusCommands;
 import net.honeyberries.util.TokenManager;
 import org.jetbrains.annotations.NotNull;
@@ -66,6 +67,11 @@ public class JDAManager {
         jda.addEventListener(excludeCommand);
         excludeCommand.registerExcludeCommands(commands);
         logger.info("Added ExcludeCommand to queue");
+
+        ModerationCommands moderationCommands = new ModerationCommands();
+        jda.addEventListener(moderationCommands);
+        moderationCommands.registerModerationCommands(commands);
+        logger.info("Added ModerationCommands to queue");
 
         commands.queue();
         logger.info("All slash commands synced — bot setup complete");

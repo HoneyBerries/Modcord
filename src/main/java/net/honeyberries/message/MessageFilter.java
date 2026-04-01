@@ -45,6 +45,7 @@ public class MessageFilter {
         return !(message.getAuthor() instanceof Member)
                 || !message.isFromGuild()
                 || message.isVoiceMessage()
-                || message.isWebhookMessage();
+                || message.isWebhookMessage()
+                || message.isEphemeral();
     }
 }
