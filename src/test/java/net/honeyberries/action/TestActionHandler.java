@@ -32,7 +32,7 @@ public class TestActionHandler {
     private static final long TEST_ACCOUNT_3_ID = 1260476582519242767L;
 
     private static final long TEST_GUILD_ID = 1488762869880324200L;
-    private static final long TEST_CHANNEL_OUTPUT_ID = 1488764502051782757L;
+    private static final long TEST_CHANNEL_OUTPUT_ID = 1489002480477143265L;
 
     private final ActionHandler actionHandler = ActionHandler.getInstance();
 
