@@ -15,6 +15,7 @@ import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.honeyberries.database.GuildPreferencesRepository;
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.action.MessageDeletion;
@@ -107,7 +108,7 @@ public class ActionHandler {
     }
 
     private boolean applyTimeout(Guild guild, ActionData actionData) {
-        Member member = guild.getMemberById(actionData.userId().value());
+        Member member = guild.retrieveMemberById(actionData.userId().value()).complete();
         if (member == null) {
             logger.warn("Failed to timeout user {} in guild {}: member not found", actionData.userId(), guild.getId());
             return false;
@@ -120,34 +121,34 @@ public class ActionHandler {
         }
 
         member.timeoutFor(Duration.ofSeconds(timeoutSeconds))
-                .reason("Modcord: " + actionData.reason())
+                .reason(actionData.reason())
                 .complete();
         return true;
     }
 
     private boolean applyKick(Guild guild, ActionData actionData) {
-        Member member = guild.getMemberById(actionData.userId().value());
+        Member member = guild.retrieveMemberById(actionData.userId().value()).complete();
         if (member == null) {
             logger.warn("Failed to kick user {} in guild {}: member not found", actionData.userId(), guild.getId());
             return false;
         }
 
         guild.kick(member)
-                .reason("Modcord: " + actionData.reason())
+                .reason(actionData.reason())
                 .complete();
         return true;
     }
 
     private boolean applyBan(Guild guild, ActionData actionData) {
         guild.ban(UserSnowflake.fromId(actionData.userId().value()), 0, TimeUnit.DAYS)
-                .reason("Modcord: " + actionData.reason())
+                .reason(actionData.reason())
                 .complete();
         return true;
     }
 
     private boolean applyUnban(Guild guild, ActionData actionData) {
         guild.unban(UserSnowflake.fromId(actionData.userId().value()))
-                .reason("Modcord: " + actionData.reason())
+                .reason(actionData.reason())
                 .complete();
         return true;
     }
@@ -174,6 +175,11 @@ public class ActionHandler {
         }
 
         try {
+            if (!Database.getInstance().isHealthy()) {
+                logger.debug("Skipping audit notification lookup for action {} because database is unavailable", actionData.id());
+                return;
+            }
+
             GuildPreferences preferences = GuildPreferencesRepository.getInstance().getGuildPreferences(actionData.guildId());
             if (preferences == null || preferences.auditLogChannelId() == null) {
                 return;
