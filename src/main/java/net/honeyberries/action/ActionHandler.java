@@ -205,6 +205,7 @@ public class ActionHandler {
                 .addField("User", "<@" + target.getId() + ">", true)
                 .addField("Moderator", jda.getSelfUser().getAsMention(), true)
                 .addField("Reason", actionData.reason(), false)
+                .setThumbnail(target.getEffectiveAvatarUrl())
                 .setFooter(guild.getName());
 
         if (actionData.action() == ActionType.TIMEOUT && actionData.timeoutDuration() > 0) {

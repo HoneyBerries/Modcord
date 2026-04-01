@@ -5,7 +5,10 @@ import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
+import net.honeyberries.discord.listener.GuildListener;
 import net.honeyberries.discord.listener.MessageListener;
+import net.honeyberries.discord.listener.RoleListener;
+import net.honeyberries.discord.listener.UserListener;
 import net.honeyberries.discord.slashCommands.DebugCommands;
 import net.honeyberries.discord.slashCommands.ExcludeCommand;
 import net.honeyberries.discord.slashCommands.StatusCommands;
@@ -44,7 +47,10 @@ public class JDAManager {
         logger.info("Registering slash commands");
         CommandListUpdateAction commands = jda.updateCommands();
 
+        jda.addEventListener(new GuildListener());
         jda.addEventListener(new MessageListener());
+        jda.addEventListener(new UserListener());
+        jda.addEventListener(new RoleListener());
 
         StatusCommands statusCommands = new StatusCommands();
         jda.addEventListener(statusCommands);

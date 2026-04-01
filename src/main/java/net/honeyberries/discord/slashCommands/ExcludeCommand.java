@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 /**
  * Slash command handler for managing moderation exclusions.
  *
- * <p>Requires the invoking member to have {@link Permission#MANAGE_SERVER}.
+ * <p>Requires the invoking member to have {@link Permission#ADMINISTRATOR}.
  */
 public class ExcludeCommand extends ListenerAdapter {
 
@@ -64,8 +64,8 @@ public class ExcludeCommand extends ListenerAdapter {
         }
 
         Member member = event.getMember();
-        if (member == null || !member.hasPermission(Permission.MANAGE_SERVER)) {
-            reply(event, "You need the **Manage Server** permission to use this command.");
+        if (member == null || !member.hasPermission(Permission.ADMINISTRATOR)) {
+            reply(event, "You need **Administrator** permissions to use this command.");
             return;
         }
 
@@ -183,7 +183,7 @@ public class ExcludeCommand extends ListenerAdapter {
         if (guild.retrieveMemberById(userId.value()).complete() != null) {
             return "- <@" + userId.value() + ">";
         }
-        return "- <@" + userId.value() + "> (not in server)";
+        return "- <@" + userId.value() + "> (not in server or deleted user)";
     }
 
     private static String formatRoleMention(@NotNull Guild guild, RoleID roleId) {
