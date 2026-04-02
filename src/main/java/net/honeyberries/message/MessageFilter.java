@@ -1,6 +1,5 @@
 package net.honeyberries.message;
 
-import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import org.jetbrains.annotations.NotNull;
 
@@ -42,8 +41,10 @@ public class MessageFilter {
      */
     public static boolean shouldExcludeMessageForModeration(@NotNull Message message) {
         Objects.requireNonNull(message, "message must not be null");
-        return !(message.getAuthor() instanceof Member)
-                || !message.isFromGuild()
+        return !message.isFromGuild()
+                || message.getMember() == null
+                || message.getAuthor().isBot()
+                || message.getAuthor().isSystem()
                 || message.isVoiceMessage()
                 || message.isWebhookMessage()
                 || message.isEphemeral();

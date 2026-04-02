@@ -275,7 +275,7 @@ public class AppConfig {
      * 
      * @return The sync interval in seconds, or INFINITY if not configured
      */
-    public double getRulesSyncInterval() {
+    public long getRulesSyncInterval() {
         Object cacheConfigObj = data.get("cache");
         
         if (cacheConfigObj instanceof Map) {
@@ -285,7 +285,7 @@ public class AppConfig {
             Object value = cacheConfig.get("rules_cache_refresh");
             
             if (value instanceof Number) {
-                return ((Number) value).doubleValue();
+                return ((Number) value).longValue();
             }
         }
         throw new RuntimeException("Rules cache refresh not configured");
@@ -299,14 +299,14 @@ public class AppConfig {
      * 
      * @return The sync interval in seconds, or INFINITY if not configured
      */
-    public double getGuidelinesSyncInterval() {
+    public long getGuidelinesSyncInterval() {
         Object cacheConfigObj = data.get("cache");
         if (cacheConfigObj instanceof Map) {
             @SuppressWarnings("unchecked")
             Map<String, Object> cacheConfig = (Map<String, Object>) cacheConfigObj;
             Object value = cacheConfig.get("channel_guidelines_cache_refresh");
             if (value instanceof Number) {
-                return ((Number) value).doubleValue();
+                return ((Number) value).longValue();
             }
         }
         throw new RuntimeException("Channel guidelinesText cache refresh not configured");

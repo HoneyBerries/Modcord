@@ -3,6 +3,7 @@ package net.honeyberries;
 import net.dv8tion.jda.api.JDA;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.Database;
+import net.honeyberries.services.GlobalOrchestrationService;
 import net.honeyberries.task.ChannelGuidelinesTask;
 import net.honeyberries.task.GuildRulesTask;
 import net.honeyberries.task.UnbanWatcherTask;
@@ -88,8 +89,12 @@ public class Main {
      */
     private void setupTasks() {
         scheduler = Executors.newScheduledThreadPool(8);
-        scheduler.scheduleAtFixedRate(new UnbanWatcherTask(), 0, 10, TimeUnit.SECONDS);
-        scheduler.scheduleAtFixedRate(new GuildRulesTask(), 0, 5, TimeUnit.MINUTES);
+
+        long rulesSyncInterval = Math.max(1L, Math.round(AppConfig.getInstance().getRulesSyncInterval()));
+        long guidelinesSyncInterval = Math.max(1L, Math.round(AppConfig.getInstance().getGuidelinesSyncInterval()));
+
+        scheduler.scheduleAtFixedRate(new UnbanWatcherTask(), 0, rulesSyncInterval, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(new GuildRulesTask(), 0, guidelinesSyncInterval, TimeUnit.SECONDS);
         scheduler.scheduleAtFixedRate(new ChannelGuidelinesTask(), 0, 5, TimeUnit.MINUTES);
     }
 
@@ -104,6 +109,9 @@ public class Main {
         if (scheduler != null) {
             scheduler.shutdown();
         }
+
+        logger.info("Dropping pending moderation queues");
+        GlobalOrchestrationService.getInstance().shutdownNowAndDropPending();
 
         logger.info("Shutting down bot");
         if (discordBot != null) {

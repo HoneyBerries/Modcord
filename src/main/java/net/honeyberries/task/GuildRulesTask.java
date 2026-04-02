@@ -159,18 +159,35 @@ public class GuildRulesTask implements Runnable {
                     .get();
 
             return messages.reversed().stream()
-                    .map(EmbedParser::parseEmbed)
-                    .filter(s -> !s.isBlank())
+                    .map(this::extractRuleText)
+                    .filter(s -> !(s == null))
                     .collect(Collectors.joining("\n\n"));
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             logger.warn("Interrupted while fetching rules for guild {}", guild.getId());
-            return "";
+            return null;
         } catch (ExecutionException e) {
             logger.warn("Failed to fetch rules for guild {}", guild.getId(), e);
-            return "";
+            return null;
         }
+    }
+
+    @Nullable
+    private String extractRuleText(Message message) {
+        String content = message.getContentDisplay();
+        String embed = EmbedParser.parseEmbed(message);
+
+        boolean hasContent = !content.isBlank();
+        boolean hasEmbed = !embed.isBlank();
+
+        if (hasContent && hasEmbed) {
+            return content + "\n" + embed;
+        }
+        else if (hasContent) {
+            return content;
+        }
+        return hasEmbed ? embed : null;
     }
 
 

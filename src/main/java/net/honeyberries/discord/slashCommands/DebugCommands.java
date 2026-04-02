@@ -2,6 +2,8 @@ package net.honeyberries.discord.slashCommands;
 
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
@@ -9,19 +11,28 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.interactions.commands.build.*;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
+import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.database.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
+import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
+import net.honeyberries.message.EmbedParser;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 public class DebugCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(DebugCommands.class);
     private final GuildRulesRepository rulesRepo = GuildRulesRepository.getInstance();
+    private final GuildPreferencesRepository preferencesRepo = GuildPreferencesRepository.getInstance();
 
     public void registerDebugCommands(CommandListUpdateAction commands) {
         SubcommandData refreshSub = new SubcommandData(
@@ -72,11 +83,14 @@ public class DebugCommands extends ListenerAdapter {
 
     private void handleRefreshRulesAndGuidelines(@NotNull SlashCommandInteractionEvent event) {
         try {
-            GuildID guildId = new GuildID(Objects.requireNonNull(event.getGuild()).getIdLong());
-            GuildRules rules = rulesRepo.getGuildRulesFromCache(guildId);
+            Guild guild = Objects.requireNonNull(event.getGuild());
+            GuildID guildId = new GuildID(guild.getIdLong());
+            GuildRules rules = refreshRulesFromDiscord(guild, guildId);
 
-            if (rules == null) {
-                event.reply("No rules found for this guild. Please set rules first.").setEphemeral(true).queue();
+            if (rules == null || rules.rulesText() == null || rules.rulesText().isBlank()) {
+                event.reply("No rules found in the configured rules channel. Check channel ID, permissions, and channel content.")
+                        .setEphemeral(true)
+                        .queue();
                 return;
             }
 
@@ -90,17 +104,16 @@ public class DebugCommands extends ListenerAdapter {
 
     private void handleShowRulesAndGuidelines(@NotNull SlashCommandInteractionEvent event) {
         try {
-            GuildID guildId = new GuildID(Objects.requireNonNull(event.getGuild()).getIdLong());
+            Guild guild = Objects.requireNonNull(event.getGuild());
+            GuildID guildId = new GuildID(guild.getIdLong());
             GuildRules rules = rulesRepo.getGuildRulesFromCache(guildId);
 
-            if (rules == null) {
-                event.reply("No rules found for this guild.").setEphemeral(true).queue();
-                return;
-            }
-
-            if (rules.rulesText() == null || rules.rulesText().isBlank()) {
-                event.reply("No rules are currently configured for this guild.").setEphemeral(true).queue();
-                return;
+            if (rules == null || rules.rulesText() == null || rules.rulesText().isBlank()) {
+                rules = refreshRulesFromDiscord(guild, guildId);
+                if (rules == null || rules.rulesText() == null || rules.rulesText().isBlank()) {
+                    event.reply("No rules are currently configured for this guild.").setEphemeral(true).queue();
+                    return;
+                }
             }
 
             String message = "**Current Guild Rules:**\n\n" + rules.rulesText();
@@ -110,6 +123,76 @@ public class DebugCommands extends ListenerAdapter {
             logger.error("Error showing rules and guidelinesText", e);
             event.reply("Failed to retrieve rules and guidelinesText").setEphemeral(true).queue();
         }
+    }
+
+    @Nullable
+    private GuildRules refreshRulesFromDiscord(@NotNull Guild guild, @NotNull GuildID guildId) {
+        GuildRules existingRules = rulesRepo.getGuildRulesFromCache(guildId);
+        ChannelID rulesChannelId = existingRules != null ? existingRules.rulesChannelId() : null;
+
+        if (rulesChannelId == null) {
+            GuildPreferences preferences = preferencesRepo.getGuildPreferences(guildId);
+            rulesChannelId = preferences != null ? preferences.rulesChannelID() : null;
+        }
+
+        if (rulesChannelId == null) {
+            return existingRules;
+        }
+
+        String refreshedRulesText = getGuildRulesFromDiscord(guild, rulesChannelId);
+        if (refreshedRulesText == null || refreshedRulesText.isBlank()) {
+            return new GuildRules(guildId, rulesChannelId, null);
+        }
+
+        GuildRules refreshed = new GuildRules(guildId, rulesChannelId, refreshedRulesText);
+        boolean saved = rulesRepo.addOrReplaceGuildRulesToDatabase(refreshed);
+        if (!saved) {
+            logger.warn("Failed to persist refreshed rules for guild {}", guildId.value());
+        }
+        return refreshed;
+    }
+
+    @Nullable
+    private String getGuildRulesFromDiscord(@NotNull Guild guild, @NotNull ChannelID rulesChannelId) {
+        Channel rulesChannel = guild.getGuildChannelById(rulesChannelId.value());
+        if (!(rulesChannel instanceof TextChannel rulesTextChannel)) {
+            return null;
+        }
+
+        try {
+            List<Message> messages = rulesTextChannel.getHistory()
+                    .retrievePast(100)
+                    .submit()
+                    .get();
+
+            return messages.reversed().stream()
+                    .map(this::extractRuleText)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.joining("\n\n"));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("Interrupted while fetching rules for guild {}", guild.getId());
+            return null;
+        } catch (ExecutionException e) {
+            logger.warn("Failed to fetch rules for guild {}", guild.getId(), e);
+            return null;
+        }
+    }
+
+    private String extractRuleText(@NotNull Message message) {
+        String content = message.getContentDisplay();
+        String embed = EmbedParser.parseEmbed(message);
+
+        boolean hasContent = content != null && !content.isBlank();
+        boolean hasEmbed = !embed.isBlank();
+
+        if (hasContent && hasEmbed) {
+            return content + "\n" + embed;
+        }
+        if (hasContent) {
+            return content;
+        }
+        return hasEmbed ? embed : "";
     }
 
     private void handlePurge(@NotNull SlashCommandInteractionEvent event) {

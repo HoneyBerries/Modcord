@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -41,8 +42,8 @@ public class GuildMessageProcessingService {
     private final GuildID guildId;
 
     // Message queue state
-    private final Map<MessageID, ModerationMessage> messages = new HashMap<>();
-    private final Map<MessageID, OffsetDateTime> arrivalTimes = new HashMap<>();
+    private final Map<MessageID, ModerationMessage> messages = new ConcurrentHashMap<>();
+    private final Map<MessageID, OffsetDateTime> arrivalTimes = new ConcurrentHashMap<>();
 
     public GuildMessageProcessingService(Guild guild) {
         this.guild = guild;
@@ -73,6 +74,10 @@ public class GuildMessageProcessingService {
         logger.debug("Removed message {} from guild {}", messageId, guildId);
     }
 
+    public boolean isQueueEmpty() {
+        return messages.isEmpty();
+    }
+
     // -------------------------------------------------------------------------
     // Queue windowing
     // -------------------------------------------------------------------------
@@ -93,7 +98,8 @@ public class GuildMessageProcessingService {
     }
 
     private List<ModerationMessage> getMessagesBetween(OffsetDateTime from, OffsetDateTime to) {
-        return messages.values().stream()
+        List<ModerationMessage> snapshot = new ArrayList<>(messages.values());
+        return snapshot.stream()
                 .filter(msg -> {
                     OffsetDateTime t = arrivalTime(msg);
                     return !t.isBefore(from) && (to == null || t.isBefore(to));
@@ -115,31 +121,59 @@ public class GuildMessageProcessingService {
         arrivalTimes.clear();
     }
 
+    public void removeMessages(Collection<MessageID> messageIds) {
+        for (MessageID messageId : messageIds) {
+            messages.remove(messageId);
+            arrivalTimes.remove(messageId);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Processing
     // -------------------------------------------------------------------------
 
     /** Full pipeline: fetch context, call AI, apply actions. */
     public boolean runPipeline() {
-        List<ActionData> actions = getActionDataFromAI();
-        if (actions.isEmpty()) return false;
-        
+        List<ModerationMessage> currentMessages = getQueuedMessagesSnapshot();
+        if (currentMessages.isEmpty()) {
+            logger.debug("Skipping AI pipeline for guild {} because queue is empty", guildId.value());
+            return true;
+        }
+
+        logger.info("Running AI pipeline for guild {} with {} queued messages", guildId.value(), currentMessages.size());
+
+        List<ActionData> actions = getActionDataFromAI(currentMessages);
+        Set<MessageID> processedIds = currentMessages.stream()
+                .map(ModerationMessage::messageId)
+                .collect(Collectors.toSet());
+
+        if (actions.isEmpty()) {
+            removeMessages(processedIds);
+            return false;
+        }
+
         // log actions to database
         actions.parallelStream().forEach(
                 action -> GuildModerationActionsRepository.getInstance().
                 addActionToDatabase(action));
 
         // Now handle the actions and then return true if success and false if failed.
-        return actions.parallelStream()
-            .map(actionData -> {
-                return ActionHandler.getInstance().processAction(actionData);
-            })
+        boolean success = actions.parallelStream()
+            .map(ActionHandler.getInstance()::processAction)
             .reduce(true, Boolean::logicalAnd);
+
+        removeMessages(processedIds);
+        return success;
     }
 
-    private List<ActionData> getActionDataFromAI() {
-        List<ModerationMessage> currentMessages = getCurrentMessages();
-        if (currentMessages.isEmpty()) return List.of();
+    private List<ModerationMessage> getQueuedMessagesSnapshot() {
+        List<ModerationMessage> snapshot = new ArrayList<>(messages.values());
+        return snapshot.stream()
+                .sorted(Comparator.comparing(this::arrivalTime))
+                .toList();
+    }
+
+    private List<ActionData> getActionDataFromAI(List<ModerationMessage> currentMessages) {
 
         List<ModerationMessage> historyMessages = fetchHistoryContextFromDiscord(currentMessages);
 
@@ -158,6 +192,8 @@ public class GuildMessageProcessingService {
         ChatCompletionMessageParam systemPrompt;
         ResponseFormatJsonSchema schema;
         String response;
+
+        logger.info("Creating datastructures for AI Input");
 
         try {
             inputs = GuildModerationBatchToAIInput.createMessageFromGuildModerationBatch(batch);
@@ -181,9 +217,15 @@ public class GuildMessageProcessingService {
         }
 
         try {
+            logger.info("Submitting moderation batch for guild {} to LLM", guildId.value());
             response = InferenceEngine.getInstance().generateResponse(List.of(systemPrompt, inputs), schema).get();
         } catch (ExecutionException | InterruptedException e) {
             logger.error("Failed to generate response for guild {}", guildId, e);
+            return List.of();
+        }
+
+        if (response == null || response.isBlank()) {
+            logger.warn("LLM returned empty response for guild {}", guildId.value());
             return List.of();
         }
 
