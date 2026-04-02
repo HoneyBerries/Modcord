@@ -13,9 +13,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -24,12 +21,6 @@ import java.util.regex.Pattern;
  * <p>On each bot startup (or per task cycle), {@link #setupGuild(Guild)} is
  * called for every guild the bot is in. It attempts to resolve the rules and
  * audit-log channels and persists whatever it finds to {@link GuildPreferencesRepository}.
- *
- * <p>Guilds for which <em>neither</em> channel can be resolved are added to an
- * in-memory {@code unresolvableGuilds} set so the task scheduler stops
- * retrying them every cycle. The set is cleared on bot restart, so a server
- * reconfiguration is always picked up after a redeploy. Individual entries can
- * also be cleared via {@link #clearUnresolvable(Guild)}.
  */
 public class Onboarding {
 
@@ -51,23 +42,27 @@ public class Onboarding {
 
     private static final Logger logger = LoggerFactory.getLogger(Onboarding.class);
 
+    /**
+     * Matches common rules/guidelines channel names.
+     * Covers: rules, rule, guidelines, guideline, conduct, code-of-conduct, tos.
+     */
     private static final Pattern RULES_PATTERN = Pattern.compile(
-            "(?i)\\brules?\\b"
+            "(?i)\\b(?:rules?|guidelines?|conduct|tos)\\b"
     );
-    private static final Pattern AUDIT_PATTERN = Pattern.compile(
-            "(?i)\\b(audit[- ]?log|mod[- ]?log)s?\\b"
-    );
-
-    // ---------------------------------------------------------------
-    // State
-    // ---------------------------------------------------------------
 
     /**
-     * Guilds that have been permanently marked as unresolvable this runtime.
-     * Prevents repeated backfill attempts on every task cycle for guilds that
-     * will never succeed (e.g. ambiguous channels, no community setup).
+     * Matches common moderation log channel names.
+     * The {@code [- ]?} between segments allows for optional hyphens (Discord
+     * convention) or no separator at all (e.g. "modlogs", "auditlog").
+     *
+     * <p>Covers: audit-log/s, mod-log/s, modlogs, moderation-log/s, staff-log/s,
+     * admin-log/s, action-log/s, bot-log/s, case-log/s, punishment-log/s,
+     * infraction-log/s and variants without hyphens.
      */
-    private final Set<Long> unresolvableGuilds = ConcurrentHashMap.newKeySet();
+    private static final Pattern AUDIT_PATTERN = Pattern.compile(
+            "(?i)\\b(?:audit|mod(?:eration)?|staff|admin|action|bot|case|punishment|infraction)[- ]?logs?\\b"
+    );
+
 
     // ---------------------------------------------------------------
     // Public API
@@ -94,9 +89,7 @@ public class Onboarding {
         preferences = applyAuditChannel(guild, preferences);
 
         if (preferences.rulesChannelID() == null && preferences.auditLogChannelId() == null) {
-            logger.warn("[{}] Neither rules nor audit channel could be resolved — " +
-                    "suppressing further backfill attempts until restart.", guild.getName());
-            unresolvableGuilds.add(guild.getIdLong());
+            logger.warn("[{}] Neither rules nor audit channel could be resolved", guild.getName());
         }
 
         boolean persisted = repository.addOrUpdateGuildPreferences(preferences);
@@ -107,23 +100,6 @@ public class Onboarding {
         return persisted;
     }
 
-    /**
-     * Returns {@code true} if this guild has been determined to be unresolvable
-     * this runtime, meaning {@link #setupGuild(Guild)} should be skipped.
-     */
-    public boolean isUnresolvable(@NotNull Guild guild) {
-        return unresolvableGuilds.contains(guild.getIdLong());
-    }
-
-    /**
-     * Clears the unresolvable cache entry for a specific guild so the next
-     * task cycle retries resolution. Call this when an admin updates
-     * preferences manually.
-     */
-    public void clearUnresolvable(@NotNull Guild guild) {
-        unresolvableGuilds.remove(guild.getIdLong());
-        logger.info("[{}] Cleared unresolvable cache entry — will retry on next cycle.", guild.getName());
-    }
 
     // ---------------------------------------------------------------
     // Preference application
@@ -212,10 +188,10 @@ public class Onboarding {
                 .max(Comparator.comparingInt(this::scoreRulesChannel))
                 .orElse(null);
 
-        logger.warn("[{}] Ambiguous rules channel — {} matches; selected #{} via heuristic scoring {}",
+        logger.warn("[{}] Ambiguous rules channel — {} matches; selected #{} via heuristic scoring: {}",
                 guild.getName(),
                 matches.size(),
-                best != null ? best.getName() : "none",
+                best.getName(),
                 matches.stream().map(c -> c.getName() + "=" + scoreRulesChannel(c)).toList()
         );
 
@@ -223,35 +199,11 @@ public class Onboarding {
     }
 
     /**
-     * Scores a candidate rules channel. Higher scores are more likely to be
-     * the canonical rules channel.
-     *
-     * <ul>
-     *   <li>+3 — exact name match ({@code "rules"})</li>
-     *   <li>+2 — name starts with {@code "rules"}</li>
-     *   <li>penalty — name length (shorter = more canonical)</li>
-     *   <li>penalty — channel position (lower position = higher in sidebar = more prominent)</li>
-     * </ul>
-     */
-    private int scoreRulesChannel(@NotNull TextChannel channel) {
-        String name = channel.getName().toLowerCase();
-        int score = 0;
-
-        if (name.equals("rules"))         score += 3;
-        else if (name.startsWith("rules")) score += 2;
-
-        score -= name.length();
-        score -= channel.getPosition();
-
-        return score;
-    }
-
-    /**
      * Resolves the audit-log channel for a guild using the following priority:
      * <ol>
      *   <li>Guild's community safety alerts channel.</li>
-     *   <li>Regex match — if exactly one match, use it; if ambiguous, fall
-     *       back to the guild's default channel.</li>
+     *   <li>Regex match — if exactly one match, use it; if ambiguous, pick the
+     *       best candidate via {@link #scoreAuditChannel(TextChannel)}.</li>
      *   <li>{@code null}.</li>
      * </ol>
      */
@@ -278,15 +230,111 @@ public class Onboarding {
             return matches.getFirst();
         }
 
-        // Ambiguous — fall back to the guild's default channel
-        TextChannel defaultChannel = Objects.requireNonNull(guild.getDefaultChannel()).asTextChannel();
-        logger.warn("[{}] Ambiguous audit channel — {} matches; falling back to default channel #{}: {}",
+        // Ambiguous — score and pick the best candidate (mirrors rules resolution)
+        TextChannel best = matches.stream()
+                .max(Comparator.comparingInt(this::scoreAuditChannel))
+                .orElse(null);
+
+        logger.warn("[{}] Ambiguous audit channel — {} matches; selected #{} via heuristic scoring: {}",
                 guild.getName(),
                 matches.size(),
-                defaultChannel.getName(),
-                matches.stream().map(TextChannel::getName).toList()
+                best.getName(),
+                matches.stream().map(c -> c.getName() + "=" + scoreAuditChannel(c)).toList()
         );
 
-        return defaultChannel;
+        return best;
+    }
+
+    // ---------------------------------------------------------------
+    // Channel scoring
+    // ---------------------------------------------------------------
+
+    /**
+     * Scores a candidate rules channel. Higher scores indicate a more likely
+     * canonical rules channel. Tiers are mutually exclusive — only the highest
+     * matching tier contributes, preventing accidental score stacking.
+     *
+     * <ul>
+     *   <li>Tier 1 (+10/+8/+7) — exact canonical names: {@code rules},
+     *       {@code guidelines}, {@code conduct}, {@code tos}</li>
+     *   <li>Tier 2 (+9/+7/+6) — strong compound forms: {@code server-rules},
+     *       {@code guild-rules}; ends/starts with {@code -rules};
+     *       starts with {@code rules}</li>
+     *   <li>Tier 3 (+4/+3) — keyword present anywhere in the name</li>
+     *   <li>Penalty — name length (shorter = more canonical) and sidebar
+     *       position (lower index = higher in sidebar = more prominent)</li>
+     * </ul>
+     */
+    private int scoreRulesChannel(@NotNull TextChannel channel) {
+        String name = channel.getName().toLowerCase();
+        int score = 0;
+
+        // Tier 1 — exact canonical names
+        if      (name.equals("rules"))       score += 10;
+        else if (name.equals("guidelines"))  score += 8;
+        else if (name.equals("conduct"))     score += 7;
+        else if (name.equals("tos"))         score += 7;
+
+        // Tier 2 — strong compound forms
+        else if (name.equals("server-rules") || name.equals("guild-rules")) score += 9;
+        else if (name.startsWith("rules-") || name.endsWith("-rules"))      score += 7;
+        else if (name.startsWith("rules"))                                   score += 6;
+
+        // Tier 3 — keyword present somewhere in the name
+        else if (name.contains("rules"))      score += 4;
+        else if (name.contains("guidelines")) score += 3;
+        else if (name.contains("conduct"))    score += 3;
+
+        // Penalise verbosity and lower sidebar position
+        score -= name.length() / 3;
+        score -= channel.getPosition() / 5;
+
+        return score;
+    }
+
+    /**
+     * Scores a candidate audit-log channel. Higher scores indicate a more
+     * likely canonical mod/audit log. Tiers are mutually exclusive.
+     *
+     * <ul>
+     *   <li>Tier 1 (+10/+9) — exact {@code mod-log}, {@code modlog},
+     *       {@code audit-log}, {@code auditlog} and their {@code -logs} plurals</li>
+     *   <li>Tier 2 (+7) — starts with the most common prefixes
+     *       (mod-log*, audit-log*, moderation-log*)</li>
+     *   <li>Tier 3 (+5/+4/+3) — contains recognised paired keywords
+     *       (e.g. "mod" + "log", "staff" + "log")</li>
+     *   <li>Penalty — name length only; sidebar position is omitted because
+     *       staff/audit channels are often intentionally placed lower and
+     *       penalising them by position would backfire</li>
+     * </ul>
+     */
+    private int scoreAuditChannel(@NotNull TextChannel channel) {
+        String name = channel.getName().toLowerCase();
+        int score = 0;
+
+        // Tier 1 — exact canonical names (singular and plural)
+        if      (name.equals("mod-log")    || name.equals("modlog"))    score += 10;
+        else if (name.equals("mod-logs")   || name.equals("modlogs"))   score += 9;
+        else if (name.equals("audit-log")  || name.equals("auditlog"))  score += 10;
+        else if (name.equals("audit-logs") || name.equals("auditlogs")) score += 9;
+
+        // Tier 2 — starts with the most common prefixes
+        else if (name.startsWith("mod-log")        || name.startsWith("modlog"))        score += 7;
+        else if (name.startsWith("audit-log")      || name.startsWith("auditlog"))      score += 7;
+        else if (name.startsWith("moderation-log") || name.startsWith("moderationlog")) score += 7;
+
+        // Tier 3 — other recognised paired keyword combinations
+        else if (name.contains("mod")        && name.contains("log")) score += 5;
+        else if (name.contains("audit")      && name.contains("log")) score += 5;
+        else if (name.contains("staff")      && name.contains("log")) score += 4;
+        else if (name.contains("admin")      && name.contains("log")) score += 4;
+        else if (name.contains("action")     && name.contains("log")) score += 3;
+        else if (name.contains("punishment") && name.contains("log")) score += 3;
+        else if (name.contains("case")       && name.contains("log")) score += 3;
+
+        // Penalise verbosity only
+        score -= name.length() / 4;
+
+        return score;
     }
 }
