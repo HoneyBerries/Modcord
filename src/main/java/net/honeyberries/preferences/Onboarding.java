@@ -6,15 +6,50 @@ import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
+/**
+ * Handles first-time guild setup and channel resolution for Modcord.
+ *
+ * <p>On each bot startup (or per task cycle), {@link #setupGuild(Guild)} is
+ * called for every guild the bot is in. It attempts to resolve the rules and
+ * audit-log channels and persists whatever it finds to {@link GuildPreferencesRepository}.
+ *
+ * <p>Guilds for which <em>neither</em> channel can be resolved are added to an
+ * in-memory {@code unresolvableGuilds} set so the task scheduler stops
+ * retrying them every cycle. The set is cleared on bot restart, so a server
+ * reconfiguration is always picked up after a redeploy. Individual entries can
+ * also be cleared via {@link #clearUnresolvable(Guild)}.
+ */
 public class Onboarding {
 
-    public static final Onboarding INSTANCE = new Onboarding();
-    private static final Logger logger = org.slf4j.LoggerFactory.getLogger(Onboarding.class);
+    // ---------------------------------------------------------------
+    // Singleton
+    // ---------------------------------------------------------------
+
+    private static final Onboarding INSTANCE = new Onboarding();
+
+    private Onboarding() {}
+
+    public static Onboarding getInstance() {
+        return INSTANCE;
+    }
+
+    // ---------------------------------------------------------------
+    // Constants
+    // ---------------------------------------------------------------
+
+    private static final Logger logger = LoggerFactory.getLogger(Onboarding.class);
 
     private static final Pattern RULES_PATTERN = Pattern.compile(
             "(?i)\\brules?\\b"
@@ -23,51 +58,134 @@ public class Onboarding {
             "(?i)\\b(audit[- ]?log|mod[- ]?log)s?\\b"
     );
 
-    public static Onboarding getInstance() {
-        return INSTANCE;
-    }
-
+    // ---------------------------------------------------------------
+    // State
     // ---------------------------------------------------------------
 
-    public boolean setupGuild(Guild guild) {
+    /**
+     * Guilds that have been permanently marked as unresolvable this runtime.
+     * Prevents repeated backfill attempts on every task cycle for guilds that
+     * will never succeed (e.g. ambiguous channels, no community setup).
+     */
+    private final Set<Long> unresolvableGuilds = ConcurrentHashMap.newKeySet();
+
+    // ---------------------------------------------------------------
+    // Public API
+    // ---------------------------------------------------------------
+
+    /**
+     * Attempts to resolve the rules and audit-log channels for the given guild
+     * and persists the result. Existing preferences are preserved — only unset
+     * fields are filled in.
+     *
+     * @param guild the guild to set up
+     * @return {@code true} if preferences were successfully persisted
+     */
+    public boolean setupGuild(@NotNull Guild guild) {
         GuildID guildID = GuildID.fromGuild(guild);
-        GuildPreferences defaultPreferences = GuildPreferences.defaults(guildID);
+        GuildPreferencesRepository repository = GuildPreferencesRepository.getInstance();
 
-        TextChannel rulesChannel = resolveRulesChannel(guild);
-        TextChannel auditChannel = resolveAuditChannel(guild);
-
-        if (rulesChannel != null) {
-            logger.info("[{}] Rules channel resolved: #{}", guild.getName(), rulesChannel.getName());
-            defaultPreferences = defaultPreferences.withRulesChannelId(ChannelID.fromChannel(rulesChannel));
-        } else {
-            logger.warn("[{}] No rules channel could be resolved — leaving unset.", guild.getName());
+        GuildPreferences preferences = repository.getGuildPreferences(guildID);
+        if (preferences == null) {
+            preferences = GuildPreferences.defaults(guildID);
         }
 
-        if (auditChannel != null) {
-            logger.info("[{}] Audit channel resolved: #{}", guild.getName(), auditChannel.getName());
-            defaultPreferences = defaultPreferences.withAuditLogChannelId(ChannelID.fromChannel(auditChannel));
-        } else {
-            logger.warn("[{}] No audit channel could be resolved — leaving unset.", guild.getName());
+        preferences = applyRulesChannel(guild, preferences);
+        preferences = applyAuditChannel(guild, preferences);
+
+        if (preferences.rulesChannelID() == null && preferences.auditLogChannelId() == null) {
+            logger.warn("[{}] Neither rules nor audit channel could be resolved — " +
+                    "suppressing further backfill attempts until restart.", guild.getName());
+            unresolvableGuilds.add(guild.getIdLong());
         }
 
-        boolean persisted = GuildPreferencesRepository.getInstance().addOrUpdateGuildPreferences(defaultPreferences);
+        boolean persisted = repository.addOrUpdateGuildPreferences(preferences);
         if (!persisted) {
-            logger.error("[{}] Failed to persist default guild preferences", guild.getName());
+            logger.error("[{}] Failed to persist guild preferences.", guild.getName());
         }
 
         return persisted;
     }
 
+    /**
+     * Returns {@code true} if this guild has been determined to be unresolvable
+     * this runtime, meaning {@link #setupGuild(Guild)} should be skipped.
+     */
+    public boolean isUnresolvable(@NotNull Guild guild) {
+        return unresolvableGuilds.contains(guild.getIdLong());
+    }
+
+    /**
+     * Clears the unresolvable cache entry for a specific guild so the next
+     * task cycle retries resolution. Call this when an admin updates
+     * preferences manually.
+     */
+    public void clearUnresolvable(@NotNull Guild guild) {
+        unresolvableGuilds.remove(guild.getIdLong());
+        logger.info("[{}] Cleared unresolvable cache entry — will retry on next cycle.", guild.getName());
+    }
+
+    // ---------------------------------------------------------------
+    // Preference application
     // ---------------------------------------------------------------
 
     /**
-     * Resolution order:
-     *   1. Guild's community rules channel (well-defined, set by server admins)
-     *   2. Regex match — but ONLY if exactly one channel matches
-     *   3. null
+     * Resolves the rules channel and returns updated preferences. If a rules
+     * channel is already set, the existing mapping is preserved.
      */
-    private TextChannel resolveRulesChannel(Guild guild) {
+    @NotNull
+    private GuildPreferences applyRulesChannel(@NotNull Guild guild, @NotNull GuildPreferences preferences) {
+        if (preferences.rulesChannelID() != null) {
+            logger.debug("[{}] Keeping existing rules channel mapping.", guild.getName());
+            return preferences;
+        }
 
+        TextChannel channel = resolveRulesChannel(guild);
+        if (channel != null) {
+            logger.info("[{}] Rules channel resolved: #{}", guild.getName(), channel.getName());
+            return preferences.withRulesChannelId(ChannelID.fromChannel(channel));
+        }
+
+        logger.warn("[{}] No rules channel could be resolved — leaving unset.", guild.getName());
+        return preferences;
+    }
+
+    /**
+     * Resolves the audit-log channel and returns updated preferences. If an
+     * audit channel is already set, the existing mapping is preserved.
+     */
+    @NotNull
+    private GuildPreferences applyAuditChannel(@NotNull Guild guild, @NotNull GuildPreferences preferences) {
+        if (preferences.auditLogChannelId() != null) {
+            logger.debug("[{}] Keeping existing audit channel mapping.", guild.getName());
+            return preferences;
+        }
+
+        TextChannel channel = resolveAuditChannel(guild);
+        if (channel != null) {
+            logger.info("[{}] Audit channel resolved: #{}", guild.getName(), channel.getName());
+            return preferences.withAuditLogChannelId(ChannelID.fromChannel(channel));
+        }
+
+        logger.warn("[{}] No audit channel could be resolved — leaving unset.", guild.getName());
+        return preferences;
+    }
+
+    // ---------------------------------------------------------------
+    // Channel resolution
+    // ---------------------------------------------------------------
+
+    /**
+     * Resolves the rules channel for a guild using the following priority:
+     * <ol>
+     *   <li>Guild's designated community rules channel.</li>
+     *   <li>Regex match — if exactly one match, use it; if ambiguous, pick the
+     *       best candidate via {@link #scoreRulesChannel(TextChannel)}.</li>
+     *   <li>{@code null} — no safe fallback exists for rules channels.</li>
+     * </ol>
+     */
+    @Nullable
+    private TextChannel resolveRulesChannel(@NotNull Guild guild) {
         // 1. Community rules channel
         TextChannel communityRules = guild.getRulesChannel();
         if (communityRules != null) {
@@ -75,39 +193,70 @@ public class Onboarding {
             return communityRules;
         }
 
-        // 2. Regex — only accept an unambiguous single match
-        List<TextChannel> regexMatches = guild.getTextChannels().stream()
+        // 2. Regex
+        List<TextChannel> matches = guild.getTextChannels().stream()
                 .filter(c -> RULES_PATTERN.matcher(c.getName()).find())
                 .toList();
 
-        if (regexMatches.size() == 1) {
-            logger.debug("[{}] Rules channel found via regex: #{}", guild.getName(), regexMatches.getFirst().getName());
-            return regexMatches.getFirst();
+        if (matches.isEmpty()) {
+            return null;
         }
 
-        if (regexMatches.size() > 1) {
-            logger.warn("[{}] Ambiguous rules channel — {} matches found via regex, leaving unset: {}",
-                    guild.getName(),
-                    regexMatches.size(),
-                    regexMatches.stream().map(TextChannel::getName).toList()
-            );
+        if (matches.size() == 1) {
+            logger.debug("[{}] Rules channel found via regex: #{}", guild.getName(), matches.getFirst().getName());
+            return matches.getFirst();
         }
 
-        // 3. Unset
-        return null;
+        // Ambiguous — score and pick the best candidate
+        TextChannel best = matches.stream()
+                .max(Comparator.comparingInt(this::scoreRulesChannel))
+                .orElse(null);
+
+        logger.warn("[{}] Ambiguous rules channel — {} matches; selected #{} via heuristic scoring {}",
+                guild.getName(),
+                matches.size(),
+                best != null ? best.getName() : "none",
+                matches.stream().map(c -> c.getName() + "=" + scoreRulesChannel(c)).toList()
+        );
+
+        return best;
     }
 
-    // ---------------------------------------------------------------
+    /**
+     * Scores a candidate rules channel. Higher scores are more likely to be
+     * the canonical rules channel.
+     *
+     * <ul>
+     *   <li>+3 — exact name match ({@code "rules"})</li>
+     *   <li>+2 — name starts with {@code "rules"}</li>
+     *   <li>penalty — name length (shorter = more canonical)</li>
+     *   <li>penalty — channel position (lower position = higher in sidebar = more prominent)</li>
+     * </ul>
+     */
+    private int scoreRulesChannel(@NotNull TextChannel channel) {
+        String name = channel.getName().toLowerCase();
+        int score = 0;
+
+        if (name.equals("rules"))         score += 3;
+        else if (name.startsWith("rules")) score += 2;
+
+        score -= name.length();
+        score -= channel.getPosition();
+
+        return score;
+    }
 
     /**
-     * Resolution order:
-     *   1. Guild's community safety alerts channel (moderator-only, well-defined)
-     *   2. Regex match on channel name
-     *   3. Guild's general channel
-     *   4. null
+     * Resolves the audit-log channel for a guild using the following priority:
+     * <ol>
+     *   <li>Guild's community safety alerts channel.</li>
+     *   <li>Regex match — if exactly one match, use it; if ambiguous, fall
+     *       back to the guild's default channel.</li>
+     *   <li>{@code null}.</li>
+     * </ol>
      */
-    private TextChannel resolveAuditChannel(Guild guild) {
-
+    @Nullable
+    private TextChannel resolveAuditChannel(@NotNull Guild guild) {
         // 1. Community safety/mod channel
         TextChannel safetyAlertsChannel = guild.getSafetyAlertsChannel();
         if (safetyAlertsChannel != null) {
@@ -115,25 +264,29 @@ public class Onboarding {
             return safetyAlertsChannel;
         }
 
-        // 2. Regex match
-        TextChannel regexMatch = guild.getTextChannels().stream()
+        // 2. Regex
+        List<TextChannel> matches = guild.getTextChannels().stream()
                 .filter(c -> AUDIT_PATTERN.matcher(c.getName()).find())
-                .findFirst()
-                .orElse(null);
+                .toList();
 
-        if (regexMatch != null) {
-            logger.debug("[{}] Audit channel found via regex: #{}", guild.getName(), regexMatch.getName());
-            return regexMatch;
+        if (matches.isEmpty()) {
+            return null;
         }
 
-        // 3. General channel fallback
-        TextChannel defaultChannel = guild.getDefaultChannel() instanceof TextChannel tc ? tc : null;
-        if (defaultChannel != null) {
-            logger.debug("[{}] Falling back to general channel for audit: #{}", guild.getName(), defaultChannel.getName());
-            return defaultChannel;
+        if (matches.size() == 1) {
+            logger.debug("[{}] Audit channel found via regex: #{}", guild.getName(), matches.getFirst().getName());
+            return matches.getFirst();
         }
 
-        // 4. Unset
-        return null;
+        // Ambiguous — fall back to the guild's default channel
+        TextChannel defaultChannel = Objects.requireNonNull(guild.getDefaultChannel()).asTextChannel();
+        logger.warn("[{}] Ambiguous audit channel — {} matches; falling back to default channel #{}: {}",
+                guild.getName(),
+                matches.size(),
+                defaultChannel.getName(),
+                matches.stream().map(TextChannel::getName).toList()
+        );
+
+        return defaultChannel;
     }
 }

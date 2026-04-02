@@ -64,7 +64,7 @@ public class ExcludeCommand extends ListenerAdapter {
         }
 
         Member member = event.getMember();
-        if (member == null || !member.hasPermission(Permission.ADMINISTRATOR)) {
+        if (member == null || !member.hasPermission(Permission.MANAGE_SERVER)) {
             reply(event, "You need **Administrator** permissions to use this command.");
             return;
         }

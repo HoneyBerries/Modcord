@@ -113,6 +113,17 @@ public class GuildRulesTask implements Runnable {
             }
 
             if (rulesChannelID == null) {
+                logger.debug("Rules channel missing for guild {} ({}), attempting onboarding backfill", guild.getName(), guildId.value());
+                boolean success = Onboarding.getInstance().setupGuild(guild);
+                if (!success) {
+                    logger.warn("Onboarding backfill failed for guild {} ({})", guild.getName(), guildId.value());
+                } else {
+                    GuildPreferences latestPreferences = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
+                    rulesChannelID = latestPreferences != null ? latestPreferences.rulesChannelID() : null;
+                }
+            }
+
+            if (rulesChannelID == null) {
                 logger.debug("No rules channel configured for guild: {} ({}), storing unconfigured state", guild.getName(), guildId.value());
                 boolean success = GuildRulesRepository.getInstance()
                     .addOrReplaceGuildRulesToDatabase(new GuildRules(guildId, null, null));

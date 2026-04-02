@@ -50,7 +50,7 @@ public class DebugCommands extends ListenerAdapter {
 
         SlashCommandData debugCommand = Commands.slash("debug", "Debug and admin commands")
                 .addSubcommands(refreshSub, showSub, purgeSub)
-                .setDefaultPermissions(DefaultMemberPermissions.enabledFor(Permission.ADMINISTRATOR));
+                .setDefaultPermissions(DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER));
 
         commands.addCommands(debugCommand);
         logger.info("Debug commands added to command registration");
