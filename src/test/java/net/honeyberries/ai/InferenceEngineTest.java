@@ -2,10 +2,7 @@ package net.honeyberries.ai;
 
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.*;
 
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -13,6 +10,7 @@ import java.util.concurrent.ExecutionException;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Inference Engine Test")
+@Disabled("This test requires an OpenAI API key to be set in the environment variables")
 class InferenceEngineTest {
     
     private InferenceEngine inferenceEngine;

@@ -108,6 +108,19 @@ public class Main {
         logger.info("Stopping tasks");
         if (scheduler != null) {
             scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(15, TimeUnit.SECONDS)) {
+                    logger.warn("Scheduled tasks did not stop in time, forcing shutdown");
+                    scheduler.shutdownNow();
+                    if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                        logger.warn("Scheduled tasks are still running after forced shutdown");
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.warn("Interrupted while waiting for scheduler shutdown, forcing cancellation");
+                scheduler.shutdownNow();
+            }
         }
 
         logger.info("Dropping pending moderation queues");

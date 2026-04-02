@@ -36,13 +36,13 @@ public class DebugCommands extends ListenerAdapter {
 
     public void registerDebugCommands(CommandListUpdateAction commands) {
         SubcommandData refreshSub = new SubcommandData(
-                "refresh-rules-and-guidelines",
-                "Refreshes the rules and guidelines in the configured channel"
+                "refresh-rules",
+                "Refreshes the rules from the configured channel"
         );
 
         SubcommandData showSub = new SubcommandData(
-                "show-rules-and-guidelines",
-                "Shows the current rules and guidelines"
+                "show-rules",
+                "Shows the current rules"
         );
 
         SubcommandData purgeSub = new SubcommandData("purge", "Deletes and recreates a channel")
@@ -74,18 +74,20 @@ public class DebugCommands extends ListenerAdapter {
 
         String commandName = event.getSubcommandName();
         switch (Objects.requireNonNull(commandName)) {
-            case "refresh-rules-and-guidelines" -> handleRefreshRulesAndGuidelines(event);
-            case "show-rules-and-guidelines" -> handleShowRulesAndGuidelines(event);
+            case "refresh-rules" -> handleRefreshRules(event);
+            case "show-rules" -> handleShowRules(event);
             case "purge" -> handlePurge(event);
             default -> event.reply("Unknown command").setEphemeral(true).queue();
         }
     }
 
-    private void handleRefreshRulesAndGuidelines(@NotNull SlashCommandInteractionEvent event) {
+    private void handleRefreshRules(@NotNull SlashCommandInteractionEvent event) {
         try {
             Guild guild = Objects.requireNonNull(event.getGuild());
             GuildID guildId = new GuildID(guild.getIdLong());
             GuildRules rules = refreshRulesFromDiscord(guild, guildId);
+
+            GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(rules);
 
             if (rules == null || rules.rulesText() == null || rules.rulesText().isBlank()) {
                 event.reply("No rules found in the configured rules channel. Check channel ID, permissions, and channel content.")
@@ -94,15 +96,15 @@ public class DebugCommands extends ListenerAdapter {
                 return;
             }
 
-            event.reply("Rules and guidelines text refreshed successfully!").setEphemeral(true).queue();
+            event.reply("Rules refreshed successfully!").setEphemeral(true).queue();
             logger.debug("Refreshed rules for guild: {}", guildId.value());
         } catch (Exception e) {
-            logger.error("Error refreshing rules and guidelinesText", e);
-            event.reply("Failed to refresh rules and guidelinesText").setEphemeral(true).queue();
+            logger.error("Error refreshing rules", e);
+            event.reply("Failed to refresh rules").setEphemeral(true).queue();
         }
     }
 
-    private void handleShowRulesAndGuidelines(@NotNull SlashCommandInteractionEvent event) {
+    private void handleShowRules(@NotNull SlashCommandInteractionEvent event) {
         try {
             Guild guild = Objects.requireNonNull(event.getGuild());
             GuildID guildId = new GuildID(guild.getIdLong());
@@ -120,8 +122,8 @@ public class DebugCommands extends ListenerAdapter {
             event.reply(message).setEphemeral(true).queue();
             logger.debug("Showed rules for guild: {}", guildId.value());
         } catch (Exception e) {
-            logger.error("Error showing rules and guidelinesText", e);
-            event.reply("Failed to retrieve rules and guidelinesText").setEphemeral(true).queue();
+            logger.error("Error showing rules", e);
+            event.reply("Failed to retrieve rules").setEphemeral(true).queue();
         }
     }
 
@@ -139,7 +141,7 @@ public class DebugCommands extends ListenerAdapter {
             return existingRules;
         }
 
-        String refreshedRulesText = getGuildRulesFromDiscord(guild, rulesChannelId);
+        String refreshedRulesText = fetchRulesTextFromChannel(guild, rulesChannelId);
         if (refreshedRulesText == null || refreshedRulesText.isBlank()) {
             return new GuildRules(guildId, rulesChannelId, null);
         }
@@ -153,7 +155,7 @@ public class DebugCommands extends ListenerAdapter {
     }
 
     @Nullable
-    private String getGuildRulesFromDiscord(@NotNull Guild guild, @NotNull ChannelID rulesChannelId) {
+    private String fetchRulesTextFromChannel(@NotNull Guild guild, @NotNull ChannelID rulesChannelId) {
         Channel rulesChannel = guild.getGuildChannelById(rulesChannelId.value());
         if (!(rulesChannel instanceof TextChannel rulesTextChannel)) {
             return null;

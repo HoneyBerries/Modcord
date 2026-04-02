@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.honeyberries.database.Database;
 import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.database.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
@@ -13,6 +14,7 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.message.EmbedParser;
 import net.honeyberries.discord.JDAManager;
+import net.honeyberries.preferences.Onboarding;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +44,11 @@ public class GuildRulesTask implements Runnable {
     @Override
     public void run() {
         logger.info("GuildRulesTask started");
+
+        if (!Database.getInstance().isHealthy()) {
+            logger.warn("Skipping GuildRulesTask because database is unavailable");
+            return;
+        }
 
         JDA jda = JDAManager.getInstance().getJDA();
 
@@ -84,13 +91,11 @@ public class GuildRulesTask implements Runnable {
                 .getGuildPreferences(guildId);
             
             if (existingPreferences == null) {
-                logger.debug("Guild {} not found in database, creating default preferences", guildId.value());
-                GuildPreferences defaultPreferences = new GuildPreferences(guildId);
-                boolean preferencesCreated = GuildPreferencesRepository.getInstance()
-                    .addOrUpdateGuildPreferences(defaultPreferences);
+                logger.debug("Guild {} not found in database, onboarding with    default preferences", guildId.value());
 
-                if (!preferencesCreated) {
-                    logger.warn("Failed to create guild preferences for guild: {}, skipping rules update", guildId.value());
+                boolean success = Onboarding.getInstance().setupGuild(guild);
+                if (!success) {
+                    logger.error("Failed to onboard guild {}", guild.getName());
                     return UpdateOutcome.FAILED;
                 }
             }

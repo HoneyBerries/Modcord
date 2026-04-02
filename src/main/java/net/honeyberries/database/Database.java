@@ -56,8 +56,8 @@ public class Database {
     private static final Logger logger = LoggerFactory.getLogger(Database.class);
     private static final Database INSTANCE = new Database();
 
-    private HikariDataSource dataSource;
-    private boolean initialized = false;
+    private volatile HikariDataSource dataSource;
+    private volatile boolean initialized = false;
 
 
     /** Returns the singleton instance. */
