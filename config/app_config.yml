@@ -3,10 +3,10 @@
 database:
   # PostgreSQL database URL (host, port, database name)
   # Format: jdbc:postgresql://host:port/database
-  url: "jdbc:postgresql://modcord-test-db.postgres.database.azure.com:5432/postgres"
+  url: "jdbc:postgresql://modcord-postgres-prod.postgres.database.azure.com:5432/postgres"
   
   # PostgreSQL database username
-  username: "ModcordTestAdmin"
+  username: "ModcordDBAdmin"
   
   # Database password — loaded from environment variable (see PASSWORD env var handling below)
   # DO NOT put the password here. Use the POSTGRES_DB_PASSWORD environment variable instead.
