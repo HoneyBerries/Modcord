@@ -17,11 +17,7 @@ import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.content.ModerationUser;
 import net.honeyberries.datatypes.content.ModerationUserChannel;
 import net.honeyberries.datatypes.content.GuildModerationBatch;
-import net.honeyberries.datatypes.discord.ChannelID;
-import net.honeyberries.datatypes.discord.DiscordUsername;
-import net.honeyberries.datatypes.discord.MessageID;
-import net.honeyberries.datatypes.discord.UserID;
-import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.discord.*;
 import net.honeyberries.message.HistoryFetcher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -478,7 +474,7 @@ public class GuildMessageProcessingService {
 
             result.add(new ModerationUser(
                     userId,
-                    new DiscordUsername(userId, member.getEffectiveName()),
+                    new DiscordUser(userId, member.getEffectiveName()),
                     member.getTimeJoined().toLocalDateTime(),
                     member,
                     guild,

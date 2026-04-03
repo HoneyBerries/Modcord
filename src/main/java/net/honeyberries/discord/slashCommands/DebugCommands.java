@@ -6,13 +6,13 @@ import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.build.*;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.database.GuildRulesRepository;
+import net.honeyberries.database.SpecialUsersRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -65,10 +65,9 @@ public class DebugCommands extends ListenerAdapter {
                 .addOptions(new OptionData(OptionType.CHANNEL, "channel", "Channel to delete and recreate", true));
 
         SlashCommandData debugCommand = Commands.slash("debug", "Debug and admin commands")
-                .addSubcommands(refreshSub, showSub, purgeSub)
-                .setDefaultPermissions(DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER));
+                .addSubcommands(refreshSub, showSub, purgeSub);
 
-        commands.addCommands(debugCommand);
+        Objects.requireNonNull(commands.addCommands(debugCommand));
         logger.info("Debug commands added to command registration");
     }
 
@@ -94,7 +93,11 @@ public class DebugCommands extends ListenerAdapter {
             return;
         }
 
-        if (event.getMember() != null && !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+        boolean hasPermission = event.getMember() != null
+                && (event.getMember().hasPermission(Permission.MANAGE_SERVER)
+                || SpecialUsersRepository.getInstance().isSpecialUser(event.getUser()));
+
+        if (!hasPermission) {
             event.reply("You need administrator permissions to use this command").setEphemeral(true).queue();
             return;
         }
@@ -318,13 +321,13 @@ public class DebugCommands extends ListenerAdapter {
             event.reply("Purging " + targetChannel.getAsMention() + "...").setEphemeral(true).queue();
 
             targetChannel.delete().queue(
-                deleted -> {
+                ignored -> {
                     assert guild != null;
                     guild.createTextChannel(channelName)
                             .setPosition(position)
                             .setTopic(topic)
                             .queue(
-                                newChannel -> logger.debug("Purged channel: {} in guild: {}", channelName, guild.getId()),
+                                ignoredChannel -> logger.debug("Purged channel: {} in guild: {}", channelName, guild.getId()),
                                 throwable -> logger.error("Failed to recreate channel", throwable)
                             );
                 },

@@ -3,10 +3,10 @@ package net.honeyberries.discord.slashCommands;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
+import net.honeyberries.database.SpecialUsersRepository;
 import net.honeyberries.Main;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -34,10 +34,9 @@ public class ShutdownCommand extends ListenerAdapter {
      */
     public void registerShutdownCommand(@NotNull CommandListUpdateAction commands) {
         Objects.requireNonNull(commands, "commands must not be null");
-        SlashCommandData shutdownCommand = Commands.slash("shutdown", "Gracefully shutdown the bot")
-                .setDefaultPermissions(DefaultMemberPermissions.enabledFor(Permission.ADMINISTRATOR));
+        SlashCommandData shutdownCommand = Commands.slash("shutdown", "Gracefully shutdown the bot");
 
-        commands.addCommands(shutdownCommand);
+        Objects.requireNonNull(commands.addCommands(shutdownCommand));
         logger.info("Registered /shutdown command");
     }
 
@@ -64,7 +63,8 @@ public class ShutdownCommand extends ListenerAdapter {
             return;
         }
 
-        if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+        if (event.getMember() == null || (!event.getMember().hasPermission(Permission.ADMINISTRATOR)
+                && !SpecialUsersRepository.getInstance().isSpecialUser(event.getUser()))) {
             event.reply("You need administrator permissions to use this command").setEphemeral(true).queue();
             return;
         }

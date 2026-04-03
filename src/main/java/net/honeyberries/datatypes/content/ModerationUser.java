@@ -2,7 +2,7 @@ package net.honeyberries.datatypes.content;
 
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
-import net.honeyberries.datatypes.discord.DiscordUsername;
+import net.honeyberries.datatypes.discord.DiscordUser;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,7 +17,7 @@ import java.util.Objects;
  */
 public record ModerationUser(
         @NotNull UserID userId,
-        @NotNull DiscordUsername username,
+        @NotNull DiscordUser username,
         @NotNull LocalDateTime joinDate,
         @NotNull Member discordMember,
         @NotNull Guild discordGuild,
@@ -55,7 +55,7 @@ public record ModerationUser(
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
-        if (!(obj instanceof ModerationUser(UserID uid, DiscordUsername un, LocalDateTime jd, Member _, Guild _, List<String> r, List<ModerationUserChannel> c))) return false;
+        if (!(obj instanceof ModerationUser(UserID uid, DiscordUser un, LocalDateTime jd, Member _, Guild _, List<String> r, List<ModerationUserChannel> c))) return false;
         return userId.equals(uid) && username.equals(un) && joinDate.equals(jd) && roles.equals(r) && channels.equals(c);
     }
 

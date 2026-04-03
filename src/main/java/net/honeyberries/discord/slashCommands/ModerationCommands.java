@@ -6,7 +6,6 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -15,6 +14,7 @@ import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.action.ActionHandler;
+import net.honeyberries.database.SpecialUsersRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -41,6 +41,7 @@ public class ModerationCommands extends ListenerAdapter {
     private static final String DEFAULT_REASON = "No reason provided.";
     private static final long MAX_TIMEOUT_MINUTES = 40_320; // Discord hard limit: 28 days.
     private static final long MAX_BAN_DAYS = 365;
+    private final SpecialUsersRepository specialUsersRepository = SpecialUsersRepository.getInstance();
 
     /**
      * Registers the moderation command and its subcommands with the Discord bot.
@@ -79,14 +80,9 @@ public class ModerationCommands extends ListenerAdapter {
                                         new OptionData(OptionType.USER, "user", "User to unban", true),
                                         new OptionData(OptionType.STRING, "reason", "Reason for the unban", false)
                                 )
-                )
-                .setDefaultPermissions(DefaultMemberPermissions.enabledFor(
-                        Permission.MODERATE_MEMBERS,
-                        Permission.KICK_MEMBERS,
-                        Permission.BAN_MEMBERS
-                ));
+                );
 
-        commands.addCommands(modCommand);
+        Objects.requireNonNull(commands.addCommands(modCommand));
         logger.info("Registered /mod commands");
     }
 
@@ -115,7 +111,8 @@ public class ModerationCommands extends ListenerAdapter {
         }
 
         Member moderator = event.getMember();
-        if (moderator == null || !hasAnyModerationPermission(moderator)) {
+        if (moderator == null || (!hasAnyModerationPermission(moderator)
+                && !specialUsersRepository.isSpecialUser(event.getUser()))) {
             reply(event, "You need moderation permissions to use this command.");
             return;
         }

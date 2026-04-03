@@ -15,6 +15,7 @@ import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.ExcludedUsersRepository;
+import net.honeyberries.database.SpecialUsersRepository;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.RoleID;
 import net.honeyberries.datatypes.discord.UserID;
@@ -62,7 +63,7 @@ public class ExcludeCommand extends ListenerAdapter {
                 );
 
 
-        commands.addCommands(excludeCommand);
+        Objects.requireNonNull(commands.addCommands(excludeCommand));
         logger.info("Registered /exclude commands");
     }
 
@@ -89,7 +90,8 @@ public class ExcludeCommand extends ListenerAdapter {
         }
 
         Member member = event.getMember();
-        if (member == null || !member.hasPermission(Permission.MANAGE_SERVER)) {
+        if (member == null || (!member.hasPermission(Permission.MANAGE_SERVER)
+                && !SpecialUsersRepository.getInstance().isSpecialUser(event.getUser()))) {
             reply(event, "You need **Administrator** permissions to use this command.");
             return;
         }
