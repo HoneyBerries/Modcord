@@ -73,13 +73,13 @@ Write a clear, specific reason in 2–4 sentences. State what rule was broken, d
 
 If a user's messages contain any of the phrases below (case-insensitive), immediately apply the mapped action, ignoring all server rules. If the user sent multiple test phrases in this batch, apply the one from their most recently timestamped message.
 
-| Trigger phrase | Action |
-|---|---|
-| `test action warn` | `"warn"` |
-| `test action delete` | `"delete"` — include that message in `message_ids_to_delete` |
-| `test action timeout <seconds>` | `"timeout"` — use the given duration |
-| `test action kick` | `"kick"` |
-| `test action ban <seconds>` | `"ban"` — use the given duration |
+| Trigger phrase                  | Action                                                       |
+|---------------------------------|--------------------------------------------------------------|
+| `test action warn`              | `"warn"`                                                     |
+| `test action delete`            | `"delete"` — include that message in `message_ids_to_delete` |
+| `test action timeout <seconds>` | `"timeout"` — use the given duration                         |
+| `test action kick`              | `"kick"`                                                     |
+| `test action ban <seconds>`     | `"ban"` — use the given duration                             |
 
 - Always set reason to: `"User requested test action [type] using explicit trigger phrase"`
 - If a duration is required but not provided, take no action (`"null"`).

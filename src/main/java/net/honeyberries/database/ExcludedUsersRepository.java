@@ -12,19 +12,20 @@ import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Repository for moderation exemptions stored in {@code guild_moderation_exemptions}.
- *
- * <p>Each exemption is scoped by guild and can target either a user or a role.
+ * Manages user and role-level exemptions from automated moderation in guild contexts.
+ * Exemptions prevent AI detection, auto-moderation actions, and other automated systems from targeting specific users or roles.
  */
 public class ExcludedUsersRepository {
 
     /**
      * Immutable view of exclusions for a single guild.
      *
-     * @param userIDs excluded users in the guild
-     * @param roleIDs excluded roles in the guild
+     * @param userIDs excluded users in the guild, never {@code null}
+     * @param roleIDs excluded roles in the guild, never {@code null}
      */
     public record ExcludedEntities(@NotNull List<UserID> userIDs, @NotNull List<RoleID> roleIDs) {}
 
@@ -44,8 +45,9 @@ public class ExcludedUsersRepository {
     /**
      * Returns the shared repository instance.
      *
-     * @return singleton repository
+     * @return the singleton {@code ExcludedUsersRepository}
      */
+    @NotNull
     public static ExcludedUsersRepository getInstance() {
         return INSTANCE;
     }
@@ -53,11 +55,14 @@ public class ExcludedUsersRepository {
     /**
      * Checks whether a user is exempt from moderation automation in a guild.
      *
-     * @param guildID guild to check
-     * @param userID  user to check
-     * @return {@code true} when an exemption row exists, otherwise {@code false}
+     * @param guildID the guild to check, must not be {@code null}
+     * @param userID the user to check, must not be {@code null}
+     * @return {@code true} when an exemption row exists, {@code false} otherwise or if a database error occurs
+     * @throws NullPointerException if {@code guildID} or {@code userID} is {@code null}
      */
     public boolean isExcluded(@NotNull GuildID guildID, @NotNull UserID userID) {
+        Objects.requireNonNull(guildID, "guildID must not be null");
+        Objects.requireNonNull(userID, "userID must not be null");
         String sql = """
             SELECT 1
             FROM guild_moderation_exemptions
@@ -85,11 +90,14 @@ public class ExcludedUsersRepository {
     /**
      * Checks whether a role is exempt from moderation automation in a guild.
      *
-     * @param guildID guild to check
-     * @param roleID  role to check
-     * @return {@code true} when an exemption row exists, otherwise {@code false}
+     * @param guildID the guild to check, must not be {@code null}
+     * @param roleID the role to check, must not be {@code null}
+     * @return {@code true} when an exemption row exists, {@code false} otherwise or if a database error occurs
+     * @throws NullPointerException if {@code guildID} or {@code roleID} is {@code null}
      */
     public boolean isExcluded(@NotNull GuildID guildID, @NotNull RoleID roleID) {
+        Objects.requireNonNull(guildID, "guildID must not be null");
+        Objects.requireNonNull(roleID, "roleID must not be null");
         String sql = """
             SELECT 1
             FROM guild_moderation_exemptions
@@ -120,11 +128,14 @@ public class ExcludedUsersRepository {
      *
      * <p>The operation is idempotent; existing rows are left unchanged.
      *
-     * @param guildID guild where the exemption applies
-     * @param userID  user to exempt
-     * @return {@code true} when the operation completes without error, otherwise {@code false}
+     * @param guildID the guild where the exemption applies, must not be {@code null}
+     * @param userID the user to exempt, must not be {@code null}
+     * @return {@code true} when the operation completes without error, {@code false} if a database error occurs
+     * @throws NullPointerException if {@code guildID} or {@code userID} is {@code null}
      */
     public boolean markExcluded(@NotNull GuildID guildID, @NotNull UserID userID) {
+        Objects.requireNonNull(guildID, "guildID must not be null");
+        Objects.requireNonNull(userID, "userID must not be null");
         String sql = """
             INSERT INTO guild_moderation_exemptions (guild_id, user_id, role_id)
             VALUES (?, ?, NULL)
@@ -152,11 +163,14 @@ public class ExcludedUsersRepository {
      *
      * <p>The operation is idempotent; existing rows are left unchanged.
      *
-     * @param guildID guild where the exemption applies
-     * @param roleID  role to exempt
-     * @return {@code true} when the operation completes without error, otherwise {@code false}
+     * @param guildID the guild where the exemption applies, must not be {@code null}
+     * @param roleID the role to exempt, must not be {@code null}
+     * @return {@code true} when the operation completes without error, {@code false} if a database error occurs
+     * @throws NullPointerException if {@code guildID} or {@code roleID} is {@code null}
      */
     public boolean markExcluded(@NotNull GuildID guildID, @NotNull RoleID roleID) {
+        Objects.requireNonNull(guildID, "guildID must not be null");
+        Objects.requireNonNull(roleID, "roleID must not be null");
         String sql = """
             INSERT INTO guild_moderation_exemptions (guild_id, user_id, role_id)
             VALUES (?, NULL, ?)
@@ -183,11 +197,14 @@ public class ExcludedUsersRepository {
      *
      * <p>The operation is idempotent; removing a missing row is treated as success.
      *
-     * @param guildID guild where the exemption applies
-     * @param userID  user to un-exempt
-     * @return {@code true} when the operation completes without error, otherwise {@code false}
+     * @param guildID the guild where the exemption applies, must not be {@code null}
+     * @param userID the user to un-exempt, must not be {@code null}
+     * @return {@code true} when the operation completes without error, {@code false} if a database error occurs
+     * @throws NullPointerException if {@code guildID} or {@code userID} is {@code null}
      */
     public boolean unmarkExcluded(@NotNull GuildID guildID, @NotNull UserID userID) {
+        Objects.requireNonNull(guildID, "guildID must not be null");
+        Objects.requireNonNull(userID, "userID must not be null");
         String sql = """
             DELETE FROM guild_moderation_exemptions
             WHERE guild_id = ? AND user_id = ? AND role_id IS NULL
@@ -213,11 +230,14 @@ public class ExcludedUsersRepository {
      *
      * <p>The operation is idempotent; removing a missing row is treated as success.
      *
-     * @param guildID guild where the exemption applies
-     * @param roleID  role to un-exempt
-     * @return {@code true} when the operation completes without error, otherwise {@code false}
+     * @param guildID the guild where the exemption applies, must not be {@code null}
+     * @param roleID the role to un-exempt, must not be {@code null}
+     * @return {@code true} when the operation completes without error, {@code false} if a database error occurs
+     * @throws NullPointerException if {@code guildID} or {@code roleID} is {@code null}
      */
     public boolean unmarkExcluded(@NotNull GuildID guildID, @NotNull RoleID roleID) {
+        Objects.requireNonNull(guildID, "guildID must not be null");
+        Objects.requireNonNull(roleID, "roleID must not be null");
         String sql = """
             DELETE FROM guild_moderation_exemptions
             WHERE guild_id = ? AND role_id = ? AND user_id IS NULL
@@ -244,11 +264,13 @@ public class ExcludedUsersRepository {
      * <p>Rows are partitioned into user and role lists based on which target column is populated.
      * The result is safe to use for read-only display logic such as slash-command listings.
      *
-     * @param guildID guild scope to fetch exclusions for
-     * @return immutable snapshot of excluded users and roles; empty lists when none are configured
+     * @param guildID the guild scope to fetch exclusions for, must not be {@code null}
+     * @return an immutable snapshot of excluded users and roles, never {@code null}; empty lists when none are configured
+     * @throws NullPointerException if {@code guildID} is {@code null}
      */
     @NotNull
     public ExcludedEntities getExcludedEntities(@NotNull GuildID guildID) {
+        Objects.requireNonNull(guildID, "guildID must not be null");
         String sql = """
             SELECT user_id, role_id
             FROM guild_moderation_exemptions
@@ -293,12 +315,16 @@ public class ExcludedUsersRepository {
      *
      * <p>User-level exclusions are evaluated first and take priority over role-level exclusions.
      *
-     * @param guildID guild scope for exclusions
-     * @param userID member user id
-     * @param roleIDs member role ids
-     * @return {@code true} if the user or any role is excluded; otherwise {@code false}
+     * @param guildID the guild scope for exclusions, must not be {@code null}
+     * @param userID the member user id, must not be {@code null}
+     * @param roleIDs the member role ids, must not be {@code null}
+     * @return {@code true} if the user or any role is excluded, {@code false} otherwise
+     * @throws NullPointerException if {@code guildID}, {@code userID}, or {@code roleIDs} is {@code null}
      */
     public boolean isExcluded(@NotNull GuildID guildID, @NotNull UserID userID, @NotNull Collection<RoleID> roleIDs) {
+        Objects.requireNonNull(guildID, "guildID must not be null");
+        Objects.requireNonNull(userID, "userID must not be null");
+        Objects.requireNonNull(roleIDs, "roleIDs must not be null");
         if (isExcluded(guildID, userID)) {
             return true;
         }

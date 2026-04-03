@@ -19,6 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
+/**
+ * Singleton manager for the JDA (Java Discord API) instance.
+ * Handles bot initialization, event listeners, and slash command registration.
+ */
 public class JDAManager {
 
     private static JDAManager instance;
@@ -26,6 +30,13 @@ public class JDAManager {
 
     private final @NotNull JDA jda;
 
+    /**
+     * Initializes the JDA instance with all gateway intents enabled.
+     * Retrieves bot token via {@link TokenManager}, sets activity status,
+     * and awaits bot readiness.
+     *
+     * @throws RuntimeException if JDA initialization is interrupted
+     */
     private JDAManager() {
         logger.info("Creating Discord bot instance");
 
@@ -44,6 +55,12 @@ public class JDAManager {
         }
     }
 
+    /**
+     * Registers slash commands and attaches event listeners.
+     * Sets up {@link GuildListener}, {@link MessageListener}, {@link UserListener},
+     * {@link RoleListener}, and command handlers for status, debug, exclude, and moderation.
+     * All commands are queued for synchronization with Discord.
+     */
     private void registerCommands() {
         logger.info("Registering slash commands");
         CommandListUpdateAction commands = jda.updateCommands();
@@ -76,6 +93,7 @@ public class JDAManager {
         commands.queue();
         logger.info("All slash commands synced — bot setup complete");
     }
+
 
     @NotNull
     public static synchronized JDAManager getInstance() {

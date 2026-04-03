@@ -33,8 +33,7 @@ if ! ./gradlew assemble; then
 fi
 
 log_info "Finding -all JAR in build/libs..."
-JAR_FILE=$(ls -1 build/libs/*-all.jar 2>/dev/null | head -1)
-
+JAR_FILE=$(find build/libs -maxdepth 1 -name '*-all.jar' -print -quit 2>/dev/null)
 if [ -z "$JAR_FILE" ]; then
     log_error "No *-all.jar file found in build/libs directory"
     exit 1
@@ -52,9 +51,9 @@ if java \
   -XX:+ParallelRefProcEnabled \
   -Dfile.encoding=UTF-8 \
   -jar "$JAR_FILE"; then
-    log_info "Bot exited successfully"
+    log_info "Program exited successfully"
 else
     EXIT_CODE=$?
-    log_error "Bot exited with code $EXIT_CODE"
+    log_error "Program exited with code $EXIT_CODE"
     exit $EXIT_CODE
 fi

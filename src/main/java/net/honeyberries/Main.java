@@ -45,9 +45,6 @@ public class Main {
             main.setupDatabase();
             main.setupDiscordBot();
             main.setupTasks();
-        } catch (InterruptedException e) {
-            main.logger.error("Failed to set up Discord bot", e);
-            Thread.currentThread().interrupt();
         } finally {
             if (args.length != 0 && args[0].equalsIgnoreCase("--test")) {
                 Thread.startVirtualThread(() -> {
@@ -77,9 +74,8 @@ public class Main {
     /**
      * Connects to Discord via {@link JDAManager} and blocks until the JDA instance is ready.
      *
-     * @throws InterruptedException if the calling thread is interrupted while waiting for the bot to become ready
      */
-    private void setupDiscordBot() throws InterruptedException {
+    private void setupDiscordBot() {
         discordBot = JDAManager.getInstance().getJDA();
     }
 

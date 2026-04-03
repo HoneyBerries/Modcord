@@ -8,21 +8,45 @@ import com.openai.models.chat.completions.*;
 import net.honeyberries.datatypes.content.*;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
+/**
+ * Converts {@code GuildModerationBatch} data into AI-compatible input format with interleaved images.
+ * Produces a mixed-content user message containing JSON context + image labels + image URLs.
+ * Handles collection and deduplication of images across all users and messages, ensuring images are
+ * accessible for correlation by the LLM.
+ */
 public class GuildModerationBatchToAIInput {
 
+    /** JSON object mapper for serializing batch data. */
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    private GuildModerationBatchToAIInput() {}
+
     /**
-     * Builds a user message with interleaved JSON context and labeled images.
-     * The JSON references images by their UUID, and each image is then provided
-     * inline after a text label so the model can correlate them.
+     * Creates an AI-friendly chat message from a guild moderation batch.
+     * Combines structured JSON data (guild, channels, users, messages) with image URLs,
+     * each labeled by its UUID so the model can correlate JSON references to images.
+     * <p>
+     * JSON structure:
+     * - guild: id, name
+     * - context: channels with guidelines and message counts
+     * - users_for_moderation: current moderation targets with their full message history and images
+     * - user_history: historical context users with their message history (for trend analysis)
+     * <p>
+     * Images are deduplicated by imageId across all users and messages, then appended as:
+     * "Image {imageId}:" (text label) followed by the image URL.
+     *
+     * @param guildModerationBatch the batch containing guild, users, messages, and images to convert
+     * @return a {@code ChatCompletionMessageParam} with mixed text/image content ready for AI inference
+     * @throws GuildModerationBatchSerializationException if JSON serialization fails or batch data is invalid
+     * @throws NullPointerException if {@code guildModerationBatch} is {@code null}
      */
+    @NotNull
     public static ChatCompletionMessageParam createMessageFromGuildModerationBatch(
             @NotNull GuildModerationBatch guildModerationBatch)
             throws GuildModerationBatchSerializationException {
+        Objects.requireNonNull(guildModerationBatch, "guildModerationBatch must not be null");
 
         try {
             // 1. Build the JSON payload (image_ids referenced inline per message)
@@ -102,11 +126,16 @@ public class GuildModerationBatchToAIInput {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers — content part builders
-    // -------------------------------------------------------------------------
-
-    private static ChatCompletionContentPart textPart(String text) {
+    /**
+     * Creates a text content part for inclusion in a mixed-content message.
+     *
+     * @param text the text content (must not be {@code null})
+     * @return a text-based {@code ChatCompletionContentPart}
+     * @throws NullPointerException if {@code text} is {@code null}
+     */
+    @NotNull
+    private static ChatCompletionContentPart textPart(@NotNull String text) {
+        Objects.requireNonNull(text, "text must not be null");
         return ChatCompletionContentPart.ofText(
             ChatCompletionContentPartText.builder()
                 .text(text)
@@ -114,7 +143,16 @@ public class GuildModerationBatchToAIInput {
         );
     }
 
-    private static ChatCompletionContentPart imagePart(String url) {
+    /**
+     * Creates an image URL content part for inclusion in a mixed-content message.
+     *
+     * @param url the image URL as a string (must not be {@code null})
+     * @return an image URL-based {@code ChatCompletionContentPart}
+     * @throws NullPointerException if {@code url} is {@code null}
+     */
+    @NotNull
+    private static ChatCompletionContentPart imagePart(@NotNull String url) {
+        Objects.requireNonNull(url, "url must not be null");
         return ChatCompletionContentPart.ofImageUrl(
             ChatCompletionContentPartImage.builder()
                 .imageUrl(ChatCompletionContentPartImage.ImageUrl.builder()
@@ -124,17 +162,20 @@ public class GuildModerationBatchToAIInput {
         );
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers — image collection
-    // -------------------------------------------------------------------------
-
     /**
-     * Walks all users (moderation targets + history) and collects every
-     * ModerationImage in message order, deduplicating by imageId.
+     * Collects all images from moderation targets and history users.
+     * Walks through all users, channels, and messages in document order,
+     * deduplicates by imageId using a linked set to preserve order, and returns the list.
+     *
+     * @param batch the moderation batch to scan (must not be {@code null})
+     * @return a deduplicator list of images in encounter order
+     * @throws NullPointerException if {@code batch} is {@code null}
      */
-    private static List<ModerationImage> collectAllImages(GuildModerationBatch batch) {
+    @NotNull
+    private static List<ModerationImage> collectAllImages(@NotNull GuildModerationBatch batch) {
+        Objects.requireNonNull(batch, "batch must not be null");
         List<ModerationImage> images = new ArrayList<>();
-        java.util.Set<java.util.UUID> seen = new java.util.LinkedHashSet<>();
+        Set<UUID> seen = new LinkedHashSet<>();
 
         for (ModerationUser user : batch.users()) {
             collectImagesFromUser(user, images, seen);
@@ -145,10 +186,23 @@ public class GuildModerationBatchToAIInput {
         return images;
     }
 
+    /**
+     * Collects images from all channels and messages of a single user.
+     * Adds each image to the output list only once (first seen), updating the seen set.
+     *
+     * @param user the user to scan (must not be {@code null})
+     * @param out the output list to append new images to (must not be {@code null})
+     * @param seen the set of already-seen imageIds to prevent duplicates (must not be {@code null})
+     * @throws NullPointerException if any parameter is {@code null}
+     */
     private static void collectImagesFromUser(
-            ModerationUser user,
-            List<ModerationImage> out,
-            java.util.Set<java.util.UUID> seen) {
+            @NotNull ModerationUser user,
+            @NotNull List<ModerationImage> out,
+            @NotNull Set<UUID> seen) {
+        Objects.requireNonNull(user, "user must not be null");
+        Objects.requireNonNull(out, "out must not be null");
+        Objects.requireNonNull(seen, "seen must not be null");
+
         for (ModerationUserChannel channel : user.channels()) {
             for (ModerationMessage message : channel.messages()) {
                 for (ModerationImage image : message.images()) {
@@ -160,11 +214,20 @@ public class GuildModerationBatchToAIInput {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // JSON serialization
-    // -------------------------------------------------------------------------
-
+    /**
+     * Serializes a moderation user to a JSON object node.
+     * Includes user_id, username, join_date, roles, and nested channels with messages.
+     * Each message includes message_id, timestamp, content, and image_ids array.
+     * Note: image_ids are UUIDs that are matched to labels in the content parts.
+     *
+     * @param user the user to serialize (must not be {@code null})
+     * @return a JSON object node representation of the user
+     * @throws NullPointerException if {@code user} is {@code null}
+     */
+    @NotNull
     private static ObjectNode serializeModerationUser(@NotNull ModerationUser user) {
+        Objects.requireNonNull(user, "user must not be null");
+
         ObjectNode userNode = objectMapper.createObjectNode();
         userNode.put("user_id", user.userId().toString());
         userNode.put("username", user.username().username());
@@ -206,16 +269,29 @@ public class GuildModerationBatchToAIInput {
         return userNode;
     }
 
-    // -------------------------------------------------------------------------
-    // Exception
-    // -------------------------------------------------------------------------
-
+    /**
+     * Exception thrown when guild moderation batch serialization to AI input format fails.
+     * Indicates JSON processing errors or data structure issues.
+     */
     public static class GuildModerationBatchSerializationException extends Exception {
-        public GuildModerationBatchSerializationException(String message) {
-            super(message);
+        /**
+         * Constructs a new exception with the given message.
+         *
+         * @param message descriptive error message
+         */
+        public GuildModerationBatchSerializationException(@NotNull String message) {
+            super(Objects.requireNonNull(message, "message must not be null"));
         }
-        public GuildModerationBatchSerializationException(String message, Throwable cause) {
-            super(message, cause);
+
+        /**
+         * Constructs a new exception with message and cause.
+         *
+         * @param message descriptive error message
+         * @param cause the underlying exception
+         */
+        public GuildModerationBatchSerializationException(@NotNull String message, @NotNull Throwable cause) {
+            super(Objects.requireNonNull(message, "message must not be null"),
+                    Objects.requireNonNull(cause, "cause must not be null"));
         }
     }
 }

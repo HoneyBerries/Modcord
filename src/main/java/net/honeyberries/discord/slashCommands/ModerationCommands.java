@@ -24,8 +24,17 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * Slash command handler for manual moderation actions.
+ *
+ * <p>Provides moderators with tools to take action against users including warnings, 
+ * timeouts, kicks, bans, and unbans. Each action is logged to the database for audit 
+ * trails and passed to the action handler for execution. This suite centralizes moderation 
+ * enforcement and helps maintain server discipline and safety.
+ */
 public class ModerationCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(ModerationCommands.class);
@@ -33,7 +42,14 @@ public class ModerationCommands extends ListenerAdapter {
     private static final long MAX_TIMEOUT_MINUTES = 40_320; // Discord hard limit: 28 days.
     private static final long MAX_BAN_DAYS = 365;
 
+    /**
+     * Registers the moderation command and its subcommands with the Discord bot.
+     *
+     * @param commands the command list update action to register commands with. Must not be null.
+     * @throws NullPointerException if commands is null
+     */
     public void registerModerationCommands(@NotNull CommandListUpdateAction commands) {
+        Objects.requireNonNull(commands, "commands must not be null");
         SlashCommandData modCommand = Commands.slash("mod", "Manual moderation commands")
                 .addSubcommands(
                         new SubcommandData("warn", "Warn a user")
@@ -74,8 +90,20 @@ public class ModerationCommands extends ListenerAdapter {
         logger.info("Registered /mod commands");
     }
 
+    /**
+     * Handles slash command interactions for the moderation command.
+     *
+     * <p>Routes to the appropriate subcommand handler (warn, timeout, kick, ban, unban) 
+     * after validating that the event is from a guild, the user has moderation permissions, 
+     * and a valid target user and subcommand are specified. All actions are logged and 
+     * persisted to the database.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         if (!event.getName().equals("mod")) {
             return;
         }
@@ -121,6 +149,20 @@ public class ModerationCommands extends ListenerAdapter {
         }
     }
 
+    /**
+     * Handles the timeout subcommand.
+     *
+     * <p>Validates the timeout duration is within Discord's limits (1-40320 minutes) 
+     * and converts it to seconds for action processing. Replies with error if duration 
+     * is invalid.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @param guild the guild where the action is occurring. Must not be null.
+     * @param moderator the member performing the action. Must not be null.
+     * @param targetUser the user being timed out. Must not be null.
+     * @param reason the reason for the timeout. Must not be null.
+     * @throws NullPointerException if any parameter is null
+     */
     private void handleTimeout(
             @NotNull SlashCommandInteractionEvent event,
             @NotNull Guild guild,
@@ -128,6 +170,11 @@ public class ModerationCommands extends ListenerAdapter {
             @NotNull User targetUser,
             @NotNull String reason
     ) {
+        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(guild, "guild must not be null");
+        Objects.requireNonNull(moderator, "moderator must not be null");
+        Objects.requireNonNull(targetUser, "targetUser must not be null");
+        Objects.requireNonNull(reason, "reason must not be null");
         Long minutes = event.getOption("minutes", OptionMapping::getAsLong);
         if (minutes == null || minutes <= 0 || minutes > MAX_TIMEOUT_MINUTES) {
             reply(event, "Timeout duration must be between 1 and 40320 minutes.");
@@ -138,6 +185,19 @@ public class ModerationCommands extends ListenerAdapter {
         executeAction(event, guild, moderator, targetUser, ActionType.TIMEOUT, reason, timeoutSeconds, 0);
     }
 
+    /**
+     * Handles the ban subcommand.
+     *
+     * <p>Validates the ban duration is within Discord's limits (1-365 days) and converts 
+     * it to seconds for action processing. Replies with error if duration is invalid.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @param guild the guild where the action is occurring. Must not be null.
+     * @param moderator the member performing the action. Must not be null.
+     * @param targetUser the user being banned. Must not be null.
+     * @param reason the reason for the ban. Must not be null.
+     * @throws NullPointerException if any parameter is null
+     */
     private void handleBan(
             @NotNull SlashCommandInteractionEvent event,
             @NotNull Guild guild,
@@ -145,6 +205,11 @@ public class ModerationCommands extends ListenerAdapter {
             @NotNull User targetUser,
             @NotNull String reason
     ) {
+        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(guild, "guild must not be null");
+        Objects.requireNonNull(moderator, "moderator must not be null");
+        Objects.requireNonNull(targetUser, "targetUser must not be null");
+        Objects.requireNonNull(reason, "reason must not be null");
         Long days = event.getOption("days", OptionMapping::getAsLong);
         if (days == null || days <= 0 || days > MAX_BAN_DAYS) {
             reply(event, "Ban duration must be between 1 and 365 days.");
@@ -155,6 +220,23 @@ public class ModerationCommands extends ListenerAdapter {
         executeAction(event, guild, moderator, targetUser, ActionType.BAN, reason, 0, banSeconds);
     }
 
+    /**
+     * Executes a moderation action by creating an ActionData record and applying it.
+     *
+     * <p>Persists the action to the database for audit trails, then passes it to the 
+     * ActionHandler for actual enforcement. Sends an ephemeral reply to the moderator 
+     * indicating success or failure.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @param guild the guild where the action occurs. Must not be null.
+     * @param moderator the member executing the action. Must not be null.
+     * @param targetUser the user being acted upon. Must not be null.
+     * @param actionType the type of moderation action. Must not be null.
+     * @param reason the reason for the action. Must not be null.
+     * @param timeoutDuration timeout duration in seconds, or 0 if not applicable
+     * @param banDuration ban duration in seconds, or 0 if not applicable
+     * @throws NullPointerException if any non-primitive parameter is null
+     */
     private void executeAction(
             @NotNull SlashCommandInteractionEvent event,
             @NotNull Guild guild,
@@ -165,6 +247,12 @@ public class ModerationCommands extends ListenerAdapter {
             long timeoutDuration,
             long banDuration
     ) {
+        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(guild, "guild must not be null");
+        Objects.requireNonNull(moderator, "moderator must not be null");
+        Objects.requireNonNull(targetUser, "targetUser must not be null");
+        Objects.requireNonNull(actionType, "actionType must not be null");
+        Objects.requireNonNull(reason, "reason must not be null");
         ActionData actionData = new ActionData(
                 UUID.randomUUID(),
                 GuildID.fromGuild(guild),
@@ -191,14 +279,34 @@ public class ModerationCommands extends ListenerAdapter {
         reply(event, "Applied **" + actionType.name().toLowerCase() + "** to " + targetUser.getAsMention() + ".");
     }
 
+    /**
+     * Checks whether a member has any of the required moderation permissions.
+     *
+     * @param member the member to check. Must not be null.
+     * @return true if the member has MODERATE_MEMBERS, KICK_MEMBERS, BAN_MEMBERS, or ADMINISTRATOR permission
+     * @throws NullPointerException if member is null
+     */
     private static boolean hasAnyModerationPermission(@NotNull Member member) {
+        Objects.requireNonNull(member, "member must not be null");
         return member.hasPermission(Permission.MODERATE_MEMBERS)
                 || member.hasPermission(Permission.KICK_MEMBERS)
                 || member.hasPermission(Permission.BAN_MEMBERS)
                 || member.hasPermission(Permission.ADMINISTRATOR);
     }
 
+    /**
+     * Sends an ephemeral reply to a slash command interaction.
+     *
+     * <p>All user-facing replies from moderation commands go through here to ensure 
+     * consistent behavior and avoid repeating {@code setEphemeral(true)}.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @param message the message to send. Must not be null.
+     * @throws NullPointerException if event or message is null
+     */
     private static void reply(@NotNull SlashCommandInteractionEvent event, @NotNull String message) {
+        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(message, "message must not be null");
         event.reply(message).setEphemeral(true).queue();
     }
 }

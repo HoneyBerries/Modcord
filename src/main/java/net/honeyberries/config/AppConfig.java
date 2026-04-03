@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * File-based accessor around the YAML-based application configuration.
@@ -37,10 +38,11 @@ public class AppConfig {
      * Creates a new AppConfig instance with the given configuration file path.
      * Immediately loads the configuration from disk.
      * 
-     * @param configPath The path to the YAML configuration file
+     * @param configPath the path to the YAML configuration file
+     * @throws NullPointerException if {@code configPath} is {@code null}
      */
     public AppConfig(@NotNull Path configPath) {
-        this.configPath = configPath;
+        this.configPath = Objects.requireNonNull(configPath, "configPath must not be null");
         this.data = new HashMap<>();
         reload();
     }
@@ -352,8 +354,13 @@ public class AppConfig {
         }
         throw new RuntimeException("Number of history context messages not configured");
     }
-
-
+    /**
+     * Returns the number of seconds to retain message history for context during moderation decisions.
+     * Older messages beyond this age are excluded from context when evaluating violations.
+     * Default is 0 seconds.
+     *
+     * @return the maximum age of context messages in seconds
+     */
     public double getHistoryContextMaxAge() {
         Object moderationConfigObj = data.get("moderation");
         if (moderationConfigObj instanceof Map) {
@@ -367,7 +374,13 @@ public class AppConfig {
         throw new RuntimeException("History context max age not configured");
     }
 
-
+    /**
+     * Retrieves the singleton instance of the application configuration.
+     * Configuration is loaded from disk on first access and can be reloaded via {@link #reload()}.
+     *
+     * @return the singleton {@code AppConfig} instance
+     */
+    @NotNull
     public static AppConfig getInstance() {
         return INSTANCE;
     }

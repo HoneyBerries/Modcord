@@ -30,17 +30,4 @@ public record ChannelContext(
         Objects.requireNonNull(guidelines, "guidelines must not be null");
     }
 
-    /**
-     * Convenience constructor with default guidelinesText and message count.
-     *
-     * @param channelId   channel identifier; must not be {@code null}
-     * @param channelName human-readable name; must not be {@code null}
-     * @throws NullPointerException if any required argument is {@code null}
-     */
-    public ChannelContext(
-            @NotNull ChannelID channelId,
-            @NotNull String channelName
-    ) {
-        this(channelId, channelName, "", 0);
-    }
 }

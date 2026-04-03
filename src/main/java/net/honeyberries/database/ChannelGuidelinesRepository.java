@@ -3,26 +3,49 @@ package net.honeyberries.database;
 import net.honeyberries.datatypes.content.ChannelGuidelines;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.Objects;
 
+/**
+ * Persists and retrieves channel-specific moderation guidelines from the database.
+ * Supports upsert operations to synchronize guidelines with Discord channel metadata.
+ * Uses a composite key of guild ID and channel ID to uniquely identify guideline entries.
+ */
 public class ChannelGuidelinesRepository {
 
+    /** Logger for recording database operations. */
     private final Logger logger = LoggerFactory.getLogger(ChannelGuidelinesRepository.class);
+    /** Database connection pool. */
     private final Database database = Database.getInstance();
-
+    /** Singleton instance. */
     private static final ChannelGuidelinesRepository INSTANCE = new ChannelGuidelinesRepository();
 
+    /**
+     * Retrieves the singleton instance of this repository.
+     *
+     * @return the singleton {@code ChannelGuidelinesRepository}
+     */
+    @NotNull
     public static ChannelGuidelinesRepository getInstance() {
         return INSTANCE;
     }
 
-
-    public boolean addOrReplaceChannelGuidelinesToDatabase(ChannelGuidelines channelGuidelines) {
+    /**
+     * Persists or updates channel guidelines for a specific guild and channel.
+     * If guidelines for that guild/channel pair already exist, they are replaced; otherwise, new guidelines are inserted.
+     *
+     * @param channelGuidelines the guidelines to persist or update
+     * @return {@code true} if the operation succeeded, {@code false} if a database error occurred
+     * @throws NullPointerException if {@code channelGuidelines} is {@code null}
+     */
+    public boolean addOrReplaceChannelGuidelinesToDatabase(@NotNull ChannelGuidelines channelGuidelines) {
+        Objects.requireNonNull(channelGuidelines, "channelGuidelines must not be null");
         try {
             database.transaction(conn -> {
                 String sql = """
@@ -50,8 +73,18 @@ public class ChannelGuidelinesRepository {
         }
     }
 
+    /**
+     * Retrieves channel guidelines for a specific guild and channel.
+     *
+     * @param guildId the guild ID to search in
+     * @param channelId the channel ID to look up
+     * @return the {@code ChannelGuidelines} if found, or {@code null} if no matching entry exists or a database error occurred
+     * @throws NullPointerException if {@code guildId} or {@code channelId} is {@code null}
+     */
     @Nullable
-    public ChannelGuidelines getChannelGuidelines(GuildID guildId, ChannelID channelId) {
+    public ChannelGuidelines getChannelGuidelines(@NotNull GuildID guildId, @NotNull ChannelID channelId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+        Objects.requireNonNull(channelId, "channelId must not be null");
         String sql = """
             SELECT guild_id, channel_id, guidelines
             FROM guild_channel_guidelines
