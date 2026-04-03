@@ -110,7 +110,7 @@ public class Database {
         String dbPassword = TokenManager.getDBPassword();
 
         if (dbPassword.isBlank()) {
-            throw new DatabaseException("MODCORD_DB_PASSWORD environment variable is not set");
+            throw new DatabaseException("POSTGRES_DB_PASSWORD environment variable is not set");
         }
 
         logger.info("Initializing PostgreSQL connection pool at {}", dbUrl);
