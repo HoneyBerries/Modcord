@@ -6,4 +6,7 @@ package net.honeyberries.database;
  * Supports querying and updating special user lists scoped by guild to enable feature access control and moderation workflows.
  */
 public class SpecialUsersRepository {
+
+
+
 }
