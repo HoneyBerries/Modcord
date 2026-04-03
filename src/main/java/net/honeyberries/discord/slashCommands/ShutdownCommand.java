@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
+import net.honeyberries.Main;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +72,6 @@ public class ShutdownCommand extends ListenerAdapter {
         event.reply("Shutting down bot...").setEphemeral(true).queue();
         logger.info("Shutdown initiated by user {} in guild {}", event.getUser().getId(), Objects.requireNonNull(event.getGuild()).getId());
 
-        System.exit(0);
+        Main.shutdown();
     }
 }
