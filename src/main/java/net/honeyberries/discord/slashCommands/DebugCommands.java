@@ -64,8 +64,7 @@ public class DebugCommands extends ListenerAdapter {
         SubcommandData purgeSub = new SubcommandData("purge", "Deletes and recreates a channel")
                 .addOptions(new OptionData(OptionType.CHANNEL, "channel", "Channel to delete and recreate", true));
 
-        SlashCommandData debugCommand = Commands.slash("debug", "Debug and admin commands")
-                .addSubcommands(refreshSub, showSub, purgeSub);
+        SlashCommandData debugCommand = Commands.slash("debug", "Debug and admin commands").addSubcommands(refreshSub, showSub, purgeSub);
 
         Objects.requireNonNull(commands.addCommands(debugCommand));
         logger.info("Debug commands added to command registration");

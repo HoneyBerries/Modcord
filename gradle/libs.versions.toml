@@ -12,7 +12,7 @@ openai-java = "com.openai:openai-java:4.30.0"
 gson = "com.google.code.gson:gson:2.13.2"
 jackson-databind = "tools.jackson.core:jackson-databind:3.1.1"
 
-jda = "net.dv8tion:JDA:6.4.0"
+jda = "net.dv8tion:JDA:6.4.1"
 
 snakeyaml = "org.yaml:snakeyaml:2.6"
 
@@ -37,6 +37,6 @@ liquibase-core = "org.liquibase:liquibase-core:5.0.2"
 
 picocli = "info.picocli:picocli:4.7.7"
 
-jline = "org.jline:jline:4.0.9"
+jline = "org.jline:jline:4.0.10"
 
 apache-commons-lang3 = "org.apache.commons:commons-lang3:3.20.0"

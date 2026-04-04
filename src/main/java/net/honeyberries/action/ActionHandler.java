@@ -447,8 +447,14 @@ public class ActionHandler {
         String template = "Failed to {} for user {} in guild {} (actionId={}, moderatorId={})";
 
         if (isPermissionFailure(e)) {
-            logger.warn("Permission denied while trying to " + template.substring(template.indexOf("to ") + 3),
-                    operation, actionData.userId(), guild.getId(), actionData.id(), actionData.moderatorId(), e);
+            logger.warn("Permission denied while trying to {} [operation: {}] for user {} in guild {} (action: {}, moderator: {})",
+                    template.substring(template.indexOf("to ") + 3),
+                    operation,
+                    actionData.userId(),
+                    guild.getId(),
+                    actionData.id(),
+                    actionData.moderatorId(),
+                    e);
             return;
         }
 
