@@ -11,6 +11,16 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Objects;
+
+/**
+ * Slash command handler for bot health and status monitoring.
+ *
+ * <p>Provides administrators and users with real-time information about the bot's 
+ * operational status including connection health, gateway ping, and uptime. Tracks 
+ * bot startup time and queries database connectivity to help diagnose infrastructure 
+ * issues quickly.
+ */
 public class StatusCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(StatusCommands.class);
@@ -20,7 +30,14 @@ public class StatusCommands extends ListenerAdapter {
         this.startTime = System.currentTimeMillis();
     }
 
-    public void registerStatusCommands(CommandListUpdateAction commands) {
+    /**
+     * Registers the status command and its subcommands with the Discord bot.
+     *
+     * @param commands the command list update action to register commands with. Must not be null.
+     * @throws NullPointerException if commands is null
+     */
+    public void registerStatusCommands(@NotNull CommandListUpdateAction commands) {
+        Objects.requireNonNull(commands, "commands must not be null");
         try {
             commands.addCommands(
                 Commands.slash("status", "Check the bot's status")
@@ -37,8 +54,19 @@ public class StatusCommands extends ListenerAdapter {
         }
     }
 
+    /**
+     * Handles slash command interactions for the status command.
+     *
+     * <p>Routes to the appropriate subcommand handler (health, ping, or uptime) 
+     * after validating the event is from a guild context. All status checks are 
+     * sent as ephemeral replies.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         if (!event.getName().equals("status")) return;
 
         if (!event.isFromGuild()) {
@@ -65,7 +93,17 @@ public class StatusCommands extends ListenerAdapter {
         }
     }
 
-    private void handleHealthCommand(SlashCommandInteractionEvent event) {
+    /**
+     * Handles the health subcommand.
+     *
+     * <p>Reports the bot's connection status and database health. Shows whether the 
+     * bot is connected to Discord and whether the database is accessible and healthy.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
+    private void handleHealthCommand(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         StringBuilder healthStatus = new StringBuilder();
 
         if (event.getJDA().getStatus() != JDA.Status.CONNECTED) {
@@ -83,13 +121,33 @@ public class StatusCommands extends ListenerAdapter {
         event.reply(healthStatus.toString()).setEphemeral(true).queue();
     }
 
-    private void handlePingCommand(SlashCommandInteractionEvent event) {
+    /**
+     * Handles the ping subcommand.
+     *
+     * <p>Reports the gateway ping (latency) between the bot and Discord's servers. 
+     * Lower values indicate better connectivity.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
+    private void handlePingCommand(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         long ping = event.getJDA().getGatewayPing();
         String pingMessage = String.format(":ping_pong:  Pong! Gateway ping: %dms", ping);
         event.reply(pingMessage).setEphemeral(true).queue();
     }
 
-    private void handleUptimeCommand(SlashCommandInteractionEvent event) {
+    /**
+     * Handles the uptime subcommand.
+     *
+     * <p>Calculates and reports how long the bot has been running since last startup. 
+     * Displays uptime in weeks, days, hours, minutes, and seconds.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
+    private void handleUptimeCommand(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         long uptimeMillis = System.currentTimeMillis() - startTime;
         long weeks = uptimeMillis / (1000 * 60 * 60 * 24 * 7);
         long days = (uptimeMillis / (1000 * 60 * 60 * 24)) % 7;

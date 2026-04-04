@@ -26,11 +26,11 @@ import java.util.concurrent.TimeUnit;
 public class Main {
 
     /** Logger used for lifecycle events. */
-    private final Logger logger = LoggerFactory.getLogger(Main.class);
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
     /** JDA client instance, lazily initialized during startup. */
-    private @Nullable JDA discordBot;
+    private static @Nullable JDA discordBot;
     /** Scheduler hosting recurring maintenance tasks. */
-    private @Nullable ScheduledExecutorService scheduler;
+    private static @Nullable ScheduledExecutorService scheduler;
 
     /**
      * Boots the application by preparing the database, connecting to Discord, and starting background tasks.
@@ -45,9 +45,6 @@ public class Main {
             main.setupDatabase();
             main.setupDiscordBot();
             main.setupTasks();
-        } catch (InterruptedException e) {
-            main.logger.error("Failed to set up Discord bot", e);
-            Thread.currentThread().interrupt();
         } finally {
             if (args.length != 0 && args[0].equalsIgnoreCase("--test")) {
                 Thread.startVirtualThread(() -> {
@@ -56,7 +53,7 @@ public class Main {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    main.shutdown();
+                    shutdown();
                 });
             }
 
@@ -77,9 +74,8 @@ public class Main {
     /**
      * Connects to Discord via {@link JDAManager} and blocks until the JDA instance is ready.
      *
-     * @throws InterruptedException if the calling thread is interrupted while waiting for the bot to become ready
      */
-    private void setupDiscordBot() throws InterruptedException {
+    private void setupDiscordBot() {
         discordBot = JDAManager.getInstance().getJDA();
     }
 
@@ -99,10 +95,10 @@ public class Main {
     }
 
     /**
-     * Gracefully stops background tasks, shuts down the bot, and closes the database before exiting.
+     * Safely stops background tasks, shuts down the bot, and closes the database before exiting.
      * Safe to invoke even if startup failed partway through.
      */
-    private void shutdown() {
+    public static void shutdown() {
         logger.info("Program shutdown initiated");
 
         logger.info("Stopping tasks");

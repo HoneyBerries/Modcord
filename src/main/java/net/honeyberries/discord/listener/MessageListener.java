@@ -17,11 +17,25 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Listens to Discord message events (received, updated, deleted) and routes them to the moderation orchestration layer.
+ * Filters out system messages, bot messages, and excluded users before processing.
+ * Maintains a rolling context window of recent messages for moderation decisions.
+ */
 public class MessageListener extends ListenerAdapter {
 
+    /** Logger for message event details. */
     private final Logger logger = LoggerFactory.getLogger(MessageListener.class);
+    /** Repository for checking user exclusion lists. */
     private final ExcludedUsersRepository excludedUsersRepository = ExcludedUsersRepository.getInstance();
 
+    /**
+     * Processes newly received messages for potential moderation violations.
+     * Filters out messages from bots, system messages, and excluded users, then enqueues the message for batch evaluation.
+     *
+     * @param event the message received event from Discord
+     * @throws NullPointerException if {@code event} is {@code null}
+     */
     @Override
     public void onMessageReceived(@NotNull MessageReceivedEvent event) {
         logger.debug("Received message: {}", event.getMessage().getContentDisplay());
@@ -47,7 +61,14 @@ public class MessageListener extends ListenerAdapter {
 
     }
 
-
+    /**
+     * Processes edited messages by determining if they fall within the current context window.
+     * If recent enough, replaces the original message in the context window with the updated content.
+     * Respects the same filtering rules as {@link #onMessageReceived(MessageReceivedEvent)}.
+     *
+     * @param event the message update event from Discord
+     * @throws NullPointerException if {@code event} is {@code null}
+     */
     @Override
     public void onMessageUpdate(@NotNull MessageUpdateEvent event) {
         logger.debug("Edited message: {}", event.getMessage().getContentDisplay());
@@ -78,6 +99,13 @@ public class MessageListener extends ListenerAdapter {
 
     }
 
+    /**
+     * Processes message deletions by removing the message from the context window.
+     * This prevents evaluation of deleted messages during moderation decisions.
+     *
+     * @param event the message delete event from Discord
+     * @throws NullPointerException if {@code event} is {@code null}
+     */
     @Override
     public void onMessageDelete(@NotNull MessageDeleteEvent event) {
         logger.debug("Deleted message ID: {}", event.getMessageId());

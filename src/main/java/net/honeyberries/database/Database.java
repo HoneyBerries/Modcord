@@ -9,6 +9,7 @@ import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,15 +19,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 /**
- * Central database coordinator for Modcord.
- *
- * <p>This class is designed to be friendly to use:
- * <ul>
- *   <li>simple methods for reads, writes, and transactions</li>
- *   <li>lambdas may throw {@link SQLException}</li>
- *   <li>automatic connection handling</li>
- *   <li>convenience helpers for common query patterns</li>
- * </ul>
+ * Central database coordinator for Modcord as a singleton.
+ * Manages the lifecycle of the PostgreSQL connection pool, schema migrations, and provides convenient helpers for reading, writing, and transactional operations.
+ * Designed to be friendly to use with automatic connection handling and support for lambdas that may throw {@link SQLException}.
  *
  * <p><b>Typical usage</b>
  * <pre>{@code
@@ -60,7 +55,12 @@ public class Database {
     private volatile boolean initialized = false;
 
 
-    /** Returns the singleton instance. */
+    /**
+     * Returns the singleton instance of the database coordinator.
+     * 
+     * @return the singleton {@code Database} instance, never {@code null}
+     */
+    @NotNull
     public static Database getInstance() {
         return INSTANCE;
     }
@@ -94,12 +94,14 @@ public class Database {
     // ──────────────────────────────────────────────────────────────────
 
     /**
-     * Opens the connection pool and initializes the schema.
+     * Opens the connection pool and initializes the database schema via Liquibase migrations.
+     * Must be called once before any database operations.
      *
-     * @param config application config containing database URL and username
-     * @throws DatabaseException if initialization fails
+     * @param config the application configuration containing database URL, username, and password environment variable reference, must not be {@code null}
+     * @throws NullPointerException if {@code config} is {@code null}
+     * @throws DatabaseException if initialization fails, including when POSTGRES_DB_PASSWORD environment variable is not set or if schema initialization fails
      */
-    public synchronized void initialize(AppConfig config) {
+    public synchronized void initialize(@NotNull AppConfig config) {
         if (initialized) {
             logger.debug("Already initialized, skipping");
             return;
@@ -142,8 +144,17 @@ public class Database {
         logger.info("Ready at {}", dbUrl);
     }
 
+    /**
+     * Creates and configures a {@link HikariConfig} object with the provided database connection parameters.
+     * The configuration includes setting the JDBC URL, username, password, and a predefined pool name.
+     *
+     * @param dbUrl the JDBC URL of the database, must not be {@code null}
+     * @param dbUsername the username for the database connection, must not be {@code null}
+     * @param dbPassword the password for the database connection, must not be {@code null}
+     * @return a configured {@code HikariConfig} instance, never {@code null}
+     */
     @NotNull
-    private static HikariConfig createHikariConfig(String dbUrl, String dbUsername, String dbPassword) {
+    private static HikariConfig createHikariConfig(@NotNull String dbUrl, @NotNull String dbUsername, @NotNull String dbPassword) {
         HikariConfig hikariConfig = new HikariConfig();
         
         hikariConfig.setJdbcUrl(dbUrl);
@@ -155,7 +166,10 @@ public class Database {
         return hikariConfig;
     }
 
-    /** Shuts down the pool and releases all resources. */
+    /**
+     * Shuts down the connection pool and releases all resources.
+     * Safe to call even if the database has not been initialized.
+     */
     public synchronized void shutdown() {
         if (!initialized && dataSource == null) {
             return;
@@ -181,9 +195,16 @@ public class Database {
     // ──────────────────────────────────────────────────────────────────
 
     /**
-     * Runs a read operation and returns its result.
+     * Runs a read-only query operation and returns its result.
+     * The connection is automatically obtained from the pool and closed after the operation completes.
+     *
+     * @param <T> the result type of the query
+     * @param work the query operation to execute, must not be {@code null}
+     * @return the result of the query, which may be {@code null} if the operation returns {@code null}
+     * @throws NullPointerException if {@code work} is {@code null}
+     * @throws DatabaseException if a database error occurs
      */
-    public <T> T query(SqlQuery<T> work) {
+    public <T> T query(@NotNull SqlQuery<T> work) {
         ensureInitialized();
         try (Connection conn = dataSource.getConnection()) {
             return work.execute(conn);
@@ -193,9 +214,16 @@ public class Database {
     }
 
     /**
-     * Runs a write operation inside a transaction.
+     * Runs a write operation inside an automatic transaction.
+     * If the operation completes without throwing an exception, the transaction is committed.
+     * If a {@link SQLException} or {@link RuntimeException} is thrown, the transaction is rolled back.
+     * Auto-commit is restored after the transaction completes or fails.
+     *
+     * @param work the write operation to execute within the transaction, must not be {@code null}
+     * @throws NullPointerException if {@code work} is {@code null}
+     * @throws DatabaseException if a database error occurs or the transaction fails
      */
-    public void transaction(SqlWork work) {
+    public void transaction(@NotNull SqlWork work) {
         ensureInitialized();
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
@@ -217,29 +245,51 @@ public class Database {
     }
 
     /**
-     * Executes an update/insert/delete statement and returns affected rows.
+     * Executes an update/insert/delete statement and returns the number of affected rows.
+     * 
+     * @param work the query operation that executes the update and returns an integer count, must not be {@code null}
+     * @return the number of rows affected by the update; 0 if the operation returns {@code null}
+     * @throws NullPointerException if {@code work} is {@code null}
+     * @throws DatabaseException if a database error occurs
      */
-    public int executeUpdate(SqlQuery<Integer> work) {
+    public int executeUpdate(@NotNull SqlQuery<Integer> work) {
         Integer result = query(work);
         return result == null ? 0 : result;
     }
 
     /**
      * Runs a query that may return a single value.
+     * 
+     * @param <T> the result type of the query
+     * @param work the query operation to execute, must not be {@code null}
+     * @return the result of the query, which may be {@code null}
+     * @throws NullPointerException if {@code work} is {@code null}
+     * @throws DatabaseException if a database error occurs
      */
-    public <T> T queryOne(SqlQuery<T> work) {
+    @Nullable
+    public <T> T queryOne(@NotNull SqlQuery<T> work) {
         return query(work);
     }
 
     /**
      * Runs a query and returns null when no row is found.
+     * 
+     * @param <T> the result type of the query
+     * @param work the query operation to execute, must not be {@code null}
+     * @return the result of the query, which may be {@code null} if no row is found or the query returns {@code null}
+     * @throws NullPointerException if {@code work} is {@code null}
+     * @throws DatabaseException if a database error occurs
      */
-    public <T> T queryNullable(SqlQuery<T> work) {
+    @Nullable
+    public <T> T queryNullable(@NotNull SqlQuery<T> work) {
         return query(work);
     }
 
     /**
-     * Returns true if the pool is initialized and healthy.
+     * Checks whether the database pool is initialized and healthy.
+     * Performs a quick connection validity check (1-second timeout).
+     * 
+     * @return {@code true} if the pool is initialized and a valid connection can be obtained, {@code false} otherwise
      */
     public boolean isHealthy() {
         if (!initialized || dataSource == null) return false;
@@ -280,12 +330,27 @@ public class Database {
     // Exception
     // ──────────────────────────────────────────────────────────────────
 
+    /**
+     * Exception thrown when a database operation fails.
+     * Wraps checked exceptions ({@link SQLException}) and database lifecycle errors into an unchecked exception.
+     */
     public static class DatabaseException extends RuntimeException {
-        public DatabaseException(String message) {
+        /**
+         * Constructs a new exception with the specified detail message.
+         *
+         * @param message the error message, must not be {@code null}
+         */
+        public DatabaseException(@NotNull String message) {
             super(message);
         }
 
-        public DatabaseException(String message, Throwable cause) {
+        /**
+         * Constructs a new exception with the specified detail message and cause.
+         *
+         * @param message the error message, must not be {@code null}
+         * @param cause the underlying exception that caused this error, may be {@code null}
+         */
+        public DatabaseException(@NotNull String message, @Nullable Throwable cause) {
             super(message, cause);
         }
     }

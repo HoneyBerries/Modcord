@@ -6,13 +6,13 @@ import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.build.*;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.database.GuildRulesRepository;
+import net.honeyberries.database.SpecialUsersRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -28,13 +28,29 @@ import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
+/**
+ * Slash command handler for debug and administrative commands.
+ *
+ * <p>Provides administrative utilities for server management including rule refreshing, 
+ * viewing guild rules, and channel purging (delete and recreate). All commands require 
+ * administrator permissions and are only usable in guild contexts. This suite helps 
+ * administrators diagnose issues and manage server state.
+ */
 public class DebugCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(DebugCommands.class);
     private final GuildRulesRepository rulesRepo = GuildRulesRepository.getInstance();
     private final GuildPreferencesRepository preferencesRepo = GuildPreferencesRepository.getInstance();
 
-    public void registerDebugCommands(CommandListUpdateAction commands) {
+    /**
+     * Registers the debug command and its subcommands with the Discord bot.
+     *
+     * @param commands the command list update action to register commands with. Must not be null.
+     * @throws NullPointerException if commands is null
+     */
+    public void registerDebugCommands(@NotNull CommandListUpdateAction commands) {
+        Objects.requireNonNull(commands, "commands must not be null");
+
         SubcommandData refreshSub = new SubcommandData(
                 "refresh-rules",
                 "Refreshes the rules from the configured channel"
@@ -49,15 +65,25 @@ public class DebugCommands extends ListenerAdapter {
                 .addOptions(new OptionData(OptionType.CHANNEL, "channel", "Channel to delete and recreate", true));
 
         SlashCommandData debugCommand = Commands.slash("debug", "Debug and admin commands")
-                .addSubcommands(refreshSub, showSub, purgeSub)
-                .setDefaultPermissions(DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER));
+                .addSubcommands(refreshSub, showSub, purgeSub);
 
-        commands.addCommands(debugCommand);
+        Objects.requireNonNull(commands.addCommands(debugCommand));
         logger.info("Debug commands added to command registration");
     }
 
+    /**
+     * Handles slash command interactions for the debug command.
+     *
+     * <p>Routes to appropriate subcommand handler (refresh-rules, show-rules, or purge) 
+     * after validating permissions. Only responds to the "debug" command and requires 
+     * guild context and administrator permissions.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         if (!event.getName().equals("debug")) {
             return;
         }
@@ -67,7 +93,11 @@ public class DebugCommands extends ListenerAdapter {
             return;
         }
 
-        if (event.getMember() != null && !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+        boolean hasPermission = event.getMember() != null
+                && (event.getMember().hasPermission(Permission.MANAGE_SERVER)
+                || SpecialUsersRepository.getInstance().isSpecialUser(event.getUser()));
+
+        if (!hasPermission) {
             event.reply("You need administrator permissions to use this command").setEphemeral(true).queue();
             return;
         }
@@ -81,13 +111,22 @@ public class DebugCommands extends ListenerAdapter {
         }
     }
 
+    /**
+     * Handles the refresh-rules subcommand.
+     *
+     * <p>Fetches the latest rules from the configured rules channel in Discord and 
+     * updates the guild's cached rules in the database. Notifies the user of success 
+     * or failure via ephemeral reply.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
     private void handleRefreshRules(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         try {
             Guild guild = Objects.requireNonNull(event.getGuild());
             GuildID guildId = new GuildID(guild.getIdLong());
             GuildRules rules = refreshRulesFromDiscord(guild, guildId);
-
-            GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(rules);
 
             if (rules == null || rules.rulesText() == null || rules.rulesText().isBlank()) {
                 event.reply("No rules found in the configured rules channel. Check channel ID, permissions, and channel content.")
@@ -95,6 +134,8 @@ public class DebugCommands extends ListenerAdapter {
                         .queue();
                 return;
             }
+
+            GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(rules);
 
             event.reply("Rules refreshed successfully!").setEphemeral(true).queue();
             logger.debug("Refreshed rules for guild: {}", guildId.value());
@@ -104,7 +145,18 @@ public class DebugCommands extends ListenerAdapter {
         }
     }
 
+    /**
+     * Handles the show-rules subcommand.
+     *
+     * <p>Displays the currently cached guild rules to the user. If no cached rules exist, 
+     * attempts to fetch and cache them from Discord first. Sends the rules as an 
+     * ephemeral reply.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
     private void handleShowRules(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         try {
             Guild guild = Objects.requireNonNull(event.getGuild());
             GuildID guildId = new GuildID(guild.getIdLong());
@@ -127,8 +179,22 @@ public class DebugCommands extends ListenerAdapter {
         }
     }
 
+    /**
+     * Refreshes guild rules by fetching the latest messages from the configured rules channel.
+     *
+     * <p>If no rules channel is configured, returns the existing cached rules. Parses message 
+     * content and embeds from the rules channel and updates the database with the result. 
+     * Returns null if the rules channel is not configured or cannot be accessed.
+     *
+     * @param guild the guild to refresh rules for. Must not be null.
+     * @param guildId the guild ID. Must not be null.
+     * @return the refreshed guild rules, or null if rules channel is not configured
+     * @throws NullPointerException if guild or guildId is null
+     */
     @Nullable
     private GuildRules refreshRulesFromDiscord(@NotNull Guild guild, @NotNull GuildID guildId) {
+        Objects.requireNonNull(guild, "guild must not be null");
+        Objects.requireNonNull(guildId, "guildId must not be null");
         GuildRules existingRules = rulesRepo.getGuildRulesFromCache(guildId);
         ChannelID rulesChannelId = existingRules != null ? existingRules.rulesChannelId() : null;
 
@@ -154,8 +220,22 @@ public class DebugCommands extends ListenerAdapter {
         return refreshed;
     }
 
+    /**
+     * Fetches and concatenates rule text from messages in the specified rules channel.
+     *
+     * <p>Retrieves up to 100 messages from the rules channel, extracts text from message 
+     * content and embeds, and combines them. Returns null if the channel is not a text 
+     * channel or if a network error occurs.
+     *
+     * @param guild the guild containing the rules channel. Must not be null.
+     * @param rulesChannelId the ID of the rules channel. Must not be null.
+     * @return concatenated rules text from the channel, or null if unable to fetch
+     * @throws NullPointerException if guild or rulesChannelId is null
+     */
     @Nullable
     private String fetchRulesTextFromChannel(@NotNull Guild guild, @NotNull ChannelID rulesChannelId) {
+        Objects.requireNonNull(guild, "guild must not be null");
+        Objects.requireNonNull(rulesChannelId, "rulesChannelId must not be null");
         Channel rulesChannel = guild.getGuildChannelById(rulesChannelId.value());
         if (!(rulesChannel instanceof TextChannel rulesTextChannel)) {
             return null;
@@ -181,11 +261,23 @@ public class DebugCommands extends ListenerAdapter {
         }
     }
 
+    /**
+     * Extracts displayable text from a Discord message.
+     *
+     * <p>Combines message content and parsed embed text. If both are present, joins them 
+     * with a newline. Returns the available text or an empty string if neither is present.
+     *
+     * @param message the message to extract text from. Must not be null.
+     * @return the extracted text, or empty string if no content
+     * @throws NullPointerException if message is null
+     */
+    @NotNull
     private String extractRuleText(@NotNull Message message) {
+        Objects.requireNonNull(message, "message must not be null");
         String content = message.getContentDisplay();
         String embed = EmbedParser.parseEmbed(message);
 
-        boolean hasContent = content != null && !content.isBlank();
+        boolean hasContent = !content.isBlank();
         boolean hasEmbed = !embed.isBlank();
 
         if (hasContent && hasEmbed) {
@@ -197,7 +289,19 @@ public class DebugCommands extends ListenerAdapter {
         return hasEmbed ? embed : "";
     }
 
+    /**
+     * Handles the purge subcommand.
+     *
+     * <p>Deletes a specified text channel and immediately recreates it with the same 
+     * name, position, and topic. Useful for clearing channel history. Replies with 
+     * success/failure status via ephemeral message. The interaction is acknowledged 
+     * before deletion to prevent timeout.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
     private void handlePurge(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
         try {
             TextChannel targetChannel = event.getOption("channel", null, option ->
                     option.getAsChannel().asTextChannel()
@@ -217,13 +321,13 @@ public class DebugCommands extends ListenerAdapter {
             event.reply("Purging " + targetChannel.getAsMention() + "...").setEphemeral(true).queue();
 
             targetChannel.delete().queue(
-                deleted -> {
+                ignored -> {
                     assert guild != null;
                     guild.createTextChannel(channelName)
                             .setPosition(position)
                             .setTopic(topic)
                             .queue(
-                                newChannel -> logger.debug("Purged channel: {} in guild: {}", channelName, guild.getId()),
+                                ignoredChannel -> logger.debug("Purged channel: {} in guild: {}", channelName, guild.getId()),
                                 throwable -> logger.error("Failed to recreate channel", throwable)
                             );
                 },

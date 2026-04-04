@@ -8,6 +8,7 @@ import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.MessageID;
 import net.honeyberries.datatypes.discord.UserID;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,29 +18,50 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * Persists moderation actions and associated message deletions to the database.
+ * Manages the lifecycle of {@link ActionData} instances, enabling retrieval by action ID, guild, or user.
+ * Also handles transactional updates to ensure action records and their deletion specs remain synchronized.
+ */
 public class GuildModerationActionsRepository {
 
+    /** Logger for recording database operations. */
     private final Logger logger = LoggerFactory.getLogger(GuildModerationActionsRepository.class);
+    /** Singleton instance. */
     private static final GuildModerationActionsRepository INSTANCE = new GuildModerationActionsRepository();
+    /** Database connection pool. */
     private final Database database;
 
+    /**
+     * Constructs a new repository, retrieving the singleton database instance.
+     */
     public GuildModerationActionsRepository() {
         this.database = Database.getInstance();
     }
 
+    /**
+     * Retrieves the singleton instance of this repository.
+     *
+     * @return the singleton {@code GuildModerationActionsRepository}
+     */
+    @NotNull
     public static GuildModerationActionsRepository getInstance() {
         return INSTANCE;
     }
 
-
     /**
-     * Adds an action to the database.
-     * @param actionData The action data to add
-     * @return true if the action was added successfully, false otherwise
+     * Persists an action record and its associated message deletions in a single transaction.
+     * Both the action and all deletion specs are inserted; if either fails, the transaction is rolled back.
+     *
+     * @param actionData the moderation action to persist
+     * @return {@code true} if both the action and deletions were inserted successfully, {@code false} if a database error occurred
+     * @throws NullPointerException if {@code actionData} is {@code null}
      */
-    public boolean addActionToDatabase(ActionData actionData) {
+    public boolean addActionToDatabase(@NotNull ActionData actionData) {
+        Objects.requireNonNull(actionData, "actionData must not be null");
         try {
             database.transaction(conn -> {
                 String insertActionSql = """
@@ -85,9 +107,16 @@ public class GuildModerationActionsRepository {
         }
     }
 
-
+    /**
+     * Retrieves a stored action by its unique identifier.
+     *
+     * @param actionId the action UUID to look up
+     * @return the {@code ActionData} if found, or {@code null} if no matching action exists or a database error occurred
+     * @throws NullPointerException if {@code actionId} is {@code null}
+     */
     @Nullable
-    public ActionData getActionById(UUID actionId) {
+    public ActionData getActionById(@NotNull UUID actionId) {
+        Objects.requireNonNull(actionId, "actionId must not be null");
         String sql = """
             SELECT *
             FROM guild_moderation_actions
@@ -113,7 +142,17 @@ public class GuildModerationActionsRepository {
         }
     }
 
-    public List<ActionData> getActionsByGuild(GuildID guildId) {
+    /**
+     * Fetches all actions targeted at users in a specific guild, ordered newest first.
+     * Returns an empty list if no actions are found or if a database error occurs.
+     *
+     * @param guildId the guild to search for actions
+     * @return a list of {@code ActionData} in reverse chronological order, never {@code null}
+     * @throws NullPointerException if {@code guildId} is {@code null}
+     */
+    @NotNull
+    public List<ActionData> getActionsByGuild(@NotNull GuildID guildId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
             SELECT *
             FROM guild_moderation_actions
@@ -143,6 +182,15 @@ public class GuildModerationActionsRepository {
         }
     }
 
+    /**
+     * Fetches all actions targeted at a specific user within a guild, ordered newest first.
+     * Returns an empty list if no actions are found or if a database error occurs.
+     *
+     * @param guildId the guild ID to search in
+     * @param userId the user ID to match
+     * @return a list of {@code ActionData} in reverse chronological order, never {@code null}
+     */
+    @NotNull
     public List<ActionData> getActionsByUser(long guildId, long userId) {
         String sql = """
             SELECT *
@@ -174,6 +222,15 @@ public class GuildModerationActionsRepository {
         }
     }
 
+    /**
+     * Retrieves the most recent moderation actions for a guild, up to the specified limit.
+     * Returns an empty list if no actions are found or if a database error occurs.
+     *
+     * @param guildId the guild to fetch actions from
+     * @param limit the maximum number of actions to return
+     * @return a list of recent {@code ActionData} up to {@code limit} in size, ordered newest first, never {@code null}
+     */
+    @NotNull
     public List<ActionData> getRecentActions(long guildId, int limit) {
         String sql = """
             SELECT *
@@ -206,7 +263,17 @@ public class GuildModerationActionsRepository {
         }
     }
 
-    private ActionData mapAction(ResultSet rs) throws SQLException {
+    /**
+     * Reconstructs an {@code ActionData} instance from a database result row.
+     * Fetches associated message deletions and populates them into the action builder.
+     *
+     * @param rs the result set positioned at a row from guild_moderation_actions
+     * @return the reconstructed {@code ActionData}
+     * @throws SQLException if a column cannot be accessed
+     */
+    @NotNull
+    private ActionData mapAction(@NotNull ResultSet rs) throws SQLException {
+        Objects.requireNonNull(rs, "rs must not be null");
         UUID actionId = (UUID) rs.getObject("action_id");
 
         ActionDataBuilder builder = new ActionDataBuilder(
@@ -225,38 +292,46 @@ public class GuildModerationActionsRepository {
         return builder.build();
     }
 
+    /**
+     * Retrieves all message deletion specs associated with a moderation action.
+     * Returns an empty list if no deletions are found or if a database error occurs.
+     *
+     * @param actionId the action ID to fetch deletions for
+     * @return a list of {@code MessageDeletion} instances, never {@code null}
+     * @throws NullPointerException if {@code actionId} is {@code null}
+     */
+    @NotNull
+    private List<MessageDeletion> getDeletionsByActionId(@NotNull UUID actionId) {
+        Objects.requireNonNull(actionId, "actionId must not be null");
+        String sql = """
+            SELECT channel_id, message_id
+            FROM guild_moderation_action_deletions
+            WHERE action_id = ?
+        """;
 
-    private List<MessageDeletion> getDeletionsByActionId(UUID actionId) {
-    String sql = """
-        SELECT channel_id, message_id
-        FROM guild_moderation_action_deletions
-        WHERE action_id = ?
-    """;
+        try {
+            return database.query(conn -> {
+                List<MessageDeletion> deletions = new ArrayList<>();
 
-    try {
-        return database.query(conn -> {
-            List<MessageDeletion> deletions = new ArrayList<>();
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setObject(1, actionId);
 
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setObject(1, actionId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            ChannelID channelId = new ChannelID(rs.getLong("channel_id"));
+                            MessageID messageId = new MessageID(rs.getLong("message_id"));
 
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        ChannelID channelId = new ChannelID(rs.getLong("channel_id"));
-                        MessageID messageId = new MessageID(rs.getLong("message_id"));
-
-                        deletions.add(new MessageDeletion(channelId, messageId));
+                            deletions.add(new MessageDeletion(channelId, messageId));
+                        }
                     }
                 }
-            }
 
-            return deletions;
-        });
+                return deletions;
+            });
         } catch (Exception e) {
             logger.error("Failed to fetch deletions", e);
             return List.of();
         }
     }
-
 
 }

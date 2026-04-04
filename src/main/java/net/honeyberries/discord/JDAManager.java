@@ -9,16 +9,17 @@ import net.honeyberries.discord.listener.GuildListener;
 import net.honeyberries.discord.listener.MessageListener;
 import net.honeyberries.discord.listener.RoleListener;
 import net.honeyberries.discord.listener.UserListener;
-import net.honeyberries.discord.slashCommands.DebugCommands;
-import net.honeyberries.discord.slashCommands.ExcludeCommand;
-import net.honeyberries.discord.slashCommands.ModerationCommands;
-import net.honeyberries.discord.slashCommands.StatusCommands;
+import net.honeyberries.discord.slashCommands.*;
 import net.honeyberries.util.TokenManager;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
+/**
+ * Singleton manager for the JDA (Java Discord API) instance.
+ * Handles bot initialization, event listeners, and slash command registration.
+ */
 public class JDAManager {
 
     private static JDAManager instance;
@@ -26,6 +27,13 @@ public class JDAManager {
 
     private final @NotNull JDA jda;
 
+    /**
+     * Initializes the JDA instance with all gateway intents enabled.
+     * Retrieves bot token via {@link TokenManager}, sets activity status,
+     * and awaits bot readiness.
+     *
+     * @throws RuntimeException if JDA initialization is interrupted
+     */
     private JDAManager() {
         logger.info("Creating Discord bot instance");
 
@@ -44,14 +52,26 @@ public class JDAManager {
         }
     }
 
+    /**
+     * Registers slash commands and attaches event listeners.
+     * Sets up {@link GuildListener}, {@link MessageListener}, {@link UserListener},
+     * {@link RoleListener}, and command handlers for status, debug, exclude, and moderation.
+     * All commands are queued for synchronization with Discord.
+     */
     private void registerCommands() {
         logger.info("Registering slash commands");
         CommandListUpdateAction commands = jda.updateCommands();
 
+        jda.addEventListener(new ShutdownCommands());
         jda.addEventListener(new GuildListener());
         jda.addEventListener(new MessageListener());
         jda.addEventListener(new UserListener());
         jda.addEventListener(new RoleListener());
+
+        ShutdownCommands shutdownCommands = new ShutdownCommands();
+        jda.addEventListener(shutdownCommands);
+        shutdownCommands.registerShutdownCommands(commands);
+        logger.info("Added ShutdownCommands to queue");
 
         StatusCommands statusCommands = new StatusCommands();
         jda.addEventListener(statusCommands);
@@ -76,6 +96,7 @@ public class JDAManager {
         commands.queue();
         logger.info("All slash commands synced — bot setup complete");
     }
+
 
     @NotNull
     public static synchronized JDAManager getInstance() {

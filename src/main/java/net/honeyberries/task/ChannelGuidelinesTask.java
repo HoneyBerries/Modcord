@@ -12,6 +12,7 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
 import net.honeyberries.preferences.Onboarding;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,7 +66,7 @@ public class ChannelGuidelinesTask implements Runnable {
         }
     }
 
-    private UpdateOutcome updateChannelGuidelines(Guild guild, TextChannel channel) {
+    private UpdateOutcome updateChannelGuidelines(@NotNull Guild guild, TextChannel channel) {
         try {
             GuildID guildId = GuildID.fromGuild(guild);
             ChannelID channelId = new ChannelID(channel.getIdLong());
@@ -78,7 +79,7 @@ public class ChannelGuidelinesTask implements Runnable {
             if (existingPreferences == null) {
                 logger.debug("Guild {} not found in database, onboarding guild with default preferences", guildId.value());
 
-                boolean success = Onboarding.getInstance().setupGuild(guildId.toGuild());
+                boolean success = Onboarding.getInstance().setupGuild(guild);
                 if (!success) {
                     logger.error("Failed to onboard guild {}", guildId.value());
                     return UpdateOutcome.FAILED;

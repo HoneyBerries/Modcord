@@ -95,18 +95,18 @@ The default config currently points at specific hosted services, so you should r
 To build a executable jar:
 
 ```bash
-./gradlew build
+./gradlew assemble
 ```
 
 To run the unit test suite:
 
 ```bash
-./gradlew runTest
+./gradlew test
 ```
 
 To run a runtime test:
 ```bash
-./gradlew run
+./gradlew runTest
 ```
 
 ## Configuration

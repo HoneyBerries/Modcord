@@ -11,30 +11,50 @@ import org.slf4j.LoggerFactory;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Objects;
 
+/**
+ * Manages the persistence and retrieval of guild-specific moderation preferences.
+ * Tracks settings such as AI enablement, auto-moderation actions, and designated channel IDs for notifications.
+ * Supports upsert operations to keep preferences in sync with Discord configuration changes.
+ */
 public class GuildPreferencesRepository {
 
+    /** Logger for recording database operations. */
     private final Logger logger = LoggerFactory.getLogger(GuildPreferencesRepository.class);
+    /** Database connection pool. */
     private final Database database;
-
+    /** Singleton instance. */
     private static final GuildPreferencesRepository INSTANCE = new GuildPreferencesRepository();
 
+    /**
+     * Retrieves the singleton instance of this repository.
+     *
+     * @return the singleton {@code GuildPreferencesRepository}
+     */
     @NotNull
     public static GuildPreferencesRepository getInstance() {
         return INSTANCE;
     }
 
+    /**
+     * Constructs a new repository, retrieving the singleton database instance.
+     */
     public GuildPreferencesRepository() {
         this.database = Database.getInstance();
     }
 
-
     /**
-     * Inserts or updates guild preferences.
-     * @param guildPreferences The preferences to save
-     * @return true if saved successfully, false otherwise
+     * Persists or updates guild preferences in a single transaction.
+     * If preferences for the guild already exist, all fields are replaced; otherwise, new preferences are inserted.
+     * Channel IDs are optional and may be {@code null}.
+     *
+     * @param guildPreferences the preferences to persist or update
+     * @return {@code true} if the operation succeeded, {@code false} if a database error occurred
+     * @throws NullPointerException if {@code guildPreferences} is {@code null}
      */
     public boolean addOrUpdateGuildPreferences(@NotNull GuildPreferences guildPreferences) {
+        Objects.requireNonNull(guildPreferences, "guildPreferences must not be null");
         try {
             database.transaction(conn -> {
                 String upsertSql = """
@@ -89,9 +109,17 @@ public class GuildPreferencesRepository {
         }
     }
 
-
+    /**
+     * Retrieves the stored preferences for a specific guild.
+     * If no preferences exist, returns {@code null}; this typically means the guild has not yet configured settings.
+     *
+     * @param guildId the guild ID to look up
+     * @return the {@code GuildPreferences} if found, or {@code null} if no settings exist or a database error occurred
+     * @throws NullPointerException if {@code guildId} is {@code null}
+     */
     @Nullable
     public GuildPreferences getGuildPreferences(@NotNull GuildID guildId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
             SELECT guild_id, ai_enabled, rules_channel_id,
                    auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
@@ -119,8 +147,15 @@ public class GuildPreferencesRepository {
         }
     }
 
-
-    public void deleteGuildPreferences(GuildID guildId) {
+    /**
+     * Removes all stored preferences for a specific guild.
+     * Safe to invoke even if no preferences exist for the guild.
+     *
+     * @param guildId the guild ID to delete preferences for
+     * @throws NullPointerException if {@code guildId} is {@code null}
+     */
+    public void deleteGuildPreferences(@NotNull GuildID guildId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = "DELETE FROM guild_preferences WHERE guild_id = ?";
 
         try {
@@ -136,9 +171,17 @@ public class GuildPreferencesRepository {
         }
     }
 
-
+    /**
+     * Reconstructs a {@code GuildPreferences} instance from a database result row.
+     * Handles nullable channel IDs by checking {@code wasNull()} after retrieving BIGINT values.
+     *
+     * @param rs the result set positioned at a row from guild_preferences
+     * @return the reconstructed {@code GuildPreferences}
+     * @throws SQLException if a column cannot be accessed
+     */
     @NotNull
-    private GuildPreferences mapPreferences(ResultSet rs) throws SQLException {
+    private GuildPreferences mapPreferences(@NotNull ResultSet rs) throws SQLException {
+        Objects.requireNonNull(rs, "rs must not be null");
         GuildID guildId = new GuildID(rs.getLong("guild_id"));
 
         long rulesChannelRaw = rs.getLong("rules_channel_id");
@@ -159,7 +202,6 @@ public class GuildPreferencesRepository {
             auditLogChannelId
         );
     }
-
 
 
 }
