@@ -22,9 +22,9 @@ import java.util.Objects;
  * guild contexts. This helps ensure the bot can be stopped cleanly through its 
  * command interface rather than requiring process management access.
  */
-public class ShutdownCommand extends ListenerAdapter {
+public class ShutdownCommands extends ListenerAdapter {
 
-    private static final Logger logger = LoggerFactory.getLogger(ShutdownCommand.class);
+    private static final Logger logger = LoggerFactory.getLogger(ShutdownCommands.class);
 
     /**
      * Registers the shutdown command with the Discord bot.
@@ -32,7 +32,7 @@ public class ShutdownCommand extends ListenerAdapter {
      * @param commands the command list update action to register commands with. Must not be null.
      * @throws NullPointerException if commands is null
      */
-    public void registerShutdownCommand(@NotNull CommandListUpdateAction commands) {
+    public void registerShutdownCommands(@NotNull CommandListUpdateAction commands) {
         Objects.requireNonNull(commands, "commands must not be null");
         SlashCommandData shutdownCommand = Commands.slash("shutdown", "Gracefully shutdown the bot");
 
