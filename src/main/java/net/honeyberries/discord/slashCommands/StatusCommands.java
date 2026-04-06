@@ -4,6 +4,7 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.Database;
@@ -38,15 +39,15 @@ public class StatusCommands extends ListenerAdapter {
      */
     public void registerStatusCommands(@NotNull CommandListUpdateAction commands) {
         Objects.requireNonNull(commands, "commands must not be null");
+
+        SubcommandData healthSub = new SubcommandData("health", "Checks if the bot is healthy");
+        SubcommandData pingSub = new SubcommandData("ping", "Checks the bot's ping");
+        SubcommandData uptimeSub = new SubcommandData("uptime", "Checks the bot's uptime");
+
+        SlashCommandData statusCommand = Commands.slash("status", "Bot health and status monitoring").addSubcommands(healthSub, pingSub, uptimeSub);
+
         try {
-            commands.addCommands(
-                Commands.slash("status", "Check the bot's status")
-                        .addSubcommands(
-                            new SubcommandData("health", "Checks if the bot is healthy"),
-                            new SubcommandData("ping", "Checks the bot's ping"),
-                            new SubcommandData("uptime", "Checks the bot's uptime")
-                        )
-            );
+            Objects.requireNonNull(commands.addCommands(statusCommand));
             logger.info("Registered /status with subcommands: health, ping, uptime");
         } catch (Exception e) {
             logger.error("Failed to register status commands", e);
