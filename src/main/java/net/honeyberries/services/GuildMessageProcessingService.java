@@ -2,7 +2,10 @@ package net.honeyberries.services;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openai.models.ResponseFormatJsonSchema;
+import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
+import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
@@ -11,6 +14,7 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.action.ActionHandler;
 import net.honeyberries.ai.*;
 import net.honeyberries.config.AppConfig;
+import net.honeyberries.database.AILogRepository;
 import net.honeyberries.database.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.content.ModerationMessage;
@@ -40,7 +44,7 @@ import java.util.stream.Collectors;
  * (1) collect current queued messages and historical context, (2) build guild moderation batch,
  * (3) invoke AI inference with constrained schema, (4) parse AI responses into actions,
  * (5) log actions to database, (6) apply actions via ActionHandler.
- * 
+ * <p>
  * Responsibilities:
  * - Queue management: add, update, remove messages with timestamp tracking
  * - Time windowing: separate current messages from historical context based on configurable durations
@@ -259,7 +263,7 @@ public class GuildMessageProcessingService {
      * (6) Persists actions to database
      * (7) Applies actions via ActionHandler (parallel execution)
      * (8) Removes processed messages from queue
-     * 
+     * <p>
      * Returns {@code true} if actions were taken, {@code false} if no actions resulted.
      * Handles all exceptions gracefully, returning {@code false} on any failure and logging details.
      *
@@ -338,10 +342,12 @@ public class GuildMessageProcessingService {
                 historyUsers
         );
 
-        ChatCompletionMessageParam inputs;
-        ChatCompletionMessageParam systemPrompt;
+        ChatCompletionUserMessageParam inputs;
+        ChatCompletionSystemMessageParam systemPrompt;
         ResponseFormatJsonSchema schema;
-        String response;
+        ChatCompletionAssistantMessageParam response;
+
+        List<ChatCompletionMessageParam> conversation = new ArrayList<>();
 
         logger.info("Creating datastructures for AI Input");
 
@@ -366,17 +372,23 @@ public class GuildMessageProcessingService {
             return List.of();
         }
 
+        conversation.add(ChatCompletionMessageParam.ofSystem(systemPrompt));
+        conversation.add(ChatCompletionMessageParam.ofUser(inputs));
+
         try {
             logger.info("Submitting moderation batch for guild {} to LLM", guildId.value());
-            response = InferenceEngine.getInstance().generateResponse(List.of(systemPrompt, inputs), schema).get();
+            response = InferenceEngine.getInstance().generateResponse(conversation, schema).get();
+            conversation.add(ChatCompletionMessageParam.ofAssistant(response));
         } catch (ExecutionException | InterruptedException e) {
             logger.error("Failed to generate response for guild {}", guildId, e);
             return List.of();
         }
 
-        if (response == null || response.isBlank()) {
-            logger.warn("LLM returned empty response for guild {}", guildId.value());
-            return List.of();
+        // Store the AI response in the database.
+        boolean success = AILogRepository.getInstance().addLogEntry(guildId, conversation);
+
+        if (!success) {
+            logger.error("Failed to store AI response for guild {}", guildId);
         }
 
         try {
@@ -486,3 +498,4 @@ public class GuildMessageProcessingService {
     }
 
 }
+

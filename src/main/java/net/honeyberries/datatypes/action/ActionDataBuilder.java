@@ -47,7 +47,7 @@ public class ActionDataBuilder {
             long timeoutDuration,
             long banDuration
     ) {
-        this.id = Objects.requireNonNull(id, "id must not be null");
+        this.id = Objects.requireNonNull(id, "interactionID must not be null");
         this.guildId = Objects.requireNonNull(guildId, "guildId must not be null");
         this.userId = Objects.requireNonNull(userId, "userId must not be null");
         this.moderatorId = Objects.requireNonNull(moderatorId, "moderatorId must not be null");

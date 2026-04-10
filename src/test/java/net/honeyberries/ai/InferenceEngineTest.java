@@ -1,7 +1,9 @@
 package net.honeyberries.ai;
 
+import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.*;
 
 import java.util.List;
@@ -10,7 +12,7 @@ import java.util.concurrent.ExecutionException;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Inference Engine Test")
-@Disabled("This test requires an OpenAI API key to be set in the environment variables")
+//@Disabled("This test requires an OpenAI API key to be set in the environment variables")
 class InferenceEngineTest {
     
     private InferenceEngine inferenceEngine;
@@ -89,11 +91,13 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            String response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get();
+            String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a non-null response");
-            assertTrue(response.toLowerCase().contains("hello honeyberries"), "AI response should contain 'Hello HoneyBerries'");
-            assertFalse(response.isEmpty(), "AI response should not be empty");
+            assertNotNull(responseText, "AI should return text content");
+            assertTrue(responseText.toLowerCase().contains("hello honeyberries"), "AI response should contain 'Hello HoneyBerries'");
+            assertFalse(responseText.isEmpty(), "AI response should not be empty");
         }
 
         @Test
@@ -106,10 +110,12 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            String response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get();
+            String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
-            assertTrue(response.contains("5050"), "Response should contain the correct answer");
+            assertNotNull(responseText, "AI should return text content");
+            assertTrue(responseText.contains("5050"), "Response should contain the correct answer");
         }
 
         @Test
@@ -122,11 +128,13 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            String response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get();
+            String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
-            assertTrue(response.toLowerCase().contains("paris"), "Response should mention Paris");
-            assertTrue(response.toLowerCase().contains("washington"), "Response should mention Washington");
+            assertNotNull(responseText, "AI should return text content");
+            assertTrue(responseText.toLowerCase().contains("paris"), "Response should mention Paris");
+            assertTrue(responseText.toLowerCase().contains("washington"), "Response should mention Washington");
         }
 
         @Test
@@ -151,10 +159,12 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(messages, null);
-            String response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get();
+            String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
-            assertTrue(response.toLowerCase().contains("john"), "AI should remember the user's name");
+            assertNotNull(responseText, "AI should return text content");
+            assertTrue(responseText.toLowerCase().contains("john"), "AI should remember the user's name");
         }
 
         @Test
@@ -167,9 +177,21 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            String response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get();
 
             assertNotNull(response, "AI should return a response even with null responseFormat");
         }
+    }
+
+    @Nullable
+    private String extractAssistantText(@Nullable ChatCompletionAssistantMessageParam response) {
+        if (response == null) {
+            return null;
+        }
+
+        return response.content()
+                .filter(ChatCompletionAssistantMessageParam.Content::isText)
+                .map(ChatCompletionAssistantMessageParam.Content::asText)
+                .orElse(null);
     }
 }

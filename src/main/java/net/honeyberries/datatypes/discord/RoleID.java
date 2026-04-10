@@ -16,7 +16,7 @@ public record RoleID(long value) {
     /**
      * Creates a {@code RoleID} from a JDA {@link Role}.
      *
-     * @param role role entity providing the id; must not be {@code null}
+     * @param role role entity providing the interactionID; must not be {@code null}
      * @return identifier corresponding to the provided role
      * @throws NullPointerException if {@code role} is {@code null}
      */
@@ -42,7 +42,7 @@ public record RoleID(long value) {
     /**
      * Returns the snowflake identifier rendered as an unsigned decimal string.
      *
-     * @return unsigned decimal representation of the role id
+     * @return unsigned decimal representation of the role interactionID
      */
     @NotNull
     @Override

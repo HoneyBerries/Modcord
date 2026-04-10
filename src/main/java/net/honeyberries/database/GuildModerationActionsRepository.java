@@ -137,7 +137,7 @@ public class GuildModerationActionsRepository {
                 }
             });
         } catch (Exception e) {
-            logger.error("Failed to fetch action by id", e);
+            logger.error("Failed to fetch action by interactionID", e);
             return null;
         }
     }

@@ -17,7 +17,7 @@ public record GuildID(long value) {
     /**
      * Creates a {@code GuildID} from a JDA {@link Guild}.
      *
-     * @param guild guild entity providing the id; must not be {@code null}
+     * @param guild guild entity providing the interactionID; must not be {@code null}
      * @return identifier corresponding to the provided guild
      * @throws NullPointerException if {@code guild} is {@code null}
      */
@@ -50,7 +50,7 @@ public record GuildID(long value) {
     /**
      * Returns the snowflake identifier rendered as an unsigned decimal string.
      *
-     * @return unsigned decimal representation of the guild id
+     * @return unsigned decimal representation of the guild interactionID
      */
     @NotNull
     @Override

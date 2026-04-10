@@ -29,7 +29,7 @@ public class GuildModerationBatchToAIInput {
      * each labeled by its UUID so the model can correlate JSON references to images.
      * <p>
      * JSON structure:
-     * - guild: id, name
+     * - guild: interactionID, name
      * - context: channels with guidelines and message counts
      * - users_for_moderation: current moderation targets with their full message history and images
      * - user_history: historical context users with their message history (for trend analysis)
@@ -43,7 +43,7 @@ public class GuildModerationBatchToAIInput {
      * @throws NullPointerException if {@code guildModerationBatch} is {@code null}
      */
     @NotNull
-    public static ChatCompletionMessageParam createMessageFromGuildModerationBatch(
+    public static ChatCompletionUserMessageParam createMessageFromGuildModerationBatch(
             @NotNull GuildModerationBatch guildModerationBatch)
             throws GuildModerationBatchSerializationException {
         Objects.requireNonNull(guildModerationBatch, "guildModerationBatch must not be null");
@@ -109,11 +109,9 @@ public class GuildModerationBatchToAIInput {
                 }
             }
 
-            return ChatCompletionMessageParam.ofUser(
-                ChatCompletionUserMessageParam.builder()
+            return ChatCompletionUserMessageParam.builder()
                     .content(ChatCompletionUserMessageParam.Content.ofArrayOfContentParts(contentParts))
-                    .build()
-            );
+                    .build();
 
         } catch (JsonProcessingException e) {
             throw new GuildModerationBatchSerializationException(

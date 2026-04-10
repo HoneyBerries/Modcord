@@ -18,7 +18,7 @@ public record ChannelID(long value) {
     /**
      * Creates a {@code ChannelID} from a JDA {@link MessageChannel} instance.
      *
-     * @param channel JDA channel whose id will be captured; must not be {@code null}
+     * @param channel JDA channel whose interactionID will be captured; must not be {@code null}
      * @return immutable identifier for the provided channel
      * @throws NullPointerException if {@code channel} is {@code null}
      */
@@ -56,7 +56,7 @@ public record ChannelID(long value) {
     /**
      * Returns the snowflake identifier rendered as an unsigned decimal string.
      *
-     * @return unsigned decimal representation of the channel id
+     * @return unsigned decimal representation of the channel interactionID
      */
     @NotNull
     @Override

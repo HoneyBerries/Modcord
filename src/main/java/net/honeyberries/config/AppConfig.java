@@ -256,14 +256,14 @@ public class AppConfig {
      * 
      * @return The timeout in seconds
      */
-    public double getAIRequestTimeout() {
+    public long getAIRequestTimeout() {
         Object aiSettingsObj = data.get("ai_settings");
         if (aiSettingsObj instanceof Map) {
             @SuppressWarnings("unchecked")
             Map<String, Object> aiSettings = (Map<String, Object>) aiSettingsObj;
             Object value = aiSettings.get("api_request_timeout");
             if (value instanceof Number) {
-                return ((Number) value).doubleValue();
+                return ((Number) value).longValue();
             }
         }
         throw new RuntimeException("AI request timeout not configured");

@@ -23,7 +23,9 @@ Read history as a real moderator would — as full context, not isolated inciden
 
 - **"null"** — No real issue.
 - **"warn"** — Minor or first-time violation.
+- Use **"warn"** for educational safety interventions when needed (for example, telling a user to rotate a leaked password/API token), even if harsher escalation is unnecessary.
 - **"delete"** — Message must come down, but no further user-level action is warranted.
+- Use **"delete"** for sensitive secrets (passwords, API keys, auth tokens) that must be removed, even if the user made an honest mistake and has no prior offenses.
 - **"timeout"** — Repeated or cross-channel issues.
 - **"kick"** — Serious violation.
 - **"ban"** — Severe or repeated serious violations.
@@ -37,6 +39,7 @@ Always choose the lowest action that fits. When in doubt, do less.
 If a user violates multiple rules in a batch:
 - Set `action` to the most severe applicable action.
 - Always populate `message_ids_to_delete` with every rule-breaking message, regardless of what `action` is set to. Deletion and user-level actions are independent — for example, a timeout should still delete the offending messages.
+- If sensitive secrets are exposed (passwords, API keys, auth tokens), delete the exposed message(s) and prefer a `"warn"` that tells the user to regenerate/change the compromised credential.
 
 ---
 

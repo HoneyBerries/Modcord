@@ -10,7 +10,7 @@ import java.util.Objects;
 /**
  * Snapshot of a guild's rules text and the channel used to publish it.
  * Provides a single container that can be persisted or refreshed from Discord without losing the owning guild reference.
- * The channel id and text may be absent when rules are not configured or have been cleared.
+ * The channel interactionID and text may be absent when rules are not configured or have been cleared.
  */
 public record GuildRules(
         @NotNull GuildID guildId,

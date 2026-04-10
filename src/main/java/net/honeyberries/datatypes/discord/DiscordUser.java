@@ -26,8 +26,8 @@ public record DiscordUser(@NotNull UserID userId, @NotNull String username) {
     /**
      * Builds a {@code DiscordUser} from a JDA {@link User}.
      *
-     * @param user source user whose id and display name are captured; must not be {@code null}
-     * @return immutable pairing of the user's id and current name
+     * @param user source user whose interactionID and display name are captured; must not be {@code null}
+     * @return immutable pairing of the user's interactionID and current name
      * @throws NullPointerException if {@code user} is {@code null}
      */
     @NotNull

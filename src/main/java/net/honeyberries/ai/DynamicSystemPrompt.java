@@ -44,7 +44,7 @@ public class DynamicSystemPrompt {
      * @throws NullPointerException if {@code guildId} is {@code null}
      */
     @NotNull
-    public ChatCompletionMessageParam createDynamicSystemPrompt(@NotNull GuildID guildId) {
+    public ChatCompletionSystemMessageParam createDynamicSystemPrompt(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String template = AppConfig.getInstance().getSystemPromptTemplate();
 
@@ -53,12 +53,10 @@ public class DynamicSystemPrompt {
             ? guildRules.rulesText()
             : AppConfig.getInstance().getGenericServerRules();
 
-        return ChatCompletionMessageParam.ofSystem(
-            ChatCompletionSystemMessageParam.builder()
+        return ChatCompletionSystemMessageParam.builder()
                 .content(
-                    template.replace("<|SERVER_RULES_INJECT|>", guildRulesText)
-                ).build()
-        );
+                        template.replace("<|SERVER_RULES_INJECT|>", guildRulesText)
+                ).build();
     }
 
 }

@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-@Disabled("This test is for manual experimentation with image ID tagging and is not meant for automated test runs.")
+//@Disabled("This test is for manual experimentation with image ID tagging and is not meant for automated test runs.")
 public class TestImageIDTagging {
 
     private final Logger logger = LoggerFactory.getLogger(TestImageIDTagging.class);

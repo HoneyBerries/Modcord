@@ -30,7 +30,7 @@ import java.sql.SQLException;
  *
  * String name = db.query(conn -> {
  *     try (PreparedStatement stmt = conn.prepareStatement(
- *             "SELECT name FROM users WHERE id = ?")) {
+ *             "SELECT name FROM users WHERE interactionID = ?")) {
  *         stmt.setLong(1, userId);
  *         try (ResultSet rs = stmt.executeQuery()) {
  *             return rs.next() ? rs.getString("name") : null;

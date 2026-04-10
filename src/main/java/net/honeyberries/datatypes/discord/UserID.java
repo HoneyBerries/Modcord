@@ -53,7 +53,7 @@ public record UserID(long value) {
     /**
      * Returns the snowflake identifier rendered as an unsigned decimal string.
      *
-     * @return unsigned decimal representation of the user id
+     * @return unsigned decimal representation of the user interactionID
      */
     @NotNull
     @Override
