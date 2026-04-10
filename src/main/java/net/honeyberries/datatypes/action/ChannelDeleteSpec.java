@@ -28,7 +28,7 @@ public record ChannelDeleteSpec(
     }
 
     /**
-     * Convenience constructor that initializes with an empty message id list.
+     * Convenience constructor that initializes with an empty message interactionID list.
      *
      * @param channelId target channel whose messages should be removed; must not be {@code null}
      * @throws NullPointerException if {@code channelId} is {@code null}

@@ -28,7 +28,7 @@ public record ModerationUser(
      * Validates required references and lists for the moderation user snapshot.
      *
      * @param userId        unique user identifier; must not be {@code null}
-     * @param username      display username and id pair; must not be {@code null}
+     * @param username      display username and interactionID pair; must not be {@code null}
      * @param joinDate      guild join timestamp; must not be {@code null}
      * @param discordMember live JDA member entity; must not be {@code null}
      * @param discordGuild  live JDA guild entity; must not be {@code null}

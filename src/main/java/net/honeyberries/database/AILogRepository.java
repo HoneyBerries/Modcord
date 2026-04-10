@@ -1,10 +1,13 @@
 package net.honeyberries.database;
 
+import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -22,13 +25,15 @@ import java.util.UUID;
  */
 public class AILogRepository {
 
+	/** Jackson object mapper for serialization. */
+	private static final ObjectMapper objectMapper = new ObjectMapper();
+
 	/** Immutable representation of one AI log row. */
 	public record AILogEntry(
-			@NotNull UUID id,
+			@NotNull UUID interactionId,
 			@NotNull GuildID guildId,
-			@NotNull String inputData,
-			@NotNull String outputData,
-			@NotNull OffsetDateTime createdAt
+			@NotNull ArrayNode conversation,
+			@NotNull OffsetDateTime timestamp
 	) {}
 
 	/** Logger for recording database operations. */
@@ -59,27 +64,31 @@ public class AILogRepository {
 	 * Persists one AI moderation log row for a guild.
 	 *
 	 * @param guildId the guild scope for this inference log
-	 * @param inputData serialized input payload sent to the model
-	 * @param outputData serialized output payload returned by the model
+	 * @param conversation list of ChatCompletionMessageParams representing the full conversation
 	 * @return {@code true} if the row was inserted, {@code false} if a database error occurred
 	 * @throws NullPointerException if any parameter is {@code null}
 	 */
-	public boolean addLogEntry(@NotNull GuildID guildId, @NotNull String inputData, @NotNull String outputData) {
+	public boolean addLogEntry(@NotNull GuildID guildId, @NotNull List<ChatCompletionMessageParam> conversation) {
 		Objects.requireNonNull(guildId, "guildId must not be null");
-		Objects.requireNonNull(inputData, "inputData must not be null");
-		Objects.requireNonNull(outputData, "outputData must not be null");
+		Objects.requireNonNull(conversation, "conversation must not be null");
 
 		String sql = """
-			INSERT INTO ai_log (guild_id, input_data, output_data)
-			VALUES (?, CAST(? AS JSONB), CAST(? AS JSONB))
+			INSERT INTO ai_log (guild_id, interaction)
+			VALUES (?, CAST(? AS JSONB))
 		""";
 
 		try {
+			// Serialize the conversation list into a JSON array
+			ArrayNode conversationArray = objectMapper.createArrayNode();
+			for (ChatCompletionMessageParam message : conversation) {
+				conversationArray.add(objectMapper.valueToTree(message));
+			}
+			String jsonString = objectMapper.writeValueAsString(conversationArray);
+
 			database.transaction(conn -> {
 				try (PreparedStatement ps = conn.prepareStatement(sql)) {
 					ps.setLong(1, guildId.value());
-					ps.setString(2, inputData);
-					ps.setString(3, outputData);
+					ps.setString(2, jsonString);
 					ps.executeUpdate();
 				}
 			});
@@ -93,23 +102,23 @@ public class AILogRepository {
 	/**
 	 * Retrieves one AI log entry by its primary key.
 	 *
-	 * @param id the log entry UUID
+	 * @param interactionId the log entry interaction UUID
 	 * @return the matching {@code AILogEntry}, or {@code null} if missing or on database error
-	 * @throws NullPointerException if {@code id} is {@code null}
+	 * @throws NullPointerException if {@code interactionId} is {@code null}
 	 */
 	@Nullable
-	public AILogEntry getLogEntryById(@NotNull UUID id) {
-		Objects.requireNonNull(id, "id must not be null");
+	public AILogEntry getLogEntryById(@NotNull UUID interactionId) {
+		Objects.requireNonNull(interactionId, "interactionId must not be null");
 		String sql = """
-			SELECT id, guild_id, input_data::text AS input_data, output_data::text AS output_data, created_at
+			SELECT interaction_id, guild_id, interaction, timestamp
 			FROM ai_log
-			WHERE id = ?
+			WHERE interaction_id = ?
 		""";
 
 		try {
 			return database.query(conn -> {
 				try (PreparedStatement ps = conn.prepareStatement(sql)) {
-					ps.setObject(1, id);
+					ps.setObject(1, interactionId);
 					try (ResultSet rs = ps.executeQuery()) {
 						if (rs.next()) {
 							return mapEntry(rs);
@@ -119,7 +128,7 @@ public class AILogRepository {
 				}
 			});
 		} catch (Exception e) {
-			logger.error("Failed to fetch AI log entry by id", e);
+			logger.error("Failed to fetch AI log entry by interactionId", e);
 			return null;
 		}
 	}
@@ -140,10 +149,10 @@ public class AILogRepository {
 		}
 
 		String sql = """
-			SELECT id, guild_id, input_data::text AS input_data, output_data::text AS output_data, created_at
+			SELECT interaction_id, guild_id, interaction, timestamp
 			FROM ai_log
 			WHERE guild_id = ?
-			ORDER BY created_at DESC
+			ORDER BY timestamp DESC
 			LIMIT ?
 		""";
 
@@ -181,11 +190,10 @@ public class AILogRepository {
 	private AILogEntry mapEntry(@NotNull ResultSet rs) throws SQLException {
 		Objects.requireNonNull(rs, "rs must not be null");
 		return new AILogEntry(
-				(UUID) rs.getObject("id"),
+				(UUID) rs.getObject("interaction_id"),
 				new GuildID(rs.getLong("guild_id")),
-				rs.getString("input_data"),
-				rs.getString("output_data"),
-				rs.getObject("created_at", OffsetDateTime.class)
+				(ArrayNode) objectMapper.readTree(rs.getString("interaction")),
+				rs.getObject("timestamp", OffsetDateTime.class)
 		);
 	}
 }

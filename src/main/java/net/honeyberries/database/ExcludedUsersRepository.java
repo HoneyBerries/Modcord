@@ -316,7 +316,7 @@ public class ExcludedUsersRepository {
      * <p>User-level exclusions are evaluated first and take priority over role-level exclusions.
      *
      * @param guildID the guild scope for exclusions, must not be {@code null}
-     * @param userID the member user id, must not be {@code null}
+     * @param userID the member user interactionID, must not be {@code null}
      * @param roleIDs the member role ids, must not be {@code null}
      * @return {@code true} if the user or any role is excluded, {@code false} otherwise
      * @throws NullPointerException if {@code guildID}, {@code userID}, or {@code roleIDs} is {@code null}

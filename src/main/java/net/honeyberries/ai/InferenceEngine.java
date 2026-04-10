@@ -2,8 +2,9 @@ package net.honeyberries.ai;
 
 import com.openai.client.OpenAIClientAsync;
 import com.openai.client.okhttp.OpenAIOkHttpClientAsync;
+import com.openai.errors.OpenAIException;
 import com.openai.models.ResponseFormatJsonSchema;
-import com.openai.models.chat.completions.ChatCompletion;
+import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import net.honeyberries.config.AppConfig;
@@ -13,6 +14,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -48,6 +51,7 @@ public class InferenceEngine {
         this.openAIClient = OpenAIOkHttpClientAsync.builder()
                 .apiKey(apiKey)
                 .baseUrl(endpoint)
+                .timeout(Duration.of(AppConfig.getInstance().getAIRequestTimeout(), ChronoUnit.SECONDS))
                 .build();
 
         logger.info("InferenceEngine initialized with endpoint={}, model={}", endpoint, modelName);
@@ -70,11 +74,11 @@ public class InferenceEngine {
      *
      * @param messages the list of chat messages; typically includes system prompt first, then user messages
      * @param responseFormat optional schema for structured JSON responses; if {@code null}, returns plain text
-     * @return a {@code CompletableFuture} that resolves to the response text, or {@code null} on error
+     * @return a {@code CompletableFuture} that resolves to the assistant message, or {@code null} on error
      * @throws NullPointerException if {@code messages} is {@code null}
      */
     @NotNull
-    public CompletableFuture<String> generateResponse(
+    public CompletableFuture<ChatCompletionAssistantMessageParam> generateResponse(
             @NotNull List<ChatCompletionMessageParam> messages,
             @Nullable ResponseFormatJsonSchema responseFormat) {
         Objects.requireNonNull(messages, "messages must not be null");
@@ -88,32 +92,13 @@ public class InferenceEngine {
         }
 
         return openAIClient.chat().completions().create(builder.build())
-                .thenApply(this::extractResponseText)
-                .exceptionally(e -> {
-                    logger.error("Error during LLM inference: {}", e.getMessage(), e);
-                    return null;
+                .thenApply(completion -> completion.choices().stream()
+                        .findFirst()
+                        .map(choice -> choice.message().toParam())
+                        .orElseThrow(() -> new OpenAIException("No choices returned from LLM")))
+                .exceptionally(ex -> {
+                    logger.error("Error generating LLM response: {}", ex.getMessage(), ex);
+                    return ChatCompletionAssistantMessageParam.builder().content("").build();
                 });
-    }
-
-    /**
-     * Extracts the text content from an LLM response completion.
-     * Handles the case where the response is empty or missing content by returning null.
-     *
-     * @param completion the chat completion response from the LLM
-     * @return the response text content, or {@code null} if no content is available
-     */
-    @Nullable
-    private String extractResponseText(@NotNull ChatCompletion completion) {
-        Objects.requireNonNull(completion, "completion must not be null");
-        String response = completion.choices().stream()
-                .findFirst()
-                .flatMap(choice -> choice.message().content())
-                .orElseGet(() -> {
-                    logger.warn("No content in LLM response");
-                    return null;
-                });
-
-        logger.debug("LLM response: \n\n{}", response);
-        return response;
     }
 }

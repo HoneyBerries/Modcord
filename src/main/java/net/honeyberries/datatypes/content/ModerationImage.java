@@ -20,7 +20,7 @@ public record ModerationImage(
 ) {
 
     /**
-     * Creates a moderation image from a JDA attachment, deriving a stable UUID from the attachment id.
+     * Creates a moderation image from a JDA attachment, deriving a stable UUID from the attachment interactionID.
      *
      * @param attachment Discord attachment to normalize; must not be {@code null}
      * @throws NullPointerException     if {@code attachment} is {@code null}

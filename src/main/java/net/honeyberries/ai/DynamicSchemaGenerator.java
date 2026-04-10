@@ -149,7 +149,7 @@ public class DynamicSchemaGenerator {
 
         ResponseFormatJsonSchema.JsonSchema jsonSchema =
                 ResponseFormatJsonSchema.JsonSchema.builder()
-                        .name("moderation_output")
+                        .name("dynamic_output_schema")
                         .strict(true)
                         .putAdditionalProperty("schema", JsonValue.from(schemaMap))
                         .build();

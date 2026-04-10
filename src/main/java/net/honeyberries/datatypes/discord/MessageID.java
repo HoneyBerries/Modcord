@@ -17,7 +17,7 @@ public record MessageID(long value) {
     /**
      * Creates a {@code MessageID} from a JDA {@link Message}.
      *
-     * @param message message whose id should be wrapped; must not be {@code null}
+     * @param message message whose interactionID should be wrapped; must not be {@code null}
      * @return identifier bound to the provided message
      * @throws NullPointerException if {@code message} is {@code null}
      */
@@ -59,7 +59,7 @@ public record MessageID(long value) {
     /**
      * Returns the snowflake identifier rendered as an unsigned decimal string.
      *
-     * @return unsigned decimal representation of the message id
+     * @return unsigned decimal representation of the message interactionID
      */
     @NotNull
     @Override
