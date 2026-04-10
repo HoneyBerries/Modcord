@@ -1,5 +1,6 @@
 package net.honeyberries.database;
 
+import com.openai.core.ObjectMappers;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.NotNull;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -78,10 +80,10 @@ public class AILogRepository {
 		""";
 
 		try {
-			// Serialize the conversation list into a JSON array
+			// Extract actual conversation data into a meaningful structure
 			ArrayNode conversationArray = objectMapper.createArrayNode();
 			for (ChatCompletionMessageParam message : conversation) {
-				conversationArray.add(objectMapper.valueToTree(message));
+				conversationArray.add(extractMessageData(message));
 			}
 			String jsonString = objectMapper.writeValueAsString(conversationArray);
 
@@ -94,8 +96,29 @@ public class AILogRepository {
 			});
 			return true;
 		} catch (Exception e) {
-			logger.error("Failed to insert AI log entry", e);
 			return false;
+		}
+	}
+
+	/**
+	 * Extracts meaningful data from a ChatCompletionMessageParam into a clean JSON object.
+	 * Uses the native Jackson properties of OpenAI objects to preserve actual content.
+	 *
+	 * @param message the message to extract data from (must not be {@code null})
+	 * @return a JSON object with the message data
+	 */
+	@NotNull
+	private ObjectNode extractMessageData(@NotNull ChatCompletionMessageParam message) {
+		Objects.requireNonNull(message, "message must not be null");
+		try {
+			// First, serialize using OpenAI's built-in Jackson 2.x mapper to preserve its internal structure
+			String rawJson = ObjectMappers.jsonMapper().writeValueAsString(message);
+			// Then parse back into Jackson 3.x tree using the project's mapper
+			return objectMapper.readTree(rawJson).asObject();
+
+		} catch (Exception e) {
+			logger.error("Failed to serialize message data", e);
+			return objectMapper.createObjectNode();
 		}
 	}
 

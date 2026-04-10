@@ -378,14 +378,18 @@ public class GuildMessageProcessingService {
         try {
             logger.info("Submitting moderation batch for guild {} to LLM", guildId.value());
             response = InferenceEngine.getInstance().generateResponse(conversation, schema).get();
+            conversation.add(ChatCompletionMessageParam.ofAssistant(response));
         } catch (ExecutionException | InterruptedException e) {
             logger.error("Failed to generate response for guild {}", guildId, e);
             return List.of();
         }
 
         // Store the AI response in the database.
-        AILogRepository.getInstance().addLogEntry(guildId, conversation);
+        boolean success = AILogRepository.getInstance().addLogEntry(guildId, conversation);
 
+        if (!success) {
+            logger.error("Failed to store AI response for guild {}", guildId);
+        }
 
         try {
             UserID moderatorId = UserID.fromUser(guild.getJDA().getSelfUser());
