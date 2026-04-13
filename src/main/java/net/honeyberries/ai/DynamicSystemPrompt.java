@@ -3,11 +3,11 @@ package net.honeyberries.ai;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.database.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
+import net.honeyberries.preferences.PreferencesHelper;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,12 +55,7 @@ public class DynamicSystemPrompt {
             ? guildRules.rulesText()
             : AppConfig.getInstance().getGenericServerRules();
 
-        GuildPreferences guildPreferences = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
-
-        if (guildPreferences == null) {
-            logger.warn("Guild preferences not found for guild {}, using default preferences", guildId.value());
-            guildPreferences = GuildPreferences.defaults(guildId);
-        }
+        GuildPreferences guildPreferences = PreferencesHelper.getInstance().getOrDefaultPreferences(guildId);
 
         String allowedActions = buildAllowedActions(guildPreferences);
 

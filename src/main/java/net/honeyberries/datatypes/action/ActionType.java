@@ -9,13 +9,13 @@ import java.util.Objects;
  * Each constant carries the raw value expected by downstream consumers so serialization and display stay consistent.
  */
 public enum ActionType {
-    BAN("action_type:ban"),
-    UNBAN("action_type:unban"),
-    KICK("action_type:kick"),
-    WARN("action_type:warn"),
-    DELETE("action_type:delete"),
-    TIMEOUT("action_type:timeout"),
-    NULL("action_type:null");
+    BAN("ban"),
+    UNBAN("unban"),
+    KICK("kick"),
+    WARN("warn"),
+    DELETE("delete"),
+    TIMEOUT("timeout"),
+    NULL("null");
 
     private final String value;
 
