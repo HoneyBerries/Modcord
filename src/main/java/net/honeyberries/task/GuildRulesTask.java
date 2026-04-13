@@ -15,6 +15,7 @@ import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.message.EmbedParser;
 import net.honeyberries.discord.JDAManager;
 import net.honeyberries.preferences.Onboarding;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,8 +56,8 @@ public class GuildRulesTask implements Runnable {
         try {
             // Collect outcomes from updateGuildRules for each guild
             List<UpdateOutcome> results = jda.getGuilds().parallelStream()
-                .map(this::updateGuildRules)
-                .toList();
+                    .map(this::updateGuildRules)
+                    .toList();
 
             long updatedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.UPDATED).count();
             long skippedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.SKIPPED).count();
@@ -64,10 +65,10 @@ public class GuildRulesTask implements Runnable {
 
             if (failedCount > 0) {
                 logger.warn("GuildRulesTask completed with {} updated, {} skipped, {} failed out of {} guilds",
-                    updatedCount, skippedCount, failedCount, results.size());
+                        updatedCount, skippedCount, failedCount, results.size());
             } else {
                 logger.info("GuildRulesTask completed with {} updated and {} skipped out of {} guilds",
-                    updatedCount, skippedCount, results.size());
+                        updatedCount, skippedCount, results.size());
             }
 
         } catch (Exception e) {
@@ -76,76 +77,46 @@ public class GuildRulesTask implements Runnable {
     }
 
     /**
-     * Updates the rules text for a specific guild.
-     * The rules_channel_id is preserved and only the rules_text is updated.
+     * Updates the rules for a given guild by checking the current rules in the database, retrieving and
+     * validating rules from Discord, and persisting the updated rules back to the database.
+     * <p>
+     * If the guild is not registered in the database, this method attempts to onboard it with default preferences.
+     * If no rules channel is configured, the method sets an unconfigured state in the database.
      *
-     * @param guild The guild to update rules for
+     * @param guild the guild whose rules need to be updated; must not be null
+     * @return the outcome of the update operation, which can be one of UPDATED, SKIPPED, or FAILED
      */
-    private UpdateOutcome updateGuildRules(Guild guild) {
+    private UpdateOutcome updateGuildRules(@NotNull Guild guild) {
         try {
             GuildID guildId = GuildID.fromGuild(guild);
 
-            // Ensure guild exists in guild_preferences table before inserting guild rules
+            // Ensure guild exists in guild preferences database before inserting guild rules
             // This prevents foreign key constraint violations
-            GuildPreferences existingPreferences = GuildPreferencesRepository.getInstance()
-                .getGuildPreferences(guildId);
-            
-            if (existingPreferences == null) {
-                logger.debug("Guild {} not found in database, onboarding with    default preferences", guildId.value());
-
-                boolean success = Onboarding.getInstance().setupGuild(guild);
-                if (!success) {
-                    logger.error("Failed to onboard guild {}", guild.getName());
-                    return UpdateOutcome.FAILED;
-                }
+            if (!ensureGuildExists(guildId, guild)) {
+                return UpdateOutcome.FAILED;
             }
 
-            // Get current rules for the guild
-            // IMPORTANT: this GuildRules could be stale, so do not assume its current rules text
-            // is updated
-
-            GuildRules cachedRules = GuildRulesRepository.getInstance().getGuildRulesFromCache(guildId);
-            ChannelID rulesChannelID = cachedRules != null ? cachedRules.rulesChannelId() : null;
-
-            if (rulesChannelID == null) {
-                GuildPreferences latestPreferences = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
-                rulesChannelID = latestPreferences != null ? latestPreferences.rulesChannelID() : null;
-            }
-
-            if (rulesChannelID == null) {
-                logger.debug("Rules channel missing for guild {} ({}), attempting onboarding backfill", guild.getName(), guildId.value());
-                boolean success = Onboarding.getInstance().setupGuild(guild);
-                if (!success) {
-                    logger.warn("Onboarding backfill failed for guild {} ({})", guild.getName(), guildId.value());
-                } else {
-                    GuildPreferences latestPreferences = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
-                    rulesChannelID = latestPreferences != null ? latestPreferences.rulesChannelID() : null;
-                }
-            }
+            // Resolve rules channel ID with fallback chain: preferences → cached rules → onboarding backfill
+            ChannelID rulesChannelID = resolveRulesChannelID(guildId, guild);
 
             if (rulesChannelID == null) {
                 logger.debug("No rules channel configured for guild: {} ({}), storing unconfigured state", guild.getName(), guildId.value());
-                boolean success = GuildRulesRepository.getInstance()
-                    .addOrReplaceGuildRulesToDatabase(new GuildRules(guildId, null, null));
-                if (!success) {
+                if (!GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(new GuildRules(guildId, null, null))) {
                     logger.warn("Failed to persist unconfigured rules state for guild: {} ({})", guild.getName(), guildId.value());
                     return UpdateOutcome.FAILED;
                 }
                 return UpdateOutcome.SKIPPED;
             }
 
+            // Fetch and persist rules
             String updatedRules = getGuildRulesFromDiscord(guild, rulesChannelID);
-
             if (updatedRules == null || updatedRules.isBlank()) {
                 logger.debug("No rules found for guild: {} ({}).", guild.getName(), guildId.value());
                 return UpdateOutcome.SKIPPED;
             }
 
             GuildRules currentGuildRules = new GuildRules(guildId, rulesChannelID, updatedRules);
-
-            boolean success = GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(currentGuildRules);
-
-            if (success) {
+            if (GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(currentGuildRules)) {
                 logger.debug("Updated rules for guild: {} ({})", guild.getName(), guildId.value());
                 return UpdateOutcome.UPDATED;
             } else {
@@ -159,9 +130,55 @@ public class GuildRulesTask implements Runnable {
         }
     }
 
+    /**
+     * Ensures the guild exists in the database, onboarding if necessary.
+     */
+    private boolean ensureGuildExists(@NotNull GuildID guildId, @NotNull Guild guild) {
+        GuildPreferences existing = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
+        if (existing != null) {
+            return true;
+        }
+
+        logger.debug("Guild {} not found in database, onboarding with default preferences", guildId.value());
+        boolean success = Onboarding.getInstance().setupGuild(guild);
+        if (!success) {
+            logger.error("Failed to onboard guild {}", guild.getName());
+        }
+        return success;
+    }
+
+    /**
+     * Resolves rules channel ID with fallback chain: fresh preferences → cached rules → onboarding backfill.
+     * Returns null if no channel can be resolved.
+     */
+    @Nullable
+    private ChannelID resolveRulesChannelID(@NotNull GuildID guildId, @NotNull Guild guild) {
+        // Try fresh preferences first
+        GuildPreferences preferences = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
+        if (preferences != null && preferences.rulesChannelID() != null) {
+            return preferences.rulesChannelID();
+        }
+
+        // Fall back to cached rules
+        GuildRules cachedRules = GuildRulesRepository.getInstance().getGuildRulesFromCache(guildId);
+        if (cachedRules != null && cachedRules.rulesChannelId() != null) {
+            return cachedRules.rulesChannelId();
+        }
+
+        // Attempt onboarding backfill
+        logger.debug("Rules channel missing for guild {} ({}), attempting onboarding backfill", guild.getName(), guildId.value());
+        if (!Onboarding.getInstance().setupGuild(guild)) {
+            logger.warn("Onboarding backfill failed for guild {} ({})", guild.getName(), guildId.value());
+            return null;
+        }
+
+        // Check preferences again after onboarding
+        preferences = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
+        return preferences != null ? preferences.rulesChannelID() : null;
+    }
 
     @Nullable
-    private String getGuildRulesFromDiscord(Guild guild, ChannelID rulesChannelId) {
+    private String getGuildRulesFromDiscord(@NotNull Guild guild, @NotNull ChannelID rulesChannelId) {
         Channel rulesChannel = guild.getGuildChannelById(rulesChannelId.value());
 
         if (!(rulesChannel instanceof TextChannel rulesTextChannel)) {
@@ -190,7 +207,7 @@ public class GuildRulesTask implements Runnable {
     }
 
     @Nullable
-    private String extractRuleText(Message message) {
+    private String extractRuleText(@NotNull Message message) {
         String content = message.getContentDisplay();
         String embed = EmbedParser.parseEmbed(message);
 

@@ -16,7 +16,7 @@ import java.util.Objects;
 public record GuildModerationBatch(
         @NotNull GuildID guildId,
         @NotNull String guildName,
-        @NotNull Map<ChannelID, ChannelContext> channels,
+        @NotNull Map<ChannelID, ChannelMetadata> channels,
         @NotNull List<ModerationUser> users,
         @NotNull List<ModerationUser> historyUsers
 ) {
