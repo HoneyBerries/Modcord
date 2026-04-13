@@ -55,7 +55,7 @@ public class JDAManager {
     /**
      * Registers slash commands and attaches event listeners.
      * Sets up {@link GuildListener}, {@link MessageListener}, {@link UserListener},
-     * {@link RoleListener}, and command handlers for status, debug, exclude, and moderation.
+     * {@link RoleListener}, and command handlers for status, debug, exclude, moderation, and preferences.
      * All commands are queued for synchronization with Discord.
      */
     private void registerCommands() {
@@ -87,6 +87,11 @@ public class JDAManager {
         jda.addEventListener(excludeCommand);
         excludeCommand.registerExcludeCommands(commands);
         logger.info("Added ExcludeCommand to queue");
+
+        PreferencesCommands preferencesCommands = new PreferencesCommands();
+        jda.addEventListener(preferencesCommands);
+        preferencesCommands.registerPreferencesCommands(commands);
+        logger.info("Added PreferencesCommands to queue");
 
         ModerationCommands moderationCommands = new ModerationCommands();
         jda.addEventListener(moderationCommands);
