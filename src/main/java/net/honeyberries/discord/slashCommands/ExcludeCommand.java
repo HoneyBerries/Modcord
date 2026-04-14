@@ -5,6 +5,8 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
+import net.dv8tion.jda.api.entities.channel.unions.GuildChannelUnion;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
@@ -14,8 +16,9 @@ import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
-import net.honeyberries.database.ExcludedUsersRepository;
+import net.honeyberries.database.ExcludedEntitiesRepository;
 import net.honeyberries.database.SpecialUsersRepository;
+import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.RoleID;
 import net.honeyberries.datatypes.discord.UserID;
@@ -24,23 +27,27 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
  * Slash command handler for managing moderation exclusions.
  *
- * <p>Allows administrators to create an exclusion list of users and roles that should 
- * be protected from automated moderation. Users on the exclusion list are checked with 
- * higher priority than roles. This provides fine-grained control over moderation scope 
- * and helps protect VIPs or sensitive accounts from automated actions.
+ * <p>Allows administrators to create an exclusion list of users, roles, and channels that should
+ * be protected from automated moderation. This command supports batch operations: you can exclude
+ * or unexclude multiple users, multiple roles, multiple channels, or any combination in one invocation.
+ * Users on the exclusion list are checked with higher priority than roles. This provides
+ * fine-grained control over moderation scope and helps protect VIPs, sensitive accounts, or
+ * specific channels from automated actions.
  *
  * <p>Requires the invoking member to have {@link Permission#ADMINISTRATOR}.
  */
 public class ExcludeCommand extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(ExcludeCommand.class);
-    private final ExcludedUsersRepository repository = ExcludedUsersRepository.getInstance();
+    private final ExcludedEntitiesRepository repository = ExcludedEntitiesRepository.getInstance();
 
     /**
      * Registers the exclude command and its subcommands with the Discord bot.
@@ -52,16 +59,16 @@ public class ExcludeCommand extends ListenerAdapter {
         Objects.requireNonNull(commands, "commands must not be null");
         OptionData userOption = new OptionData(OptionType.USER, "user", "Target user", false);
         OptionData roleOption = new OptionData(OptionType.ROLE, "role", "Target role", false);
+        OptionData channelOption = new OptionData(OptionType.CHANNEL, "channel", "Target channel", false);
 
         SlashCommandData excludeCommand = Commands.slash("exclude", "Manage moderation exclusions")
                 .addSubcommands(
-                        new SubcommandData("add", "Exclude a user or role from moderation")
-                                .addOptions(userOption, roleOption),
-                        new SubcommandData("remove", "Remove a user or role exclusion")
-                                .addOptions(userOption, roleOption),
-                        new SubcommandData("list", "Show excluded users and roles")
+                        new SubcommandData("add", "Exclude users, roles, and/or channels from moderation")
+                                .addOptions(userOption, roleOption, channelOption),
+                        new SubcommandData("remove", "Remove users, roles, and/or channels from exclusion")
+                                .addOptions(userOption, roleOption, channelOption),
+                        new SubcommandData("list", "Show excluded users, roles, and channels")
                 );
-
 
         Objects.requireNonNull(commands.addCommands(excludeCommand));
         logger.info("Registered /exclude commands");
@@ -70,9 +77,12 @@ public class ExcludeCommand extends ListenerAdapter {
     /**
      * Handles slash command interactions for the exclude command.
      *
-     * <p>Routes to appropriate subcommand handler (add, remove, or list) after validating 
-     * that the event is from a guild, the invoker has administrator permissions, and a 
-     * valid subcommand with required arguments is provided.
+     * <p>Routes to appropriate subcommand handler (add, remove, or list) after validating
+     * that the event is from a guild, the invoker has administrator permissions, and a
+     * valid subcommand with at least one argument is provided.
+     *
+     * <p>Supports batch operations: add/remove can process multiple users, roles, and/or
+     * channels in a single invocation.
      *
      * @param event the slash command interaction event. Must not be null.
      * @throws NullPointerException if event is null
@@ -112,20 +122,16 @@ public class ExcludeCommand extends ListenerAdapter {
 
             User user = event.getOption("user", OptionMapping::getAsUser);
             Role role = event.getOption("role", OptionMapping::getAsRole);
+            GuildChannelUnion channel = event.getOption("channel", OptionMapping::getAsChannel);
 
-            if (user == null && role == null) {
-                reply(event, "Please provide either a user or a role.");
-                return;
-            }
-
-            if (user != null && role != null) {
-                reply(event, "Please provide either a user or a role, not both.");
+            if (user == null && role == null && channel == null) {
+                reply(event, "Please provide at least one user, role, or channel.");
                 return;
             }
 
             switch (subcommand) {
-                case "add"    -> handleAdd(event, guildID, user, role);
-                case "remove" -> handleRemove(event, guildID, user, role);
+                case "add"    -> handleAdd(event, guildID, user, role, channel);
+                case "remove" -> handleRemove(event, guildID, user, role, channel);
                 default       -> reply(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
@@ -137,77 +143,125 @@ public class ExcludeCommand extends ListenerAdapter {
     /**
      * Handles the add subcommand.
      *
-     * <p>Adds a user or role to the moderation exclusion list for the guild. Exactly one 
-     * of user or role must be provided (not both). Replies with success or failure status.
+     * <p>Adds users, roles, and/or channels to the moderation exclusion list for the guild.
+     * Supports batch operations: you can add multiple entities in a single invocation by
+     * providing a user, role, and channel simultaneously. Reports success/failure for each
+     * entity type separately.
      *
      * @param event the slash command interaction event. Must not be null.
      * @param guildID the ID of the guild. Must not be null.
-     * @param user the user to exclude, or null if excluding a role. Mutually exclusive with role.
-     * @param role the role to exclude, or null if excluding a user. Mutually exclusive with user.
+     * @param user the user to exclude, or null if not excluding a user.
+     * @param role the role to exclude, or null if not excluding a role.
+     * @param channel the channel to exclude, or null if not excluding a channel.
      * @throws NullPointerException if event or guildID is null
      */
     private void handleAdd(
             @NotNull SlashCommandInteractionEvent event,
             @NotNull GuildID guildID,
             @Nullable User user,
-            @Nullable Role role
+            @Nullable Role role,
+            @Nullable GuildChannelUnion channel
     ) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guildID, "guildID must not be null");
+
+        List<String> results = new ArrayList<>();
+
         if (user != null) {
             boolean success = repository.markExcluded(guildID, UserID.fromUser(user));
-            reply(event, success
-                    ? "Excluded user " + user.getAsMention() + "."
-                    : "Failed to exclude user. Please try again.");
-            return;
+            results.add(success
+                    ? "✓ Excluded user " + user.getAsMention()
+                    : "✗ Failed to exclude user " + user.getAsMention());
         }
 
-        boolean success = repository.markExcluded(guildID, RoleID.fromRole(Objects.requireNonNull(role, "role must not be null")));
-        reply(event, success
-                ? "Excluded role " + role.getAsMention() + "."
-                : "Failed to exclude role. Please try again.");
+        if (role != null) {
+            boolean success = repository.markExcluded(guildID, RoleID.fromRole(role));
+            results.add(success
+                    ? "✓ Excluded role " + role.getAsMention()
+                    : "✗ Failed to exclude role " + role.getAsMention());
+        }
+
+        if (channel != null) {
+            if (channel instanceof MessageChannel msgChannel) {
+                boolean success = repository.markExcluded(guildID, ChannelID.fromChannel(msgChannel));
+                results.add(success
+                        ? "✓ Excluded channel " + channel.getAsMention()
+                        : "✗ Failed to exclude channel " + channel.getAsMention());
+            } else {
+                results.add("✗ Channel type cannot be excluded: " + channel.getAsMention());
+            }
+        }
+
+        String message = results.isEmpty()
+                ? "No changes made."
+                : String.join("\n", results);
+        reply(event, message);
     }
 
     /**
      * Handles the remove subcommand.
      *
-     * <p>Removes a user or role from the moderation exclusion list for the guild. Exactly 
-     * one of user or role must be provided (not both). Replies with success or failure status.
+     * <p>Removes users, roles, and/or channels from the moderation exclusion list for the guild.
+     * Supports batch operations: you can remove multiple entities in a single invocation by
+     * providing a user, role, and channel simultaneously. Reports success/failure for each
+     * entity type separately.
      *
      * @param event the slash command interaction event. Must not be null.
      * @param guildID the ID of the guild. Must not be null.
-     * @param user the user to unexclude, or null if unexcluding a role. Mutually exclusive with role.
-     * @param role the role to unexclude, or null if unexcluding a user. Mutually exclusive with user.
+     * @param user the user to unexclude, or null if not removing a user exclusion.
+     * @param role the role to unexclude, or null if not removing a role exclusion.
+     * @param channel the channel to unexclude, or null if not removing a channel exclusion.
      * @throws NullPointerException if event or guildID is null
      */
     private void handleRemove(
             @NotNull SlashCommandInteractionEvent event,
             @NotNull GuildID guildID,
             @Nullable User user,
-            @Nullable Role role
+            @Nullable Role role,
+            @Nullable GuildChannelUnion channel
     ) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guildID, "guildID must not be null");
+
+        List<String> results = new ArrayList<>();
+
         if (user != null) {
             boolean success = repository.unmarkExcluded(guildID, UserID.fromUser(user));
-            reply(event, success
-                    ? "Removed exclusion for user " + user.getAsMention() + "."
-                    : "Failed to remove user exclusion. Please try again.");
-            return;
+            results.add(success
+                    ? "✓ Removed exclusion for user " + user.getAsMention()
+                    : "✗ Failed to remove user exclusion: " + user.getAsMention());
         }
 
-        boolean success = repository.unmarkExcluded(guildID, RoleID.fromRole(Objects.requireNonNull(role, "role must not be null")));
-        reply(event, success
-                ? "Removed exclusion for role " + role.getAsMention() + "."
-                : "Failed to remove role exclusion. Please try again.");
+        if (role != null) {
+            boolean success = repository.unmarkExcluded(guildID, RoleID.fromRole(role));
+            results.add(success
+                    ? "✓ Removed exclusion for role " + role.getAsMention()
+                    : "✗ Failed to remove role exclusion: " + role.getAsMention());
+        }
+
+        if (channel != null) {
+            if (channel instanceof MessageChannel msgChannel) {
+                boolean success = repository.unmarkExcluded(guildID, ChannelID.fromChannel(msgChannel));
+                results.add(success
+                        ? "✓ Removed exclusion for channel " + channel.getAsMention()
+                        : "✗ Failed to remove channel exclusion: " + channel.getAsMention());
+            } else {
+                results.add("✗ Channel type cannot be excluded: " + channel.getAsMention());
+            }
+        }
+
+        String message = results.isEmpty()
+                ? "No changes made."
+                : String.join("\n", results);
+        reply(event, message);
     }
 
     /**
      * Handles the list subcommand.
      *
-     * <p>Displays all currently excluded users and roles for the guild, formatted as 
-     * mentions. Users are shown with higher priority. If no exclusions exist, displays 
-     * a message indicating the server has no exclusions.
+     * <p>Displays all currently excluded users, roles, and channels for the guild, formatted
+     * as mentions. Users are shown with highest priority, followed by roles, then channels.
+     * If no exclusions exist, displays a message indicating the server has no exclusions.
      *
      * @param event the slash command interaction event. Must not be null.
      * @param guild the guild to list exclusions for. Must not be null.
@@ -222,29 +276,37 @@ public class ExcludeCommand extends ListenerAdapter {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(guildID, "guildID must not be null");
-        ExcludedUsersRepository.ExcludedEntities excluded = repository.getExcludedEntities(guildID);
+        ExcludedEntitiesRepository.ExcludedEntities excluded = repository.getExcludedEntities(guildID);
 
-        if (excluded.userIDs().isEmpty() && excluded.roleIDs().isEmpty()) {
-            reply(event, "There are no excluded users or roles in this server.");
+        if (excluded.userIDs().isEmpty() && excluded.roleIDs().isEmpty() && excluded.channelIDs().isEmpty()) {
+            reply(event, "There are no excluded users, roles, or channels in this server.");
             return;
         }
 
         String usersSection = excluded.userIDs().isEmpty()
                 ? "None"
                 : excluded.userIDs().stream()
-                .map(userID -> formatUserMention(guild, userID))
-                .collect(Collectors.joining("\n"));
+                  .map(userID -> formatUserMention(guild, userID))
+                  .collect(Collectors.joining("\n"));
 
         String rolesSection = excluded.roleIDs().isEmpty()
                 ? "None"
                 : excluded.roleIDs().stream()
-                .map(roleID -> formatRoleMention(guild, roleID))
-                .collect(Collectors.joining("\n"));
+                  .map(roleID -> formatRoleMention(guild, roleID))
+                  .collect(Collectors.joining("\n"));
 
-        String message = "**Excluded users (higher priority):**\n"
+        String channelsSection = excluded.channelIDs().isEmpty()
+                ? "None"
+                : excluded.channelIDs().stream()
+                  .map(channelID -> formatChannelMention(guild, channelID))
+                  .collect(Collectors.joining("\n"));
+
+        String message = "**Excluded users (highest priority):**\n"
                 + usersSection
                 + "\n\n**Excluded roles:**\n"
-                + rolesSection;
+                + rolesSection
+                + "\n\n**Excluded channels:**\n"
+                + channelsSection;
 
         reply(event, message);
     }
@@ -289,6 +351,27 @@ public class ExcludeCommand extends ListenerAdapter {
             return "- <@&" + roleId.value() + ">";
         }
         return "- <@&" + roleId.value() + "> (deleted role)";
+    }
+
+    /**
+     * Formats a channel ID as a mention string.
+     *
+     * <p>Attempts to retrieve the channel from the guild. If the channel has been deleted,
+     * indicates this in the formatted output.
+     *
+     * @param guild the guild to look up the channel in. Must not be null.
+     * @param channelId the ID of the channel. Must not be null.
+     * @return a formatted mention string
+     * @throws NullPointerException if guild or channelId is null
+     */
+    @NotNull
+    private static String formatChannelMention(@NotNull Guild guild, @NotNull ChannelID channelId) {
+        Objects.requireNonNull(guild, "guild must not be null");
+        Objects.requireNonNull(channelId, "channelId must not be null");
+        if (guild.getGuildChannelById(channelId.value()) != null) {
+            return "- <#" + channelId.value() + ">";
+        }
+        return "- <#" + channelId.value() + "> (deleted channel)";
     }
 
     /**

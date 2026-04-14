@@ -2,7 +2,7 @@ package net.honeyberries.discord.listener;
 
 import net.dv8tion.jda.api.events.role.RoleDeleteEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.honeyberries.database.ExcludedUsersRepository;
+import net.honeyberries.database.ExcludedEntitiesRepository;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.RoleID;
 import org.jetbrains.annotations.NotNull;
@@ -19,7 +19,7 @@ public class RoleListener extends ListenerAdapter {
     /** Logger for role lifecycle events. */
     private final Logger logger = LoggerFactory.getLogger(RoleListener.class);
     /** Repository for managing exclusion lists. */
-    private final ExcludedUsersRepository excludedUsersRepository = ExcludedUsersRepository.getInstance();
+    private final ExcludedEntitiesRepository excludedEntitiesRepository = ExcludedEntitiesRepository.getInstance();
 
     /**
      * Removes a role from the exclusion list when it is deleted from the guild.
@@ -33,7 +33,7 @@ public class RoleListener extends ListenerAdapter {
         GuildID guildID = GuildID.fromGuild(event.getGuild());
         RoleID roleID = new RoleID(event.getRole().getIdLong());
 
-        boolean removed = excludedUsersRepository.unmarkExcluded(guildID, roleID);
+        boolean removed = excludedEntitiesRepository.unmarkExcluded(guildID, roleID);
         if (!removed) {
             logger.warn("Failed to clean up deleted role {} from exclusions in guild {}", roleID.value(), guildID.value());
         }
