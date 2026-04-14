@@ -1,5 +1,39 @@
 # Copilot Instructions for Modcord
 
+## Before You Code
+
+**Surface assumptions. Ask for clarification before implementing.**
+
+1. **State assumptions explicitly.** If the request is ambiguous, ask—don't guess.
+2. **Present tradeoffs.** If multiple approaches exist, lay them out. Let the human choose.
+3. **Push back on scope.** If the request seems overcomplicated or vague, say so.
+4. **Stop if confused.** Name what's unclear. Don't code your way out of confusion.
+
+## During Implementation
+
+### Simplicity First
+
+- **Minimum code that solves the problem.** No speculative features, no flexibility that wasn't asked for.
+- **No abstractions for single-use code.** Avoid premature over-engineering.
+- **No error handling for impossible scenarios.**
+- If you write 200 lines and it could be 50, rewrite it.
+
+### Surgical Changes
+
+- **Touch only what you must.** Every changed line should trace back to the user's request.
+- **Match existing style**, even if you'd do it differently.
+- **Don't "improve" unrelated code**, comments, or formatting.
+- **Clean up your own mess.** Remove imports/variables/functions that *your changes* made unused. Don't remove pre-existing dead code.
+
+### Goal-Driven Execution
+
+**Define success criteria before and after each change.**
+
+- State a brief plan: `[Step] → verify: [check]`
+- Loop until verified. A change isn't done until you've checked it works.
+- After configuration changes (package.json, .env, gradle.kts): apply them (`npm install`, `pip install`, `./gradlew build`)
+- After starting a process: verify it's running and responsive.
+
 ## Build, Test, and Lint
 
 ### Prerequisites

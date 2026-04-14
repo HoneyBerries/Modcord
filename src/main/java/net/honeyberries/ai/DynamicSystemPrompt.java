@@ -6,6 +6,8 @@ import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
+import net.honeyberries.preferences.PreferencesManager;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,10 +55,37 @@ public class DynamicSystemPrompt {
             ? guildRules.rulesText()
             : AppConfig.getInstance().getGenericServerRules();
 
+        GuildPreferences guildPreferences = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
+
+        String allowedActions = buildAllowedActions(guildPreferences);
+
         return ChatCompletionSystemMessageParam.builder()
                 .content(
-                        template.replace("<|SERVER_RULES_INJECT|>", guildRulesText)
+                        template.replace("<|SERVER_RULES_INJECT|>", guildRulesText).replace("<|ALLOWED_ACTIONS_INJECT|>", allowedActions)
                 ).build();
+    }
+
+
+    /**
+     * Constructs a string listing the allowed actions based on the provided guild preferences.
+     * Actions are formatted as a pipe-separated list (e.g., "null" | "warn" | "delete" | ...).
+     * "null" is always included; other actions are included based on guild preference flags.
+     *
+     * @param guildPreferences the preferences of the guild specifying which actions are enabled
+     * @return a pipe-separated string of allowed actions
+     */
+    @NotNull
+    private static String buildAllowedActions(@NotNull GuildPreferences guildPreferences) {
+        StringBuilder allowedActions = new StringBuilder();
+        allowedActions.append("\"null\"");
+
+        if (guildPreferences.autoWarnEnabled()) allowedActions.append(" | \"warn\"");
+        if (guildPreferences.autoDeleteEnabled()) allowedActions.append(" | \"delete\"");
+        if (guildPreferences.autoTimeoutEnabled()) allowedActions.append(" | \"timeout\"");
+        if (guildPreferences.autoKickEnabled()) allowedActions.append(" | \"kick\"");
+        if (guildPreferences.autoBanEnabled()) allowedActions.append(" | \"ban\"");
+
+        return allowedActions.toString();
     }
 
 }

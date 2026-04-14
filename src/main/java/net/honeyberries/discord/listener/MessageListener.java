@@ -5,17 +5,16 @@ import net.dv8tion.jda.api.events.message.MessageDeleteEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.message.MessageUpdateEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.honeyberries.database.ExcludedUsersRepository;
-import net.honeyberries.datatypes.discord.GuildID;
-import net.honeyberries.datatypes.discord.MessageID;
-import net.honeyberries.datatypes.discord.RoleID;
-import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.database.ExcludedEntitiesRepository;
+import net.honeyberries.datatypes.discord.*;
 import net.honeyberries.message.HistoryFetcher;
 import net.honeyberries.message.MessageFilter;
 import net.honeyberries.services.GlobalOrchestrationService;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 /**
  * Listens to Discord message events (received, updated, deleted) and routes them to the moderation orchestration layer.
@@ -26,8 +25,7 @@ public class MessageListener extends ListenerAdapter {
 
     /** Logger for message event details. */
     private final Logger logger = LoggerFactory.getLogger(MessageListener.class);
-    /** Repository for checking user exclusion lists. */
-    private final ExcludedUsersRepository excludedUsersRepository = ExcludedUsersRepository.getInstance();
+
 
     /**
      * Processes newly received messages for potential moderation violations.
@@ -48,17 +46,18 @@ public class MessageListener extends ListenerAdapter {
         if (event.getMember() == null) {
             return;
         }
+        
+        GuildID guildID = GuildID.fromGuild(guild);
+        UserID userID = UserID.fromUser(event.getAuthor());
+        List<RoleID> roleIDList = RoleID.fromRoles(event.getMember().getRoles());
+        ChannelID channelID = ChannelID.fromChannel(event.getChannel());
 
-        if (excludedUsersRepository.isExcluded(
-                GuildID.fromGuild(guild),
-                new UserID(event.getAuthor().getIdLong()),
-                event.getMember().getRoles().stream().map(role -> new RoleID(role.getIdLong())).toList()
-        )) {
+        if (shouldExclude(guildID, userID, roleIDList, channelID)) {
+            logger.debug("Message excluded by filter. Not adding to context window.");
             return;
         }
 
         GlobalOrchestrationService.getInstance().addMessage(guild, event.getMessage(), false);
-
     }
 
     /**
@@ -84,13 +83,16 @@ public class MessageListener extends ListenerAdapter {
             return;
         }
 
-        if (excludedUsersRepository.isExcluded(
-                GuildID.fromGuild(guild),
-                new UserID(event.getAuthor().getIdLong()),
-                event.getMember().getRoles().stream().map(role -> new RoleID(role.getIdLong())).toList()
-        )) {
+        GuildID guildID = GuildID.fromGuild(guild);
+        UserID userID = UserID.fromUser(event.getAuthor());
+        List<RoleID> roleIDList = RoleID.fromRoles(event.getMember().getRoles());
+        ChannelID channelID = ChannelID.fromChannel(event.getChannel());
+
+        if (shouldExclude(guildID, userID, roleIDList, channelID)) {
+            logger.debug("Message excluded by filter. Not adding to context window.");
             return;
         }
+        
 
         if (shouldBeUpdated) {
             logger.debug("Message is in current context window. Updating message.");
@@ -115,5 +117,29 @@ public class MessageListener extends ListenerAdapter {
 
         GlobalOrchestrationService.getInstance().removeMessage(guild, messageID);
     }
+    
+    
+    
+    /**
+     * Determines if a user, channel, or any of the roles within a guild should be excluded
+     * based on the exclusion settings in the {@code ExcludedEntitiesRepository}.
+     *
+     * @param guildID the identifier of the guild where the exclusions are checked; must not be {@code null}
+     * @param userID the identifier of the user being checked for exclusion; must not be {@code null}
+     * @param roleIDList a list of role identifiers to check for exclusion; must not be {@code null}
+     * @param channelID the identifier of the channel being checked for exclusion; must not be {@code null}
+     * @return {@code true} if the user, any role, or the channel is excluded in the specified guild; {@code false} otherwise
+     */
+    public static boolean shouldExclude(@NotNull GuildID guildID, @NotNull UserID userID, @NotNull List<RoleID> roleIDList, @NotNull ChannelID channelID) {
+        
+        ExcludedEntitiesRepository excludedEntitiesRepository = ExcludedEntitiesRepository.getInstance();
+        
+        boolean excludeUser = excludedEntitiesRepository.isExcluded(guildID, userID);
+        boolean excludeChannel = excludedEntitiesRepository.isExcluded(guildID, channelID);
+        boolean excludeRoles = roleIDList.stream().anyMatch(roleID -> excludedEntitiesRepository.isExcluded(guildID, roleID));
+
+        return excludeUser || excludeChannel || excludeRoles;
+    }
+    
 
 }

@@ -59,7 +59,7 @@ public class GuildModerationBatchToAIInput {
 
             ObjectNode context = objectMapper.createObjectNode();
             ArrayNode channels = objectMapper.createArrayNode();
-            for (ChannelContext channel : guildModerationBatch.channels().values()) {
+            for (ChannelMetadata channel : guildModerationBatch.channels().values()) {
                 ObjectNode channelNode = objectMapper.createObjectNode();
                 channelNode.put("id", channel.channelId().toString());
                 channelNode.put("name", channel.channelName());

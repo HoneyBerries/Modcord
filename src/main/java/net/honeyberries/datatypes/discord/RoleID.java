@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.entities.Role;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -25,6 +26,21 @@ public record RoleID(long value) {
         Objects.requireNonNull(role, "role must not be null");
         return new RoleID(role.getIdLong());
     }
+
+
+    /**
+     * Converts a list of {@link Role} objects into a list of {@link RoleID} objects.
+     *
+     * @param roles the list of {@link Role} objects to be converted; must not be {@code null}
+     * @return a list of {@link RoleID} objects corresponding to the provided roles
+     * @throws NullPointerException if {@code roles} is {@code null}
+     */
+    @NotNull
+    public static List<RoleID> fromRoles(@NotNull List<Role> roles) {
+        Objects.requireNonNull(roles, "roles must not be null");
+        return roles.stream().map(RoleID::fromRole).toList();
+    }
+
 
     /**
      * Parses an unsigned snowflake string into a {@code RoleID}.

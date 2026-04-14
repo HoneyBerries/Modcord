@@ -154,6 +154,7 @@ public class GlobalOrchestrationService {
 
             logger.info("Triggering processing for guild {}", guild.getId());
             boolean success = service.runPipeline();
+
             if (!success) {
                 logger.warn("Guild {} processing produced no actionable results", guild.getId());
             }

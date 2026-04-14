@@ -2,7 +2,7 @@ package net.honeyberries.discord.listener;
 
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.honeyberries.database.ExcludedUsersRepository;
+import net.honeyberries.database.ExcludedEntitiesRepository;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
@@ -19,7 +19,7 @@ public class UserListener extends ListenerAdapter {
     /** Logger for user lifecycle events. */
     private final Logger logger = LoggerFactory.getLogger(UserListener.class);
     /** Repository for managing exclusion lists. */
-    private final ExcludedUsersRepository excludedUsersRepository = ExcludedUsersRepository.getInstance();
+    private final ExcludedEntitiesRepository excludedEntitiesRepository = ExcludedEntitiesRepository.getInstance();
 
     /**
      * Removes a user from the exclusion list when they leave the guild.
@@ -33,7 +33,7 @@ public class UserListener extends ListenerAdapter {
         GuildID guildID = GuildID.fromGuild(event.getGuild());
         UserID userID = new UserID(event.getUser().getIdLong());
 
-        boolean removed = excludedUsersRepository.unmarkExcluded(guildID, userID);
+        boolean removed = excludedEntitiesRepository.unmarkExcluded(guildID, userID);
         if (!removed) {
             logger.warn("Failed to clean up removed user {} from exclusions in guild {}", userID.value(), guildID.value());
         }
