@@ -7,7 +7,7 @@ import net.honeyberries.database.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
-import net.honeyberries.preferences.PreferencesHelper;
+import net.honeyberries.preferences.PreferencesManager;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,7 +55,7 @@ public class DynamicSystemPrompt {
             ? guildRules.rulesText()
             : AppConfig.getInstance().getGenericServerRules();
 
-        GuildPreferences guildPreferences = PreferencesHelper.getInstance().getOrDefaultPreferences(guildId);
+        GuildPreferences guildPreferences = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
 
         String allowedActions = buildAllowedActions(guildPreferences);
 

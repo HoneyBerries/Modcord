@@ -1,6 +1,7 @@
 package net.honeyberries.datatypes.action;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -42,5 +43,28 @@ public enum ActionType {
     @NotNull
     public String getValue() {
         return value;
+    }
+
+
+    /**
+     * Parses a user-supplied action string into an {@link ActionType}.
+     *
+     * <p>Matching is case-insensitive and trims surrounding whitespace.
+     *
+     * @param actionStr the raw string from the slash command option; must not be null
+     * @return the matching {@link ActionType}, or {@code null} if unrecognised
+     */
+    @Nullable
+    public static ActionType parseActionType(@NotNull String actionStr) {
+        Objects.requireNonNull(actionStr, "actionStr must not be null");
+        return switch (actionStr.toLowerCase().strip()) {
+            case "warn"    -> ActionType.WARN;
+            case "timeout" -> ActionType.TIMEOUT;
+            case "delete"  -> ActionType.DELETE;
+            case "kick"    -> ActionType.KICK;
+            case "ban"     -> ActionType.BAN;
+            case "unban"   -> ActionType.UNBAN;
+            default        -> null;
+        };
     }
 }

@@ -16,7 +16,6 @@ import net.honeyberries.ai.*;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.AILogRepository;
 import net.honeyberries.database.GuildModerationActionsRepository;
-import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.content.ModerationUser;
@@ -25,7 +24,7 @@ import net.honeyberries.datatypes.content.GuildModerationBatch;
 import net.honeyberries.datatypes.discord.*;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.message.HistoryFetcher;
-import net.honeyberries.preferences.PreferencesHelper;
+import net.honeyberries.preferences.PreferencesManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -274,7 +273,7 @@ public class GuildMessageProcessingService {
      */
     public boolean runPipeline() {
         List<ModerationMessage> currentMessages = getQueuedMessagesSnapshot();
-        GuildPreferences guildPreferences = PreferencesHelper.getInstance().getOrDefaultPreferences(guildId);
+        GuildPreferences guildPreferences = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
 
         if (currentMessages.isEmpty()) {
             logger.debug("Skipping AI pipeline for guild {} because queue is empty", guildId.value());
