@@ -58,14 +58,9 @@ public class ShutdownCommands extends ListenerAdapter {
             return;
         }
 
-        if (!event.isFromGuild()) {
-            event.reply("This command can only be used in servers!").setEphemeral(true).queue();
-            return;
-        }
 
-        if (event.getMember() == null || (!event.getMember().hasPermission(Permission.ADMINISTRATOR)
-                && !SpecialUsersRepository.getInstance().isSpecialUser(event.getUser()))) {
-            event.reply("You need administrator permissions to use this command").setEphemeral(true).queue();
+        if (event.getMember() == null || !SpecialUsersRepository.getInstance().isSpecialUser(event.getUser())) {
+            event.reply("You need developer permissions to use this command").setEphemeral(true).queue();
             return;
         }
 
