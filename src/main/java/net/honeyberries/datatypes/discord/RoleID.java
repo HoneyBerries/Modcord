@@ -43,19 +43,6 @@ public record RoleID(long value) {
 
 
     /**
-     * Parses an unsigned snowflake string into a {@code RoleID}.
-     *
-     * @param string role snowflake as text; must not be {@code null}
-     * @throws NumberFormatException if the string cannot be parsed
-     * @throws NullPointerException  if {@code string} is {@code null}
-     */
-    public RoleID(@NotNull String string) {
-        Objects.requireNonNull(string, "string must not be null");
-        long id = Long.parseLong(string);
-        this(id);
-    }
-
-    /**
      * Returns the snowflake identifier rendered as an unsigned decimal string.
      *
      * @return unsigned decimal representation of the role interactionID

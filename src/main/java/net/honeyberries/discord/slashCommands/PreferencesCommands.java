@@ -51,24 +51,24 @@ public class PreferencesCommands extends ListenerAdapter {
     public void registerPreferencesCommands(@NotNull CommandListUpdateAction commands) {
         Objects.requireNonNull(commands, "commands must not be null");
 
-        SubcommandData enableAiSub = new SubcommandData(
-                "enable_ai",
+        SubcommandData aiSub = new SubcommandData(
+                "ai",
                 "Enable or disable AI moderation (or view current setting)"
         ).addOptions(
                 new OptionData(OptionType.BOOLEAN, "enabled",
                         "Enable or disable AI (leave empty to view current)", false)
         );
 
-        SubcommandData setRulesChannelSub = new SubcommandData(
-                "set_rules_channel",
+        SubcommandData rulesChannelSub = new SubcommandData(
+                "rules_channel",
                 "Set the rules channel for this guild (or view current channel)"
         ).addOptions(
                 new OptionData(OptionType.CHANNEL, "channel",
                         "Channel for rules (leave empty to view current)", false)
         );
 
-        SubcommandData setAuditChannelSub = new SubcommandData(
-                "set_audit_channel",
+        SubcommandData auditChannelSub = new SubcommandData(
+                "audit_channel",
                 "Set the audit log channel for this guild (or view current channel)"
         ).addOptions(
                 new OptionData(OptionType.CHANNEL, "channel",
@@ -104,9 +104,7 @@ public class PreferencesCommands extends ListenerAdapter {
                 "preferences",
                 "Manage guild preferences and settings"
         ).addSubcommands(
-                enableAiSub, setRulesChannelSub, setAuditChannelSub,
-                settingsSub, resetSub, actionSub
-        );
+                aiSub, rulesChannelSub, auditChannelSub, settingsSub, resetSub, actionSub);
 
         commands.addCommands(preferencesCommand);
         logger.info("Registered /preferences command with subcommands");
@@ -137,9 +135,9 @@ public class PreferencesCommands extends ListenerAdapter {
 
         try {
             switch (subcommand) {
-                case "enable_ai"         -> helper.handleEnableAi(event, guild);
-                case "set_rules_channel" -> helper.handleSetRulesChannel(event, guild);
-                case "set_audit_channel" -> helper.handleSetAuditChannel(event, guild);
+                case "ai"         -> helper.handleEnableAi(event, guild);
+                case "rules_channel" -> helper.handleSetRulesChannel(event, guild);
+                case "audit_channel" -> helper.handleSetAuditChannel(event, guild);
                 case "settings"          -> helper.handleSettings(event);
                 case "reset"             -> helper.handleReset(event, guild);
                 case "action"            -> helper.handleAction(event, guild);
