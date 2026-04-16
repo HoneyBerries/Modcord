@@ -40,10 +40,13 @@ import java.util.concurrent.TimeUnit;
 public class ActionHandler {
 
     /** Singleton instance. */
+    @NotNull
     private static final ActionHandler INSTANCE = new ActionHandler();
     /** Logger for action execution and failures. */
     private final Logger logger = LoggerFactory.getLogger(ActionHandler.class);
     /** JDA client for Discord API calls. */
+
+    @NotNull
     private final JDA jda = JDAManager.getInstance().getJDA();
 
     private ActionHandler() {}
