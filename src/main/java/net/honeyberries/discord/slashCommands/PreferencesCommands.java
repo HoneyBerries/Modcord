@@ -32,6 +32,27 @@ public class PreferencesCommands extends ListenerAdapter {
 
     private final PreferenceCommandHelper helper = new PreferenceCommandHelper();
 
+    @Override
+    public void onButtonInteraction(@NotNull net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
+        if (event.getComponentId().startsWith("pref_")) {
+            helper.handleButtonInteraction(event);
+        }
+    }
+
+    @Override
+    public void onStringSelectInteraction(@NotNull net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent event) {
+        if (event.getComponentId().startsWith("pref_")) {
+            helper.handleStringSelectInteraction(event);
+        }
+    }
+
+    @Override
+    public void onEntitySelectInteraction(@NotNull net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent event) {
+        if (event.getComponentId().startsWith("pref_")) {
+            helper.handleEntitySelectInteraction(event);
+        }
+    }
+
     /**
      * User-facing error/status messages used across the preferences command surface.
      */

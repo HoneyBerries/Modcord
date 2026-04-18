@@ -1,6 +1,5 @@
 package net.honeyberries.discord.slashCommands;
 
-import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -53,19 +52,20 @@ public class ShutdownCommands extends ListenerAdapter {
      */
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
-        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(event,   "event must not be null");
         if (!event.getName().equals("shutdown")) {
             return;
         }
 
 
-        if (event.getMember() == null || !SpecialUsersRepository.getInstance().isSpecialUser(event.getUser())) {
+        if (!SpecialUsersRepository.getInstance().isSpecialUser(event.getUser())) {
             event.reply("You need developer permissions to use this command").setEphemeral(true).queue();
             return;
         }
 
         event.reply("Shutting down bot...").setEphemeral(true).queue();
-        logger.info("Shutdown initiated by user {} in guild {}", event.getUser().getId(), Objects.requireNonNull(event.getGuild()).getId());
+        String guildInfo = event.getGuild() != null ? event.getGuild().getId() : "DM";
+        logger.info("Shutdown initiated by user {} in {}", event.getUser().getId(), guildInfo);
 
         Main.shutdown();
     }
