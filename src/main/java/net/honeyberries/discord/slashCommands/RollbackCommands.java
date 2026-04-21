@@ -10,7 +10,7 @@ import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
-import net.honeyberries.action.ActionHandler;
+import net.honeyberries.action.RollbackHandler;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -114,7 +114,7 @@ public class RollbackCommands extends ListenerAdapter {
 
     /**
      * Handles the {@code /rollback action} subcommand.
-     * Parses the action UUID, delegates reversal to {@link ActionHandler#rollbackAction}, and reports the outcome.
+     * Parses the action UUID, delegates reversal to {@link RollbackHandler#rollbackAction}, and reports the outcome.
      *
      * @param event the interaction event, must not be {@code null}
      * @param guild the guild in which the command was issued, must not be {@code null}
@@ -139,7 +139,7 @@ public class RollbackCommands extends ListenerAdapter {
 
         String reason = event.getOption("reason", DEFAULT_REASON, OptionMapping::getAsString);
 
-        boolean success = ActionHandler.getInstance().rollbackAction(actionId, reason);
+        boolean success = RollbackHandler.getInstance().rollbackAction(actionId, reason);
         if (success) {
             reply(event, "Successfully rolled back action `" + actionId + "`.");
             logger.info("Action {} rolled back by {} in guild {} — reason: {}",

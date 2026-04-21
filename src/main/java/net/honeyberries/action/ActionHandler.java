@@ -6,11 +6,11 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
+import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
-import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.database.repository.GuildPreferencesRepository;
@@ -23,15 +23,14 @@ import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
 import net.honeyberries.timeout.RateLimiter;
 import net.honeyberries.ui.ActionEmbedUI;
+import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -109,80 +108,6 @@ public class ActionHandler {
 
         return actionApplied && deletionsApplied;
     }
-
-    /**
-     * Reverts a previously applied moderation action.
-     * <p>
-     * Rolls back BAN → issues unban; TIMEOUT → removes timeout; KICK and WARN have no automated
-     * reversal (they are logged only). Records the reversal in {@code guild_moderation_action_reversals}.
-     *
-     * @param actionId the UUID of the action to revert, must not be {@code null}
-     * @param reason   reason for the reversal, displayed in the audit embed, must not be {@code null}
-     * @return {@code true} if the reversal was applied or is not applicable; {@code false} on error
-     * @throws NullPointerException if {@code actionId} or {@code reason} is {@code null}
-     */
-    public boolean rollbackAction(@NotNull UUID actionId, @NotNull String reason) {
-        Objects.requireNonNull(actionId, "actionId must not be null");
-        Objects.requireNonNull(reason, "reason must not be null");
-
-        ActionData action = GuildModerationActionsRepository.getInstance().getActionById(actionId);
-        if (action == null) {
-            logger.warn("Cannot rollback action {}: not found in database", actionId);
-            return false;
-        }
-
-        Guild guild = jda.getGuildById(action.guildId().value());
-        if (guild == null) {
-            logger.warn("Cannot rollback action {}: guild {} not found", actionId, action.guildId());
-            return false;
-        }
-
-        boolean rolled = switch (action.action()) {
-            case BAN -> {
-                try {
-                    guild.unban(UserSnowflake.fromId(action.userId().value()))
-                            .reason("Rollback of action " + actionId + ": " + reason)
-                            .timeout(AppConfig.getInstance().getDiscordRequestTimeout(), TimeUnit.SECONDS)
-                            .complete();
-                    yield true;
-                } catch (Exception e) {
-                    logger.warn("Failed to unban user {} for rollback of action {}", action.userId(), actionId, e);
-                    yield false;
-                }
-            }
-            case TIMEOUT -> {
-                try {
-                    Member member = guild.retrieveMemberById(action.userId().value())
-                            .timeout(AppConfig.getInstance().getDiscordRequestTimeout(), TimeUnit.SECONDS)
-                            .complete();
-                    if (member == null) {
-                        logger.warn("Cannot remove timeout for rollback of action {}: member not found", actionId);
-                        yield false;
-                    }
-                    member.removeTimeout().reason("Rollback of action " + actionId + ": " + reason)
-                            .timeout(AppConfig.getInstance().getDiscordRequestTimeout(), TimeUnit.SECONDS)
-                            .complete();
-                    yield true;
-                } catch (Exception e) {
-                    logger.warn("Failed to remove timeout for rollback of action {}", actionId, e);
-                    yield false;
-                }
-            }
-            // KICK/WARN/DELETE/UNBAN/NULL have no automated reversal
-            default -> {
-                logger.info("Action {} ({}) has no automated reversal — marking as rolled back", actionId, action.action());
-                yield true;
-            }
-        };
-
-        if (rolled) {
-            GuildModerationActionsRepository.getInstance().recordReversal(actionId, reason);
-        }
-
-        return rolled;
-    }
-
-
 
     /**
      * Deletes all flagged messages from the guild, logging failures per message.
@@ -426,19 +351,6 @@ public class ActionHandler {
 
 
     /**
-     * Returns all actions in a guild that have not yet been reversed.
-     * Used by the rollback slash command to present candidates to moderators.
-     *
-     * @param guildId guild to query, must not be {@code null}
-     * @return list of active (non-reversed) actions ordered newest first, never {@code null}
-     */
-    @NotNull
-    public List<ActionData> getActiveActions(@NotNull GuildID guildId) {
-        Objects.requireNonNull(guildId, "guildId must not be null");
-        return GuildModerationActionsRepository.getInstance().getActiveActions(guildId);
-    }
-
-    /**
      * Logs an action failure with appropriate severity based on the error type.
      * Permission failures are logged at WARN level, other failures at ERROR level.
      *
@@ -447,14 +359,13 @@ public class ActionHandler {
      * @param guild      the guild in which the failure occurred
      * @param e          the exception that caused the failure
      */
-    private void logActionFailure(@NotNull String operation, @NotNull ActionData actionData,
-                                  @NotNull Guild guild, @NotNull Exception e) {
+    private void logActionFailure(@NotNull String operation, @NotNull ActionData actionData, @NotNull Guild guild, @NotNull Exception e) {
         Objects.requireNonNull(operation, "operation must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(e, "e must not be null");
 
-        if (isPermissionFailure(e)) {
+        if (DiscordUtils.isPermissionFailure(e)) {
             logger.warn("Permission denied: failed to {} for user {} in guild {} (action={}, moderator={})",
                     operation, actionData.userId(), guild.getId(), actionData.id(), actionData.moderatorId(), e);
             return;
@@ -462,20 +373,5 @@ public class ActionHandler {
 
         logger.error("Failed to {} for user {} in guild {} (action={}, moderator={})",
                 operation, actionData.userId(), guild.getId(), actionData.id(), actionData.moderatorId(), e);
-    }
-
-    /**
-     * Determines if an exception represents a permission failure.
-     *
-     * @param e the exception to check
-     * @return {@code true} if the exception indicates insufficient permissions; {@code false} otherwise
-     */
-    private boolean isPermissionFailure(@NotNull Exception e) {
-        Objects.requireNonNull(e, "e must not be null");
-        if (e instanceof InsufficientPermissionException) return true;
-        if (e instanceof ErrorResponseException err) {
-            return err.getErrorResponse() == ErrorResponse.MISSING_PERMISSIONS;
-        }
-        return false;
     }
 }

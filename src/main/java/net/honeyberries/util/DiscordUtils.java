@@ -2,10 +2,16 @@ package net.honeyberries.util;
 
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Member;
+import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
+import net.dv8tion.jda.api.exceptions.MissingAccessException;
+import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.honeyberries.database.repository.SpecialUsersRepository;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
 
 public class DiscordUtils {
 
@@ -45,6 +51,24 @@ public class DiscordUtils {
     public static String truncate(@NotNull String text, int maxLen) {
         if (text.length() <= maxLen) return text;
         return text.substring(0, maxLen - 1) + "…";
+    }
+
+
+
+    /**
+     * Determines if an exception represents a permission failure.
+     *
+     * @param e the exception to check
+     * @return {@code true} if the exception indicates insufficient permissions; {@code false} otherwise
+     */
+    public static boolean isPermissionFailure(@NotNull Exception e) {
+        Objects.requireNonNull(e, "e must not be null");
+        if (e instanceof InsufficientPermissionException) return true;
+        if (e instanceof MissingAccessException) return true;
+        if (e instanceof ErrorResponseException err) {
+            return err.getErrorResponse() == ErrorResponse.MISSING_PERMISSIONS;
+        }
+        return false;
     }
 
 }
