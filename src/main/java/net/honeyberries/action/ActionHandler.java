@@ -182,6 +182,8 @@ public class ActionHandler {
         return rolled;
     }
 
+
+
     /**
      * Deletes all flagged messages from the guild, logging failures per message.
      *

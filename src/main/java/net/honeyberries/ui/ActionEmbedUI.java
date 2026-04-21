@@ -8,6 +8,7 @@ import net.dv8tion.jda.api.utils.TimeFormat;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.util.ActionHelper;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 
@@ -32,7 +33,7 @@ public class ActionEmbedUI {
 
         UserID targetId = UserID.fromUser(target);
         EmbedBuilder embed = new EmbedBuilder()
-                .setTitle(actionEmoji(actionData.action()) + " " + actionData.action().name() + " Issued")
+                .setTitle(ActionHelper.actionEmoji(actionData.action()) + " " + actionData.action().name() + " Issued")
                 .setColor(actionColor(actionData.action()))
                 .setTimestamp(Instant.now())
                 .addField("User", DiscordUtils.userMention(targetId), true)
@@ -62,25 +63,6 @@ public class ActionEmbedUI {
         return new MessageCreateBuilder().setEmbeds(embed.build()).build();
     }
 
-    /**
-     * Selects an emoji matching the action type for visual feedback in embeds.
-     *
-     * @param actionType the moderation action type
-     * @return an emoji string representing the action
-     */
-    @NotNull
-    private static String actionEmoji(@NotNull ActionType actionType) {
-        Objects.requireNonNull(actionType, "actionType must not be null");
-        return switch (actionType) {
-            case WARN    -> "⚠️";
-            case DELETE  -> "🗑️";
-            case TIMEOUT -> "⏱️";
-            case KICK    -> "👢";
-            case BAN     -> "🔨";
-            case UNBAN   -> "✅";
-            case NULL    -> "⚙️";
-        };
-    }
 
     /**
      * Selects a color matching the action type for visual feedback in embeds.
