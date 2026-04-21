@@ -1,5 +1,6 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -91,6 +92,7 @@ public class PendingMessageRepository {
         }
     }
 
+
     /**
      * Loads all persisted pending messages for a guild.
      * Call {@link #clearMessages(GuildID)} after re-queuing the returned messages so they are
@@ -107,7 +109,7 @@ public class PendingMessageRepository {
             SELECT message_id, user_id, channel_id, content, message_timestamp, is_history
             FROM pending_moderation_messages
             WHERE guild_id = ?
-            ORDER BY message_timestamp ASC
+            ORDER BY message_timestamp
         """;
 
         try {
@@ -138,6 +140,7 @@ public class PendingMessageRepository {
             return List.of();
         }
     }
+
 
     /**
      * Deletes all persisted pending messages for a guild.

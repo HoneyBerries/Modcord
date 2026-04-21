@@ -1,5 +1,6 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionDataBuilder;
 import net.honeyberries.datatypes.action.ActionType;
@@ -375,6 +376,36 @@ public class GuildModerationActionsRepository {
         } catch (Exception e) {
             logger.error("Failed to fetch deletions", e);
             return List.of();
+        }
+    }
+
+    /**
+     * Persists a reversal record so the unban watcher and future queries know the action was undone.
+     *
+     * @param actionId the UUID of the action that was reversed, must not be {@code null}
+     * @param reason   human-readable reversal note, must not be {@code null}
+     * @throws NullPointerException if {@code actionId} or {@code reason} is {@code null}
+     */
+    public void recordReversal(@NotNull UUID actionId, @NotNull String reason) {
+        Objects.requireNonNull(actionId, "actionId must not be null");
+        Objects.requireNonNull(reason, "reason must not be null");
+        String sql = """
+            INSERT INTO guild_moderation_action_reversals (action_id, reason, reversed_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT (action_id) DO UPDATE SET
+                reason      = EXCLUDED.reason,
+                reversed_at = EXCLUDED.reversed_at
+        """;
+        try {
+            database.transaction(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setObject(1, actionId);
+                    ps.setString(2, reason);
+                    ps.executeUpdate();
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to record reversal for action {}", actionId, e);
         }
     }
 

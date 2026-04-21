@@ -1,7 +1,8 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
 import com.openai.core.ObjectMappers;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;

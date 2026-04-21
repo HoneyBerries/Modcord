@@ -1,5 +1,6 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;

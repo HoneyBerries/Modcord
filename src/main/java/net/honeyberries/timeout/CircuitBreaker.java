@@ -1,4 +1,4 @@
-package net.honeyberries.util;
+package net.honeyberries.timeout;
 
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;

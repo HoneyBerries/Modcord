@@ -1,16 +1,15 @@
 package net.honeyberries.task;
 
-import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
+import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.Database;
-import net.honeyberries.database.GuildModerationActionsRepository;
+import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
-import net.honeyberries.discord.JDAManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -20,7 +19,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Periodic task that monitors temporary bans and automatically unbans users when their ban duration expires.
@@ -107,9 +108,9 @@ public class UnbanWatcherTask implements Runnable {
      * @throws NullPointerException if {@code guildId} is {@code null}
      */
     private void processBansForGuild(@NotNull GuildID guildId) {
-        java.util.Objects.requireNonNull(guildId, "guildId must not be null");
+        Objects.requireNonNull(guildId, "guildId must not be null");
         try {
-            Guild guild = resolveGuild(guildId);
+            Guild guild = guildId.toGuild();
             if (guild == null) {
                 logger.debug("Skipping unban sweep for guild {}: JDA has no reference to the guild", guildId);
                 return;
@@ -132,23 +133,6 @@ public class UnbanWatcherTask implements Runnable {
         }
     }
 
-    /**
-     * Locates the {@link Guild} matching the supplied ID via the singleton JDA instance.
-     * Returns {@code null} if the bot is no longer a member of the guild or JDA is not ready.
-     *
-     * @param guildId guild to look up, must not be {@code null}
-     * @return the resolved guild, or {@code null} if unavailable
-     */
-    @Nullable
-    private Guild resolveGuild(@NotNull GuildID guildId) {
-        try {
-            JDA jda = JDAManager.getInstance().getJDA();
-            return jda.getGuildById(guildId.value());
-        } catch (Exception e) {
-            logger.warn("Failed to resolve guild {} via JDA", guildId, e);
-            return null;
-        }
-    }
 
     /**
      * Issues an unban for the supplied action against Discord and records the reversal in the database.
@@ -159,15 +143,18 @@ public class UnbanWatcherTask implements Runnable {
      * @param action ban action that has expired, must not be {@code null}
      */
     private void applyUnban(@NotNull Guild guild, @NotNull ActionData action) {
-        java.util.Objects.requireNonNull(guild, "guild must not be null");
-        java.util.Objects.requireNonNull(action, "action must not be null");
+        Objects.requireNonNull(guild, "guild must not be null");
+        Objects.requireNonNull(action, "action must not be null");
         try {
             guild.unban(UserSnowflake.fromId(action.userId().value()))
                     .reason("Auto-unban: ban duration expired (action " + action.id() + ")")
+                    .timeout(AppConfig.getInstance().getDiscordRequestTimeout(), TimeUnit.SECONDS)
                     .complete();
+
             recordUnban(action.id(), "expired");
             logger.info("Unbanned user {} in guild {} (action {})",
                     action.userId(), guild.getId(), action.id());
+
         } catch (ErrorResponseException e) {
             if (e.getErrorResponse() == ErrorResponse.UNKNOWN_BAN) {
                 logger.info("User {} in guild {} is no longer banned — marking action {} as reconciled",
@@ -175,6 +162,7 @@ public class UnbanWatcherTask implements Runnable {
                 recordUnban(action.id(), "already_unbanned");
                 return;
             }
+
             logger.warn("Failed to unban user {} in guild {} (action {}): {}",
                     action.userId(), guild.getId(), action.id(), e.getMeaning());
         } catch (Exception e) {
@@ -183,6 +171,7 @@ public class UnbanWatcherTask implements Runnable {
         }
     }
 
+
     /**
      * Records that an action has been reversed so future sweeps skip it.
      *
@@ -190,8 +179,8 @@ public class UnbanWatcherTask implements Runnable {
      * @param note     short human-readable description of why the reversal occurred
      */
     private void recordUnban(@NotNull UUID actionId, @NotNull String note) {
-        java.util.Objects.requireNonNull(actionId, "actionId must not be null");
-        java.util.Objects.requireNonNull(note, "note must not be null");
+        Objects.requireNonNull(actionId, "actionId must not be null");
+        Objects.requireNonNull(note, "note must not be null");
         String sql = """
             INSERT INTO guild_moderation_action_reversals (action_id, reason, reversed_at)
             VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -213,6 +202,7 @@ public class UnbanWatcherTask implements Runnable {
         }
     }
 
+
     /**
      * Determines whether an action has already been reversed and should be skipped.
      *
@@ -220,7 +210,7 @@ public class UnbanWatcherTask implements Runnable {
      * @return {@code true} if a reversal row exists for the action
      */
     private boolean hasBeenUnbanned(@NotNull UUID actionId) {
-        java.util.Objects.requireNonNull(actionId, "actionId must not be null");
+        Objects.requireNonNull(actionId, "actionId must not be null");
         String sql = """
             SELECT 1
             FROM guild_moderation_action_reversals
@@ -251,7 +241,7 @@ public class UnbanWatcherTask implements Runnable {
      * @throws NullPointerException if {@code action} is {@code null}
      */
     private boolean isBanExpired(@NotNull ActionData action) {
-        java.util.Objects.requireNonNull(action, "action must not be null");
+        Objects.requireNonNull(action, "action must not be null");
         if (action.banDuration() <= 0 || action.banDuration() >= PERMANENT_BAN_SENTINEL) {
             return false;
         }
@@ -275,7 +265,7 @@ public class UnbanWatcherTask implements Runnable {
      */
     @Nullable
     private Long getActionCreatedTimestamp(@NotNull UUID actionId) {
-        java.util.Objects.requireNonNull(actionId, "actionId must not be null");
+        Objects.requireNonNull(actionId, "actionId must not be null");
         String sql = """
             SELECT created_at
             FROM guild_moderation_actions

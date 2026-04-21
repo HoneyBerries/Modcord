@@ -3,7 +3,7 @@ package net.honeyberries.discord.listener;
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent;
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.honeyberries.database.GuildPreferencesRepository;
+import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.preferences.Onboarding;
 import net.honeyberries.services.GlobalOrchestrationService;

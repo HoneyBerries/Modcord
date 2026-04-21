@@ -15,8 +15,8 @@ import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.GuildModerationActionsRepository;
-import net.honeyberries.database.GuildPreferencesRepository;
+import net.honeyberries.database.repository.GuildModerationActionsRepository;
+import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
@@ -24,14 +24,13 @@ import net.honeyberries.datatypes.action.MessageDeletion;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
-import net.honeyberries.util.RateLimiter;
+import net.honeyberries.timeout.RateLimiter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.awt.Color;
-import java.sql.PreparedStatement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -147,6 +146,7 @@ public class ActionHandler {
                 try {
                     guild.unban(UserSnowflake.fromId(action.userId().value()))
                             .reason("Rollback of action " + actionId + ": " + reason)
+                            .timeout(AppConfig.getInstance().getDiscordRequestTimeout(), TimeUnit.SECONDS)
                             .complete();
                     yield true;
                 } catch (Exception e) {
@@ -163,7 +163,9 @@ public class ActionHandler {
                         logger.warn("Cannot remove timeout for rollback of action {}: member not found", actionId);
                         yield false;
                     }
-                    member.removeTimeout().reason("Rollback of action " + actionId + ": " + reason).complete();
+                    member.removeTimeout().reason("Rollback of action " + actionId + ": " + reason)
+                            .timeout(AppConfig.getInstance().getDiscordRequestTimeout(), TimeUnit.SECONDS)
+                            .complete();
                     yield true;
                 } catch (Exception e) {
                     logger.warn("Failed to remove timeout for rollback of action {}", actionId, e);
@@ -178,37 +180,10 @@ public class ActionHandler {
         };
 
         if (rolled) {
-            recordReversal(actionId, "manual_rollback: " + reason);
+            GuildModerationActionsRepository.getInstance().recordReversal(actionId, reason);
         }
 
         return rolled;
-    }
-
-    /**
-     * Persists a reversal record so the unban watcher and future queries know the action was undone.
-     *
-     * @param actionId action that was reversed, must not be {@code null}
-     * @param reason   human-readable reversal note, must not be {@code null}
-     */
-    private void recordReversal(@NotNull UUID actionId, @NotNull String reason) {
-        String sql = """
-            INSERT INTO guild_moderation_action_reversals (action_id, reason, reversed_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT (action_id) DO UPDATE SET
-                reason      = EXCLUDED.reason,
-                reversed_at = EXCLUDED.reversed_at
-        """;
-        try {
-            Database.getInstance().transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setObject(1, actionId);
-                    ps.setString(2, reason);
-                    ps.executeUpdate();
-                }
-            });
-        } catch (Exception e) {
-            logger.warn("Failed to record reversal for action {}", actionId, e);
-        }
     }
 
     /**
@@ -280,6 +255,8 @@ public class ActionHandler {
         }
     }
 
+
+
     /**
      * Applies a timeout to the target user for the specified duration.
      *
@@ -343,10 +320,16 @@ public class ActionHandler {
     private boolean applyBan(@NotNull Guild guild, @NotNull ActionData actionData) {
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
-        guild.ban(UserSnowflake.fromId(actionData.userId().value()), 0, TimeUnit.DAYS)
-                .reason(actionData.reason())
-                .complete();
-        return true;
+
+        try {
+            guild.ban(UserSnowflake.fromId(actionData.userId().value()), 0, TimeUnit.DAYS)
+                    .reason(actionData.reason())
+                    .complete();
+            return true;
+        } catch (Exception e) {
+            logger.warn("Failed to ban user {}, error: {}", actionData.userId().value(), e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -359,10 +342,17 @@ public class ActionHandler {
     private boolean applyUnban(@NotNull Guild guild, @NotNull ActionData actionData) {
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
-        guild.unban(UserSnowflake.fromId(actionData.userId().value()))
-                .reason(actionData.reason())
-                .complete();
-        return true;
+
+        try {
+            guild.unban(UserSnowflake.fromId(actionData.userId().value()))
+                    .reason(actionData.reason())
+                    .complete();
+            return true;
+        } catch (Exception e) {
+            logger.warn("Failed to unban user {}, error: {}", actionData.userId().value(), e.getMessage());
+            return false;
+        }
+
     }
 
     /**

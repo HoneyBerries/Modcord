@@ -3,7 +3,7 @@ package net.honeyberries.services;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Message;
 import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.PendingMessageRepository;
+import net.honeyberries.database.repository.PendingMessageRepository;
 import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.MessageID;
@@ -271,7 +271,7 @@ public class GlobalOrchestrationService {
         }
 
         GuildMessageProcessingService service = getOrCreate(guild);
-        saved.forEach(msg -> service.restoreMessage(msg));
+        saved.forEach(service::restoreMessage);
         repo.clearMessages(guildId);
         logger.info("Restored {} pending messages for guild {} from the database",
                 saved.size(), guildId.value());

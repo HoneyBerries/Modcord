@@ -1,6 +1,7 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
 import net.dv8tion.jda.api.entities.User;
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.discord.DiscordUser;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;

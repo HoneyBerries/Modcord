@@ -1,6 +1,9 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
+import net.honeyberries.database.Database;
+import net.honeyberries.datatypes.content.AppealData;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -16,8 +19,8 @@ import java.util.UUID;
 /**
  * Persists and retrieves ban/moderation appeal records.
  * <p>
- * Appeals are stored in the {@code moderation_appeals} table with an open/closed status.
- * Each appeal tracks who submitted it, why, and optionally how it was resolved.
+ * Appeals are stored in the {@code moderation_appeals} table with an is_open boolean flag.
+ * Each appeal is linked to a specific moderation action via foreign key.
  */
 public class AppealRepository {
 
@@ -39,21 +42,23 @@ public class AppealRepository {
 
     /**
      * Creates a new open appeal record for the given guild and user.
+     * Optionally links the appeal to a specific moderation action.
      *
-     * @param guildId the guild where the action occurred, must not be {@code null}
-     * @param userId  Discord snowflake of the appealing user
-     * @param reason  the appeal text, must not be {@code null}
+     * @param guildId  the guild where the action occurred, must not be {@code null}
+     * @param userId   Discord snowflake of the appealing user
+     * @param actionId the UUID of the moderation action being appealed, or {@code null} if not known
+     * @param reason   the appeal text, must not be {@code null}
      * @return the UUID assigned to the new appeal, or {@code null} if persistence failed
      * @throws NullPointerException if {@code guildId} or {@code reason} is {@code null}
      */
     @Nullable
-    public UUID createAppeal(@NotNull GuildID guildId, long userId, @NotNull String reason) {
+    public UUID createAppeal(@NotNull GuildID guildId, long userId, @Nullable UUID actionId, @NotNull String reason) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
         UUID id = UUID.randomUUID();
         String sql = """
-            INSERT INTO moderation_appeals (appeal_id, guild_id, user_id, reason, status)
-            VALUES (?, ?, ?, ?, 'open')
+            INSERT INTO moderation_appeals (appeal_id, guild_id, user_id, action_id, reason, is_open)
+            VALUES (?, ?, ?, ?, ?, TRUE)
         """;
 
         try {
@@ -62,7 +67,12 @@ public class AppealRepository {
                     ps.setObject(1, id);
                     ps.setLong(2, guildId.value());
                     ps.setLong(3, userId);
-                    ps.setString(4, reason);
+                    if (actionId != null) {
+                        ps.setObject(4, actionId);
+                    } else {
+                        ps.setNull(4, java.sql.Types.OTHER);
+                    }
+                    ps.setString(5, reason);
                     ps.executeUpdate();
                 }
             });
@@ -74,23 +84,27 @@ public class AppealRepository {
     }
 
     /**
-     * Marks an appeal as closed with an optional resolution note.
+     * Marks an appeal as closed in the given guild.
+     * Uses guild_id to prevent cross-guild state changes (tenant isolation).
      *
+     * @param guildId  the guild where the appeal resides, must not be {@code null}
      * @param appealId the UUID of the appeal to close, must not be {@code null}
      * @param note     moderator's resolution note, must not be {@code null}
      * @return {@code true} if the appeal was found and updated, {@code false} otherwise
-     * @throws NullPointerException if {@code appealId} or {@code note} is {@code null}
+     * @throws NullPointerException if {@code guildId}, {@code appealId}, or {@code note} is {@code null}
      */
-    public boolean closeAppeal(@NotNull UUID appealId, @NotNull String note) {
+    public boolean closeAppeal(@NotNull GuildID guildId, @NotNull UUID appealId, @NotNull String note) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
         Objects.requireNonNull(appealId, "appealId must not be null");
         Objects.requireNonNull(note, "note must not be null");
         String sql = """
             UPDATE moderation_appeals
-            SET status = 'closed',
+            SET is_open = FALSE,
                 resolution_note = ?,
                 resolved_at = CURRENT_TIMESTAMP
             WHERE appeal_id = ?
-              AND status = 'open'
+              AND guild_id = ?
+              AND is_open = TRUE
         """;
 
         try {
@@ -98,12 +112,13 @@ public class AppealRepository {
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setString(1, note);
                     ps.setObject(2, appealId);
+                    ps.setLong(3, guildId.value());
                     return ps.executeUpdate();
                 }
             });
             return updated > 0;
         } catch (Exception e) {
-            logger.error("Failed to close appeal {}", appealId, e);
+            logger.error("Failed to close appeal {} in guild {}", appealId, guildId, e);
             return false;
         }
     }
@@ -116,26 +131,29 @@ public class AppealRepository {
      * @throws NullPointerException if {@code guildId} is {@code null}
      */
     @NotNull
-    public List<AppealRecord> getOpenAppeals(@NotNull GuildID guildId) {
+    public List<AppealData> getOpenAppeals(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
-            SELECT appeal_id, user_id, reason, submitted_at
+            SELECT appeal_id, guild_id, user_id, action_id, reason, is_open, submitted_at
             FROM moderation_appeals
-            WHERE guild_id = ? AND status = 'open'
+            WHERE guild_id = ? AND is_open = TRUE
             ORDER BY submitted_at ASC
         """;
 
         try {
             return database.query(conn -> {
-                List<AppealRecord> results = new ArrayList<>();
+                List<AppealData> results = new ArrayList<>();
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setLong(1, guildId.value());
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            results.add(new AppealRecord(
+                            results.add(new AppealData(
                                     (UUID) rs.getObject("appeal_id"),
-                                    rs.getLong("user_id"),
-                                    rs.getString("reason")
+                                    new GuildID(rs.getLong("guild_id")),
+                                    new UserID(rs.getLong("user_id")),
+                                    rs.getString("reason"),
+                                    (UUID) rs.getObject("action_id"),
+                                    rs.getBoolean("is_open")
                             ));
                         }
                     }
@@ -147,13 +165,4 @@ public class AppealRepository {
             return List.of();
         }
     }
-
-    /**
-     * Lightweight projection of an appeal row for display in slash command responses.
-     *
-     * @param id     the appeal UUID
-     * @param userId Discord snowflake of the appellant
-     * @param reason the appeal text
-     */
-    public record AppealRecord(@NotNull UUID id, long userId, @NotNull String reason) {}
 }

@@ -1,7 +1,9 @@
 package net.honeyberries.discord.slashCommands;
 
 import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
@@ -13,11 +15,17 @@ import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
-import net.honeyberries.database.AppealRepository;
-import net.honeyberries.database.GuildPreferencesRepository;
+import net.honeyberries.database.repository.AppealRepository;
+import net.honeyberries.database.repository.GuildModerationActionsRepository;
+import net.honeyberries.database.repository.GuildPreferencesRepository;
+import net.honeyberries.database.repository.SpecialUsersRepository;
+import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
+import net.honeyberries.discord.JDAManager;
+import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,11 +66,13 @@ public class AppealCommands extends ListenerAdapter {
         Objects.requireNonNull(commands, "commands must not be null");
         SlashCommandData appealCommand = Commands.slash("appeal", "Ban/moderation appeal system")
                 .addSubcommands(
-                        new SubcommandData("submit", "Submit an appeal for a moderation action taken against you")
+                        new SubcommandData("submit", "Submit an appeal for a moderation action (works in DMs)")
                                 .addOption(OptionType.STRING, "reason",
-                                        "Explain why you believe the action was incorrect", true),
-                        new SubcommandData("list", "List open appeals (administrator only)"),
-                        new SubcommandData("close", "Close/resolve an appeal (administrator only)")
+                                        "Explain why you believe the action was incorrect", true)
+                                .addOption(OptionType.STRING, "action_id",
+                                        "UUID of the moderation action (required in DM, optional in guild)", false),
+                        new SubcommandData("list", "List open appeals (administrator only, guild only)"),
+                        new SubcommandData("close", "Close/resolve an appeal (administrator only, guild only)")
                                 .addOption(OptionType.STRING, "appeal_id",
                                         "UUID of the appeal to close", true)
                                 .addOption(OptionType.STRING, "note",
@@ -86,12 +96,6 @@ public class AppealCommands extends ListenerAdapter {
             return;
         }
 
-        Guild guild = event.getGuild();
-        if (guild == null) {
-            reply(event, "This command can only be used inside a server.");
-            return;
-        }
-
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
             reply(event, "Please specify a subcommand.");
@@ -100,9 +104,23 @@ public class AppealCommands extends ListenerAdapter {
 
         try {
             switch (subcommand) {
-                case "submit" -> handleSubmit(event, guild);
-                case "list"   -> handleList(event, guild);
-                case "close"  -> handleClose(event, guild);
+                case "submit" -> handleSubmit(event);
+                case "list"   -> {
+                    Guild guild = event.getGuild();
+                    if (guild == null) {
+                        reply(event, "List can only be used inside a server.");
+                        return;
+                    }
+                    handleList(event, guild);
+                }
+                case "close"  -> {
+                    Guild guild = event.getGuild();
+                    if (guild == null) {
+                        reply(event, "Close can only be used inside a server.");
+                        return;
+                    }
+                    handleClose(event, guild);
+                }
                 default       -> reply(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
@@ -113,15 +131,15 @@ public class AppealCommands extends ListenerAdapter {
 
     /**
      * Handles the {@code /appeal submit} subcommand.
-     * Creates an appeal record, acknowledges the submitter ephemerally, and forwards
-     * the appeal embed to the guild's audit log channel so moderators see it promptly.
+     * Works in both guild and DM contexts.
+     * In DMs: requires action_id UUID.
+     * In guilds: action_id is optional (defaults to null if not provided).
+     * Creates an appeal record and notifies moderators in the target guild.
      *
      * @param event the interaction event, must not be {@code null}
-     * @param guild the guild in which the command was issued, must not be {@code null}
      */
-    private void handleSubmit(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
+    private void handleSubmit(@NotNull SlashCommandInteractionEvent event) {
         Objects.requireNonNull(event, "event must not be null");
-        Objects.requireNonNull(guild, "guild must not be null");
 
         String reason = event.getOption("reason", OptionMapping::getAsString);
         if (reason == null || reason.isBlank()) {
@@ -129,10 +147,52 @@ public class AppealCommands extends ListenerAdapter {
             return;
         }
 
-        User appellant = event.getUser();
-        GuildID guildId = GuildID.fromGuild(guild);
+        String actionIdStr = event.getOption("action_id", OptionMapping::getAsString);
+        UUID actionId = null;
+        GuildID guildId;
 
-        UUID appealId = AppealRepository.getInstance().createAppeal(guildId, appellant.getIdLong(), reason);
+        Guild guild = event.getGuild();
+
+        if (guild == null) {
+            if (actionIdStr == null || actionIdStr.isBlank()) {
+                reply(event, "In DMs, you must provide the action UUID.");
+                return;
+            }
+            try {
+                actionId = UUID.fromString(actionIdStr.strip());
+            } catch (IllegalArgumentException e) {
+                reply(event, "Invalid action UUID format. Please provide a valid UUID.");
+                return;
+            }
+            ActionData action = GuildModerationActionsRepository.getInstance().getActionById(actionId);
+            if (action == null) {
+                reply(event, "Could not find the specified action. Please verify the UUID and try again.");
+                return;
+            }
+            guildId = action.guildId();
+        } else {
+            guildId = GuildID.fromGuild(guild);
+            if (actionIdStr != null && !actionIdStr.isBlank()) {
+                try {
+                    actionId = UUID.fromString(actionIdStr.strip());
+                    ActionData action = GuildModerationActionsRepository.getInstance().getActionById(actionId);
+                    if (action == null) {
+                        reply(event, "Could not find the specified action. Please verify the UUID and try again.");
+                        return;
+                    }
+                    if (!action.guildId().equals(guildId)) {
+                        reply(event, "The specified action belongs to a different guild.");
+                        return;
+                    }
+                } catch (IllegalArgumentException e) {
+                    reply(event, "Invalid action UUID format. Please provide a valid UUID.");
+                    return;
+                }
+            }
+        }
+
+        User appellant = event.getUser();
+        UUID appealId = AppealRepository.getInstance().createAppeal(guildId, appellant.getIdLong(), actionId, reason);
         if (appealId == null) {
             reply(event, "Failed to submit your appeal due to a server error. Please try again later.");
             return;
@@ -140,9 +200,9 @@ public class AppealCommands extends ListenerAdapter {
 
         reply(event, "Your appeal has been submitted (ID: `" + appealId + "`). "
                 + "A moderator will review it shortly.");
-        logger.info("Appeal {} submitted by user {} in guild {}", appealId, appellant.getId(), guild.getId());
+        logger.info("Appeal {} submitted by user {} for action {}", appealId, appellant.getId(), actionId);
 
-        notifyModerators(guild, guildId, appellant, reason, appealId);
+        notifyModerators(guildId, appellant, reason, appealId, actionId);
     }
 
     /**
@@ -156,7 +216,7 @@ public class AppealCommands extends ListenerAdapter {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
 
-        if (!isAdmin(event)) {
+        if (!DiscordUtils.isAdmin(event.getMember())) {
             reply(event, "Only administrators can view appeals.");
             return;
         }
@@ -171,10 +231,11 @@ public class AppealCommands extends ListenerAdapter {
 
         StringBuilder sb = new StringBuilder("**Open appeals:**\n");
         for (var a : openAppeals) {
-            sb.append(String.format("• `%s` — <@%d> — %s%n",
-                    a.id(), a.userId(), truncate(a.reason(), 60)));
+            String actionInfo = a.actionId() != null ? String.format(" (action: `%s`)", a.actionId()) : "";
+            sb.append(String.format("• `%s` — <@%d> — %s%s%n",
+                    a.id(), a.userId().value(), truncate(a.reason(), 60), actionInfo));
         }
-        sb.append("\nUse `/appeal close <appeal_id>` to resolve an appeal.");
+        sb.append("\nUse `/appeal close <appeal_id> [note]` to resolve an appeal.");
         reply(event, sb.toString());
     }
 
@@ -189,7 +250,7 @@ public class AppealCommands extends ListenerAdapter {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
 
-        if (!isAdmin(event)) {
+        if (!DiscordUtils.isAdmin(event.getMember())) {
             reply(event, "Only administrators can close appeals.");
             return;
         }
@@ -209,7 +270,8 @@ public class AppealCommands extends ListenerAdapter {
         }
 
         String note = event.getOption("note", "No note provided.", OptionMapping::getAsString);
-        boolean closed = AppealRepository.getInstance().closeAppeal(appealId, note);
+        GuildID guildId = GuildID.fromGuild(guild);
+        boolean closed = AppealRepository.getInstance().closeAppeal(guildId, appealId, note);
 
         if (closed) {
             reply(event, "Appeal `" + appealId + "` has been closed.");
@@ -224,19 +286,18 @@ public class AppealCommands extends ListenerAdapter {
      * Posts an embed to the guild's audit log channel so moderators are notified of the new appeal.
      * Silently skips if no audit channel is configured or if the channel is unavailable.
      *
-     * @param guild     the guild, must not be {@code null}
      * @param guildId   the guild's typed ID, must not be {@code null}
      * @param appellant the user who submitted the appeal, must not be {@code null}
      * @param reason    the appeal text, must not be {@code null}
      * @param appealId  the UUID assigned to the new appeal, must not be {@code null}
+     * @param actionId  the UUID of the action being appealed, may be {@code null}
      */
     private void notifyModerators(
-            @NotNull Guild guild,
             @NotNull GuildID guildId,
             @NotNull User appellant,
             @NotNull String reason,
-            @NotNull UUID appealId) {
-        Objects.requireNonNull(guild, "guild must not be null");
+            @NotNull UUID appealId,
+            @Nullable UUID actionId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         Objects.requireNonNull(appellant, "appellant must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
@@ -248,10 +309,16 @@ public class AppealCommands extends ListenerAdapter {
                 return;
             }
 
+            Guild guild = JDAManager.getInstance().getJDA().getGuildById(guildId.value());
+            if (guild == null) {
+                logger.warn("Guild {} is not accessible — appeal notification skipped", guildId);
+                return;
+            }
+
             Channel auditChannel = guild.getGuildChannelById(preferences.auditLogChannelId().value());
             if (!(auditChannel instanceof MessageChannel messageChannel)) {
                 logger.warn("Audit channel {} is unavailable in guild {} — appeal notification skipped",
-                        preferences.auditLogChannelId(), guild.getId());
+                        preferences.auditLogChannelId(), guildId);
                 return;
             }
 
@@ -260,26 +327,20 @@ public class AppealCommands extends ListenerAdapter {
                     .setColor(Color.CYAN)
                     .setTimestamp(Instant.now())
                     .addField("Appellant", "<@" + appellant.getId() + ">", true)
-                    .addField("Appeal ID", "`" + appealId + "`", true)
-                    .addField("Reason", reason, false)
+                    .addField("Appeal ID", "`" + appealId + "`", true);
+
+            if (actionId != null) {
+                embed.addField("Action ID", "`" + actionId + "`", true);
+            }
+
+            embed.addField("Reason", reason, false)
                     .setThumbnail(appellant.getEffectiveAvatarUrl())
                     .setFooter("Use /appeal close " + appealId + " to resolve", null);
 
             messageChannel.sendMessageEmbeds(embed.build()).queue();
         } catch (Exception e) {
-            logger.warn("Failed to notify moderators of appeal {} in guild {}", appealId, guild.getId(), e);
+            logger.warn("Failed to notify moderators of appeal {}", appealId, e);
         }
-    }
-
-    /**
-     * Checks whether the invoking member has the ADMINISTRATOR permission.
-     *
-     * @param event the interaction event, must not be {@code null}
-     * @return {@code true} if the member is an administrator
-     */
-    private static boolean isAdmin(@NotNull SlashCommandInteractionEvent event) {
-        var member = event.getMember();
-        return member != null && member.hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR);
     }
 
     /**

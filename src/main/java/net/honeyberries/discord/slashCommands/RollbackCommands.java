@@ -4,7 +4,6 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -12,10 +11,10 @@ import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.action.ActionHandler;
-import net.honeyberries.database.GuildModerationActionsRepository;
-import net.honeyberries.database.SpecialUsersRepository;
+import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +29,7 @@ import java.util.UUID;
  * Provides two subcommands:
  * <ul>
  *   <li>{@code /rollback action <action_id> [reason]} — reverses a specific action by its UUID.</li>
- *   <li>{@code /rollback list} — lists the most recent 10 active (non-reversed) actions.</li>
+ *   <li>{@code /rollback list [limit]} — lists the most recent active (non-reversed) actions (default: 10).</li>
  * </ul>
  * Reversal behaviour per action type:
  * <ul>
@@ -43,7 +42,7 @@ public class RollbackCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(RollbackCommands.class);
     private static final String DEFAULT_REASON = "No reason provided.";
-    private static final int RECENT_ACTION_LIMIT = 10;
+    private static final int DEFAULT_RECENT_ACTION_LIMIT = 10;
 
     /**
      * Registers {@code /rollback} and its subcommands with Discord.
@@ -59,6 +58,7 @@ public class RollbackCommands extends ListenerAdapter {
                                 .addOption(OptionType.STRING, "action_id", "UUID of the action to roll back", true)
                                 .addOption(OptionType.STRING, "reason", "Reason for the rollback", false),
                         new SubcommandData("list", "List the most recent active (non-reversed) moderation actions")
+                                .addOption(OptionType.INTEGER, "limit", "Number of recent actions to show (default: 10)", false, false)
                 );
 
         commands.addCommands(rollbackCommand);
@@ -87,7 +87,7 @@ public class RollbackCommands extends ListenerAdapter {
         }
 
         Member member = event.getMember();
-        if (member == null || !member.hasPermission(Permission.ADMINISTRATOR) || !SpecialUsersRepository.getInstance().isSpecialUser(event.getUser())) {
+        if (!DiscordUtils.isAdmin(member)) {
             reply(event, "Only administrators can roll back moderation actions.");
             return;
         }
@@ -151,6 +151,7 @@ public class RollbackCommands extends ListenerAdapter {
     /**
      * Handles the {@code /rollback list} subcommand.
      * Displays the most recent active (non-reversed) moderation actions for this guild.
+     * Uses an optional limit argument; defaults to 10 if not specified.
      *
      * @param event the interaction event, must not be {@code null}
      * @param guild the guild in which the command was issued, must not be {@code null}
@@ -158,6 +159,12 @@ public class RollbackCommands extends ListenerAdapter {
     private void handleListActions(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
+
+        int limit = event.getOption("limit", DEFAULT_RECENT_ACTION_LIMIT, OptionMapping::getAsInt);
+        if (limit <= 0) {
+            reply(event, "Limit must be a positive number.");
+            return;
+        }
 
         GuildID guildId = GuildID.fromGuild(guild);
         List<ActionData> actions = GuildModerationActionsRepository.getInstance()
@@ -168,7 +175,7 @@ public class RollbackCommands extends ListenerAdapter {
             return;
         }
 
-        List<ActionData> recent = actions.stream().limit(RECENT_ACTION_LIMIT).toList();
+        List<ActionData> recent = actions.stream().limit(limit).toList();
         StringBuilder sb = new StringBuilder("**Recent active moderation actions:**\n");
         for (ActionData a : recent) {
             sb.append(String.format("• `%s` — **%s** on <@%d> — %s%n",

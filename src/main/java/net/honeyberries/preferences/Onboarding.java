@@ -2,7 +2,7 @@ package net.honeyberries.preferences;
 
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-import net.honeyberries.database.GuildPreferencesRepository;
+import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
