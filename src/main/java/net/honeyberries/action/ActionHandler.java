@@ -14,28 +14,38 @@ import net.dv8tion.jda.api.utils.TimeFormat;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 import net.dv8tion.jda.api.entities.UserSnowflake;
+import net.honeyberries.config.AppConfig;
+import net.honeyberries.database.GuildModerationActionsRepository;
 import net.honeyberries.database.GuildPreferencesRepository;
 import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.action.MessageDeletion;
+import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
+import net.honeyberries.util.RateLimiter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.awt.Color;
+import java.sql.PreparedStatement;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Executes moderation actions against guild members and messages.
  * Handles the full lifecycle of an action: user notification, message deletions, moderation application, and audit logging.
  * Gracefully handles Discord permission failures and partial success scenarios.
+ * <p>
+ * A per-guild {@link RateLimiter} caps moderation actions to 20 per 10 seconds,
+ * protecting against runaway AI responses that could apply hundreds of actions in a burst.
  */
 public class ActionHandler {
 
@@ -45,9 +55,14 @@ public class ActionHandler {
     /** Logger for action execution and failures. */
     private final Logger logger = LoggerFactory.getLogger(ActionHandler.class);
     /** JDA client for Discord API calls. */
-
     @NotNull
     private final JDA jda = JDAManager.getInstance().getJDA();
+
+    /**
+     * Per-guild rate limiter: maximum 20 actions in a 10-second window.
+     * Prevents an unexpected AI response from banning an entire server at once.
+     */
+    private final RateLimiter<GuildID> rateLimiter = new RateLimiter<>(20, 10, TimeUnit.SECONDS);
 
     private ActionHandler() {}
 
@@ -63,13 +78,16 @@ public class ActionHandler {
     /**
      * Processes a moderation action against a target user in a guild.
      * Executes the following steps in order:
-     * 1. Notifies the target user via DM (before action, so they still share guild with bot)
-     * 2. Deletes flagged messages from channels
-     * 3. Applies the moderation action (timeout, kick, ban, etc.)
-     * 4. Posts an audit log entry to the designated audit channel (after action, to reflect success)
+     * <ol>
+     *   <li>Checks the per-guild rate limit; rejects with a warning if exceeded</li>
+     *   <li>Notifies the target user via DM (before action, so they still share guild with bot)</li>
+     *   <li>Deletes flagged messages from channels</li>
+     *   <li>Applies the moderation action (timeout, kick, ban, etc.)</li>
+     *   <li>Posts an audit log entry to the designated audit channel (after action, to reflect success)</li>
+     * </ol>
      *
      * @param actionData the moderation action to process
-     * @return {@code true} if both moderation action and all message deletions succeeded; {@code false} if guild not found or action failed
+     * @return {@code true} if both moderation action and all message deletions succeeded; {@code false} if guild not found, rate-limited, or action failed
      * @throws NullPointerException if {@code actionData} is {@code null}
      */
     public boolean processAction(@NotNull ActionData actionData) {
@@ -77,6 +95,12 @@ public class ActionHandler {
         Guild guild = jda.getGuildById(actionData.guildId().value());
         if (guild == null) {
             logger.warn("Cannot process action {}: guild {} not found", actionData.id(), actionData.guildId());
+            return false;
+        }
+
+        if (!rateLimiter.tryAcquire(actionData.guildId())) {
+            logger.warn("Rate limit exceeded for guild {} — dropping action {} ({})",
+                    actionData.guildId(), actionData.id(), actionData.action());
             return false;
         }
 
@@ -92,9 +116,105 @@ public class ActionHandler {
     }
 
     /**
+     * Reverts a previously applied moderation action.
+     * <p>
+     * Rolls back BAN → issues unban; TIMEOUT → removes timeout; KICK and WARN have no automated
+     * reversal (they are logged only). Records the reversal in {@code guild_moderation_action_reversals}.
+     *
+     * @param actionId the UUID of the action to revert, must not be {@code null}
+     * @param reason   reason for the reversal, displayed in the audit embed, must not be {@code null}
+     * @return {@code true} if the reversal was applied or is not applicable; {@code false} on error
+     * @throws NullPointerException if {@code actionId} or {@code reason} is {@code null}
+     */
+    public boolean rollbackAction(@NotNull UUID actionId, @NotNull String reason) {
+        Objects.requireNonNull(actionId, "actionId must not be null");
+        Objects.requireNonNull(reason, "reason must not be null");
+
+        ActionData action = GuildModerationActionsRepository.getInstance().getActionById(actionId);
+        if (action == null) {
+            logger.warn("Cannot rollback action {}: not found in database", actionId);
+            return false;
+        }
+
+        Guild guild = jda.getGuildById(action.guildId().value());
+        if (guild == null) {
+            logger.warn("Cannot rollback action {}: guild {} not found", actionId, action.guildId());
+            return false;
+        }
+
+        boolean rolled = switch (action.action()) {
+            case BAN -> {
+                try {
+                    guild.unban(UserSnowflake.fromId(action.userId().value()))
+                            .reason("Rollback of action " + actionId + ": " + reason)
+                            .complete();
+                    yield true;
+                } catch (Exception e) {
+                    logger.warn("Failed to unban user {} for rollback of action {}", action.userId(), actionId, e);
+                    yield false;
+                }
+            }
+            case TIMEOUT -> {
+                try {
+                    Member member = guild.retrieveMemberById(action.userId().value())
+                            .timeout(AppConfig.getInstance().getDiscordRequestTimeout(), TimeUnit.SECONDS)
+                            .complete();
+                    if (member == null) {
+                        logger.warn("Cannot remove timeout for rollback of action {}: member not found", actionId);
+                        yield false;
+                    }
+                    member.removeTimeout().reason("Rollback of action " + actionId + ": " + reason).complete();
+                    yield true;
+                } catch (Exception e) {
+                    logger.warn("Failed to remove timeout for rollback of action {}", actionId, e);
+                    yield false;
+                }
+            }
+            // KICK/WARN/DELETE/UNBAN/NULL have no automated reversal
+            default -> {
+                logger.info("Action {} ({}) has no automated reversal — marking as rolled back", actionId, action.action());
+                yield true;
+            }
+        };
+
+        if (rolled) {
+            recordReversal(actionId, "manual_rollback: " + reason);
+        }
+
+        return rolled;
+    }
+
+    /**
+     * Persists a reversal record so the unban watcher and future queries know the action was undone.
+     *
+     * @param actionId action that was reversed, must not be {@code null}
+     * @param reason   human-readable reversal note, must not be {@code null}
+     */
+    private void recordReversal(@NotNull UUID actionId, @NotNull String reason) {
+        String sql = """
+            INSERT INTO guild_moderation_action_reversals (action_id, reason, reversed_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT (action_id) DO UPDATE SET
+                reason      = EXCLUDED.reason,
+                reversed_at = EXCLUDED.reversed_at
+        """;
+        try {
+            Database.getInstance().transaction(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setObject(1, actionId);
+                    ps.setString(2, reason);
+                    ps.executeUpdate();
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to record reversal for action {}", actionId, e);
+        }
+    }
+
+    /**
      * Deletes all flagged messages from the guild, logging failures per message.
      *
-     * @param guild the guild containing the messages
+     * @param guild      the guild containing the messages
      * @param actionData the action specifying messages to delete
      * @return {@code true} if all deletions succeeded; {@code false} if any deletion failed
      */
@@ -107,7 +227,7 @@ public class ActionHandler {
             Channel channel = guild.getGuildChannelById(deletion.channelId().value());
             if (!(channel instanceof MessageChannel messageChannel)) {
                 logger.warn(
-                        "Failed to delete message {} in guild {}: channel {} unavailable or not message-capable",
+                        "Failed to delete message {} in guild {}: channel {} is null or not message-capable",
                         deletion.messageId(), guild.getId(), deletion.channelId()
                 );
                 success = false;
@@ -116,6 +236,13 @@ public class ActionHandler {
 
             try {
                 messageChannel.deleteMessageById(deletion.messageId().value()).complete();
+            } catch (ErrorResponseException e) {
+                if (e.getErrorResponse() == ErrorResponse.UNKNOWN_MESSAGE) {
+                    logger.debug("Message {} already deleted in channel {} — skipping", deletion.messageId(), deletion.channelId());
+                } else {
+                    logActionFailure("delete message " + deletion.messageId(), actionData, guild, e);
+                    success = false;
+                }
             } catch (Exception e) {
                 logActionFailure("delete message " + deletion.messageId(), actionData, guild, e);
                 success = false;
@@ -129,7 +256,7 @@ public class ActionHandler {
      * Applies the moderation action (timeout, kick, ban, etc.) to the target user.
      * Dispatches to type-specific handlers based on the action type.
      *
-     * @param guild the guild to apply the action in
+     * @param guild      the guild to apply the action in
      * @param actionData the action details
      * @return {@code true} if the action succeeded; {@code false} if it failed or was skipped
      */
@@ -156,7 +283,7 @@ public class ActionHandler {
     /**
      * Applies a timeout to the target user for the specified duration.
      *
-     * @param guild the guild to apply the timeout in
+     * @param guild      the guild to apply the timeout in
      * @param actionData the action specifying timeout duration
      * @return {@code true} if the timeout succeeded; {@code false} if member not found or duration invalid
      */
@@ -186,7 +313,7 @@ public class ActionHandler {
     /**
      * Kicks the target user from the guild.
      *
-     * @param guild the guild to kick the user from
+     * @param guild      the guild to kick the user from
      * @param actionData the action specifying the user and reason
      * @return {@code true} if the kick succeeded; {@code false} if member not found
      */
@@ -209,7 +336,7 @@ public class ActionHandler {
     /**
      * Bans the target user from the guild.
      *
-     * @param guild the guild to ban the user from
+     * @param guild      the guild to ban the user from
      * @param actionData the action specifying the user and reason
      * @return {@code true} if the ban succeeded
      */
@@ -225,7 +352,7 @@ public class ActionHandler {
     /**
      * Unbans the target user from the guild.
      *
-     * @param guild the guild to unban the user from
+     * @param guild      the guild to unban the user from
      * @param actionData the action specifying the user and reason
      * @return {@code true} if the unban succeeded
      */
@@ -243,7 +370,7 @@ public class ActionHandler {
      * Must be called BEFORE the moderation action is applied (except for DELETE/WARN actions, which skip DMs).
      * Once a user is kicked or banned, they no longer share a guild with the bot, preventing DM delivery.
      *
-     * @param guild the guild in which the action occurred
+     * @param guild      the guild in which the action occurred
      * @param actionData the action to notify about
      */
     private void sendUserDmBestEffort(@NotNull Guild guild, @NotNull ActionData actionData) {
@@ -270,7 +397,7 @@ public class ActionHandler {
      * Must be called AFTER the moderation action is applied so the log only reflects actions that actually succeeded.
      * Silently skips if no audit channel is configured or if the database is unavailable.
      *
-     * @param guild the guild in which the action occurred
+     * @param guild      the guild in which the action occurred
      * @param actionData the action to audit log
      */
     private void sendAuditLogBestEffort(@NotNull Guild guild, @NotNull ActionData actionData) {
@@ -313,7 +440,7 @@ public class ActionHandler {
      * Resolves a user by ID from the JDA cache or retrieves it from Discord.
      *
      * @param actionData the action specifying the user ID
-     * @param guild the guild for context in error logging
+     * @param guild      the guild for context in error logging
      * @return the resolved {@code User}, or {@code null} if resolution failed
      */
     @Nullable
@@ -330,11 +457,24 @@ public class ActionHandler {
     }
 
     /**
+     * Returns all actions in a guild that have not yet been reversed.
+     * Used by the rollback slash command to present candidates to moderators.
+     *
+     * @param guildId guild to query, must not be {@code null}
+     * @return list of active (non-reversed) actions ordered newest first, never {@code null}
+     */
+    @NotNull
+    public List<ActionData> getActiveActions(@NotNull GuildID guildId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+        return GuildModerationActionsRepository.getInstance().getActiveActions(guildId);
+    }
+
+    /**
      * Constructs a rich embed notification for the action, including user details, moderator, reason, and duration info.
      *
-     * @param guild the guild where the action occurred
+     * @param guild      the guild where the action occurred
      * @param actionData the action details
-     * @param target the target user of the action
+     * @param target     the target user of the action
      * @return a {@code MessageCreateData} containing the formatted embed
      */
     @NotNull
@@ -437,32 +577,26 @@ public class ActionHandler {
      * Logs an action failure with appropriate severity based on the error type.
      * Permission failures are logged at WARN level, other failures at ERROR level.
      *
-     * @param operation a description of the operation that failed
+     * @param operation  a description of the operation that failed
      * @param actionData the action that failed
-     * @param guild the guild in which the failure occurred
-     * @param e the exception that caused the failure
+     * @param guild      the guild in which the failure occurred
+     * @param e          the exception that caused the failure
      */
-    private void logActionFailure(@NotNull String operation, @NotNull ActionData actionData, @NotNull Guild guild, @NotNull Exception e) {
+    private void logActionFailure(@NotNull String operation, @NotNull ActionData actionData,
+                                  @NotNull Guild guild, @NotNull Exception e) {
         Objects.requireNonNull(operation, "operation must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(e, "e must not be null");
-        String template = "Failed to {} for user {} in guild {} (actionId={}, moderatorId={})";
 
         if (isPermissionFailure(e)) {
-            logger.warn("Permission denied while trying to {} [operation: {}] for user {} in guild {} (action: {}, moderator: {})",
-                    template.substring(template.indexOf("to ") + 3),
-                    operation,
-                    actionData.userId(),
-                    guild.getId(),
-                    actionData.id(),
-                    actionData.moderatorId(),
-                    e);
+            logger.warn("Permission denied: failed to {} for user {} in guild {} (action={}, moderator={})",
+                    operation, actionData.userId(), guild.getId(), actionData.id(), actionData.moderatorId(), e);
             return;
         }
 
-        logger.warn(template, operation, actionData.userId(), guild.getId(),
-                actionData.id(), actionData.moderatorId(), e);
+        logger.error("Failed to {} for user {} in guild {} (action={}, moderator={})",
+                operation, actionData.userId(), guild.getId(), actionData.id(), actionData.moderatorId(), e);
     }
 
     /**

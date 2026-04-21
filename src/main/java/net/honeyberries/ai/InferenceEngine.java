@@ -8,6 +8,8 @@ import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import net.honeyberries.config.AppConfig;
+import net.honeyberries.util.CircuitBreaker;
+import net.honeyberries.util.RetryExecutor;
 import net.honeyberries.util.TokenManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -19,21 +21,36 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Provides asynchronous interface to OpenAI-compatible language models for inference.
- * Manages API client lifecycle, handles structured output formatting, and abstracts away client configuration.
- * Supports both unstructured text responses and structured JSON schema-based completions for moderation decisions.
+ * Provides an asynchronous interface to OpenAI-compatible language models for inference.
+ * <p>
+ * Wraps every call in a {@link RetryExecutor} (3 attempts, 500 ms base delay) and a
+ * {@link CircuitBreaker} (5 failures → open; 60 s reset) so transient network issues and
+ * temporary endpoint outages degrade gracefully rather than silently swallowing errors.
+ * <p>
+ * Unlike the previous implementation, failures are now propagated as typed
+ * {@link InferenceException} instances so callers can distinguish an AI error from a
+ * legitimate empty response and act accordingly.
  */
 public class InferenceEngine {
 
     /** Logger for inference request and error tracking. */
     private final Logger logger = LoggerFactory.getLogger(InferenceEngine.class);
 
-    /** LLM model identifier (e.g., "gpt-4", "gpt-3.5-turbo"). */
+    /** LLM model identifier (e.g., "gpt-4o", "moonshotai/Kimi-K2.5"). */
     private final String modelName;
     /** Async OpenAI API client for making completion requests. */
     private final OpenAIClientAsync openAIClient;
+
+    /** Retries transient failures with exponential back-off. */
+    private final RetryExecutor retryExecutor = new RetryExecutor(3, 500);
+    /**
+     * Circuit breaker: opens after 5 consecutive failures and attempts a probe after 60 s.
+     * Prevents the scheduler from hammering a down endpoint with back-to-back requests.
+     */
+    private final CircuitBreaker circuitBreaker = new CircuitBreaker("AI-inference", 5, 60_000);
 
     /** Singleton instance. */
     private static final InferenceEngine INSTANCE = new InferenceEngine();
@@ -69,12 +86,18 @@ public class InferenceEngine {
 
     /**
      * Sends a chat completion request to the language model.
-     * Supports both unstructured text responses and structured JSON outputs via response format schema.
-     * Handles errors gracefully by logging and returning null, allowing the caller to handle failures.
+     * <p>
+     * The call is guarded by a circuit breaker and retried up to 3 times with exponential
+     * back-off on transient failures. If all retries are exhausted, or the circuit breaker
+     * is OPEN, the returned future completes exceptionally with an {@link InferenceException}.
+     * <p>
+     * Callers must check for {@link InferenceException} in their {@code exceptionally} handler
+     * and must <em>not</em> treat the result as a legitimate response if it is empty.
      *
-     * @param messages the list of chat messages; typically includes system prompt first, then user messages
+     * @param messages       the list of chat messages; typically includes system prompt first, then user messages
      * @param responseFormat optional schema for structured JSON responses; if {@code null}, returns plain text
-     * @return a {@code CompletableFuture} that resolves to the assistant message, or {@code null} on error
+     * @return a {@code CompletableFuture} that resolves to the assistant message on success,
+     *         or completes exceptionally with an {@link InferenceException} on failure
      * @throws NullPointerException if {@code messages} is {@code null}
      */
     @NotNull
@@ -91,14 +114,59 @@ public class InferenceEngine {
             builder.responseFormat(responseFormat);
         }
 
-        return openAIClient.chat().completions().create(builder.build())
-                .thenApply(completion -> completion.choices().stream()
-                        .findFirst()
-                        .map(choice -> choice.message().toParam())
-                        .orElseThrow(() -> new OpenAIException("No choices returned from LLM")))
-                .exceptionally(ex -> {
-                    logger.error("Error generating LLM response: {}", ex.getMessage(), ex);
-                    return ChatCompletionAssistantMessageParam.builder().content("").build();
-                });
+        ChatCompletionCreateParams params = builder.build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return retryExecutor.execute("AI inference", () ->
+                        circuitBreaker.execute(() ->
+                                openAIClient.chat().completions().create(params)
+                                        .thenApply(completion -> completion.choices().stream()
+                                                .findFirst()
+                                                .map(choice -> choice.message().toParam())
+                                                .orElseThrow(() -> new OpenAIException("No choices returned from LLM")))
+                                        .get(AppConfig.getInstance().getAIRequestTimeout(), TimeUnit.SECONDS)
+                        )
+                );
+            } catch (CircuitBreaker.CircuitOpenException e) {
+                logger.warn("AI inference rejected — circuit breaker is OPEN: {}", e.getMessage());
+                throw new InferenceException("Circuit breaker is OPEN, AI inference unavailable", e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new InferenceException("AI inference interrupted", e);
+            } catch (InferenceException e) {
+                throw e;
+            } catch (Exception e) {
+                logger.error("AI inference failed after all retries: {}", e.getMessage(), e);
+                throw new InferenceException("AI inference failed: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    /**
+     * Thrown when the inference engine cannot produce a response due to a network error,
+     * API error, open circuit breaker, or exhausted retries. Callers should log this and
+     * treat the moderation batch as un-processed rather than silently accepting an empty response.
+     */
+    public static class InferenceException extends RuntimeException {
+
+        /**
+         * Constructs a new exception with the supplied detail message.
+         *
+         * @param message descriptive error message, must not be {@code null}
+         */
+        public InferenceException(@NotNull String message) {
+            super(Objects.requireNonNull(message, "message must not be null"));
+        }
+
+        /**
+         * Constructs a new exception wrapping an underlying cause.
+         *
+         * @param message descriptive error message, must not be {@code null}
+         * @param cause   root cause, may be {@code null}
+         */
+        public InferenceException(@NotNull String message, @Nullable Throwable cause) {
+            super(Objects.requireNonNull(message, "message must not be null"), cause);
+        }
     }
 }

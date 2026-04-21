@@ -223,6 +223,50 @@ public class GuildModerationActionsRepository {
     }
 
     /**
+     * Fetches all actions in a guild that have not yet been reversed, ordered newest first.
+     * Used by the rollback command to present candidates to moderators.
+     *
+     * @param guildId guild to fetch actions from, must not be {@code null}
+     * @return list of active (non-reversed) actions, never {@code null}
+     * @throws NullPointerException if {@code guildId} is {@code null}
+     */
+    @NotNull
+    public List<ActionData> getActiveActions(@NotNull GuildID guildId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+        String sql = """
+            SELECT gma.*
+            FROM guild_moderation_actions gma
+            WHERE gma.guild_id = ?
+              AND NOT EXISTS (
+                    SELECT 1 FROM guild_moderation_action_reversals r
+                    WHERE r.action_id = gma.action_id
+                  )
+            ORDER BY gma.action_id DESC
+        """;
+
+        try {
+            return database.query(conn -> {
+                List<ActionData> actions = new ArrayList<>();
+
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setLong(1, guildId.value());
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            actions.add(mapAction(rs));
+                        }
+                    }
+                }
+
+                return actions;
+            });
+        } catch (Exception e) {
+            logger.error("Failed to fetch active actions for guild {}", guildId, e);
+            return List.of();
+        }
+    }
+
+    /**
      * Retrieves the most recent moderation actions for a guild, up to the specified limit.
      * Returns an empty list if no actions are found or if a database error occurs.
      *

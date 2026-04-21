@@ -1,10 +1,16 @@
 package net.honeyberries.task;
 
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.UserSnowflake;
+import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.honeyberries.database.Database;
 import net.honeyberries.database.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.discord.JDAManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -19,9 +25,15 @@ import java.util.UUID;
 /**
  * Periodic task that monitors temporary bans and automatically unbans users when their ban duration expires.
  * Runs on a fixed schedule to check all active bans and issue unbans for expired entries.
- * Permanent bans (indicated by sentinel duration value) are never automatically reversed.
+ * Permanent bans (indicated by the {@link #PERMANENT_BAN_SENTINEL} duration) are never automatically reversed.
  */
 public class UnbanWatcherTask implements Runnable {
+
+    /**
+     * Duration sentinel used throughout the system to mark a permanent ban.
+     * Matches the historical value written to the database for legacy permanent bans.
+     */
+    public static final long PERMANENT_BAN_SENTINEL = Integer.MAX_VALUE;
 
     /** Logger for task execution and ban expiration events. */
     private static final Logger logger = LoggerFactory.getLogger(UnbanWatcherTask.class);
@@ -88,7 +100,8 @@ public class UnbanWatcherTask implements Runnable {
 
     /**
      * Checks all ban actions in a guild and unbans users whose ban duration has expired.
-     * Logs expiration events but does not yet apply the unban to Discord (marked TODO).
+     * Each expired ban is attempted via the Discord API; on success, the action row is marked
+     * unbanned in the database so subsequent sweeps skip it.
      *
      * @param guildId the guild to process
      * @throws NullPointerException if {@code guildId} is {@code null}
@@ -96,21 +109,22 @@ public class UnbanWatcherTask implements Runnable {
     private void processBansForGuild(@NotNull GuildID guildId) {
         java.util.Objects.requireNonNull(guildId, "guildId must not be null");
         try {
+            Guild guild = resolveGuild(guildId);
+            if (guild == null) {
+                logger.debug("Skipping unban sweep for guild {}: JDA has no reference to the guild", guildId);
+                return;
+            }
+
             List<ActionData> banActions = actionRepository.getActionsByGuild(guildId)
                     .stream()
                     .filter(a -> a.action() == ActionType.BAN)
+                    .filter(a -> !hasBeenUnbanned(a.id()))
                     .toList();
 
             for (ActionData action : banActions) {
                 if (isBanExpired(action)) {
                     logger.info("Ban expired for user {} in guild {}, unbanning...", action.userId(), guildId);
-
-                    // TODO: Implement actual Discord unban logic
-                    // 1. Get the Guild object from JDA
-                    // 2. Unban the user using guild.unban(userId).queue()
-                    // 3. Handle the response/errors appropriately
-
-                    logger.debug("TODO: Unban user {} in guild {}", action.userId(), guildId);
+                    applyUnban(guild, action);
                 }
             }
         } catch (Exception e) {
@@ -119,8 +133,118 @@ public class UnbanWatcherTask implements Runnable {
     }
 
     /**
+     * Locates the {@link Guild} matching the supplied ID via the singleton JDA instance.
+     * Returns {@code null} if the bot is no longer a member of the guild or JDA is not ready.
+     *
+     * @param guildId guild to look up, must not be {@code null}
+     * @return the resolved guild, or {@code null} if unavailable
+     */
+    @Nullable
+    private Guild resolveGuild(@NotNull GuildID guildId) {
+        try {
+            JDA jda = JDAManager.getInstance().getJDA();
+            return jda.getGuildById(guildId.value());
+        } catch (Exception e) {
+            logger.warn("Failed to resolve guild {} via JDA", guildId, e);
+            return null;
+        }
+    }
+
+    /**
+     * Issues an unban for the supplied action against Discord and records the reversal in the database.
+     * Missing bans (user already unbanned or unknown to Discord) are treated as success so the action
+     * is not re-attempted on every sweep.
+     *
+     * @param guild  guild to unban the user from, must not be {@code null}
+     * @param action ban action that has expired, must not be {@code null}
+     */
+    private void applyUnban(@NotNull Guild guild, @NotNull ActionData action) {
+        java.util.Objects.requireNonNull(guild, "guild must not be null");
+        java.util.Objects.requireNonNull(action, "action must not be null");
+        try {
+            guild.unban(UserSnowflake.fromId(action.userId().value()))
+                    .reason("Auto-unban: ban duration expired (action " + action.id() + ")")
+                    .complete();
+            recordUnban(action.id(), "expired");
+            logger.info("Unbanned user {} in guild {} (action {})",
+                    action.userId(), guild.getId(), action.id());
+        } catch (ErrorResponseException e) {
+            if (e.getErrorResponse() == ErrorResponse.UNKNOWN_BAN) {
+                logger.info("User {} in guild {} is no longer banned — marking action {} as reconciled",
+                        action.userId(), guild.getId(), action.id());
+                recordUnban(action.id(), "already_unbanned");
+                return;
+            }
+            logger.warn("Failed to unban user {} in guild {} (action {}): {}",
+                    action.userId(), guild.getId(), action.id(), e.getMeaning());
+        } catch (Exception e) {
+            logger.warn("Failed to unban user {} in guild {} (action {})",
+                    action.userId(), guild.getId(), action.id(), e);
+        }
+    }
+
+    /**
+     * Records that an action has been reversed so future sweeps skip it.
+     *
+     * @param actionId identifier of the reversed action, must not be {@code null}
+     * @param note     short human-readable description of why the reversal occurred
+     */
+    private void recordUnban(@NotNull UUID actionId, @NotNull String note) {
+        java.util.Objects.requireNonNull(actionId, "actionId must not be null");
+        java.util.Objects.requireNonNull(note, "note must not be null");
+        String sql = """
+            INSERT INTO guild_moderation_action_reversals (action_id, reason, reversed_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT (action_id) DO UPDATE SET
+                reason = EXCLUDED.reason,
+                reversed_at = EXCLUDED.reversed_at
+        """;
+
+        try {
+            database.transaction(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setObject(1, actionId);
+                    ps.setString(2, note);
+                    ps.executeUpdate();
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to record unban reversal for action {}", actionId, e);
+        }
+    }
+
+    /**
+     * Determines whether an action has already been reversed and should be skipped.
+     *
+     * @param actionId action to check, must not be {@code null}
+     * @return {@code true} if a reversal row exists for the action
+     */
+    private boolean hasBeenUnbanned(@NotNull UUID actionId) {
+        java.util.Objects.requireNonNull(actionId, "actionId must not be null");
+        String sql = """
+            SELECT 1
+            FROM guild_moderation_action_reversals
+            WHERE action_id = ?
+            LIMIT 1
+        """;
+        try {
+            return database.query(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setObject(1, actionId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        return rs.next();
+                    }
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to check reversal status for action {}", actionId, e);
+            return false;
+        }
+    }
+
+    /**
      * Determines if a ban action's duration has expired.
-     * Permanent bans (sentinel value 2147483647) never expire.
+     * Permanent bans (see {@link #PERMANENT_BAN_SENTINEL}) never expire.
      *
      * @param action the ban action to check
      * @return {@code true} if the ban duration has elapsed; {@code false} if permanent or not yet expired
@@ -128,7 +252,7 @@ public class UnbanWatcherTask implements Runnable {
      */
     private boolean isBanExpired(@NotNull ActionData action) {
         java.util.Objects.requireNonNull(action, "action must not be null");
-        if (action.banDuration() == 2147483647L) {
+        if (action.banDuration() <= 0 || action.banDuration() >= PERMANENT_BAN_SENTINEL) {
             return false;
         }
 

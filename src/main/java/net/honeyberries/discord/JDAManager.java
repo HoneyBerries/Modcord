@@ -9,7 +9,14 @@ import net.honeyberries.discord.listener.GuildListener;
 import net.honeyberries.discord.listener.MessageListener;
 import net.honeyberries.discord.listener.RoleListener;
 import net.honeyberries.discord.listener.UserListener;
-import net.honeyberries.discord.slashCommands.*;
+import net.honeyberries.discord.slashCommands.AppealCommands;
+import net.honeyberries.discord.slashCommands.DebugCommands;
+import net.honeyberries.discord.slashCommands.ExcludeCommand;
+import net.honeyberries.discord.slashCommands.ModerationCommands;
+import net.honeyberries.discord.slashCommands.PreferencesCommands;
+import net.honeyberries.discord.slashCommands.RollbackCommands;
+import net.honeyberries.discord.slashCommands.ShutdownCommands;
+import net.honeyberries.discord.slashCommands.StatusCommands;
 import net.honeyberries.util.TokenManager;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -97,6 +104,16 @@ public class JDAManager {
         jda.addEventListener(moderationCommands);
         moderationCommands.registerModerationCommands(commands);
         logger.info("Added ModerationCommands to queue");
+
+        RollbackCommands rollbackCommands = new RollbackCommands();
+        jda.addEventListener(rollbackCommands);
+        rollbackCommands.registerRollbackCommands(commands);
+        logger.info("Added RollbackCommands to queue");
+
+        AppealCommands appealCommands = new AppealCommands();
+        jda.addEventListener(appealCommands);
+        appealCommands.registerAppealCommands(commands);
+        logger.info("Added AppealCommands to queue");
 
         commands.queue();
         logger.info("All slash commands synced — bot setup complete");

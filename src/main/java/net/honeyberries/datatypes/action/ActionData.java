@@ -40,7 +40,7 @@ public record ActionData(
      * @throws NullPointerException if any non-nullable argument is {@code null}
      */
     public ActionData {
-        Objects.requireNonNull(id, "interactionID must not be null");
+        Objects.requireNonNull(id, "id must not be null");
         Objects.requireNonNull(guildId, "guildId must not be null");
         Objects.requireNonNull(userId, "userId must not be null");
         Objects.requireNonNull(moderatorId, "moderatorId must not be null");
