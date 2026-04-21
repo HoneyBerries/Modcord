@@ -1,6 +1,5 @@
 package net.honeyberries.action;
 
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
@@ -10,9 +9,7 @@ import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
-import net.dv8tion.jda.api.utils.TimeFormat;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
-import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
@@ -25,14 +22,13 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
 import net.honeyberries.timeout.RateLimiter;
+import net.honeyberries.ui.ActionEmbedUI;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.Color;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -370,10 +366,10 @@ public class ActionHandler {
             return;
         }
 
-        User target = resolveUser(actionData, guild);
+        User target = actionData.userId().toUser();
         if (target == null) return;
 
-        MessageCreateData embed = buildNotificationEmbed(guild, actionData, target);
+        MessageCreateData embed = ActionEmbedUI.buildNotificationEmbed(actionData, target);
 
         try {
             target.openPrivateChannel().complete().sendMessage(embed).complete();
@@ -417,34 +413,15 @@ public class ActionHandler {
                 return;
             }
 
-            User target = resolveUser(actionData, guild);
+            User target = actionData.userId().toUser();
             if (target == null) return;
 
-            messageChannel.sendMessage(buildNotificationEmbed(guild, actionData, target)).complete();
+            messageChannel.sendMessage(ActionEmbedUI.buildNotificationEmbed(actionData, target)).complete();
         } catch (Exception e) {
             logger.warn("Failed to post audit embed for action {} in guild {}", actionData.id(), guild.getId(), e);
         }
     }
 
-    /**
-     * Resolves a user by ID from the JDA cache or retrieves it from Discord.
-     *
-     * @param actionData the action specifying the user ID
-     * @param guild      the guild for context in error logging
-     * @return the resolved {@code User}, or {@code null} if resolution failed
-     */
-    @Nullable
-    private User resolveUser(@NotNull ActionData actionData, @NotNull Guild guild) {
-        Objects.requireNonNull(actionData, "actionData must not be null");
-        Objects.requireNonNull(guild, "guild must not be null");
-        try {
-            return jda.retrieveUserById(actionData.userId().value()).complete();
-        } catch (Exception e) {
-            logger.warn("Failed to resolve user {} for notification in guild {}",
-                    actionData.userId(), guild.getId(), e);
-            return null;
-        }
-    }
 
     /**
      * Returns all actions in a guild that have not yet been reversed.
@@ -457,110 +434,6 @@ public class ActionHandler {
     public List<ActionData> getActiveActions(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         return GuildModerationActionsRepository.getInstance().getActiveActions(guildId);
-    }
-
-    /**
-     * Constructs a rich embed notification for the action, including user details, moderator, reason, and duration info.
-     *
-     * @param guild      the guild where the action occurred
-     * @param actionData the action details
-     * @param target     the target user of the action
-     * @return a {@code MessageCreateData} containing the formatted embed
-     */
-    @NotNull
-    private MessageCreateData buildNotificationEmbed(@NotNull Guild guild, @NotNull ActionData actionData, @NotNull User target) {
-        Objects.requireNonNull(guild, "guild must not be null");
-        Objects.requireNonNull(actionData, "actionData must not be null");
-        Objects.requireNonNull(target, "target must not be null");
-        EmbedBuilder embed = new EmbedBuilder()
-                .setTitle(actionEmoji(actionData.action()) + " " + actionData.action().name() + " Issued")
-                .setColor(actionColor(actionData.action()))
-                .setTimestamp(Instant.now())
-                .addField("User", "<@" + target.getId() + ">", true)
-                .addField("Moderator", "<@" + actionData.moderatorId().value() + ">", true)
-                .addField("Reason", actionData.reason(), false)
-                .setThumbnail(target.getEffectiveAvatarUrl())
-                .setFooter("Action ID: " + actionData.id());
-
-        if (actionData.action() == ActionType.TIMEOUT && actionData.timeoutDuration() > 0) {
-            Instant expiresAt = Instant.now().plusSeconds(actionData.timeoutDuration());
-            embed.addField("Duration",
-                    formatDuration(actionData.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
-                    false);
-        }
-
-        if (actionData.action() == ActionType.BAN && actionData.banDuration() > 0) {
-            if (actionData.banDuration() >= Integer.MAX_VALUE) {
-                embed.addField("Duration", "Permanent", false);
-            } else {
-                Instant expiresAt = Instant.now().plusSeconds(actionData.banDuration());
-                embed.addField("Duration",
-                        formatDuration(actionData.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
-                        false);
-            }
-        }
-
-        return new MessageCreateBuilder().setEmbeds(embed.build()).build();
-    }
-
-    /**
-     * Selects an emoji matching the action type for visual feedback in embeds.
-     *
-     * @param actionType the moderation action type
-     * @return an emoji string representing the action
-     */
-    @NotNull
-    private String actionEmoji(@NotNull ActionType actionType) {
-        Objects.requireNonNull(actionType, "actionType must not be null");
-        return switch (actionType) {
-            case WARN    -> "⚠️";
-            case DELETE  -> "🗑️";
-            case TIMEOUT -> "⏱️";
-            case KICK    -> "👢";
-            case BAN     -> "🔨";
-            case UNBAN   -> "✅";
-            case NULL    -> "⚙️";
-        };
-    }
-
-    /**
-     * Selects a color matching the action type for visual feedback in embeds.
-     *
-     * @param actionType the moderation action type
-     * @return a {@code Color} representing the action severity/type
-     */
-    @NotNull
-    private Color actionColor(@NotNull ActionType actionType) {
-        Objects.requireNonNull(actionType, "actionType must not be null");
-        return switch (actionType) {
-            case WARN            -> Color.YELLOW;
-            case DELETE, TIMEOUT -> Color.ORANGE;
-            case KICK            -> Color.RED;
-            case BAN             -> new Color(139, 0, 0);
-            case UNBAN           -> Color.GREEN;
-            case NULL            -> Color.GRAY;
-        };
-    }
-
-    /**
-     * Formats a duration in seconds into a human-readable string (e.g., "1d 2h 30m").
-     *
-     * @param seconds the duration in seconds
-     * @return a formatted duration string
-     */
-    @NotNull
-    private String formatDuration(long seconds) {
-        long days    = seconds / 86400;
-        long hours   = (seconds % 86400) / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs    = seconds % 60;
-
-        StringBuilder sb = new StringBuilder();
-        if (days    > 0) sb.append(days).append("d ");
-        if (hours   > 0) sb.append(hours).append("h ");
-        if (minutes > 0) sb.append(minutes).append("m ");
-        if (secs    > 0 || sb.isEmpty()) sb.append(secs).append("s");
-        return sb.toString().trim();
     }
 
     /**

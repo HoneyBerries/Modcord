@@ -1,6 +1,5 @@
 package net.honeyberries.discord.slashCommands;
 
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
@@ -21,16 +20,16 @@ import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.database.repository.SpecialUsersRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
+import net.honeyberries.ui.AppealEmbedUI;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.Color;
-import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -232,8 +231,8 @@ public class AppealCommands extends ListenerAdapter {
         StringBuilder sb = new StringBuilder("**Open appeals:**\n");
         for (var a : openAppeals) {
             String actionInfo = a.actionId() != null ? String.format(" (action: `%s`)", a.actionId()) : "";
-            sb.append(String.format("• `%s` — <@%d> — %s%s%n",
-                    a.id(), a.userId().value(), truncate(a.reason(), 60), actionInfo));
+            sb.append(String.format("• `%s` — %s — %s%s%n",
+                    a.id(), DiscordUtils.userMention(a.userId()), DiscordUtils.truncate(a.reason(), 60), actionInfo));
         }
         sb.append("\nUse `/appeal close <appeal_id> [note]` to resolve an appeal.");
         reply(event, sb.toString());
@@ -322,38 +321,12 @@ public class AppealCommands extends ListenerAdapter {
                 return;
             }
 
-            EmbedBuilder embed = new EmbedBuilder()
-                    .setTitle("📋 New Moderation Appeal")
-                    .setColor(Color.CYAN)
-                    .setTimestamp(Instant.now())
-                    .addField("Appellant", "<@" + appellant.getId() + ">", true)
-                    .addField("Appeal ID", "`" + appealId + "`", true);
-
-            if (actionId != null) {
-                embed.addField("Action ID", "`" + actionId + "`", true);
-            }
-
-            embed.addField("Reason", reason, false)
-                    .setThumbnail(appellant.getEffectiveAvatarUrl())
-                    .setFooter("Use /appeal close " + appealId + " to resolve", null);
-
-            messageChannel.sendMessageEmbeds(embed.build()).queue();
+            messageChannel.sendMessageEmbeds(
+                    AppealEmbedUI.buildAppealNotificationEmbed(appellant, appealId, actionId, reason).build()
+            ).queue();
         } catch (Exception e) {
             logger.warn("Failed to notify moderators of appeal {}", appealId, e);
         }
-    }
-
-    /**
-     * Truncates a string to the given max length, appending {@code "…"} if shortened.
-     *
-     * @param text   the string to truncate, must not be {@code null}
-     * @param maxLen maximum length before truncation
-     * @return the (possibly truncated) string
-     */
-    @NotNull
-    private static String truncate(@NotNull String text, int maxLen) {
-        if (text.length() <= maxLen) return text;
-        return text.substring(0, maxLen - 1) + "…";
     }
 
     /**

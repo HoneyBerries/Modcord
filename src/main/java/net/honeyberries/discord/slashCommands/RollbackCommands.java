@@ -17,6 +17,7 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.ui.RollbackEmbedUI;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -182,19 +183,6 @@ public class RollbackCommands extends ListenerAdapter {
         for (ActionData action : recent) {
             event.getHook().sendMessageEmbeds(RollbackEmbedUI.buildActionEmbed(action).build()).queue();
         }
-    }
-
-    /**
-     * Truncates a string to the given max length, appending {@code "…"} if shortened.
-     *
-     * @param text    the string to truncate, must not be {@code null}
-     * @param maxLen  maximum length before truncation
-     * @return the (possibly truncated) string
-     */
-    @NotNull
-    private static String truncate(@NotNull String text, int maxLen) {
-        if (text.length() <= maxLen) return text;
-        return text.substring(0, maxLen - 3) + "...";
     }
 
     /**

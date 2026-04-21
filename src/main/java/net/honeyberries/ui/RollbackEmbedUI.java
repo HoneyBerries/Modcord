@@ -2,6 +2,7 @@ package net.honeyberries.ui;
 
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.honeyberries.datatypes.action.ActionData;
+import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.Color;
@@ -20,7 +21,7 @@ public class RollbackEmbedUI {
 	public static EmbedBuilder buildActionEmbed(@NotNull ActionData action) {
 		Objects.requireNonNull(action, "action must not be null");
 
-		String title = "🔄 " + action.action().name() + " on <@" + action.userId().value() + ">";
+		String title = "🔄 " + action.action().name() + " on " + DiscordUtils.userMention(action.userId());
 
 		return new EmbedBuilder()
 				.setTitle(title)

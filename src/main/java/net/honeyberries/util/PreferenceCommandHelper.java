@@ -1,16 +1,8 @@
 package net.honeyberries.util;
 
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.Permission;
-import net.dv8tion.jda.api.components.actionrow.ActionRow;
-import net.dv8tion.jda.api.components.buttons.Button;
-import net.dv8tion.jda.api.components.buttons.ButtonStyle;
-import net.dv8tion.jda.api.components.selections.EntitySelectMenu;
-import net.dv8tion.jda.api.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
-import net.dv8tion.jda.api.entities.MessageEmbed;
-import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
@@ -24,13 +16,12 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.slashCommands.PreferencesCommands;
 import net.honeyberries.preferences.PreferencesManager;
+import net.honeyberries.ui.PreferencesEmbedUI;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -281,8 +272,8 @@ public class PreferenceCommandHelper {
         GuildID guildId = GuildID.fromGuild(guild);
         String category = "general";
 
-        event.replyEmbeds(buildSettingsEmbed(category))
-                .setComponents(buildSettingsComponents(guildId, category))
+        event.replyEmbeds(PreferencesEmbedUI.buildSettingsEmbed(category))
+                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, category))
                 .setEphemeral(true).queue();
     }
 
@@ -342,8 +333,8 @@ public class PreferenceCommandHelper {
 
         if (componentId.equals("pref_nav")) {
             String category = event.getValues().getFirst();
-            event.editMessageEmbeds(buildSettingsEmbed(category))
-                    .setComponents(buildSettingsComponents(guildId, category)).queue();
+            event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed(category))
+                    .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, category)).queue();
         }
     }
 
@@ -374,166 +365,10 @@ public class PreferenceCommandHelper {
             handleChannelSelection(event, guildId, componentId);
         }
 
-        event.editMessageEmbeds(buildSettingsEmbed("general"))
-                .setComponents(buildSettingsComponents(guildId, "general")).queue();
+        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed("general"))
+                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, "general")).queue();
     }
 
-    // =========================================================================
-    // UI Building: Embeds
-    // =========================================================================
-
-    /**
-     * Builds the settings embed for the given category.
-     *
-     * @param category the settings category ({@code "general"} or {@code "actions"})
-     * @return a formatted {@link MessageEmbed}
-     */
-    private MessageEmbed buildSettingsEmbed(@NotNull String category) {
-        String title = category.equals("general") ? "Guild Preferences: General" : "Guild Preferences: Automated Actions";
-        return new EmbedBuilder()
-                .setTitle(title)
-                .setDescription("Configure your moderation settings below.")
-                .setColor(0x5865F2)
-                .build();
-    }
-
-    /**
-     * Builds the action row components for the settings UI.
-     *
-     * <p>For {@code "general"} category, includes:</p>
-     * <ul>
-     *   <li>AI moderation toggle button</li>
-     *   <li>Rules channel select menu</li>
-     *   <li>Audit log channel select menu</li>
-     *   <li>Category navigation menu</li>
-     * </ul>
-     *
-     * <p>For {@code "actions"} category, includes:</p>
-     * <ul>
-     *   <li>Toggle buttons for each moderation action (WARN, DELETE, TIMEOUT, KICK, BAN)</li>
-     *   <li>Category navigation menu</li>
-     * </ul>
-     *
-     * @param guildId the guild ID
-     * @param category the settings category ({@code "general"} or {@code "actions"})
-     * @return a list of action rows for the message components
-     */
-    private List<ActionRow> buildSettingsComponents(@NotNull GuildID guildId, @NotNull String category) {
-        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-        List<ActionRow> rows = new ArrayList<>();
-
-        if (category.equals("general")) {
-            rows.add(buildRulesChannelSelectRow(prefs));
-            rows.add(buildAuditChannelSelectRow(prefs));
-        } else if (category.equals("actions")) {
-            rows.add(buildAiToggleRow(prefs));
-            rows.add(buildActionToggleRow(prefs));
-        }
-
-        rows.add(buildNavigationRow(category));
-        return rows;
-    }
-
-    /**
-     * Builds the AI moderation toggle button row.
-     *
-     * @param prefs the current guild preferences
-     * @return an action row containing the AI toggle button
-     */
-    private ActionRow buildAiToggleRow(@NotNull GuildPreferences prefs) {
-        boolean aiEnabled = prefs.aiEnabled();
-        return ActionRow.of(
-                Button.primary("pref_ai_toggle",
-                                "AI Moderation: " + (aiEnabled ? "ON" : "OFF"))
-                        .withStyle(aiEnabled ? ButtonStyle.SUCCESS : ButtonStyle.DANGER)
-        );
-    }
-
-    /**
-     * Builds the rules channel select menu row.
-     *
-     * @param prefs the current guild preferences
-     * @return an action row containing the rules channel entity select menu
-     */
-    private ActionRow buildRulesChannelSelectRow(@NotNull GuildPreferences prefs) {
-        EntitySelectMenu.Builder builder = EntitySelectMenu.create("pref_rules_channel",
-                        EntitySelectMenu.SelectTarget.CHANNEL)
-                .setPlaceholder("Select Rules Channel")
-                .setChannelTypes(ChannelType.TEXT);
-        if (prefs.rulesChannelID() != null) {
-            builder.setDefaultValues(EntitySelectMenu.DefaultValue.channel(prefs.rulesChannelID().value()));
-        }
-        return ActionRow.of(builder.build());
-    }
-
-    /**
-     * Builds the audit log channel select menu row.
-     *
-     * @param prefs the current guild preferences
-     * @return an action row containing the audit log channel entity select menu
-     */
-    private ActionRow buildAuditChannelSelectRow(@NotNull GuildPreferences prefs) {
-        EntitySelectMenu.Builder builder = EntitySelectMenu.create("pref_audit_channel",
-                        EntitySelectMenu.SelectTarget.CHANNEL)
-                .setPlaceholder("Select Audit Log Channel")
-                .setChannelTypes(ChannelType.TEXT);
-        if (prefs.auditLogChannelId() != null) {
-            builder.setDefaultValues(EntitySelectMenu.DefaultValue.channel(prefs.auditLogChannelId().value()));
-        }
-        return ActionRow.of(builder.build());
-    }
-
-    /**
-     * Builds the moderation action toggle buttons row.
-     *
-     * @param prefs the current guild preferences
-     * @return an action row containing toggle buttons for each action type
-     */
-    private ActionRow buildActionToggleRow(@NotNull GuildPreferences prefs) {
-        return ActionRow.of(
-                makeActionButton(ActionType.WARN, prefs),
-                makeActionButton(ActionType.DELETE, prefs),
-                makeActionButton(ActionType.TIMEOUT, prefs),
-                makeActionButton(ActionType.KICK, prefs),
-                makeActionButton(ActionType.BAN, prefs)
-        );
-    }
-
-    /**
-     * Builds the category navigation menu row.
-     *
-     * @param currentCategory the currently selected category
-     * @return an action row containing the category navigation string select menu
-     */
-    private ActionRow buildNavigationRow(@NotNull String currentCategory) {
-        return ActionRow.of(
-                StringSelectMenu.create("pref_nav")
-                        .addOption("General Settings", "general", "AI, Rules, Audit Logs")
-                        .addOption("Automated Actions", "actions", "Toggles for Warn, Ban, etc.")
-                        .setDefaultValues(currentCategory)
-                        .build()
-        );
-    }
-
-    // =========================================================================
-    // UI Building: Buttons
-    // =========================================================================
-
-    /**
-     * Creates a toggle button for a moderation action.
-     *
-     * <p>The button is styled green (SUCCESS) if enabled, red (DANGER) if disabled.</p>
-     *
-     * @param action the action type
-     * @param prefs the current guild preferences
-     * @return a styled button for the action
-     */
-    private Button makeActionButton(@NotNull ActionType action, @NotNull GuildPreferences prefs) {
-        boolean enabled = PreferencesManager.getInstance().getActionEnabled(prefs, action);
-        ButtonStyle style = enabled ? ButtonStyle.SUCCESS : ButtonStyle.DANGER;
-        return Button.primary("pref_action_" + action.name(), action.name())
-                .withStyle(style);
-    }
 
     // =========================================================================
     // Action Subcommand Sub-handlers
@@ -625,8 +460,8 @@ public class PreferenceCommandHelper {
         GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
         prefs = prefs.withAiEnabled(!prefs.aiEnabled());
         PreferencesManager.getInstance().updatePreferences(prefs);
-        event.editMessageEmbeds(buildSettingsEmbed("actions"))
-                .setComponents(buildSettingsComponents(guildId, "actions")).queue();
+        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed("actions"))
+                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, "actions")).queue();
     }
 
     /**
@@ -647,8 +482,8 @@ public class PreferenceCommandHelper {
             prefs = PreferencesManager.getInstance().setActionEnabled(prefs, actionType, !enabled);
             PreferencesManager.getInstance().updatePreferences(prefs);
         }
-        event.editMessageEmbeds(buildSettingsEmbed("actions"))
-                .setComponents(buildSettingsComponents(guildId, "actions")).queue();
+        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed("actions"))
+                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, "actions")).queue();
     }
 
     /**
