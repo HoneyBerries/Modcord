@@ -59,7 +59,7 @@ public class RateLimiter<K> {
                 .start(() -> {
                     while (!Thread.currentThread().isInterrupted()) {
                         try {
-                            Thread.sleep(periodMs);
+                            refillUnit.sleep(refillPeriod);
                             refillAll();
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();

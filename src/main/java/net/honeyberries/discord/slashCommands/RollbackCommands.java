@@ -13,6 +13,7 @@ import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.action.ActionHandler;
 import net.honeyberries.database.GuildModerationActionsRepository;
+import net.honeyberries.database.SpecialUsersRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.NotNull;
@@ -86,7 +87,7 @@ public class RollbackCommands extends ListenerAdapter {
         }
 
         Member member = event.getMember();
-        if (member == null || !member.hasPermission(Permission.ADMINISTRATOR)) {
+        if (member == null || !member.hasPermission(Permission.ADMINISTRATOR) || !SpecialUsersRepository.getInstance().isSpecialUser(event.getUser())) {
             reply(event, "Only administrators can roll back moderation actions.");
             return;
         }
@@ -188,7 +189,7 @@ public class RollbackCommands extends ListenerAdapter {
     @NotNull
     private static String truncate(@NotNull String text, int maxLen) {
         if (text.length() <= maxLen) return text;
-        return text.substring(0, maxLen - 1) + "…";
+        return text.substring(0, maxLen - 3) + "...";
     }
 
     /**

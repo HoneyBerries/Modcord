@@ -490,7 +490,7 @@ public class ActionHandler {
                 .addField("Moderator", "<@" + actionData.moderatorId().value() + ">", true)
                 .addField("Reason", actionData.reason(), false)
                 .setThumbnail(target.getEffectiveAvatarUrl())
-                .setFooter(guild.getName());
+                .setFooter("Action ID: " + actionData.id());
 
         if (actionData.action() == ActionType.TIMEOUT && actionData.timeoutDuration() > 0) {
             Instant expiresAt = Instant.now().plusSeconds(actionData.timeoutDuration());

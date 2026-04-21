@@ -31,13 +31,19 @@ moderation:
   # Lower = faster response, higher = better API efficiency.
   moderation_queue_duration: 30
 
-
   # Number of recent messages to fetch for context (including historical messages).
   # Provides context for violations. Recommended: 20-100 messages.
   num_history_context_messages: 50
 
   # Maximum age (seconds) of messages to fetch for context.
   history_context_max_age: 86400
+
+  # Maximum number of messages held per guild in-memory before oldest are dropped.
+  # Provides backpressure against runaway activity.
+  max_queue_size_per_guild: 1000
+
+  # Timeout (seconds) for blocking Discord API calls (member lookups, history fetches, etc.).
+  discord_request_timeout: 30
 
 
 # ========================================
@@ -53,6 +59,8 @@ ai_settings:
 
   # Timeout for the AI inference request (seconds)
   api_request_timeout: 3600
+
+
 # Default server rules for all servers. Used if no server-specific rules are defined.
 generic_server_rules: |
   (These are just generic rules. You should not treat them as specific as regular server rules.)
