@@ -14,6 +14,7 @@ import net.honeyberries.action.ActionHandler;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.ui.RollbackEmbedUI;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -152,6 +153,7 @@ public class RollbackCommands extends ListenerAdapter {
      * Handles the {@code /rollback list} subcommand.
      * Displays the most recent active (non-reversed) moderation actions for this guild.
      * Uses an optional limit argument; defaults to 10 if not specified.
+     * Each action is sent as a separate embed to avoid Discord's 2000 character message limit.
      *
      * @param event the interaction event, must not be {@code null}
      * @param guild the guild in which the command was issued, must not be {@code null}
@@ -176,14 +178,10 @@ public class RollbackCommands extends ListenerAdapter {
         }
 
         List<ActionData> recent = actions.stream().limit(limit).toList();
-        StringBuilder sb = new StringBuilder("**Recent active moderation actions:**\n");
-        for (ActionData a : recent) {
-            sb.append(String.format("• `%s` — **%s** on <@%d> — %s%n",
-                    a.id(), a.action().name(), a.userId().value(), truncate(a.reason(), 60)));
+        event.reply("Recent active moderation actions:").setEphemeral(true).queue();
+        for (ActionData action : recent) {
+            event.getHook().sendMessageEmbeds(RollbackEmbedUI.buildActionEmbed(action).build()).queue();
         }
-        sb.append("\nUse `/rollback action <action_id>` to reverse any of the above.");
-
-        reply(event, sb.toString());
     }
 
     /**
