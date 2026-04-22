@@ -40,24 +40,12 @@ public class AppealCommandHelper {
         Set<UUID> alreadyAppealedIds = new HashSet<>();
 
         if (isDM) {
-            // DM context: collect actions from all mutual guilds
-            List<Guild> mutualGuilds = user.getMutualGuilds();
-            if (mutualGuilds.isEmpty()) {
-                event.reply("You are not a member of any servers with this bot.")
-                        .setEphemeral(true)
-                        .queue();
-                return;
-            }
+            // DM context: fetch all actions for this user from the database
+            // (can't use mutual guilds since banned users won't appear there)
+            allActions.addAll(actionRepository.getAllActionsByUser(userId));
 
-            for (Guild guild : mutualGuilds) {
-                GuildID guildId = new GuildID(guild.getIdLong());
-                List<ActionData> guildActions = actionRepository.getActionsByUser(guildId.value(), userId.value());
-                allActions.addAll(guildActions);
-
-                // Collect already-appealed action IDs for this guild
-                List<UUID> appealedIds = appealRepository.getOpenAppealActionIds(guildId, userId);
-                alreadyAppealedIds.addAll(appealedIds);
-            }
+            // Also collect all appealed action IDs from database
+            alreadyAppealedIds.addAll(appealRepository.getAllOpenAppealActionIds(userId));
         } else {
             // Guild context: fetch actions for this specific guild
             GuildID guildId = new GuildID(event.getGuild().getIdLong());
@@ -153,7 +141,7 @@ public class AppealCommandHelper {
             logger.warn("Guild {} not found for appeal notification", action.guildId().value());
         }
 
-        event.reply("Your appeal has been submitted. Appeal ID: `" + appealId + "`").setEphemeral(true).queue();
+        event.reply("Your appeal has been submitted. Appeal ID: `" + appealId + "`").queue();
     }
 
     /**

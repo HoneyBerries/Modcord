@@ -13,6 +13,7 @@ import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.action.RollbackHandler;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
+import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.ui.RollbackEmbedUI;
 import net.honeyberries.util.DiscordUtils;
@@ -169,17 +170,16 @@ public class RollbackCommands extends ListenerAdapter {
         }
 
         GuildID guildId = GuildID.fromGuild(guild);
-        List<ActionData> actions = GuildModerationActionsRepository.getInstance()
-                .getActiveActions(guildId);
+        List<ActionData> recentActions = GuildModerationActionsRepository.getInstance()
+                .getRecentActions(guildId, limit);
 
-        if (actions.isEmpty()) {
-            reply(event, "No active moderation actions found for this server.");
+        if (recentActions.isEmpty()) {
+            reply(event, "No active moderation recentActions found for this server.");
             return;
         }
 
-        List<ActionData> recent = actions.stream().limit(limit).toList();
-        event.reply("Recent active moderation actions:").setEphemeral(true).queue();
-        for (ActionData action : recent) {
+        event.reply("Recent active moderation recentActions:").setEphemeral(true).queue();
+        for (ActionData action : recentActions) {
             event.getHook().sendMessageEmbeds(RollbackEmbedUI.buildRollbackEmbed(action).build()).setEphemeral(true).queue();
         }
     }

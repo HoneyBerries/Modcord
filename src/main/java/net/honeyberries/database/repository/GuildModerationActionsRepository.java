@@ -224,6 +224,45 @@ public class GuildModerationActionsRepository {
     }
 
     /**
+     * Fetches all actions targeted at a specific user across all guilds, ordered newest first.
+     * Used by the appeal system in DMs where the user may be banned from some guilds.
+     * Returns an empty list if no actions are found or if a database error occurs.
+     *
+     * @param userId the user ID to match
+     * @return a list of {@code ActionData} in reverse chronological order, never {@code null}
+     */
+    @NotNull
+    public List<ActionData> getAllActionsByUser(UserID userId) {
+        String sql = """
+            SELECT *
+            FROM guild_moderation_actions
+            WHERE user_id = ?
+            ORDER BY action_id DESC
+        """;
+
+        try {
+            return database.query(conn -> {
+                List<ActionData> actions = new ArrayList<>();
+
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setLong(1, userId.value());
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            actions.add(mapAction(rs));
+                        }
+                    }
+                }
+
+                return actions;
+            });
+        } catch (Exception e) {
+            logger.error("Failed to fetch actions by user across all guilds", e);
+            return List.of();
+        }
+    }
+
+    /**
      * Fetches all actions in a guild that have not yet been reversed, ordered newest first.
      * Used by the rollback command to present candidates to moderators.
      *
@@ -276,11 +315,11 @@ public class GuildModerationActionsRepository {
      * @return a list of recent {@code ActionData} up to {@code limit} in size, ordered newest first, never {@code null}
      */
     @NotNull
-    public List<ActionData> getRecentActions(long guildId, int limit) {
+    public List<ActionData> getRecentActions(GuildID guildId, int limit) {
         String sql = """
             SELECT *
             FROM guild_moderation_actions
-            WHERE guild_id = ?
+            WHERE guild_id = ? AND action != 'NULL'
             ORDER BY action_id DESC
             LIMIT ?
         """;
@@ -290,7 +329,7 @@ public class GuildModerationActionsRepository {
                 List<ActionData> actions = new ArrayList<>();
 
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId);
+                    ps.setLong(1, guildId.value());
                     ps.setInt(2, limit);
 
                     try (ResultSet rs = ps.executeQuery()) {
