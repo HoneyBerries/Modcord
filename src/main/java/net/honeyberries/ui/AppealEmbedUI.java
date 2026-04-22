@@ -85,7 +85,7 @@ public class AppealEmbedUI {
                 label = actionTypeStr + " (DM)";
 
             } else if (isDM) {
-                label = actionTypeStr + " (from " + action.guildId().toGuild().getName() + " — " + truncatedReason;
+                label = actionTypeStr + " (from " + action.guildId().toGuild().getName() + " — " + truncatedReason + ")";
 
             } else {
                 label = actionTypeStr + " — " + truncatedReason;
