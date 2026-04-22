@@ -64,11 +64,11 @@ public class DiscordUtils {
     public static boolean isPermissionFailure(@NotNull Exception e) {
         Objects.requireNonNull(e, "e must not be null");
         if (e instanceof InsufficientPermissionException) return true;
-        if (e instanceof MissingAccessException) return true;
         if (e instanceof ErrorResponseException err) {
             return err.getErrorResponse() == ErrorResponse.MISSING_PERMISSIONS;
         }
         return false;
     }
+
 
 }

@@ -34,7 +34,7 @@ public class ActionEmbedUI {
         UserID targetId = UserID.fromUser(target);
         EmbedBuilder embed = new EmbedBuilder()
                 .setTitle(ActionHelper.actionEmoji(actionData.action()) + " " + actionData.action().name() + " Issued")
-                .setColor(actionColor(actionData.action()))
+                .setColor(ActionHelper.actionColor(actionData.action()))
                 .setTimestamp(Instant.now())
                 .addField("User", DiscordUtils.userMention(targetId), true)
                 .addField("Moderator", DiscordUtils.userMention(actionData.moderatorId()), true)
@@ -64,24 +64,7 @@ public class ActionEmbedUI {
     }
 
 
-    /**
-     * Selects a color matching the action type for visual feedback in embeds.
-     *
-     * @param actionType the moderation action type
-     * @return a {@code Color} representing the action severity/type
-     */
-    @NotNull
-    private static Color actionColor(@NotNull ActionType actionType) {
-        Objects.requireNonNull(actionType, "actionType must not be null");
-        return switch (actionType) {
-            case WARN            -> Color.YELLOW;
-            case DELETE, TIMEOUT -> Color.ORANGE;
-            case KICK            -> Color.RED;
-            case BAN             -> new Color(139, 0, 0);
-            case UNBAN           -> Color.GREEN;
-            case NULL            -> Color.GRAY;
-        };
-    }
+
 
     /**
      * Formats a duration in seconds into a human-readable string (e.g., "1d 2h 30m").

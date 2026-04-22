@@ -17,7 +17,6 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.ui.RollbackEmbedUI;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -181,7 +180,7 @@ public class RollbackCommands extends ListenerAdapter {
         List<ActionData> recent = actions.stream().limit(limit).toList();
         event.reply("Recent active moderation actions:").setEphemeral(true).queue();
         for (ActionData action : recent) {
-            event.getHook().sendMessageEmbeds(RollbackEmbedUI.buildActionEmbed(action).build()).queue();
+            event.getHook().sendMessageEmbeds(RollbackEmbedUI.buildRollbackEmbed(action).build()).setEphemeral(true).queue();
         }
     }
 
