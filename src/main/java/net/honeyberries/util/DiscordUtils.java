@@ -50,7 +50,7 @@ public class DiscordUtils {
     @NotNull
     public static String truncate(@NotNull String text, int maxLen) {
         if (text.length() <= maxLen) return text;
-        return text.substring(0, maxLen - 1) + "…";
+        return text.substring(0, maxLen - 3) + "...";
     }
 
 

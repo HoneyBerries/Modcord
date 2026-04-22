@@ -5,6 +5,7 @@ import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.time.Instant;
 import java.util.UUID;
 
 public record AppealData(
@@ -13,6 +14,8 @@ public record AppealData(
         @NotNull UserID userId,
         @NotNull String reason,
         @Nullable UUID actionId,
-        boolean isOpen
+        boolean isOpen,
+        @NotNull Instant submittedAt,
+        @Nullable String resolutionNote
 ) {
 }
