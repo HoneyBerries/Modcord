@@ -3,8 +3,6 @@ package net.honeyberries.services;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Message;
 import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.repository.PendingMessageRepository;
-import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.MessageID;
 import org.jetbrains.annotations.NotNull;
@@ -223,58 +221,13 @@ public class GlobalOrchestrationService {
 
     /**
      * Initiates graceful shutdown of all processing services.
-     * <p>
-     * Before clearing any in-memory state, persists all non-empty queues to the database so they
-     * can be restored when the bot restarts (see {@link #restoreQueue(Guild)}).
-     * Then cancels all pending scheduled runs and shuts down the scheduler.
+     * Cancels all pending scheduled runs and shuts down the scheduler.
      */
     public void shutdownNowAndDropPending() {
-        // Persist each guild's pending queue before clearing it
-        guildServices.forEach((guildId, service) -> {
-            try {
-                List<ModerationMessage> pending = new java.util.ArrayList<>(
-                        service.getQueuedMessagesSnapshot());
-                if (!pending.isEmpty()) {
-                    PendingMessageRepository.getInstance().saveMessages(guildId, pending);
-                    logger.info("Saved {} pending messages for guild {} before shutdown",
-                            pending.size(), guildId.value());
-                }
-            } catch (Exception e) {
-                logger.warn("Failed to save pending queue for guild {} during shutdown", guildId, e);
-            }
-        });
-
         scheduledGuildRuns.values().forEach(future -> future.cancel(false));
         scheduledGuildRuns.clear();
         guildServices.values().forEach(GuildMessageProcessingService::clearQueue);
         scheduler.shutdownNow();
-    }
-
-    /**
-     * Restores previously persisted pending messages for a guild into its in-memory queue.
-     * <p>
-     * Should be called once during startup for each guild the bot is currently a member of,
-     * after the database is ready but before the first moderation run fires. Once loaded,
-     * the persisted rows are deleted from the database to prevent replay on subsequent restarts.
-     *
-     * @param guild the Discord guild to restore messages for, must not be {@code null}
-     * @throws NullPointerException if {@code guild} is {@code null}
-     */
-    public void restoreQueue(@NotNull Guild guild) {
-        Objects.requireNonNull(guild, "guild must not be null");
-        GuildID guildId = GuildID.fromGuild(guild);
-        PendingMessageRepository repo = PendingMessageRepository.getInstance();
-
-        List<ModerationMessage> saved = repo.loadMessages(guildId);
-        if (saved.isEmpty()) {
-            return;
-        }
-
-        GuildMessageProcessingService service = getOrCreate(guild);
-        saved.forEach(service::restoreMessage);
-        repo.clearMessages(guildId);
-        logger.info("Restored {} pending messages for guild {} from the database",
-                saved.size(), guildId.value());
     }
 
     /**
