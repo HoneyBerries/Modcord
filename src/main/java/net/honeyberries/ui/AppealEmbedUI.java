@@ -27,7 +27,7 @@ public class AppealEmbedUI {
      *
      * @param appellant the user who submitted the appeal
      * @param appealId the UUID of the appeal
-     * @param actionId the UUID of the action being appealed, may be null
+     * @param actionId the UUID of the action being appealed (required)
      * @param reason the appeal text
      * @return an embed builder ready to be built
      */
@@ -35,10 +35,11 @@ public class AppealEmbedUI {
     public static EmbedBuilder buildAppealNotificationEmbed(
             @NotNull User appellant,
             @NotNull UUID appealId,
-            @Nullable UUID actionId,
+            @NotNull UUID actionId,
             @NotNull String reason) {
         Objects.requireNonNull(appellant, "appellant must not be null");
         Objects.requireNonNull(appealId, "appealId must not be null");
+        Objects.requireNonNull(actionId, "actionId must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
 
         UserID userId = UserID.fromUser(appellant);
@@ -47,14 +48,10 @@ public class AppealEmbedUI {
                 .setColor(Color.CYAN)
                 .setTimestamp(Instant.now())
                 .addField("Appellant", DiscordUtils.userMention(userId), true)
-                .addField("Appeal ID", "`" + appealId + "`", true);
-
-        if (actionId != null) {
-            embed.addField("Action ID", "`" + actionId + "`", true);
-        }
-
-        embed.addField("Reason", reason, false)
+                .addField("Appeal ID", "`" + appealId + "`", true)
+                .addField("Action ID", "`" + actionId + "`", true)
                 .setThumbnail(appellant.getEffectiveAvatarUrl())
+                .addField("Reason", reason, false)
                 .setFooter("Use /appeal close " + appealId + " to resolve", null);
 
         return embed;

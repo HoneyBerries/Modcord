@@ -123,9 +123,9 @@ public class AppealCommandHelper {
         // Extract reason from modal input
         String reason = Objects.requireNonNull(event.getValue("reason")).getAsString();
 
-        // Create the appeal
+        // Create the appeal (action ID is required)
         UserID userId = UserID.fromUser(event.getUser());
-        UUID appealId = appealRepository.createAppeal(action.guildId(), userId.value(), actionId, reason);
+        UUID appealId = appealRepository.createAppeal(action.guildId(), userId, actionId, reason);
 
         if (appealId == null) {
             event.reply("Failed to submit appeal. Please try again later.").setEphemeral(true).queue();

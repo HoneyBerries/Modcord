@@ -44,18 +44,19 @@ public class AppealRepository {
 
     /**
      * Creates a new open appeal record for the given guild and user.
-     * Optionally links the appeal to a specific moderation action.
+     * All appeals must be linked to a specific moderation action.
      *
      * @param guildId  the guild where the action occurred, must not be {@code null}
      * @param userId   Discord snowflake of the appealing user
-     * @param actionId the UUID of the moderation action being appealed, or {@code null} if not known
+     * @param actionId the UUID of the moderation action being appealed, must not be {@code null}
      * @param reason   the appeal text, must not be {@code null}
      * @return the UUID assigned to the new appeal, or {@code null} if persistence failed
-     * @throws NullPointerException if {@code guildId} or {@code reason} is {@code null}
+     * @throws NullPointerException if {@code guildId}, {@code actionId}, or {@code reason} is {@code null}
      */
     @Nullable
-    public UUID createAppeal(@NotNull GuildID guildId, long userId, @Nullable UUID actionId, @NotNull String reason) {
+    public UUID createAppeal(@NotNull GuildID guildId, @NotNull UserID userId, @NotNull UUID actionId, @NotNull String reason) {
         Objects.requireNonNull(guildId, "guildId must not be null");
+        Objects.requireNonNull(actionId, "actionId must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
         UUID id = UUID.randomUUID();
         String sql = """
@@ -68,19 +69,15 @@ public class AppealRepository {
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setObject(1, id);
                     ps.setLong(2, guildId.value());
-                    ps.setLong(3, userId);
-                    if (actionId != null) {
-                        ps.setObject(4, actionId);
-                    } else {
-                        ps.setNull(4, java.sql.Types.OTHER);
-                    }
+                    ps.setLong(3, userId.value());
+                    ps.setObject(4, actionId);
                     ps.setString(5, reason);
                     ps.executeUpdate();
                 }
             });
             return id;
         } catch (Exception e) {
-            logger.error("Failed to create appeal for user {} in guild {}", userId, guildId, e);
+            logger.error("Failed to create appeal for user {} in guild {}", userId.value(), guildId.value(), e);
             return null;
         }
     }
@@ -156,7 +153,7 @@ public class AppealRepository {
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
                             Timestamp submittedAt = rs.getTimestamp("submitted_at");
-                            Instant submittedAtInstant = submittedAt != null ? submittedAt.toInstant() : null;
+
                             results.add(new AppealData(
                                     (UUID) rs.getObject("appeal_id"),
                                     new GuildID(rs.getLong("guild_id")),
@@ -164,7 +161,7 @@ public class AppealRepository {
                                     rs.getString("reason"),
                                     (UUID) rs.getObject("action_id"),
                                     rs.getBoolean("is_open"),
-                                    submittedAtInstant,
+                                    submittedAt.toInstant(),
                                     rs.getString("resolution_note")
                             ));
                         }

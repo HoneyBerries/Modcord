@@ -1,6 +1,5 @@
 package net.honeyberries.database;
 
-import liquibase.changelog.RanChangeSet;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
