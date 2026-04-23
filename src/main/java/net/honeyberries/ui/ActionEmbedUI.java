@@ -63,9 +63,6 @@ public class ActionEmbedUI {
         return new MessageCreateBuilder().setEmbeds(embed.build()).build();
     }
 
-
-
-
     /**
      * Formats a duration in seconds into a human-readable string (e.g., "1d 2h 30m").
      *

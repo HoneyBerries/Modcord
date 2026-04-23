@@ -49,7 +49,7 @@ public class AppealCommandHelper {
         } else {
             // Guild context: fetch actions for this specific guild
             GuildID guildId = new GuildID(event.getGuild().getIdLong());
-            allActions.addAll(actionRepository.getActionsByUser(guildId.value(), userId.value()));
+            allActions.addAll(actionRepository.getActionsByUser(guildId, userId));
 
             // Collect already-appealed action IDs for this guild
             List<UUID> appealedIds = appealRepository.getOpenAppealActionIds(guildId, userId);
@@ -141,7 +141,7 @@ public class AppealCommandHelper {
             logger.warn("Guild {} not found for appeal notification", action.guildId().value());
         }
 
-        event.reply("Your appeal has been submitted. Appeal ID: `" + appealId + "`").queue();
+        event.reply("Your appeal has been submitted. Appeal ID: `" + appealId + "`").setEphemeral(true).queue();
     }
 
     /**

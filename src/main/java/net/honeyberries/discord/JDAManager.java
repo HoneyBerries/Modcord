@@ -9,6 +9,7 @@ import net.honeyberries.discord.listener.GuildListener;
 import net.honeyberries.discord.listener.MessageListener;
 import net.honeyberries.discord.listener.RoleListener;
 import net.honeyberries.discord.listener.UserListener;
+import net.honeyberries.discord.slashCommands.ActionCommands;
 import net.honeyberries.discord.slashCommands.AppealCommands;
 import net.honeyberries.discord.slashCommands.DebugCommands;
 import net.honeyberries.discord.slashCommands.ExcludeCommand;
@@ -104,6 +105,11 @@ public class JDAManager {
         jda.addEventListener(moderationCommands);
         moderationCommands.registerModerationCommands(commands);
         logger.info("Added ModerationCommands to queue");
+
+        ActionCommands actionCommands = new ActionCommands();
+        jda.addEventListener(actionCommands);
+        actionCommands.registerActionCommands(commands);
+        logger.info("Added ActionCommands to queue");
 
         RollbackCommands rollbackCommands = new RollbackCommands();
         jda.addEventListener(rollbackCommands);

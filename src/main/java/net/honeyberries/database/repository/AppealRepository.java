@@ -126,20 +126,26 @@ public class AppealRepository {
     }
 
     /**
-     * Retrieves all open appeals for a guild, ordered by submission time (oldest first).
+     * Retrieves all open appeals for a guild where the underlying action has not been reversed,
+     * ordered by submission time (oldest first).
      *
      * @param guildId the guild to query, must not be {@code null}
-     * @return list of open appeal records, never {@code null}
+     * @return list of open appeal records for active actions, never {@code null}
      * @throws NullPointerException if {@code guildId} is {@code null}
      */
     @NotNull
     public List<AppealData> getOpenAppeals(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
-            SELECT appeal_id, guild_id, user_id, action_id, reason, is_open, submitted_at, resolution_note
-            FROM moderation_appeals
-            WHERE guild_id = ? AND is_open = TRUE
-            ORDER BY submitted_at
+            SELECT ma.appeal_id, ma.guild_id, ma.user_id, ma.action_id, ma.reason, ma.is_open, ma.submitted_at, ma.resolution_note
+            FROM moderation_appeals ma
+            WHERE ma.guild_id = ?
+              AND ma.is_open = TRUE
+              AND (ma.action_id IS NULL OR NOT EXISTS (
+                    SELECT 1 FROM guild_moderation_action_reversals r
+                    WHERE r.action_id = ma.action_id
+                  ))
+            ORDER BY ma.submitted_at
         """;
 
         try {

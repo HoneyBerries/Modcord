@@ -192,7 +192,7 @@ public class GuildModerationActionsRepository {
      * @return a list of {@code ActionData} in reverse chronological order, never {@code null}
      */
     @NotNull
-    public List<ActionData> getActionsByUser(long guildId, long userId) {
+    public List<ActionData> getActionsByUser(GuildID guildId, UserID userId) {
         String sql = """
             SELECT *
             FROM guild_moderation_actions
@@ -205,8 +205,8 @@ public class GuildModerationActionsRepository {
                 List<ActionData> actions = new ArrayList<>();
 
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId);
-                    ps.setLong(2, userId);
+                    ps.setLong(1, guildId.value());
+                    ps.setLong(2, userId.value());
 
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
@@ -307,20 +307,26 @@ public class GuildModerationActionsRepository {
     }
 
     /**
-     * Retrieves the most recent moderation actions for a guild, up to the specified limit.
+     * Retrieves the most recent active (non-reversed, non-NULL) moderation actions for a guild, up to the specified limit.
+     * Excludes actions that have been reversed and NULL actions.
      * Returns an empty list if no actions are found or if a database error occurs.
      *
      * @param guildId the guild to fetch actions from
      * @param limit the maximum number of actions to return
-     * @return a list of recent {@code ActionData} up to {@code limit} in size, ordered newest first, never {@code null}
+     * @return a list of recent active {@code ActionData} up to {@code limit} in size, ordered newest first, never {@code null}
      */
     @NotNull
     public List<ActionData> getRecentActions(GuildID guildId, int limit) {
         String sql = """
-            SELECT *
-            FROM guild_moderation_actions
-            WHERE guild_id = ? AND action != 'NULL'
-            ORDER BY action_id DESC
+            SELECT gma.*
+            FROM guild_moderation_actions gma
+            WHERE gma.guild_id = ?
+              AND gma.action != 'NULL'
+              AND NOT EXISTS (
+                    SELECT 1 FROM guild_moderation_action_reversals r
+                    WHERE r.action_id = gma.action_id
+                  )
+            ORDER BY gma.action_id DESC
             LIMIT ?
         """;
 

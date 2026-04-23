@@ -11,27 +11,21 @@ import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.action.RollbackHandler;
-import net.honeyberries.database.repository.GuildModerationActionsRepository;
-import net.honeyberries.datatypes.action.ActionData;
-import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
-import net.honeyberries.ui.RollbackEmbedUI;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Slash command handler that lets administrators undo previously applied moderation actions.
  * <p>
- * Provides two subcommands:
+ * Provides one subcommand:
  * <ul>
  *   <li>{@code /rollback action <action_id> [reason]} — reverses a specific action by its UUID.</li>
- *   <li>{@code /rollback list [limit]} — lists the most recent active (non-reversed) actions (default: 10).</li>
  * </ul>
  * Reversal behaviour per action type:
  * <ul>
@@ -44,7 +38,6 @@ public class RollbackCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(RollbackCommands.class);
     private static final String DEFAULT_REASON = "No reason provided.";
-    private static final int DEFAULT_RECENT_ACTION_LIMIT = 10;
 
     /**
      * Registers {@code /rollback} and its subcommands with Discord.
@@ -58,9 +51,7 @@ public class RollbackCommands extends ListenerAdapter {
                 .addSubcommands(
                         new SubcommandData("action", "Reverse a specific moderation action by its ID")
                                 .addOption(OptionType.STRING, "action_id", "UUID of the action to roll back", true)
-                                .addOption(OptionType.STRING, "reason", "Reason for the rollback", false),
-                        new SubcommandData("list", "List the most recent active (non-reversed) moderation actions")
-                                .addOption(OptionType.INTEGER, "limit", "Number of recent actions to show (default: 10)", false, false)
+                                .addOption(OptionType.STRING, "reason", "Reason for the rollback", false)
                 );
 
         commands.addCommands(rollbackCommand);
@@ -103,7 +94,6 @@ public class RollbackCommands extends ListenerAdapter {
         try {
             switch (subcommand) {
                 case "action" -> handleRollbackAction(event, guild);
-                case "list"   -> handleListActions(event, guild);
                 default       -> reply(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
@@ -147,40 +137,6 @@ public class RollbackCommands extends ListenerAdapter {
         } else {
             reply(event, "Failed to roll back action `" + actionId + "`. "
                     + "It may not exist, may have already been reversed, or the bot lacks permissions.");
-        }
-    }
-
-    /**
-     * Handles the {@code /rollback list} subcommand.
-     * Displays the most recent active (non-reversed) moderation actions for this guild.
-     * Uses an optional limit argument; defaults to 10 if not specified.
-     * Each action is sent as a separate embed to avoid Discord's 2000 character message limit.
-     *
-     * @param event the interaction event, must not be {@code null}
-     * @param guild the guild in which the command was issued, must not be {@code null}
-     */
-    private void handleListActions(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
-        Objects.requireNonNull(event, "event must not be null");
-        Objects.requireNonNull(guild, "guild must not be null");
-
-        int limit = event.getOption("limit", DEFAULT_RECENT_ACTION_LIMIT, OptionMapping::getAsInt);
-        if (limit <= 0) {
-            reply(event, "Limit must be a positive number.");
-            return;
-        }
-
-        GuildID guildId = GuildID.fromGuild(guild);
-        List<ActionData> recentActions = GuildModerationActionsRepository.getInstance()
-                .getRecentActions(guildId, limit);
-
-        if (recentActions.isEmpty()) {
-            reply(event, "No active moderation recentActions found for this server.");
-            return;
-        }
-
-        event.reply("Recent active moderation recentActions:").setEphemeral(true).queue();
-        for (ActionData action : recentActions) {
-            event.getHook().sendMessageEmbeds(RollbackEmbedUI.buildRollbackEmbed(action).build()).setEphemeral(true).queue();
         }
     }
 
