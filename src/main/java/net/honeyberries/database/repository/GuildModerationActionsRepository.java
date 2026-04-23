@@ -158,7 +158,7 @@ public class GuildModerationActionsRepository {
             SELECT *
             FROM guild_moderation_actions
             WHERE guild_id = ?
-            ORDER BY action_id DESC
+            ORDER BY created_at DESC
         """;
 
         try {
@@ -197,7 +197,7 @@ public class GuildModerationActionsRepository {
             SELECT *
             FROM guild_moderation_actions
             WHERE guild_id = ? AND user_id = ?
-            ORDER BY action_id DESC
+            ORDER BY created_at DESC
         """;
 
         try {
@@ -237,7 +237,7 @@ public class GuildModerationActionsRepository {
             SELECT *
             FROM guild_moderation_actions
             WHERE user_id = ?
-            ORDER BY action_id DESC
+            ORDER BY created_at DESC
         """;
 
         try {
@@ -281,7 +281,7 @@ public class GuildModerationActionsRepository {
                     SELECT 1 FROM guild_moderation_action_reversals r
                     WHERE r.action_id = gma.action_id
                   )
-            ORDER BY gma.action_id DESC
+            ORDER BY gma.created_at DESC
         """;
 
         try {
@@ -326,7 +326,7 @@ public class GuildModerationActionsRepository {
                     SELECT 1 FROM guild_moderation_action_reversals r
                     WHERE r.action_id = gma.action_id
                   )
-            ORDER BY gma.action_id DESC
+            ORDER BY gma.created_at DESC
             LIMIT ?
         """;
 

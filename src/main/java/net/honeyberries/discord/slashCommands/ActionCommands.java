@@ -128,8 +128,7 @@ public class ActionCommands extends ListenerAdapter {
         }
 
         GuildID guildId = GuildID.fromGuild(guild);
-        List<ActionData> recentActions = GuildModerationActionsRepository.getInstance()
-                .getRecentActions(guildId, limit);
+        List<ActionData> recentActions = GuildModerationActionsRepository.getInstance().getRecentActions(guildId, limit);
 
         if (recentActions.isEmpty()) {
             reply(event, "No recent active moderation actions found for this server.");
@@ -138,7 +137,8 @@ public class ActionCommands extends ListenerAdapter {
 
         event.reply("Recent active moderation actions:").setEphemeral(true).queue();
         for (ActionData action : recentActions) {
-            User user = event.getJDA().getUserById(action.userId().value());
+
+            User user = event.getJDA().retrieveUserById(action.userId().value()).complete();
             if (user != null) {
                 event.getHook().sendMessage(ActionEmbedUI.buildNotificationEmbed(action, user)).setEphemeral(true).queue();
             }
@@ -214,12 +214,16 @@ public class ActionCommands extends ListenerAdapter {
             return;
         }
 
-        User user = event.getJDA().getUserById(action.userId().value());
+        User user = event.getJDA().retrieveUserById(action.userId().value()).complete();
         if (user != null) {
             event.reply("").setEphemeral(true).queue();
             event.getHook().sendMessage(ActionEmbedUI.buildNotificationEmbed(action, user)).setEphemeral(true).queue();
         } else {
-            reply(event, "Could not resolve user for action `" + actionId + "`.");
+            event.reply("").setEphemeral(true).queue();
+            event.getJDA().retrieveUserById(action.userId().value())
+                .queue(resolvedUser -> event.getHook().sendMessage(ActionEmbedUI.buildNotificationEmbed(action, resolvedUser)).setEphemeral(true).queue(),
+                       ex -> reply(event, "Could not resolve user for action `" + actionId + "`.")
+                );
         }
     }
 

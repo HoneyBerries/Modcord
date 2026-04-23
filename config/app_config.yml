@@ -38,12 +38,6 @@ moderation:
   # Maximum age (seconds) of messages to fetch for context.
   history_context_max_age: 86400
 
-  # Maximum number of messages held per guild in-memory before oldest are dropped.
-  # Provides backpressure against runaway activity.
-  max_queue_size_per_guild: 1000
-
-  # Timeout (seconds) for blocking Discord API calls (member lookups, history fetches, etc.).
-  discord_request_timeout: 30
 
 
 # ========================================

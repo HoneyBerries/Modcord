@@ -13,7 +13,6 @@ import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.action.ActionHandler;
 import net.honeyberries.ai.*;
-import net.honeyberries.ai.InferenceEngine.InferenceException;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.AILogRepository;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
@@ -447,12 +446,7 @@ public class GuildMessageProcessingService {
                     guildId, AppConfig.getInstance().getAIRequestTimeout());
             return List.of();
         } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof InferenceException) {
-                logger.error("AI inference engine error for guild {}: {}", guildId, cause.getMessage());
-            } else {
-                logger.error("Unexpected error during AI inference for guild {}", guildId, e);
-            }
+            logger.error("Error during AI inference for guild {}", guildId, e);
             return List.of();
         } catch (InterruptedException e) {
             logger.warn("AI inference interrupted for guild {}", guildId);

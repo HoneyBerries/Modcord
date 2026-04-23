@@ -18,10 +18,8 @@ import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.action.MessageDeletion;
-import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
-import net.honeyberries.timeout.RateLimiter;
 import net.honeyberries.ui.ActionEmbedUI;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
@@ -37,9 +35,6 @@ import java.util.concurrent.TimeUnit;
  * Executes moderation actions against guild members and messages.
  * Handles the full lifecycle of an action: user notification, message deletions, moderation application, and audit logging.
  * Gracefully handles Discord permission failures and partial success scenarios.
- * <p>
- * A per-guild {@link RateLimiter} caps moderation actions to 20 per 10 seconds,
- * protecting against runaway AI responses that could apply hundreds of actions in a burst.
  */
 public class ActionHandler {
 
@@ -49,14 +44,9 @@ public class ActionHandler {
     /** Logger for action execution and failures. */
     private final Logger logger = LoggerFactory.getLogger(ActionHandler.class);
     /** JDA client for Discord API calls. */
+
     @NotNull
     private final JDA jda = JDAManager.getInstance().getJDA();
-
-    /**
-     * Per-guild rate limiter: maximum 20 actions in a 10-second window.
-     * Prevents an unexpected AI response from banning an entire server at once.
-     */
-    private final RateLimiter<GuildID> rateLimiter = new RateLimiter<>(20, 10, TimeUnit.SECONDS);
 
     private ActionHandler() {}
 
@@ -72,16 +62,13 @@ public class ActionHandler {
     /**
      * Processes a moderation action against a target user in a guild.
      * Executes the following steps in order:
-     * <ol>
-     *   <li>Checks the per-guild rate limit; rejects with a warning if exceeded</li>
-     *   <li>Notifies the target user via DM (before action, so they still share guild with bot)</li>
-     *   <li>Deletes flagged messages from channels</li>
-     *   <li>Applies the moderation action (timeout, kick, ban, etc.)</li>
-     *   <li>Posts an audit log entry to the designated audit channel (after action, to reflect success)</li>
-     * </ol>
+     * 1. Notifies the target user via DM (before action, so they still share guild with bot)
+     * 2. Deletes flagged messages from channels
+     * 3. Applies the moderation action (timeout, kick, ban, etc.)
+     * 4. Posts an audit log entry to the designated audit channel (after action, to reflect success)
      *
      * @param actionData the moderation action to process
-     * @return {@code true} if both moderation action and all message deletions succeeded; {@code false} if guild not found, rate-limited, or action failed
+     * @return {@code true} if both moderation action and all message deletions succeeded; {@code false} if guild not found or action failed
      * @throws NullPointerException if {@code actionData} is {@code null}
      */
     public boolean processAction(@NotNull ActionData actionData) {
@@ -89,12 +76,6 @@ public class ActionHandler {
         Guild guild = jda.getGuildById(actionData.guildId().value());
         if (guild == null) {
             logger.warn("Cannot process action {}: guild {} not found", actionData.id(), actionData.guildId());
-            return false;
-        }
-
-        if (!rateLimiter.tryAcquire(actionData.guildId())) {
-            logger.warn("Rate limit exceeded for guild {} — dropping action {} ({})",
-                    actionData.guildId(), actionData.id(), actionData.action());
             return false;
         }
 

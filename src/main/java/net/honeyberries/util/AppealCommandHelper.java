@@ -154,7 +154,7 @@ public class AppealCommandHelper {
             @NotNull UUID appealId,
             @NotNull UUID actionId,
             @NotNull String reason) {
-        User user = jda.getUserById(userId.value());
+        User user = jda.retrieveUserById(userId.value()).complete();
         if (user == null) {
             logger.warn("User {} not found for appeal notification", userId.value());
             return;
