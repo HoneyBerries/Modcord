@@ -181,7 +181,7 @@ public class AppealCommandHelper {
             }
 
             if (auditLogChannel == null) {
-                logger.warn("Audit log channel not found in guild {} for appeal notification", guild.getId());
+                logger.debug("Audit log channel not found in guild {} — appeal will not be notified to moderators", guild.getId());
                 return;
             }
 
