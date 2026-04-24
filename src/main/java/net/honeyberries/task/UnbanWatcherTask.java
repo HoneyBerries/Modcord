@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -279,7 +280,7 @@ public class UnbanWatcherTask implements Runnable {
 
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
-                            java.sql.Timestamp createdAt = rs.getTimestamp("created_at");
+                            Timestamp createdAt = rs.getTimestamp("created_at");
                             if (createdAt != null) {
                                 return createdAt.getTime();
                             }

@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.Objects;
 
 /**
@@ -21,12 +22,25 @@ import java.util.Objects;
  */
 public class GuildPreferencesRepository {
 
-    /** Logger for recording database operations. */
-    private final Logger logger = LoggerFactory.getLogger(GuildPreferencesRepository.class);
-    /** Database connection pool. */
-    private final Database database;
-    /** Singleton instance. */
+    /**
+     * Singleton instance.
+     */
     private static final GuildPreferencesRepository INSTANCE = new GuildPreferencesRepository();
+    /**
+     * Logger for recording database operations.
+     */
+    private final Logger logger = LoggerFactory.getLogger(GuildPreferencesRepository.class);
+    /**
+     * Database connection pool.
+     */
+    private final Database database;
+
+    /**
+     * Constructs a new repository, retrieving the singleton database instance.
+     */
+    public GuildPreferencesRepository() {
+        this.database = Database.getInstance();
+    }
 
     /**
      * Retrieves the singleton instance of this repository.
@@ -36,13 +50,6 @@ public class GuildPreferencesRepository {
     @NotNull
     public static GuildPreferencesRepository getInstance() {
         return INSTANCE;
-    }
-
-    /**
-     * Constructs a new repository, retrieving the singleton database instance.
-     */
-    public GuildPreferencesRepository() {
-        this.database = Database.getInstance();
     }
 
     /**
@@ -59,33 +66,33 @@ public class GuildPreferencesRepository {
         try {
             database.transaction(conn -> {
                 String upsertSql = """
-                    INSERT INTO guild_preferences (
-                        guild_id, ai_enabled, rules_channel_id,
-                        auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
-                        auto_kick_enabled, auto_ban_enabled, audit_log_channel_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (guild_id) DO UPDATE SET
-                        ai_enabled             = EXCLUDED.ai_enabled,
-                        rules_channel_id       = EXCLUDED.rules_channel_id,
-                        auto_warn_enabled      = EXCLUDED.auto_warn_enabled,
-                        auto_delete_enabled    = EXCLUDED.auto_delete_enabled,
-                        auto_timeout_enabled   = EXCLUDED.auto_timeout_enabled,
-                        auto_kick_enabled      = EXCLUDED.auto_kick_enabled,
-                        auto_ban_enabled       = EXCLUDED.auto_ban_enabled,
-                        audit_log_channel_id   = EXCLUDED.audit_log_channel_id
-                """;
+                            INSERT INTO guild_preferences (
+                                guild_id, ai_enabled, rules_channel_id,
+                                auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
+                                auto_kick_enabled, auto_ban_enabled, audit_log_channel_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (guild_id) DO UPDATE SET
+                                ai_enabled             = EXCLUDED.ai_enabled,
+                                rules_channel_id       = EXCLUDED.rules_channel_id,
+                                auto_warn_enabled      = EXCLUDED.auto_warn_enabled,
+                                auto_delete_enabled    = EXCLUDED.auto_delete_enabled,
+                                auto_timeout_enabled   = EXCLUDED.auto_timeout_enabled,
+                                auto_kick_enabled      = EXCLUDED.auto_kick_enabled,
+                                auto_ban_enabled       = EXCLUDED.auto_ban_enabled,
+                                audit_log_channel_id   = EXCLUDED.audit_log_channel_id
+                        """;
 
                 try (PreparedStatement ps = conn.prepareStatement(upsertSql)) {
                     ps.setLong(1, guildPreferences.guildId().value());
                     ps.setBoolean(2, guildPreferences.aiEnabled());
-                    
+
                     ChannelID rulesChannelID = guildPreferences.rulesChannelID();
                     if (rulesChannelID != null) {
                         ps.setLong(3, rulesChannelID.value());
                     } else {
-                        ps.setNull(3, java.sql.Types.BIGINT);
+                        ps.setNull(3, Types.BIGINT);
                     }
-                    
+
                     ps.setBoolean(4, guildPreferences.autoWarnEnabled());
                     ps.setBoolean(5, guildPreferences.autoDeleteEnabled());
                     ps.setBoolean(6, guildPreferences.autoTimeoutEnabled());
@@ -96,7 +103,7 @@ public class GuildPreferencesRepository {
                     if (auditLogChannelId != null) {
                         ps.setLong(9, auditLogChannelId.value());
                     } else {
-                        ps.setNull(9, java.sql.Types.BIGINT);
+                        ps.setNull(9, Types.BIGINT);
                     }
 
                     ps.executeUpdate();
@@ -122,12 +129,12 @@ public class GuildPreferencesRepository {
     public GuildPreferences getGuildPreferences(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
-            SELECT guild_id, ai_enabled, rules_channel_id,
-                   auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
-                   auto_kick_enabled, auto_ban_enabled, audit_log_channel_id
-            FROM guild_preferences
-            WHERE guild_id = ?
-        """;
+                    SELECT guild_id, ai_enabled, rules_channel_id,
+                           auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
+                           auto_kick_enabled, auto_ban_enabled, audit_log_channel_id
+                    FROM guild_preferences
+                    WHERE guild_id = ?
+                """;
 
         try {
             return database.query(conn -> {
@@ -192,15 +199,15 @@ public class GuildPreferencesRepository {
         ChannelID auditLogChannelId = rs.wasNull() ? null : new ChannelID(auditLogRaw);
 
         return new GuildPreferences(
-            guildId,
-            rs.getBoolean("ai_enabled"),
-            rulesChannelId,
-            rs.getBoolean("auto_warn_enabled"),
-            rs.getBoolean("auto_delete_enabled"),
-            rs.getBoolean("auto_timeout_enabled"),
-            rs.getBoolean("auto_kick_enabled"),
-            rs.getBoolean("auto_ban_enabled"),
-            auditLogChannelId
+                guildId,
+                rs.getBoolean("ai_enabled"),
+                rulesChannelId,
+                rs.getBoolean("auto_warn_enabled"),
+                rs.getBoolean("auto_delete_enabled"),
+                rs.getBoolean("auto_timeout_enabled"),
+                rs.getBoolean("auto_kick_enabled"),
+                rs.getBoolean("auto_ban_enabled"),
+                auditLogChannelId
         );
     }
 

@@ -3,6 +3,7 @@ package net.honeyberries.discord.slashCommands;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
@@ -12,7 +13,7 @@ import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.repository.AppealRepository;
-import net.honeyberries.datatypes.content.AppealData;
+import net.honeyberries.datatypes.action.AppealData;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.util.AppealCommandHelper;
 import net.honeyberries.util.DiscordUtils;
@@ -153,6 +154,23 @@ public class AppealCommands extends ListenerAdapter {
     }
 
     /**
+     * Handles button interactions for appeal acceptance/rejection.
+     */
+    @Override
+    public void onButtonInteraction(@NotNull ButtonInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
+        String componentId = event.getComponentId();
+        if (componentId.startsWith("appeal:accept:") || componentId.startsWith("appeal:reject:")) {
+            try {
+                helper.handleAppealButton(event);
+            } catch (Exception e) {
+                logger.error("Error handling appeal button interaction", e);
+                event.reply("An unexpected error occurred.").setEphemeral(true).queue();
+            }
+        }
+    }
+
+    /**
      * Handles the {@code /appeal submit} subcommand.
      * Shows a select menu for the user to pick from their moderation history.
      *
@@ -189,11 +207,11 @@ public class AppealCommands extends ListenerAdapter {
 
         StringBuilder sb = new StringBuilder("**Open appeals:**\n");
         for (AppealData a : openAppeals) {
-            String actionInfo = a.actionId() != null ? String.format(" (action: `%s`)", a.actionId()) : "";
+            String actionInfo = String.format(" (%s)", a.actionData().action().name());
             sb.append(String.format("• `%s` — %s — %s%s%n",
                     a.id(), DiscordUtils.userMention(a.userId()), DiscordUtils.truncate(a.reason(), 60), actionInfo));
         }
-        sb.append("\nUse `/appeal close <appeal_id> [note]` to resolve an appeal.");
+        sb.append("\nAppeals can be accepted or rejected via buttons on the appeal embeds in the audit log.");
         reply(event, sb.toString());
     }
 

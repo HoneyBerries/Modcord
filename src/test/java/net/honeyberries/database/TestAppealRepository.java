@@ -4,8 +4,7 @@ import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.AppealRepository;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
-import net.honeyberries.datatypes.action.ActionType;
-import net.honeyberries.datatypes.content.AppealData;
+import net.honeyberries.datatypes.action.AppealData;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import org.junit.jupiter.api.*;
@@ -86,7 +85,6 @@ public class TestAppealRepository {
         assertFalse(appeals.isEmpty(), "Should have at least one open appeal after creation");
 
         for (AppealData appeal : appeals) {
-            assertTrue(appeal.isOpen(), "All returned appeals should be open");
             assertEquals(TEST_GUILD_ID, appeal.guildID(), "Appeal should belong to the test guild");
         }
     }
@@ -156,8 +154,7 @@ public class TestAppealRepository {
         List<AppealData> appeals = appealRepository.getOpenAppeals(TEST_GUILD_ID);
 
         for (AppealData appeal : appeals) {
-            assertNotNull(appeal.actionId(), "All appeals must have an action ID");
-            assertTrue(appeal.isOpen(), "Appeal should be open");
+            assertNotNull(appeal.actionData(), "All appeals must have an action");
         }
 
         assertFalse(appeals.isEmpty(), "Query should complete successfully");
@@ -171,8 +168,8 @@ public class TestAppealRepository {
 
         if (appeals.size() >= 2) {
             for (int i = 0; i < appeals.size() - 1; i++) {
-                Instant current = appeals.get(i).submittedAt();
-                Instant next = appeals.get(i + 1).submittedAt();
+                Instant current = appeals.get(i).submittedTimestamp();
+                Instant next = appeals.get(i + 1).submittedTimestamp();
 
                 assertTrue(current.isBefore(next) || current.equals(next),
                         "Appeals should be ordered by submission time (oldest first)");
@@ -187,7 +184,7 @@ public class TestAppealRepository {
         List<AppealData> openAppeals = appealRepository.getOpenAppeals(TEST_GUILD_ID);
 
         for (AppealData appeal : openAppeals) {
-            assertNotNull(appeal.actionId(), "All appeals must have an action ID");
+            assertNotNull(appeal.actionData(), "All appeals must have an action");
         }
     }
 }

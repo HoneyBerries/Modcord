@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -30,11 +30,17 @@ import java.util.UUID;
  */
 public class GuildModerationActionsRepository {
 
-    /** Logger for recording database operations. */
-    private final Logger logger = LoggerFactory.getLogger(GuildModerationActionsRepository.class);
-    /** Singleton instance. */
+    /**
+     * Singleton instance.
+     */
     private static final GuildModerationActionsRepository INSTANCE = new GuildModerationActionsRepository();
-    /** Database connection pool. */
+    /**
+     * Logger for recording database operations.
+     */
+    private final Logger logger = LoggerFactory.getLogger(GuildModerationActionsRepository.class);
+    /**
+     * Database connection pool.
+     */
     private final Database database;
 
     /**
@@ -67,11 +73,11 @@ public class GuildModerationActionsRepository {
         try {
             database.transaction(conn -> {
                 String insertActionSql = """
-                    INSERT INTO guild_moderation_actions (
-                        action_id, guild_id, user_id, moderator_id, action, reason,
-                        timeout_duration, ban_duration, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """;
+                            INSERT INTO guild_moderation_actions (
+                                action_id, guild_id, user_id, moderator_id, action, reason,
+                                timeout_duration, ban_duration, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """;
 
                 try (PreparedStatement ps = conn.prepareStatement(insertActionSql)) {
                     ps.setObject(1, actionData.id());
@@ -82,15 +88,15 @@ public class GuildModerationActionsRepository {
                     ps.setString(6, actionData.reason());
                     ps.setLong(7, actionData.timeoutDuration());
                     ps.setLong(8, actionData.banDuration());
-                    ps.setObject(9, actionData.timestamp());
+                    ps.setTimestamp(9, Timestamp.from(actionData.timestamp()));
                     ps.executeUpdate();
                 }
 
                 String insertDeletionSql = """
-                    INSERT INTO guild_moderation_action_deletions (
-                        action_id, channel_id, message_id
-                    ) VALUES (?, ?, ?)
-                """;
+                            INSERT INTO guild_moderation_action_deletions (
+                                action_id, channel_id, message_id
+                            ) VALUES (?, ?, ?)
+                        """;
 
                 try (PreparedStatement ps = conn.prepareStatement(insertDeletionSql)) {
                     for (MessageDeletion deletion : actionData.deletions()) {
@@ -121,10 +127,10 @@ public class GuildModerationActionsRepository {
     public ActionData getActionById(@NotNull UUID actionId) {
         Objects.requireNonNull(actionId, "actionId must not be null");
         String sql = """
-            SELECT *
-            FROM guild_moderation_actions
-            WHERE action_id = ?
-        """;
+                    SELECT *
+                    FROM guild_moderation_actions
+                    WHERE action_id = ?
+                """;
 
         try {
             return database.query(conn -> {
@@ -157,11 +163,11 @@ public class GuildModerationActionsRepository {
     public List<ActionData> getActionsByGuild(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
-            SELECT *
-            FROM guild_moderation_actions
-            WHERE guild_id = ?
-            ORDER BY created_at DESC
-        """;
+                    SELECT *
+                    FROM guild_moderation_actions
+                    WHERE guild_id = ?
+                    ORDER BY created_at DESC
+                """;
 
         try {
             return database.query(conn -> {
@@ -190,17 +196,17 @@ public class GuildModerationActionsRepository {
      * Returns an empty list if no actions are found or if a database error occurs.
      *
      * @param guildId the guild ID to search in
-     * @param userId the user ID to match
+     * @param userId  the user ID to match
      * @return a list of {@code ActionData} in reverse chronological order, never {@code null}
      */
     @NotNull
     public List<ActionData> getActionsByUser(GuildID guildId, UserID userId) {
         String sql = """
-            SELECT *
-            FROM guild_moderation_actions
-            WHERE guild_id = ? AND user_id = ?
-            ORDER BY created_at DESC
-        """;
+                    SELECT *
+                    FROM guild_moderation_actions
+                    WHERE guild_id = ? AND user_id = ?
+                    ORDER BY created_at DESC
+                """;
 
         try {
             return database.query(conn -> {
@@ -236,11 +242,11 @@ public class GuildModerationActionsRepository {
     @NotNull
     public List<ActionData> getAllActionsByUser(UserID userId) {
         String sql = """
-            SELECT *
-            FROM guild_moderation_actions
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-        """;
+                    SELECT *
+                    FROM guild_moderation_actions
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                """;
 
         try {
             return database.query(conn -> {
@@ -271,23 +277,23 @@ public class GuildModerationActionsRepository {
      * Returns an empty list if no actions are found or if a database error occurs.
      *
      * @param guildId the guild to fetch actions from
-     * @param limit the maximum number of actions to return
+     * @param limit   the maximum number of actions to return
      * @return a list of recent active {@code ActionData} up to {@code limit} in size, ordered newest first, never {@code null}
      */
     @NotNull
     public List<ActionData> getRecentActiveActions(GuildID guildId, int limit) {
         String sql = """
-            SELECT gma.*
-            FROM guild_moderation_actions gma
-            WHERE gma.guild_id = ?
-              AND gma.action != 'NULL'
-              AND NOT EXISTS (
-                    SELECT 1 FROM guild_moderation_action_reversals r
-                    WHERE r.action_id = gma.action_id
-                  )
-            ORDER BY gma.created_at DESC
-            LIMIT ?
-        """;
+                    SELECT gma.*
+                    FROM guild_moderation_actions gma
+                    WHERE gma.guild_id = ?
+                      AND gma.action != 'NULL'
+                      AND NOT EXISTS (
+                            SELECT 1 FROM guild_moderation_action_reversals r
+                            WHERE r.action_id = gma.action_id
+                          )
+                    ORDER BY gma.created_at DESC
+                    LIMIT ?
+                """;
 
         try {
             return database.query(conn -> {
@@ -326,15 +332,15 @@ public class GuildModerationActionsRepository {
         UUID actionId = (UUID) rs.getObject("action_id");
 
         ActionDataBuilder builder = new ActionDataBuilder(
-            actionId,
-            rs.getTimestamp("created_at").toInstant(),
-            new GuildID(rs.getLong("guild_id")),
-            new UserID(rs.getLong("user_id")),
-            new UserID(rs.getLong("moderator_id")),
-            ActionType.valueOf(rs.getString("action")),
-            rs.getString("reason"),
-            rs.getLong("timeout_duration"),
-            rs.getLong("ban_duration")
+                actionId,
+                rs.getTimestamp("created_at").toInstant(),
+                new GuildID(rs.getLong("guild_id")),
+                new UserID(rs.getLong("user_id")),
+                new UserID(rs.getLong("moderator_id")),
+                ActionType.valueOf(rs.getString("action")),
+                rs.getString("reason"),
+                rs.getLong("timeout_duration"),
+                rs.getLong("ban_duration")
         );
 
         getDeletionsByActionId(actionId).forEach(builder::addMessageDeletion);
@@ -354,10 +360,10 @@ public class GuildModerationActionsRepository {
     private List<MessageDeletion> getDeletionsByActionId(@NotNull UUID actionId) {
         Objects.requireNonNull(actionId, "actionId must not be null");
         String sql = """
-            SELECT channel_id, message_id
-            FROM guild_moderation_action_deletions
-            WHERE action_id = ?
-        """;
+                    SELECT channel_id, message_id
+                    FROM guild_moderation_action_deletions
+                    WHERE action_id = ?
+                """;
 
         try {
             return database.query(conn -> {
@@ -395,12 +401,12 @@ public class GuildModerationActionsRepository {
         Objects.requireNonNull(actionId, "actionId must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
         String sql = """
-            INSERT INTO guild_moderation_action_reversals (action_id, reason, reversed_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT (action_id) DO UPDATE SET
-                reason      = EXCLUDED.reason,
-                reversed_at = EXCLUDED.reversed_at
-        """;
+                    INSERT INTO guild_moderation_action_reversals (action_id, reason, reversed_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (action_id) DO UPDATE SET
+                        reason      = EXCLUDED.reason,
+                        reversed_at = EXCLUDED.reversed_at
+                """;
         try {
             database.transaction(conn -> {
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {

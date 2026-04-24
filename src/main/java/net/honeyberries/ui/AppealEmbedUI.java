@@ -1,6 +1,7 @@
 package net.honeyberries.ui;
 
 import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.components.actionrow.ActionRow;
 import net.dv8tion.jda.api.components.label.Label;
 import net.dv8tion.jda.api.components.selections.StringSelectMenu;
@@ -8,8 +9,14 @@ import net.dv8tion.jda.api.components.textinput.TextInput;
 import net.dv8tion.jda.api.components.textinput.TextInputStyle;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.modals.Modal;
+import net.dv8tion.jda.api.utils.TimeFormat;
+import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
+import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.honeyberries.datatypes.action.ActionData;
+import net.honeyberries.datatypes.action.ActionType;
+import net.honeyberries.datatypes.action.AppealData;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.util.ActionHelper;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -23,38 +30,81 @@ import java.util.UUID;
 public class AppealEmbedUI {
 
     /**
-     * Builds an embed notification for a new moderation appeal to be posted in the audit log channel.
+     * Builds a rich appeal notification embed with Accept/Reject buttons for moderators.
+     * Displays the appellant, original action details, and the appeal reason.
      *
-     * @param appellant the user who submitted the appeal
-     * @param appealId the UUID of the appeal
-     * @param actionId the UUID of the action being appealed (required)
-     * @param reason the appeal text
-     * @return an embed builder ready to be built
+     * @param appeal the appeal data with embedded action info, must not be {@code null}
+     * @param appellant the user who submitted the appeal, must not be {@code null}
+     * @return a {@code MessageCreateData} with the embed and action buttons
      */
     @NotNull
-    public static EmbedBuilder buildAppealNotificationEmbed(
-            @NotNull User appellant,
-            @NotNull UUID appealId,
-            @NotNull UUID actionId,
-            @NotNull String reason) {
+    public static MessageCreateData buildAppealNotificationEmbed(
+            @NotNull AppealData appeal,
+            @NotNull User appellant) {
+        Objects.requireNonNull(appeal, "appeal must not be null");
         Objects.requireNonNull(appellant, "appellant must not be null");
-        Objects.requireNonNull(appealId, "appealId must not be null");
-        Objects.requireNonNull(actionId, "actionId must not be null");
-        Objects.requireNonNull(reason, "reason must not be null");
 
-        UserID userId = UserID.fromUser(appellant);
+        ActionData action = appeal.actionData();
+        UserID appellantId = UserID.fromUser(appellant);
+
         EmbedBuilder embed = new EmbedBuilder()
-                .setTitle("📋 New Moderation Appeal")
+                .setTitle(ActionHelper.actionEmoji(action.action()) + " Appeal — " + action.action().name())
                 .setColor(Color.CYAN)
-                .setTimestamp(Instant.now())
-                .addField("Appellant", DiscordUtils.userMention(userId), true)
-                .addField("Appeal ID", "`" + appealId + "`", true)
-                .addField("Action ID", "`" + actionId + "`", true)
+                .setTimestamp(appeal.submittedTimestamp())
+                .addField("Appellant", DiscordUtils.userMention(appellantId), true)
+                .addField("Moderator", DiscordUtils.userMention(action.moderatorId()), true)
+                .addField("Action Type", action.action().name(), true)
+                .addField("Original Reason", action.reason(), false)
+                .addField("Appeal Reason", appeal.reason(), false)
                 .setThumbnail(appellant.getEffectiveAvatarUrl())
-                .addField("Reason", reason, false)
-                .setFooter("Use /appeal close " + appealId + " to resolve", null);
+                .setFooter("Appeal ID: " + appeal.id());
 
-        return embed;
+        if (action.action() == ActionType.TIMEOUT && action.timeoutDuration() > 0) {
+            Instant expiresAt = action.timestamp().plusSeconds(action.timeoutDuration());
+            embed.addField("Duration",
+                    formatDuration(action.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                    false);
+        }
+
+        if (action.action() == ActionType.BAN && action.banDuration() > 0) {
+            if (action.banDuration() >= Integer.MAX_VALUE) {
+                embed.addField("Duration", "Permanent", false);
+            } else {
+                Instant expiresAt = action.timestamp().plusSeconds(action.banDuration());
+                embed.addField("Duration",
+                        formatDuration(action.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                        false);
+            }
+        }
+
+        Button acceptBtn = Button.success("appeal:accept:" + appeal.id(), "✅ Accept");
+        Button rejectBtn = Button.danger("appeal:reject:" + appeal.id(), "❌ Reject");
+
+        return new MessageCreateBuilder()
+                .setEmbeds(embed.build())
+                .addComponents(ActionRow.of(acceptBtn, rejectBtn))
+                .build();
+    }
+
+    /**
+     * Formats a duration in seconds into a human-readable string (e.g., "1d 2h 30m").
+     *
+     * @param seconds the duration in seconds
+     * @return a formatted duration string
+     */
+    @NotNull
+    private static String formatDuration(long seconds) {
+        long days    = seconds / 86400;
+        long hours   = (seconds % 86400) / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long secs    = seconds % 60;
+
+        StringBuilder sb = new StringBuilder();
+        if (days    > 0) sb.append(days).append("d ");
+        if (hours   > 0) sb.append(hours).append("h ");
+        if (minutes > 0) sb.append(minutes).append("m ");
+        if (secs    > 0 || sb.isEmpty()) sb.append(secs).append("s");
+        return sb.toString().trim();
     }
 
     /**

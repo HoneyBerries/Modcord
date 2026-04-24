@@ -1,7 +1,10 @@
 package net.honeyberries.database.repository;
 
 import net.honeyberries.database.Database;
-import net.honeyberries.datatypes.content.AppealData;
+import net.honeyberries.datatypes.action.ActionData;
+import net.honeyberries.datatypes.action.ActionDataBuilder;
+import net.honeyberries.datatypes.action.ActionType;
+import net.honeyberries.datatypes.action.AppealData;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
@@ -11,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -124,24 +128,27 @@ public class AppealRepository {
 
     /**
      * Retrieves all open appeals for a guild where the underlying action has not been reversed,
-     * ordered by submission time (oldest first).
+     * ordered by submission time (oldest first). Each appeal includes the full action details via JOIN.
      *
      * @param guildId the guild to query, must not be {@code null}
-     * @return list of open appeal records for active actions, never {@code null}
+     * @return list of open appeal records with embedded action data, never {@code null}
      * @throws NullPointerException if {@code guildId} is {@code null}
      */
     @NotNull
     public List<AppealData> getOpenAppeals(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
-            SELECT ma.appeal_id, ma.guild_id, ma.user_id, ma.action_id, ma.reason, ma.is_open, ma.submitted_at, ma.resolution_note
+            SELECT ma.appeal_id, ma.guild_id, ma.user_id, ma.action_id, ma.reason, ma.submitted_at,
+                   gma.moderator_id, gma.action, gma.reason AS action_reason,
+                   gma.timeout_duration, gma.ban_duration, gma.created_at
             FROM moderation_appeals ma
+            JOIN guild_moderation_actions gma ON ma.action_id = gma.action_id
             WHERE ma.guild_id = ?
               AND ma.is_open = TRUE
-              AND (ma.action_id IS NULL OR NOT EXISTS (
+              AND NOT EXISTS (
                     SELECT 1 FROM guild_moderation_action_reversals r
                     WHERE r.action_id = ma.action_id
-                  ))
+                  )
             ORDER BY ma.submitted_at
         """;
 
@@ -152,18 +159,8 @@ public class AppealRepository {
                     ps.setLong(1, guildId.value());
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            Timestamp submittedAt = rs.getTimestamp("submitted_at");
-
-                            results.add(new AppealData(
-                                    (UUID) rs.getObject("appeal_id"),
-                                    new GuildID(rs.getLong("guild_id")),
-                                    new UserID(rs.getLong("user_id")),
-                                    rs.getString("reason"),
-                                    (UUID) rs.getObject("action_id"),
-                                    rs.getBoolean("is_open"),
-                                    submittedAt.toInstant(),
-                                    rs.getString("resolution_note")
-                            ));
+                            AppealData appeal = mapAppealWithAction(rs);
+                            results.add(appeal);
                         }
                     }
                 }
@@ -173,6 +170,42 @@ public class AppealRepository {
             logger.error("Failed to fetch open appeals for guild {}", guildId, e);
             return List.of();
         }
+    }
+
+    /**
+     * Maps a result set row (with joined action columns) into an {@code AppealData} with embedded {@code ActionData}.
+     *
+     * @param rs result set positioned on an appeal+action row
+     * @return reconstructed appeal data with embedded action
+     * @throws SQLException if a column cannot be accessed
+     */
+    @NotNull
+    private AppealData mapAppealWithAction(@NotNull ResultSet rs) throws SQLException {
+        Objects.requireNonNull(rs, "rs must not be null");
+
+        Instant submittedAt = rs.getTimestamp("submitted_at").toInstant();
+        Instant actionCreatedAt = rs.getTimestamp("created_at").toInstant();
+
+        ActionData action = new ActionDataBuilder(
+                (UUID) rs.getObject("action_id"),
+                actionCreatedAt,
+                new GuildID(rs.getLong("guild_id")),
+                new UserID(rs.getLong("user_id")),
+                new UserID(rs.getLong("moderator_id")),
+                ActionType.valueOf(rs.getString("action")),
+                rs.getString("action_reason"),
+                rs.getLong("timeout_duration"),
+                rs.getLong("ban_duration")
+        ).build();
+
+        return new AppealData(
+                (UUID) rs.getObject("appeal_id"),
+                submittedAt,
+                new GuildID(rs.getLong("guild_id")),
+                new UserID(rs.getLong("user_id")),
+                rs.getString("reason"),
+                action
+        );
     }
 
     /**
