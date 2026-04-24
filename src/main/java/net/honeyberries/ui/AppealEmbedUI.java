@@ -1,8 +1,8 @@
 package net.honeyberries.ui;
 
 import net.dv8tion.jda.api.EmbedBuilder;
-import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.components.actionrow.ActionRow;
+import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.components.label.Label;
 import net.dv8tion.jda.api.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.components.textinput.TextInput;
@@ -19,13 +19,11 @@ import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.util.ActionHelper;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
-import java.awt.Color;
+import java.awt.*;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 
 public class AppealEmbedUI {
 
@@ -132,7 +130,7 @@ public class AppealEmbedUI {
                 label = actionTypeStr + " (DM)";
 
             } else if (isDM) {
-                label = actionTypeStr + " (from " + action.guildId().toGuild().getName() + " — " + truncatedReason + ")";
+                label = actionTypeStr + " (from " + Objects.requireNonNull(action.guildId().toGuild()).getName() + " — " + truncatedReason + ")";
 
             } else {
                 label = actionTypeStr + " — " + truncatedReason;

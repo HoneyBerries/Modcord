@@ -1,6 +1,7 @@
 package net.honeyberries.discord.slashCommands;
 
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
@@ -15,6 +16,7 @@ import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.repository.AppealRepository;
 import net.honeyberries.datatypes.action.AppealData;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.ui.AppealEmbedUI;
 import net.honeyberries.util.AppealCommandHelper;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
@@ -46,6 +48,7 @@ import java.util.UUID;
 public class AppealCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(AppealCommands.class);
+    private static final int DEFAULT_LIMIT = 5;
     private final AppealCommandHelper helper = new AppealCommandHelper();
 
     /**
@@ -59,7 +62,12 @@ public class AppealCommands extends ListenerAdapter {
         SlashCommandData appealCommand = Commands.slash("appeal", "Ban/moderation appeal system")
                 .addSubcommands(
                         new SubcommandData("submit", "Submit an appeal for a moderation action (works in DMs)"),
-                        new SubcommandData("list", "List open appeals (administrator only, guild only)"),
+                        new SubcommandData("list", "List open appeals (administrator only, guild only)")
+                                .addOption(OptionType.INTEGER, "limit",
+                                        "Number of appeals to show (default 5)", false),
+                        new SubcommandData("get", "Get details of a specific appeal (administrator only, guild only)")
+                                .addOption(OptionType.STRING, "appeal_id",
+                                        "UUID of the appeal to view", true),
                         new SubcommandData("close", "Close/resolve an appeal (administrator only, guild only)")
                                 .addOption(OptionType.STRING, "appeal_id",
                                         "UUID of the appeal to close", true)
@@ -100,6 +108,14 @@ public class AppealCommands extends ListenerAdapter {
                         return;
                     }
                     handleList(event, guild);
+                }
+                case "get"    -> {
+                    Guild guild = event.getGuild();
+                    if (guild == null) {
+                        reply(event, "Get can only be used inside a server.");
+                        return;
+                    }
+                    handleGet(event, guild);
                 }
                 case "close"  -> {
                     Guild guild = event.getGuild();
@@ -183,7 +199,8 @@ public class AppealCommands extends ListenerAdapter {
 
     /**
      * Handles the {@code /appeal list} subcommand.
-     * Displays open (unresolved) appeals for the guild. Administrator only.
+     * Displays recent open (unresolved) appeals for the guild as rich embeds. Administrator only.
+     * Uses an optional limit argument; defaults to 5 if not specified.
      *
      * @param event the interaction event, must not be {@code null}
      * @param guild the guild in which the command was issued, must not be {@code null}
@@ -197,6 +214,12 @@ public class AppealCommands extends ListenerAdapter {
             return;
         }
 
+        int limit = event.getOption("limit", DEFAULT_LIMIT, OptionMapping::getAsInt);
+        if (limit <= 0) {
+            reply(event, "Limit must be a positive number.");
+            return;
+        }
+
         GuildID guildId = GuildID.fromGuild(guild);
         List<AppealData> openAppeals = AppealRepository.getInstance().getOpenAppeals(guildId);
 
@@ -205,14 +228,68 @@ public class AppealCommands extends ListenerAdapter {
             return;
         }
 
-        StringBuilder sb = new StringBuilder("**Open appeals:**\n");
-        for (AppealData a : openAppeals) {
-            String actionInfo = String.format(" (%s)", a.actionData().action().name());
-            sb.append(String.format("• `%s` — %s — %s%s%n",
-                    a.id(), DiscordUtils.userMention(a.userId()), DiscordUtils.truncate(a.reason(), 60), actionInfo));
+        // Show only up to the limit, oldest first (already ordered that way from the query)
+        List<AppealData> appealsToShow = openAppeals.stream()
+                .limit(limit)
+                .toList();
+
+        event.reply("Open appeals (" + appealsToShow.size() + " of " + openAppeals.size() + "):").setEphemeral(true).queue();
+        for (AppealData appeal : appealsToShow) {
+            User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
+            if (appellant != null) {
+                event.getHook().sendMessage(AppealEmbedUI.buildAppealNotificationEmbed(appeal, appellant)).setEphemeral(true).queue();
+            }
         }
-        sb.append("\nAppeals can be accepted or rejected via buttons on the appeal embeds in the audit log.");
-        reply(event, sb.toString());
+    }
+
+    /**
+     * Handles the {@code /appeal get} subcommand.
+     * Displays a single appeal by UUID as a rich embed. Administrator only.
+     *
+     * @param event the interaction event, must not be {@code null}
+     * @param guild the guild in which the command was issued, must not be {@code null}
+     */
+    private void handleGet(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
+        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(guild, "guild must not be null");
+
+        if (!DiscordUtils.isAdmin(event.getMember())) {
+            reply(event, "Only administrators can view appeals.");
+            return;
+        }
+
+        String appealIdStr = event.getOption("appeal_id", OptionMapping::getAsString);
+        if (appealIdStr == null || appealIdStr.isBlank()) {
+            reply(event, "Please provide the appeal UUID.");
+            return;
+        }
+
+        UUID appealId;
+        try {
+            appealId = UUID.fromString(appealIdStr.strip());
+        } catch (IllegalArgumentException e) {
+            reply(event, "Invalid appeal ID format. Please provide a valid UUID.");
+            return;
+        }
+
+        GuildID guildId = GuildID.fromGuild(guild);
+        List<AppealData> openAppeals = AppealRepository.getInstance().getOpenAppeals(guildId);
+        AppealData appeal = openAppeals.stream()
+                .filter(a -> a.id().equals(appealId))
+                .findFirst()
+                .orElse(null);
+
+        if (appeal == null) {
+            reply(event, "Appeal not found or has been resolved.");
+            return;
+        }
+
+        User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
+        if (appellant != null) {
+            event.reply(AppealEmbedUI.buildAppealNotificationEmbed(appeal, appellant)).setEphemeral(true).queue();
+        } else {
+            reply(event, "Could not retrieve appellant information.");
+        }
     }
 
     /**
