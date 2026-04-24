@@ -270,7 +270,7 @@ public class AppealCommandHelper {
 
             // Update the embed: change to green with "Accepted" title
             updateAppealEmbedAccepted(event, appeal, moderatorName);
-            event.reply("Appeal accepted.").setEphemeral(true).queue();
+            event.getHook().sendMessage("Appeal accepted.").setEphemeral(true).queue();
         } else {
             // Reject: close the appeal without rollback
             String closeNote = "Rejected by " + moderatorName;
@@ -287,7 +287,7 @@ public class AppealCommandHelper {
 
             // Update the embed: change to red with "Rejected" title
             updateAppealEmbedRejected(event, appeal, moderatorName);
-            event.reply("Appeal rejected.").setEphemeral(true).queue();
+            event.getHook().sendMessage("Appeal rejected.").setEphemeral(true).queue();
         }
     }
 
