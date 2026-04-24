@@ -1,5 +1,6 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.content.ChannelGuidelines;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Types;
 import java.util.Objects;
 
 /**
@@ -61,7 +63,7 @@ public class ChannelGuidelinesRepository {
                     if (channelGuidelines.guidelinesText() != null) {
                         ps.setString(3, channelGuidelines.guidelinesText());
                     } else {
-                        ps.setNull(3, java.sql.Types.VARCHAR);
+                        ps.setNull(3, Types.VARCHAR);
                     }
                     ps.executeUpdate();
                 }

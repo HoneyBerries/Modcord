@@ -1,11 +1,10 @@
 package net.honeyberries.preferences;
 
-import net.honeyberries.database.GuildPreferencesRepository;
+import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 

@@ -3,7 +3,7 @@ package net.honeyberries.ai;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.GuildRulesRepository;
+import net.honeyberries.database.repository.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;

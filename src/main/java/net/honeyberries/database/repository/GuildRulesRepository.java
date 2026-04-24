@@ -1,5 +1,6 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Types;
 import java.util.Objects;
 
 /**
@@ -18,12 +20,25 @@ import java.util.Objects;
  * Supports upsert operations to refresh rules without key conflicts.
  */
 public class GuildRulesRepository {
-    /** Logger for recording database operations. */
-    private final Logger logger = LoggerFactory.getLogger(GuildRulesRepository.class);
-    /** Database connection pool. */
-    private final Database database;
-    /** Singleton instance. */
+    /**
+     * Singleton instance.
+     */
     private static final GuildRulesRepository INSTANCE = new GuildRulesRepository();
+    /**
+     * Logger for recording database operations.
+     */
+    private final Logger logger = LoggerFactory.getLogger(GuildRulesRepository.class);
+    /**
+     * Database connection pool.
+     */
+    private final Database database;
+
+    /**
+     * Constructs a new repository, retrieving the singleton database instance.
+     */
+    public GuildRulesRepository() {
+        this.database = Database.getInstance();
+    }
 
     /**
      * Retrieves the singleton instance of this repository.
@@ -33,13 +48,6 @@ public class GuildRulesRepository {
     @NotNull
     public static GuildRulesRepository getInstance() {
         return INSTANCE;
-    }
-
-    /**
-     * Constructs a new repository, retrieving the singleton database instance.
-     */
-    public GuildRulesRepository() {
-        this.database = Database.getInstance();
     }
 
     /**
@@ -56,25 +64,25 @@ public class GuildRulesRepository {
         try {
             database.transaction(conn -> {
                 String sql = """
-                    INSERT INTO guild_rules (guild_id, rules_channel_id, rules_text)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT (guild_id) DO UPDATE SET
-                        rules_channel_id = EXCLUDED.rules_channel_id,
-                        rules_text = EXCLUDED.rules_text
-                """;
+                            INSERT INTO guild_rules (guild_id, rules_channel_id, rules_text)
+                            VALUES (?, ?, ?)
+                            ON CONFLICT (guild_id) DO UPDATE SET
+                                rules_channel_id = EXCLUDED.rules_channel_id,
+                                rules_text = EXCLUDED.rules_text
+                        """;
 
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setLong(1, guildRules.guildId().value());
                     if (guildRules.rulesChannelId() != null) {
                         ps.setLong(2, guildRules.rulesChannelId().value());
                     } else {
-                        ps.setNull(2, java.sql.Types.BIGINT);
+                        ps.setNull(2, Types.BIGINT);
                     }
 
                     if (guildRules.rulesText() != null) {
                         ps.setString(3, guildRules.rulesText());
                     } else {
-                        ps.setNull(3, java.sql.Types.VARCHAR);
+                        ps.setNull(3, Types.VARCHAR);
                     }
                     ps.executeUpdate();
                 }
@@ -98,10 +106,10 @@ public class GuildRulesRepository {
     public GuildRules getGuildRulesFromCache(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
-            SELECT guild_id, rules_channel_id, rules_text
-            FROM guild_rules
-            WHERE guild_id = ?
-        """;
+                    SELECT guild_id, rules_channel_id, rules_text
+                    FROM guild_rules
+                    WHERE guild_id = ?
+                """;
 
         try {
             return database.query(conn -> {
@@ -114,9 +122,9 @@ public class GuildRulesRepository {
                             ChannelID rulesChannelId = rs.wasNull() ? null : new ChannelID(rulesChannelRaw);
 
                             return new GuildRules(
-                                new GuildID(rs.getLong("guild_id")),
-                                rulesChannelId,
-                                rs.getString("rules_text")
+                                    new GuildID(rs.getLong("guild_id")),
+                                    rulesChannelId,
+                                    rs.getString("rules_text")
                             );
                         }
                         return null;

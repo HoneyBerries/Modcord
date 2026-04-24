@@ -1,7 +1,8 @@
-package net.honeyberries.database;
+package net.honeyberries.database.repository;
 
 import com.openai.core.ObjectMappers;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -15,6 +16,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -216,7 +218,7 @@ public class AILogRepository {
 				(UUID) rs.getObject("interaction_id"),
 				new GuildID(rs.getLong("guild_id")),
 				(ArrayNode) objectMapper.readTree(rs.getString("interaction")),
-				rs.getObject("timestamp", OffsetDateTime.class)
+				OffsetDateTime.ofInstant(rs.getTimestamp("timestamp").toInstant(), ZoneOffset.UTC)
 		);
 	}
 }

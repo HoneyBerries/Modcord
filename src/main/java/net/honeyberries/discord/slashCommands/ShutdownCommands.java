@@ -5,7 +5,7 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
-import net.honeyberries.database.SpecialUsersRepository;
+import net.honeyberries.database.repository.SpecialUsersRepository;
 import net.honeyberries.Main;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;

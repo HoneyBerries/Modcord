@@ -10,9 +10,9 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.interactions.commands.build.*;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
-import net.honeyberries.database.GuildPreferencesRepository;
-import net.honeyberries.database.GuildRulesRepository;
-import net.honeyberries.database.SpecialUsersRepository;
+import net.honeyberries.database.repository.GuildPreferencesRepository;
+import net.honeyberries.database.repository.GuildRulesRepository;
+import net.honeyberries.database.repository.SpecialUsersRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;

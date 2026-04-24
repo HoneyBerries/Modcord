@@ -80,8 +80,8 @@ liquibase {
         arguments = mapOf(
             "changelogFile" to "./db/changelog/db.changelog-master.xml",
             "searchPath" to "src/main/resources",
-            "url" to "jdbc:postgresql://modcord-test-db.postgres.database.azure.com:5432/postgres",
-            "username" to "ModcordTestAdmin",
+            "url" to "jdbc:postgresql://modcord-postgres-prod.postgres.database.azure.com:5432/postgres",
+            "username" to "ModcordDBAdmin",
             "password" to envProps.getProperty("POSTGRES_DB_PASSWORD")
         )
     }

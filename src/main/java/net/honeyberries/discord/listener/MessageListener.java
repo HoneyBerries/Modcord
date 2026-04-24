@@ -5,7 +5,7 @@ import net.dv8tion.jda.api.events.message.MessageDeleteEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.message.MessageUpdateEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.honeyberries.database.ExcludedEntitiesRepository;
+import net.honeyberries.database.repository.ExcludedEntitiesRepository;
 import net.honeyberries.datatypes.discord.*;
 import net.honeyberries.message.HistoryFetcher;
 import net.honeyberries.message.MessageFilter;
@@ -53,7 +53,7 @@ public class MessageListener extends ListenerAdapter {
         ChannelID channelID = ChannelID.fromChannel(event.getChannel());
 
         if (shouldExclude(guildID, userID, roleIDList, channelID)) {
-            logger.debug("Message excluded by filter. Not adding to context window.");
+            logger.debug("Message excluded by filter upon receiving. Not adding to context window.");
             return;
         }
 
@@ -89,7 +89,7 @@ public class MessageListener extends ListenerAdapter {
         ChannelID channelID = ChannelID.fromChannel(event.getChannel());
 
         if (shouldExclude(guildID, userID, roleIDList, channelID)) {
-            logger.debug("Message excluded by filter. Not adding to context window.");
+            logger.debug("Message excluded by filter upon editing. Not adding to context window.");
             return;
         }
         
