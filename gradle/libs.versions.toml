@@ -9,7 +9,7 @@ org-liquibase-gradle = { id = "org.liquibase.gradle", version = "3.1.0" }
 
 openai-java = "com.openai:openai-java:4.32.0"
 
-gson = "com.google.code.gson:gson:2.14.2"
+gson = "com.google.code.gson:gson:2.14.0"
 jackson-databind = "tools.jackson.core:jackson-databind:3.1.2"
 
 jda = "net.dv8tion:JDA:6.4.1"
