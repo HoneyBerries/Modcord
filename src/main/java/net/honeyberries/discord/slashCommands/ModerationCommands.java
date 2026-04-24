@@ -25,6 +25,8 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -252,13 +254,15 @@ public class ModerationCommands extends ListenerAdapter {
         Objects.requireNonNull(reason, "reason must not be null");
         ActionData actionData = new ActionData(
                 UUID.randomUUID(),
+                Instant.now(),
                 GuildID.fromGuild(guild),
                 UserID.fromUser(targetUser),
                 new UserID(moderator.getIdLong()),
                 actionType,
                 reason,
                 timeoutDuration,
-                banDuration
+                banDuration,
+                List.of()
         );
 
         boolean persisted = GuildModerationActionsRepository.getInstance().addActionToDatabase(actionData);

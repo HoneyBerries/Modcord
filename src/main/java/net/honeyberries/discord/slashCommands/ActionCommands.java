@@ -128,7 +128,7 @@ public class ActionCommands extends ListenerAdapter {
         }
 
         GuildID guildId = GuildID.fromGuild(guild);
-        List<ActionData> recentActions = GuildModerationActionsRepository.getInstance().getRecentActions(guildId, limit);
+        List<ActionData> recentActions = GuildModerationActionsRepository.getInstance().getRecentActiveActions(guildId, limit);
 
         if (recentActions.isEmpty()) {
             reply(event, "No recent active moderation actions found for this server.");

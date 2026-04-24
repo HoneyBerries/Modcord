@@ -33,7 +33,7 @@ public class TestGuildModerationActionsRepository {
     @DisplayName("Should retrieve recent actions with limit of 5")
     void testGetRecentActionsLimit5() {
         GuildID guildId = new GuildID(TEST_GUILD_ID);
-        List<ActionData> actions = repository.getRecentActions(guildId, 5);
+        List<ActionData> actions = repository.getRecentActiveActions(guildId, 5);
 
         assertEquals(5, actions.size(), "Should return at most 5 actions");
 
@@ -50,7 +50,7 @@ public class TestGuildModerationActionsRepository {
     @DisplayName("Should retrieve recent actions with limit of 2")
     void testGetRecentActionsLimit2() {
         GuildID guildId = new GuildID(TEST_GUILD_ID);
-        List<ActionData> actions = repository.getRecentActions(guildId, 2);
+        List<ActionData> actions = repository.getRecentActiveActions(guildId, 2);
 
         assertEquals(2, actions.size(), "Should return at most 2 actions");
 
@@ -67,8 +67,8 @@ public class TestGuildModerationActionsRepository {
     void testGetRecentActionsWithDifferentLimits() {
         GuildID guildId = new GuildID(TEST_GUILD_ID);
 
-        List<ActionData> limit5 = repository.getRecentActions(guildId, 5);
-        List<ActionData> limit10 = repository.getRecentActions(guildId, 10);
+        List<ActionData> limit5 = repository.getRecentActiveActions(guildId, 5);
+        List<ActionData> limit10 = repository.getRecentActiveActions(guildId, 10);
 
         assertTrue(limit5.size() <= limit10.size(), "Limit 5 should return same or fewer than limit 10");
         assertTrue(limit5.size() <= 5, "Limit 5 should return at most 5");
@@ -86,7 +86,7 @@ public class TestGuildModerationActionsRepository {
         Random random = new Random();
         int limit = random.nextInt(1, 20);
 
-        List<ActionData> actions = repository.getRecentActions(guildId, limit);
+        List<ActionData> actions = repository.getRecentActiveActions(guildId, limit);
 
         assertEquals(actions.size(), limit, "Limit should be at most the number of actions");
     }
@@ -97,7 +97,7 @@ public class TestGuildModerationActionsRepository {
     void testGetRecentActionsWithHighLimit() {
         GuildID guildId = new GuildID(TEST_GUILD_ID);
 
-        List<ActionData> allActions = repository.getRecentActions(guildId, 100);
+        List<ActionData> allActions = repository.getRecentActiveActions(guildId, 100);
 
         assertTrue(allActions.size() <= 100, "Should respect the limit of 100");
 
@@ -115,7 +115,7 @@ public class TestGuildModerationActionsRepository {
     @DisplayName("Should filter out NULL actions correctly")
     void testNullActionsAreFiltered() {
         GuildID guildId = new GuildID(TEST_GUILD_ID);
-        List<ActionData> actions = repository.getRecentActions(guildId, 100);
+        List<ActionData> actions = repository.getRecentActiveActions(guildId, 100);
 
         for (ActionData action : actions) {
             assertNotEquals(ActionType.NULL, action.action(),
@@ -144,7 +144,7 @@ public class TestGuildModerationActionsRepository {
         });
 
         // Get recent actions
-        List<ActionData> recentActions = repository.getRecentActions(guildId, 100);
+        List<ActionData> recentActions = repository.getRecentActiveActions(guildId, 100);
 
         // Verify that none of the returned actions have reversals
         for (ActionData action : recentActions) {

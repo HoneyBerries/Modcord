@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -68,8 +69,8 @@ public class GuildModerationActionsRepository {
                 String insertActionSql = """
                     INSERT INTO guild_moderation_actions (
                         action_id, guild_id, user_id, moderator_id, action, reason,
-                        timeout_duration, ban_duration
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        timeout_duration, ban_duration, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
                 try (PreparedStatement ps = conn.prepareStatement(insertActionSql)) {
@@ -81,6 +82,7 @@ public class GuildModerationActionsRepository {
                     ps.setString(6, actionData.reason());
                     ps.setLong(7, actionData.timeoutDuration());
                     ps.setLong(8, actionData.banDuration());
+                    ps.setObject(9, actionData.timestamp());
                     ps.executeUpdate();
                 }
 
@@ -262,49 +264,6 @@ public class GuildModerationActionsRepository {
         }
     }
 
-    /**
-     * Fetches all actions in a guild that have not yet been reversed, ordered newest first.
-     * Used by the rollback command to present candidates to moderators.
-     *
-     * @param guildId guild to fetch actions from, must not be {@code null}
-     * @return list of active (non-reversed) actions, never {@code null}
-     * @throws NullPointerException if {@code guildId} is {@code null}
-     */
-    @NotNull
-    public List<ActionData> getActiveActions(@NotNull GuildID guildId) {
-        Objects.requireNonNull(guildId, "guildId must not be null");
-        String sql = """
-            SELECT gma.*
-            FROM guild_moderation_actions gma
-            WHERE gma.guild_id = ?
-              AND NOT EXISTS (
-                    SELECT 1 FROM guild_moderation_action_reversals r
-                    WHERE r.action_id = gma.action_id
-                  )
-            ORDER BY gma.created_at DESC
-        """;
-
-        try {
-            return database.query(conn -> {
-                List<ActionData> actions = new ArrayList<>();
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            actions.add(mapAction(rs));
-                        }
-                    }
-                }
-
-                return actions;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch active actions for guild {}", guildId, e);
-            return List.of();
-        }
-    }
 
     /**
      * Retrieves the most recent active (non-reversed, non-NULL) moderation actions for a guild, up to the specified limit.
@@ -316,7 +275,7 @@ public class GuildModerationActionsRepository {
      * @return a list of recent active {@code ActionData} up to {@code limit} in size, ordered newest first, never {@code null}
      */
     @NotNull
-    public List<ActionData> getRecentActions(GuildID guildId, int limit) {
+    public List<ActionData> getRecentActiveActions(GuildID guildId, int limit) {
         String sql = """
             SELECT gma.*
             FROM guild_moderation_actions gma
@@ -368,6 +327,7 @@ public class GuildModerationActionsRepository {
 
         ActionDataBuilder builder = new ActionDataBuilder(
             actionId,
+            rs.getTimestamp("created_at").toInstant(),
             new GuildID(rs.getLong("guild_id")),
             new UserID(rs.getLong("user_id")),
             new UserID(rs.getLong("moderator_id")),

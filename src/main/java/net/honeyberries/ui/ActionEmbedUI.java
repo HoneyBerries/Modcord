@@ -35,7 +35,7 @@ public class ActionEmbedUI {
         EmbedBuilder embed = new EmbedBuilder()
                 .setTitle(ActionHelper.actionEmoji(actionData.action()) + " " + actionData.action().name() + " Issued")
                 .setColor(ActionHelper.actionColor(actionData.action()))
-                .setTimestamp(Instant.now())
+                .setTimestamp(actionData.timestamp())
                 .addField("User", DiscordUtils.userMention(targetId), true)
                 .addField("Moderator", DiscordUtils.userMention(actionData.moderatorId()), true)
                 .addField("Reason", actionData.reason(), false)
@@ -43,7 +43,7 @@ public class ActionEmbedUI {
                 .setFooter("Action ID: " + actionData.id());
 
         if (actionData.action() == ActionType.TIMEOUT && actionData.timeoutDuration() > 0) {
-            Instant expiresAt = Instant.now().plusSeconds(actionData.timeoutDuration());
+            Instant expiresAt = actionData.timestamp().plusSeconds(actionData.timeoutDuration());
             embed.addField("Duration",
                     formatDuration(actionData.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
                     false);
@@ -53,7 +53,7 @@ public class ActionEmbedUI {
             if (actionData.banDuration() >= Integer.MAX_VALUE) {
                 embed.addField("Duration", "Permanent", false);
             } else {
-                Instant expiresAt = Instant.now().plusSeconds(actionData.banDuration());
+                Instant expiresAt = actionData.timestamp().plusSeconds(actionData.banDuration());
                 embed.addField("Duration",
                         formatDuration(actionData.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
                         false);

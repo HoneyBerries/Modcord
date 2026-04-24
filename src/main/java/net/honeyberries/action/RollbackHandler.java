@@ -116,17 +116,4 @@ public class RollbackHandler {
 
         return rolled;
     }
-
-    /**
-     * Returns all actions in a guild that have not yet been reversed.
-     * Used by the rollback slash command to present candidates to moderators.
-     *
-     * @param guildId guild to query, must not be {@code null}
-     * @return list of active (non-reversed) actions ordered newest first, never {@code null}
-     */
-    @NotNull
-    public List<ActionData> getActiveActions(@NotNull GuildID guildId) {
-        Objects.requireNonNull(guildId, "guildId must not be null");
-        return GuildModerationActionsRepository.getInstance().getActiveActions(guildId);
-    }
 }

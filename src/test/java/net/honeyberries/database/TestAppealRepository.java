@@ -43,7 +43,7 @@ public class TestAppealRepository {
     @Order(1)
     @DisplayName("should create an appeal for a user with an action")
     void shouldCreateAppealWithAction() {
-        List<ActionData> actions = actionRepository.getRecentActions(TEST_GUILD_ID, 1);
+        List<ActionData> actions = actionRepository.getRecentActiveActions(TEST_GUILD_ID, 1);
         Assumptions.assumeTrue(!actions.isEmpty(), "Test guild should have at least one action");
 
         UUID actionId = actions.getFirst().id();
@@ -59,7 +59,7 @@ public class TestAppealRepository {
     @Order(2)
     @DisplayName("should create appeals for multiple users with different actions")
     void shouldCreateAppealsForMultipleUsers() {
-        List<ActionData> actions = actionRepository.getRecentActions(TEST_GUILD_ID, 2);
+        List<ActionData> actions = actionRepository.getRecentActiveActions(TEST_GUILD_ID, 2);
         Assumptions.assumeTrue(actions.size() >= 2, "Test guild should have at least two actions");
 
         UUID actionId1 = actions.get(0).id();

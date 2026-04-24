@@ -4,6 +4,7 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -15,6 +16,7 @@ import java.util.UUID;
  */
 public class ActionDataBuilder {
     private final @NotNull UUID id;
+    private final @NotNull Instant timestamp;
     private final @NotNull GuildID guildId;
     private final @NotNull UserID userId;
     private final @NotNull UserID moderatorId;
@@ -28,6 +30,7 @@ public class ActionDataBuilder {
      * Creates a builder with the core moderation decision payload.
      *
      * @param id              unique identifier for the moderation action; must not be {@code null}
+     * @param timestamp       when this action was created; must not be {@code null}
      * @param guildId         guild being moderated; must not be {@code null}
      * @param userId          user receiving the action; must not be {@code null}
      * @param moderatorId     moderator performing the action; must not be {@code null}
@@ -39,6 +42,7 @@ public class ActionDataBuilder {
      */
     public ActionDataBuilder(
             @NotNull UUID id,
+            @NotNull Instant timestamp,
             @NotNull GuildID guildId,
             @NotNull UserID userId,
             @NotNull UserID moderatorId,
@@ -48,6 +52,7 @@ public class ActionDataBuilder {
             long banDuration
     ) {
         this.id = Objects.requireNonNull(id, "interactionID must not be null");
+        this.timestamp = Objects.requireNonNull(timestamp, "timestamp must not be null");
         this.guildId = Objects.requireNonNull(guildId, "guildId must not be null");
         this.userId = Objects.requireNonNull(userId, "userId must not be null");
         this.moderatorId = Objects.requireNonNull(moderatorId, "moderatorId must not be null");
@@ -76,6 +81,7 @@ public class ActionDataBuilder {
     public ActionData build() {
         return new ActionData(
                 id,
+                timestamp,
                 guildId,
                 userId,
                 moderatorId,
