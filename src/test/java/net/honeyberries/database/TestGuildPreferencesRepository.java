@@ -285,9 +285,9 @@ public class TestGuildPreferencesRepository {
                 .aiEnabled(true)
                 .rulesChannelId(TestIds.RULES_1)
                 .autoWarnEnabled(true)
-                .autoDeleteEnabled(false)
+                .autoDeleteEnabled(true)
                 .autoTimeoutEnabled(true)
-                .autoKickEnabled(false)
+                .autoKickEnabled(true)
                 .autoBanEnabled(true)
                 .auditLogChannelId(TestIds.AUDIT_1)
                 .build();
