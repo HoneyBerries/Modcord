@@ -82,3 +82,18 @@ All major services are singletons accessed via `getInstance()`: `Database`, `App
 `AppConfigTest` — unit tests against `config/app_config.yml`, no external dependencies.
 
 `TestActionHandler` — integration tests tagged `@Tag("integration")` that require a live Discord bot connection and a real test guild (hardcoded IDs). They use JUnit `Assumptions` to skip gracefully if the bot isn't connected.
+
+## JDA Best Practices
+
+**Never use cache-only lookups.** Methods like `getUserById()`, `getMemberById()`, `getChannelById()` only check the local cache and return null if the entity isn't cached. This breaks when users leave the server, members go offline, or entities haven't been cached yet.
+
+**Always use retrieval methods instead:**
+- `jda.retrieveUserById(id).complete()` — fetches from Discord API if not cached
+- `jda.retrieveMemberById(guildId, userId).complete()` — fetches member from API if not cached
+- `guild.retrieveChannelById(id).complete()` — fetches channel from API if not cached
+
+For async/non-blocking use (preferred in Discord handlers):
+- `.queue(success, failure)` — queue async fetch with success/failure callbacks
+- `.complete()` — synchronous, blocks until response (use sparingly in event handlers)
+
+This ensures reliability even when entities aren't in cache, e.g., resolving user info for actions targeting users who've left the server.

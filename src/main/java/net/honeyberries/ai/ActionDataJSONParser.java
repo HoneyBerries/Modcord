@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.*;
 
 /**
@@ -153,7 +154,7 @@ public class ActionDataJSONParser {
         UUID id = UUID.randomUUID();
 
         ActionDataBuilder builder = new ActionDataBuilder(
-                id, guildId, userId, moderatorId, action, reason, timeoutDuration, banDuration
+                id, Instant.now(), guildId, userId, moderatorId, action, reason, timeoutDuration, banDuration
         );
 
         JsonNode channelsNode = userNode.get("channels");

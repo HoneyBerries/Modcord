@@ -4,6 +4,7 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -15,6 +16,7 @@ import java.util.UUID;
  */
 public record ActionData(
         @NotNull UUID id, // 👈 IMPORTANT (you’ll want this later)
+        @NotNull Instant timestamp,
         @NotNull GuildID guildId,
         @NotNull UserID userId,
         @NotNull UserID moderatorId,
@@ -29,6 +31,7 @@ public record ActionData(
      * Compact constructor enforcing non-null components.
      *
      * @param id               unique identifier for the moderation action
+     * @param timestamp        when this action was created
      * @param guildId          guild that the action targets
      * @param userId           user that the action targets
      * @param moderatorId      moderator responsible for the action
@@ -40,37 +43,13 @@ public record ActionData(
      * @throws NullPointerException if any non-nullable argument is {@code null}
      */
     public ActionData {
-        Objects.requireNonNull(id, "interactionID must not be null");
+        Objects.requireNonNull(id, "id must not be null");
+        Objects.requireNonNull(timestamp, "timestamp must not be null");
         Objects.requireNonNull(guildId, "guildId must not be null");
         Objects.requireNonNull(userId, "userId must not be null");
         Objects.requireNonNull(moderatorId, "moderatorId must not be null");
         Objects.requireNonNull(action, "action must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
         Objects.requireNonNull(deletions, "deletions must not be null");
-    }
-
-    /**
-     * Convenience constructor that defaults the deletions list to empty.
-     *
-     * @param id              unique identifier for the moderation action
-     * @param guildId         guild that the action targets
-     * @param userId          user that the action targets
-     * @param moderatorId     moderator responsible for the action
-     * @param action          moderation action type to execute
-     * @param reason          textual reason supplied by the AI
-     * @param timeoutDuration timeout duration in seconds (0 if not applicable)
-     * @param banDuration     ban duration in seconds (0 if not applicable)
-     */
-    public ActionData(
-            @NotNull UUID id,
-            @NotNull GuildID guildId,
-            @NotNull UserID userId,
-            @NotNull UserID moderatorId,
-            @NotNull ActionType action,
-            @NotNull String reason,
-            long timeoutDuration,
-            long banDuration
-    ) {
-        this(id, guildId, userId, moderatorId, action, reason, timeoutDuration, banDuration, List.of());
     }
 }

@@ -2,7 +2,7 @@ package net.honeyberries.discord.listener;
 
 import net.dv8tion.jda.api.events.role.RoleDeleteEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.honeyberries.database.ExcludedEntitiesRepository;
+import net.honeyberries.database.repository.ExcludedEntitiesRepository;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.RoleID;
 import org.jetbrains.annotations.NotNull;

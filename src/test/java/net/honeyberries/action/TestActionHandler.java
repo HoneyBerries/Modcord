@@ -13,7 +13,9 @@ import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.discord.JDAManager;
 import org.junit.jupiter.api.*;
 
+import java.time.Instant;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -118,13 +120,15 @@ public class TestActionHandler {
     private ActionData createAction(long userId, ActionType actionType, long timeoutDuration, long banDuration) {
         return new ActionData(
                 UUID.randomUUID(),
+                Instant.now(),
                 new GuildID(TEST_GUILD_ID),
                 new UserID(userId),
                 new UserID(TEST_ACCOUNT_1_ID),
                 actionType,
                 "Integration test action from TestActionHandler",
                 timeoutDuration,
-                banDuration
+                banDuration,
+                List.of()
         );
     }
 

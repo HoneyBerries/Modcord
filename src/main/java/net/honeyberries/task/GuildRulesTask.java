@@ -6,8 +6,8 @@ import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.database.Database;
-import net.honeyberries.database.GuildPreferencesRepository;
-import net.honeyberries.database.GuildRulesRepository;
+import net.honeyberries.database.repository.GuildPreferencesRepository;
+import net.honeyberries.database.repository.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -15,6 +15,7 @@ import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.message.EmbedParser;
 import net.honeyberries.discord.JDAManager;
 import net.honeyberries.preferences.Onboarding;
+import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -201,7 +202,11 @@ public class GuildRulesTask implements Runnable {
             logger.warn("Interrupted while fetching rules for guild {}", guild.getId());
             return null;
         } catch (ExecutionException e) {
-            logger.warn("Failed to fetch rules for guild {}", guild.getId(), e);
+            if (e.getCause() != null && DiscordUtils.isPermissionFailure((Exception) e.getCause())) {
+                logger.warn("No permission to fetch rules for guild {} — check bot permissions in the rules channel", guild.getId());
+            } else {
+                logger.warn("Failed to fetch rules for guild {}", guild.getId(), e);
+            }
             return null;
         }
     }

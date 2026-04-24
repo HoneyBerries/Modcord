@@ -14,8 +14,8 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.action.ActionHandler;
 import net.honeyberries.ai.*;
 import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.AILogRepository;
-import net.honeyberries.database.GuildModerationActionsRepository;
+import net.honeyberries.database.repository.AILogRepository;
+import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.content.ModerationUser;
@@ -33,10 +33,11 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.*;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
@@ -47,13 +48,15 @@ import java.util.stream.Collectors;
  * (3) invoke AI inference with constrained schema, (4) parse AI responses into actions,
  * (5) log actions to database, (6) apply actions via ActionHandler.
  * <p>
- * Responsibilities:
- * - Queue management: add, update, remove messages with timestamp tracking
- * - Time windowing: separate current messages from historical context based on configurable durations
- * - History fetching: retrieve Discord message history for context enrichment
- * - User moderation data: build rich ModerationUser objects with roles and message context
- * - AI pipeline: orchestrate inference, schema generation, system prompts, response parsing
- * - Action application: persist and execute moderation actions via ActionHandler
+ * Additional safeguards compared to the original implementation:
+ * <ul>
+ *   <li><b>Deduplication</b> — duplicate message IDs (from network retries) are silently ignored
+ *       at enqueue time so the same message is never evaluated twice.</li>
+ *   <li><b>Backpressure</b> — the queue is capped at {@code AppConfig.getMaxQueueSizePerGuild()};
+ *       when full, the oldest enqueued message is evicted with a warning.</li>
+ *   <li><b>Timeouts on blocking Discord calls</b> — member lookups and history fetches use the
+ *       configurable {@code AppConfig.getDiscordRequestTimeout()} instead of blocking forever.</li>
+ * </ul>
  */
 public class GuildMessageProcessingService {
 
@@ -87,16 +90,28 @@ public class GuildMessageProcessingService {
 
     /**
      * Adds a new message to the queue with the current timestamp.
-     * If the message already exists, it is replaced.
+     * <p>
+     * If the message ID is already present (duplicate from a network retry), the call is a
+     * no-op so the same content is never evaluated twice.
+     * If the queue is at capacity, the oldest queued message is evicted to apply backpressure.
      *
-     * @param message the message to add (must not be {@code null})
+     * @param message   the message to add (must not be {@code null})
      * @param isHistory {@code true} if this is historical context, {@code false} if current
      * @throws NullPointerException if {@code message} is {@code null}
      */
     public void addMessage(@NotNull Message message, boolean isHistory) {
         Objects.requireNonNull(message, "message must not be null");
-        
+
         ModerationMessage msg = ModerationMessage.fromMessage(message, isHistory);
+
+        // Deduplication: skip if already present
+        if (messages.containsKey(msg.messageId())) {
+            logger.debug("Duplicate message {} ignored for guild {}", msg.messageId(), guildId);
+            return;
+        }
+
+        applyBackpressureIfNeeded();
+
         messages.put(msg.messageId(), msg);
         arrivalTimes.put(msg.messageId(), OffsetDateTime.now());
         logger.debug("Added message {} to guild {}", msg.messageId(), guildId);
@@ -106,13 +121,13 @@ public class GuildMessageProcessingService {
      * Updates an existing message in the queue, preserving its original arrival time.
      * Arrival time is not updated if the message was already present (uses putIfAbsent).
      *
-     * @param message the updated message (must not be {@code null})
+     * @param message   the updated message (must not be {@code null})
      * @param isHistory {@code true} if this is historical context
      * @throws NullPointerException if {@code message} is {@code null}
      */
     public void updateMessage(@NotNull Message message, boolean isHistory) {
         Objects.requireNonNull(message, "message must not be null");
-        
+
         ModerationMessage msg = ModerationMessage.fromMessage(message, isHistory);
         messages.put(msg.messageId(), msg);
         arrivalTimes.putIfAbsent(msg.messageId(), OffsetDateTime.now());
@@ -127,7 +142,7 @@ public class GuildMessageProcessingService {
      */
     public void removeMessage(@NotNull MessageID messageId) {
         Objects.requireNonNull(messageId, "messageId must not be null");
-        
+
         messages.remove(messageId);
         arrivalTimes.remove(messageId);
         logger.debug("Removed message {} from guild {}", messageId, guildId);
@@ -140,6 +155,28 @@ public class GuildMessageProcessingService {
      */
     public boolean isQueueEmpty() {
         return messages.isEmpty();
+    }
+
+    /**
+     * Evicts the oldest message in the queue when the per-guild size cap is reached.
+     * Logs a warning so operators know the queue is under pressure rather than silently dropping data.
+     */
+    private void applyBackpressureIfNeeded() {
+        int maxSize = AppConfig.getInstance().getMaxQueueSizePerGuild();
+        if (messages.size() < maxSize) {
+            return;
+        }
+
+        // Find the oldest message by arrival time and evict it
+        arrivalTimes.entrySet().stream()
+                .min(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .ifPresent(oldest -> {
+                    messages.remove(oldest);
+                    arrivalTimes.remove(oldest);
+                    logger.warn("Queue full for guild {} (max={}), evicted oldest message {}",
+                            guildId, maxSize, oldest);
+                });
     }
 
     // =========================================================================
@@ -155,8 +192,6 @@ public class GuildMessageProcessingService {
      */
     @NotNull
     public List<ModerationMessage> getCurrentMessages() {
-        Objects.requireNonNull(guild, "guild must not be null");
-        
         OffsetDateTime cutoff = OffsetDateTime.now().minus(
                 secondsToDuration(AppConfig.getInstance().getModerationQueueDuration()));
         return getMessagesBetween(cutoff, null);
@@ -171,8 +206,6 @@ public class GuildMessageProcessingService {
      */
     @NotNull
     public List<ModerationMessage> getHistoryContextMessages() {
-        Objects.requireNonNull(guild, "guild must not be null");
-        
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime from = now.minus(secondsToDuration(AppConfig.getInstance().getHistoryContextMaxAge()));
         OffsetDateTime to   = now.minus(secondsToDuration(AppConfig.getInstance().getModerationQueueDuration()));
@@ -184,7 +217,7 @@ public class GuildMessageProcessingService {
      * Messages are included if their arrival time is in [from, to) (to is exclusive if provided).
      *
      * @param from the inclusive lower bound (must not be {@code null})
-     * @param to the exclusive upper bound, or {@code null} for no upper bound
+     * @param to   the exclusive upper bound, or {@code null} for no upper bound
      * @return a list of messages in chronological order
      * @throws NullPointerException if {@code from} is {@code null}
      */
@@ -193,7 +226,7 @@ public class GuildMessageProcessingService {
             @NotNull OffsetDateTime from,
             @Nullable OffsetDateTime to) {
         Objects.requireNonNull(from, "from must not be null");
-        
+
         List<ModerationMessage> snapshot = new ArrayList<>(messages.values());
         return snapshot.stream()
                 .filter(msg -> {
@@ -244,7 +277,7 @@ public class GuildMessageProcessingService {
      */
     public void removeMessages(@NotNull Collection<MessageID> messageIds) {
         Objects.requireNonNull(messageIds, "messageIds must not be null");
-        
+
         for (MessageID messageId : messageIds) {
             messages.remove(messageId);
             arrivalTimes.remove(messageId);
@@ -297,27 +330,44 @@ public class GuildMessageProcessingService {
             return false;
         }
 
-        // log actions to database
+        // Persist actions to database
         actions.parallelStream().forEach(
-                action -> GuildModerationActionsRepository.getInstance().
-                addActionToDatabase(action));
+                action -> GuildModerationActionsRepository.getInstance().addActionToDatabase(action));
 
-        // Now handle the actions and then return true if success and false if failed.
+        // Execute actions in parallel and aggregate success
         boolean success = actions.parallelStream()
-            .map(ActionHandler.getInstance()::processAction)
-            .reduce(true, Boolean::logicalAnd);
+                .map(ActionHandler.getInstance()::processAction)
+                .reduce(true, Boolean::logicalAnd);
 
         removeMessages(processedIds);
         return success;
     }
 
     /**
-     * Creates a snapshot of the current queue sorted by arrival time (oldest first).
+     * Restores a previously persisted {@link ModerationMessage} directly into the queue without
+     * applying backpressure or deduplication checks.
+     * <p>
+     * Only used by the persistent-queue restore path on startup. The message arrival time is
+     * set to now so it is treated as a current-window message and processed on the next pipeline run.
+     *
+     * @param msg the message to restore, must not be {@code null}
+     * @throws NullPointerException if {@code msg} is {@code null}
+     */
+    public void restoreMessage(@NotNull ModerationMessage msg) {
+        Objects.requireNonNull(msg, "msg must not be null");
+        messages.put(msg.messageId(), msg);
+        arrivalTimes.put(msg.messageId(), OffsetDateTime.now());
+        logger.debug("Restored persisted message {} into guild {} queue", msg.messageId(), guildId);
+    }
+
+    /**
+     * Creates a public snapshot of the current queue sorted by arrival time (oldest first).
+     * Used by the persistent-queue shutdown save path.
      *
      * @return a list of queued messages in chronological order
      */
     @NotNull
-    private List<ModerationMessage> getQueuedMessagesSnapshot() {
+    public List<ModerationMessage> getQueuedMessagesSnapshot() {
         List<ModerationMessage> snapshot = new ArrayList<>(messages.values());
         return snapshot.stream()
                 .sorted(Comparator.comparing(this::arrivalTime))
@@ -358,7 +408,7 @@ public class GuildMessageProcessingService {
 
         List<ChatCompletionMessageParam> conversation = new ArrayList<>();
 
-        logger.info("Creating datastructures for AI Input");
+        logger.info("Creating data structures for AI input for guild {}", guildId.value());
 
         try {
             inputs = GuildModerationBatchToAIInput.createMessageFromGuildModerationBatch(batch);
@@ -385,18 +435,28 @@ public class GuildMessageProcessingService {
         conversation.add(ChatCompletionMessageParam.ofUser(inputs));
 
         try {
+            long timeoutSecs = AppConfig.getInstance().getAIRequestTimeout();
             logger.info("Submitting moderation batch for guild {} to LLM", guildId.value());
-            response = InferenceEngine.getInstance().generateResponse(conversation, schema).get();
+            response = InferenceEngine.getInstance()
+                    .generateResponse(conversation, schema)
+                    .get(timeoutSecs, TimeUnit.SECONDS);
             conversation.add(ChatCompletionMessageParam.ofAssistant(response));
-        } catch (ExecutionException | InterruptedException e) {
-            logger.error("Failed to generate response for guild {}", guildId, e);
+        } catch (TimeoutException e) {
+            logger.error("AI inference timed out for guild {} after {}s",
+                    guildId, AppConfig.getInstance().getAIRequestTimeout());
+            return List.of();
+        } catch (ExecutionException e) {
+            logger.error("Error during AI inference for guild {}", guildId, e);
+            return List.of();
+        } catch (InterruptedException e) {
+            logger.warn("AI inference interrupted for guild {}", guildId);
+            Thread.currentThread().interrupt();
             return List.of();
         }
 
-        // Store the AI response in the database.
-        boolean success = AILogRepository.getInstance().addLogEntry(guildId, conversation);
-
-        if (!success) {
+        // Store the AI response in the database
+        boolean saved = AILogRepository.getInstance().addLogEntry(guildId, conversation);
+        if (!saved) {
             logger.error("Failed to store AI response for guild {}", guildId);
         }
 
@@ -404,7 +464,7 @@ public class GuildMessageProcessingService {
             UserID moderatorId = UserID.fromUser(guild.getJDA().getSelfUser());
             return ActionDataJSONParser.getInstance().parse(response, guildId, moderatorId);
         } catch (JsonProcessingException e) {
-            logger.error("Failed to parse AI response for guild {}", guildId, e);
+            logger.error("Failed to parse AI response JSON for guild {}: {}", guildId, e.getOriginalMessage());
             return List.of();
         }
     }
@@ -413,7 +473,8 @@ public class GuildMessageProcessingService {
      * Fetches historical message context from Discord for trend analysis.
      * For each channel represented in currentMessages, retrieves messages before the oldest current message
      * to provide historical context to the AI.
-     * Handles async fetching with allOf and gracefully handles individual fetch failures.
+     * Per-channel fetch futures are given a bounded timeout ({@link AppConfig#getDiscordRequestTimeout()}
+     * seconds) so a single slow channel cannot stall the entire batch.
      *
      * @param currentMessages the current moderation batch (must not be {@code null})
      * @return a list of historical messages, or empty list if all fetches fail
@@ -423,31 +484,39 @@ public class GuildMessageProcessingService {
     private List<ModerationMessage> fetchHistoryContextFromDiscord(
             @NotNull List<ModerationMessage> currentMessages) {
         Objects.requireNonNull(currentMessages, "currentMessages must not be null");
-        
+
         List<MessageID> messageIds = currentMessages.stream()
                 .map(ModerationMessage::messageId)
                 .toList();
+
+        long timeoutSecs = AppConfig.getInstance().getDiscordRequestTimeout();
 
         List<CompletableFuture<List<ModerationMessage>>> futures = currentMessages.stream()
                 .map(ModerationMessage::channelId)
                 .distinct()
                 .map(cid -> guild.getGuildChannelById(cid.value()))
                 .filter(c -> c instanceof TextChannel)
-                .map(c -> HistoryFetcher.fetchHistoryContextMessages((TextChannel) c, messageIds))
+                .map(c -> HistoryFetcher.fetchHistoryContextMessages((TextChannel) c, messageIds)
+                        .orTimeout(timeoutSecs, TimeUnit.SECONDS)
+                        .exceptionally(e -> {
+                            logger.warn("History fetch timed out or failed for channel in guild {}: {}",
+                                    guildId, e.getMessage());
+                            return List.of();
+                        }))
                 .toList();
 
         List<ModerationMessage> allHistory = new ArrayList<>();
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
-            futures.forEach(f -> {
-                try { allHistory.addAll(f.get()); }
-                catch (Exception e) { logger.warn("Failed to retrieve history batch", e); }
-            });
-        } catch (InterruptedException e) {
-            logger.warn("History fetch interrupted for guild {}", guildId);
-            Thread.currentThread().interrupt();
-        } catch (ExecutionException e) {
-            logger.warn("History fetch failed for guild {}", guildId, e);
+        for (CompletableFuture<List<ModerationMessage>> f : futures) {
+            try {
+                allHistory.addAll(f.get(timeoutSecs + 1, TimeUnit.SECONDS));
+            } catch (TimeoutException e) {
+                logger.warn("History fetch future timed out for guild {}", guildId);
+            } catch (InterruptedException e) {
+                logger.warn("History fetch interrupted for guild {}", guildId);
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException e) {
+                logger.warn("History fetch failed for guild {}: {}", guildId, e.getCause().getMessage());
+            }
         }
 
         return allHistory;
@@ -458,6 +527,8 @@ public class GuildMessageProcessingService {
      * Groups messages by user and channel, retrieves member details (roles, effective name),
      * and constructs {@code ModerationUser} objects with full channel/message context.
      * Skips members that cannot be retrieved (deleted users, permission issues).
+     * Member lookups are bounded by {@link AppConfig#getDiscordRequestTimeout()} so a
+     * single slow lookup cannot stall the entire batch build.
      *
      * @param messages the messages to organize into user objects (must not be {@code null})
      * @return a list of moderation users with message context
@@ -466,7 +537,7 @@ public class GuildMessageProcessingService {
     @NotNull
     private List<ModerationUser> buildModerationUsers(@NotNull List<ModerationMessage> messages) {
         Objects.requireNonNull(messages, "messages must not be null");
-        
+
         Map<UserID, Map<ChannelID, List<ModerationMessage>>> userChannelMap = new HashMap<>();
         for (ModerationMessage msg : messages) {
             userChannelMap
@@ -475,10 +546,21 @@ public class GuildMessageProcessingService {
                     .add(msg);
         }
 
+        long timeoutSecs = AppConfig.getInstance().getDiscordRequestTimeout();
         List<ModerationUser> result = new ArrayList<>();
+
         for (Map.Entry<UserID, Map<ChannelID, List<ModerationMessage>>> userEntry : userChannelMap.entrySet()) {
             UserID userId = userEntry.getKey();
-            Member member = guild.retrieveMemberById(userId.value()).complete();
+            Member member;
+            try {
+                member = guild.retrieveMemberById(userId.value())
+                        .timeout(timeoutSecs, TimeUnit.SECONDS)
+                        .complete();
+            } catch (Exception e) {
+                logger.warn("Failed to retrieve member {} for guild {} within {}s: {}",
+                        userId, guildId, timeoutSecs, e.getMessage());
+                continue;
+            }
             if (member == null) continue;
 
             List<ModerationUserChannel> channels = userEntry.getValue().entrySet().stream()
@@ -505,6 +587,4 @@ public class GuildMessageProcessingService {
         }
         return result;
     }
-
 }
-

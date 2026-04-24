@@ -1,34 +1,33 @@
 package net.honeyberries.action;
 
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
+import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
-import net.dv8tion.jda.api.utils.TimeFormat;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
-import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
-import net.dv8tion.jda.api.entities.UserSnowflake;
-import net.honeyberries.database.GuildPreferencesRepository;
+import net.honeyberries.config.AppConfig;
+import net.honeyberries.database.repository.GuildModerationActionsRepository;
+import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.action.MessageDeletion;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
+import net.honeyberries.ui.ActionEmbedUI;
+import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.Color;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -94,7 +93,7 @@ public class ActionHandler {
     /**
      * Deletes all flagged messages from the guild, logging failures per message.
      *
-     * @param guild the guild containing the messages
+     * @param guild      the guild containing the messages
      * @param actionData the action specifying messages to delete
      * @return {@code true} if all deletions succeeded; {@code false} if any deletion failed
      */
@@ -107,7 +106,7 @@ public class ActionHandler {
             Channel channel = guild.getGuildChannelById(deletion.channelId().value());
             if (!(channel instanceof MessageChannel messageChannel)) {
                 logger.warn(
-                        "Failed to delete message {} in guild {}: channel {} unavailable or not message-capable",
+                        "Failed to delete message {} in guild {}: channel {} is null or not message-capable",
                         deletion.messageId(), guild.getId(), deletion.channelId()
                 );
                 success = false;
@@ -116,6 +115,13 @@ public class ActionHandler {
 
             try {
                 messageChannel.deleteMessageById(deletion.messageId().value()).complete();
+            } catch (ErrorResponseException e) {
+                if (e.getErrorResponse() == ErrorResponse.UNKNOWN_MESSAGE) {
+                    logger.debug("Message {} already deleted in channel {} — skipping", deletion.messageId(), deletion.channelId());
+                } else {
+                    logActionFailure("delete message " + deletion.messageId(), actionData, guild, e);
+                    success = false;
+                }
             } catch (Exception e) {
                 logActionFailure("delete message " + deletion.messageId(), actionData, guild, e);
                 success = false;
@@ -129,7 +135,7 @@ public class ActionHandler {
      * Applies the moderation action (timeout, kick, ban, etc.) to the target user.
      * Dispatches to type-specific handlers based on the action type.
      *
-     * @param guild the guild to apply the action in
+     * @param guild      the guild to apply the action in
      * @param actionData the action details
      * @return {@code true} if the action succeeded; {@code false} if it failed or was skipped
      */
@@ -153,10 +159,12 @@ public class ActionHandler {
         }
     }
 
+
+
     /**
      * Applies a timeout to the target user for the specified duration.
      *
-     * @param guild the guild to apply the timeout in
+     * @param guild      the guild to apply the timeout in
      * @param actionData the action specifying timeout duration
      * @return {@code true} if the timeout succeeded; {@code false} if member not found or duration invalid
      */
@@ -186,7 +194,7 @@ public class ActionHandler {
     /**
      * Kicks the target user from the guild.
      *
-     * @param guild the guild to kick the user from
+     * @param guild      the guild to kick the user from
      * @param actionData the action specifying the user and reason
      * @return {@code true} if the kick succeeded; {@code false} if member not found
      */
@@ -209,33 +217,46 @@ public class ActionHandler {
     /**
      * Bans the target user from the guild.
      *
-     * @param guild the guild to ban the user from
+     * @param guild      the guild to ban the user from
      * @param actionData the action specifying the user and reason
      * @return {@code true} if the ban succeeded
      */
     private boolean applyBan(@NotNull Guild guild, @NotNull ActionData actionData) {
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
-        guild.ban(UserSnowflake.fromId(actionData.userId().value()), 0, TimeUnit.DAYS)
-                .reason(actionData.reason())
-                .complete();
-        return true;
+
+        try {
+            guild.ban(UserSnowflake.fromId(actionData.userId().value()), 0, TimeUnit.DAYS)
+                    .reason(actionData.reason())
+                    .complete();
+            return true;
+        } catch (Exception e) {
+            logger.warn("Failed to ban user {}, error: {}", actionData.userId().value(), e.getMessage());
+            return false;
+        }
     }
 
     /**
      * Unbans the target user from the guild.
      *
-     * @param guild the guild to unban the user from
+     * @param guild      the guild to unban the user from
      * @param actionData the action specifying the user and reason
      * @return {@code true} if the unban succeeded
      */
     private boolean applyUnban(@NotNull Guild guild, @NotNull ActionData actionData) {
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
-        guild.unban(UserSnowflake.fromId(actionData.userId().value()))
-                .reason(actionData.reason())
-                .complete();
-        return true;
+
+        try {
+            guild.unban(UserSnowflake.fromId(actionData.userId().value()))
+                    .reason(actionData.reason())
+                    .complete();
+            return true;
+        } catch (Exception e) {
+            logger.warn("Failed to unban user {}, error: {}", actionData.userId().value(), e.getMessage());
+            return false;
+        }
+
     }
 
     /**
@@ -243,7 +264,7 @@ public class ActionHandler {
      * Must be called BEFORE the moderation action is applied (except for DELETE/WARN actions, which skip DMs).
      * Once a user is kicked or banned, they no longer share a guild with the bot, preventing DM delivery.
      *
-     * @param guild the guild in which the action occurred
+     * @param guild      the guild in which the action occurred
      * @param actionData the action to notify about
      */
     private void sendUserDmBestEffort(@NotNull Guild guild, @NotNull ActionData actionData) {
@@ -253,10 +274,10 @@ public class ActionHandler {
             return;
         }
 
-        User target = resolveUser(actionData, guild);
+        User target = actionData.userId().toUser();
         if (target == null) return;
 
-        MessageCreateData embed = buildNotificationEmbed(guild, actionData, target);
+        MessageCreateData embed = ActionEmbedUI.buildNotificationEmbed(actionData, target);
 
         try {
             target.openPrivateChannel().complete().sendMessage(embed).complete();
@@ -270,7 +291,7 @@ public class ActionHandler {
      * Must be called AFTER the moderation action is applied so the log only reflects actions that actually succeeded.
      * Silently skips if no audit channel is configured or if the database is unavailable.
      *
-     * @param guild the guild in which the action occurred
+     * @param guild      the guild in which the action occurred
      * @param actionData the action to audit log
      */
     private void sendAuditLogBestEffort(@NotNull Guild guild, @NotNull ActionData actionData) {
@@ -300,183 +321,38 @@ public class ActionHandler {
                 return;
             }
 
-            User target = resolveUser(actionData, guild);
+            User target = actionData.userId().toUser();
             if (target == null) return;
 
-            messageChannel.sendMessage(buildNotificationEmbed(guild, actionData, target)).complete();
+            messageChannel.sendMessage(ActionEmbedUI.buildNotificationEmbed(actionData, target)).complete();
         } catch (Exception e) {
             logger.warn("Failed to post audit embed for action {} in guild {}", actionData.id(), guild.getId(), e);
         }
     }
 
-    /**
-     * Resolves a user by ID from the JDA cache or retrieves it from Discord.
-     *
-     * @param actionData the action specifying the user ID
-     * @param guild the guild for context in error logging
-     * @return the resolved {@code User}, or {@code null} if resolution failed
-     */
-    @Nullable
-    private User resolveUser(@NotNull ActionData actionData, @NotNull Guild guild) {
-        Objects.requireNonNull(actionData, "actionData must not be null");
-        Objects.requireNonNull(guild, "guild must not be null");
-        try {
-            return jda.retrieveUserById(actionData.userId().value()).complete();
-        } catch (Exception e) {
-            logger.warn("Failed to resolve user {} for notification in guild {}",
-                    actionData.userId(), guild.getId(), e);
-            return null;
-        }
-    }
-
-    /**
-     * Constructs a rich embed notification for the action, including user details, moderator, reason, and duration info.
-     *
-     * @param guild the guild where the action occurred
-     * @param actionData the action details
-     * @param target the target user of the action
-     * @return a {@code MessageCreateData} containing the formatted embed
-     */
-    @NotNull
-    private MessageCreateData buildNotificationEmbed(@NotNull Guild guild, @NotNull ActionData actionData, @NotNull User target) {
-        Objects.requireNonNull(guild, "guild must not be null");
-        Objects.requireNonNull(actionData, "actionData must not be null");
-        Objects.requireNonNull(target, "target must not be null");
-        EmbedBuilder embed = new EmbedBuilder()
-                .setTitle(actionEmoji(actionData.action()) + " " + actionData.action().name() + " Issued")
-                .setColor(actionColor(actionData.action()))
-                .setTimestamp(Instant.now())
-                .addField("User", "<@" + target.getId() + ">", true)
-                .addField("Moderator", "<@" + actionData.moderatorId().value() + ">", true)
-                .addField("Reason", actionData.reason(), false)
-                .setThumbnail(target.getEffectiveAvatarUrl())
-                .setFooter(guild.getName());
-
-        if (actionData.action() == ActionType.TIMEOUT && actionData.timeoutDuration() > 0) {
-            Instant expiresAt = Instant.now().plusSeconds(actionData.timeoutDuration());
-            embed.addField("Duration",
-                    formatDuration(actionData.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
-                    false);
-        }
-
-        if (actionData.action() == ActionType.BAN && actionData.banDuration() > 0) {
-            if (actionData.banDuration() >= Integer.MAX_VALUE) {
-                embed.addField("Duration", "Permanent", false);
-            } else {
-                Instant expiresAt = Instant.now().plusSeconds(actionData.banDuration());
-                embed.addField("Duration",
-                        formatDuration(actionData.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
-                        false);
-            }
-        }
-
-        return new MessageCreateBuilder().setEmbeds(embed.build()).build();
-    }
-
-    /**
-     * Selects an emoji matching the action type for visual feedback in embeds.
-     *
-     * @param actionType the moderation action type
-     * @return an emoji string representing the action
-     */
-    @NotNull
-    private String actionEmoji(@NotNull ActionType actionType) {
-        Objects.requireNonNull(actionType, "actionType must not be null");
-        return switch (actionType) {
-            case WARN    -> "⚠️";
-            case DELETE  -> "🗑️";
-            case TIMEOUT -> "⏱️";
-            case KICK    -> "👢";
-            case BAN     -> "🔨";
-            case UNBAN   -> "✅";
-            case NULL    -> "⚙️";
-        };
-    }
-
-    /**
-     * Selects a color matching the action type for visual feedback in embeds.
-     *
-     * @param actionType the moderation action type
-     * @return a {@code Color} representing the action severity/type
-     */
-    @NotNull
-    private Color actionColor(@NotNull ActionType actionType) {
-        Objects.requireNonNull(actionType, "actionType must not be null");
-        return switch (actionType) {
-            case WARN            -> Color.YELLOW;
-            case DELETE, TIMEOUT -> Color.ORANGE;
-            case KICK            -> Color.RED;
-            case BAN             -> new Color(139, 0, 0);
-            case UNBAN           -> Color.GREEN;
-            case NULL            -> Color.GRAY;
-        };
-    }
-
-    /**
-     * Formats a duration in seconds into a human-readable string (e.g., "1d 2h 30m").
-     *
-     * @param seconds the duration in seconds
-     * @return a formatted duration string
-     */
-    @NotNull
-    private String formatDuration(long seconds) {
-        long days    = seconds / 86400;
-        long hours   = (seconds % 86400) / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs    = seconds % 60;
-
-        StringBuilder sb = new StringBuilder();
-        if (days    > 0) sb.append(days).append("d ");
-        if (hours   > 0) sb.append(hours).append("h ");
-        if (minutes > 0) sb.append(minutes).append("m ");
-        if (secs    > 0 || sb.isEmpty()) sb.append(secs).append("s");
-        return sb.toString().trim();
-    }
 
     /**
      * Logs an action failure with appropriate severity based on the error type.
      * Permission failures are logged at WARN level, other failures at ERROR level.
      *
-     * @param operation a description of the operation that failed
+     * @param operation  a description of the operation that failed
      * @param actionData the action that failed
-     * @param guild the guild in which the failure occurred
-     * @param e the exception that caused the failure
+     * @param guild      the guild in which the failure occurred
+     * @param e          the exception that caused the failure
      */
     private void logActionFailure(@NotNull String operation, @NotNull ActionData actionData, @NotNull Guild guild, @NotNull Exception e) {
         Objects.requireNonNull(operation, "operation must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(e, "e must not be null");
-        String template = "Failed to {} for user {} in guild {} (actionId={}, moderatorId={})";
 
-        if (isPermissionFailure(e)) {
-            logger.warn("Permission denied while trying to {} [operation: {}] for user {} in guild {} (action: {}, moderator: {})",
-                    template.substring(template.indexOf("to ") + 3),
-                    operation,
-                    actionData.userId(),
-                    guild.getId(),
-                    actionData.id(),
-                    actionData.moderatorId(),
-                    e);
+        if (DiscordUtils.isPermissionFailure(e)) {
+            logger.warn("Permission denied: failed to {} for user {} in guild {} (action={}, moderator={})",
+                    operation, actionData.userId(), guild.getId(), actionData.id(), actionData.moderatorId(), e);
             return;
         }
 
-        logger.warn(template, operation, actionData.userId(), guild.getId(),
-                actionData.id(), actionData.moderatorId(), e);
-    }
-
-    /**
-     * Determines if an exception represents a permission failure.
-     *
-     * @param e the exception to check
-     * @return {@code true} if the exception indicates insufficient permissions; {@code false} otherwise
-     */
-    private boolean isPermissionFailure(@NotNull Exception e) {
-        Objects.requireNonNull(e, "e must not be null");
-        if (e instanceof InsufficientPermissionException) return true;
-        if (e instanceof ErrorResponseException err) {
-            return err.getErrorResponse() == ErrorResponse.MISSING_PERMISSIONS;
-        }
-        return false;
+        logger.error("Failed to {} for user {} in guild {} (action={}, moderator={})",
+                operation, actionData.userId(), guild.getId(), actionData.id(), actionData.moderatorId(), e);
     }
 }

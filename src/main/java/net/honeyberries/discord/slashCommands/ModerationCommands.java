@@ -14,16 +14,19 @@ import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.action.ActionHandler;
-import net.honeyberries.database.SpecialUsersRepository;
+import net.honeyberries.database.repository.SpecialUsersRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
-import net.honeyberries.database.GuildModerationActionsRepository;
+import net.honeyberries.database.repository.GuildModerationActionsRepository;
+import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -111,8 +114,7 @@ public class ModerationCommands extends ListenerAdapter {
         }
 
         Member moderator = event.getMember();
-        if (moderator == null || (!hasAnyModerationPermission(moderator)
-                && !specialUsersRepository.isSpecialUser(event.getUser()))) {
+        if (moderator == null || !hasAnyModerationPermission(moderator)) {
             reply(event, "You need moderation permissions to use this command.");
             return;
         }
@@ -252,13 +254,15 @@ public class ModerationCommands extends ListenerAdapter {
         Objects.requireNonNull(reason, "reason must not be null");
         ActionData actionData = new ActionData(
                 UUID.randomUUID(),
+                Instant.now(),
                 GuildID.fromGuild(guild),
                 UserID.fromUser(targetUser),
                 new UserID(moderator.getIdLong()),
                 actionType,
                 reason,
                 timeoutDuration,
-                banDuration
+                banDuration,
+                List.of()
         );
 
         boolean persisted = GuildModerationActionsRepository.getInstance().addActionToDatabase(actionData);
@@ -288,7 +292,7 @@ public class ModerationCommands extends ListenerAdapter {
         return member.hasPermission(Permission.MODERATE_MEMBERS)
                 || member.hasPermission(Permission.KICK_MEMBERS)
                 || member.hasPermission(Permission.BAN_MEMBERS)
-                || member.hasPermission(Permission.ADMINISTRATOR);
+                || DiscordUtils.isAdmin(member);
     }
 
     /**
