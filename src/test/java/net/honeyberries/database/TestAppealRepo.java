@@ -73,12 +73,12 @@ public class TestAppealRepo {
         UUID appealId = repository.createAppeal(TEST_GUILD_ID, TEST_USER_ID, ACTION_ID, "Unfair warning");
         assertNotNull(appealId);
 
-        var appeals = repository.getOpenAppeals(TEST_GUILD_ID);
+        var appeals = repository.getOpenAppealsForGuild(TEST_GUILD_ID);
         assertEquals(1, appeals.size());
         
         boolean closed = repository.closeAppeal(TEST_GUILD_ID, appealId, "Resolved as valid");
         assertTrue(closed);
         
-        assertTrue(repository.getOpenAppeals(TEST_GUILD_ID).isEmpty());
+        assertTrue(repository.getOpenAppealsForGuild(TEST_GUILD_ID).isEmpty());
     }
 }

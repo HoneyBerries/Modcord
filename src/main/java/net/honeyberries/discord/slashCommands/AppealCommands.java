@@ -16,6 +16,7 @@ import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.repository.AppealRepository;
 import net.honeyberries.datatypes.action.AppealData;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.ui.AppealEmbedUI;
 import net.honeyberries.util.AppealCommandHelper;
 import net.honeyberries.util.DiscordUtils;
@@ -65,9 +66,12 @@ public class AppealCommands extends ListenerAdapter {
                         new SubcommandData("list", "List open appeals (administrator only, guild only)")
                                 .addOption(OptionType.INTEGER, "limit",
                                         "Number of appeals to show (default 5)", false),
+                        new SubcommandData("user", "List open appeals for a user (administrator only, guild only)")
+                                .addOption(OptionType.USER, "user", "The user to check", true),
                         new SubcommandData("get", "Get details of a specific appeal (administrator only, guild only)")
                                 .addOption(OptionType.STRING, "appeal_id",
                                         "UUID of the appeal to view", true),
+
                         new SubcommandData("close", "Close/resolve an appeal (administrator only, guild only)")
                                 .addOption(OptionType.STRING, "appeal_id",
                                         "UUID of the appeal to close", true)
@@ -109,8 +113,17 @@ public class AppealCommands extends ListenerAdapter {
                     }
                     handleList(event, guild);
                 }
+                case "user"   -> {
+                    Guild guild = event.getGuild();
+                    if (guild == null) {
+                        reply(event, "User appeals can only be checked inside a server.");
+                        return;
+                    }
+                    handleUser(event, guild);
+                }
                 case "get"    -> {
                     Guild guild = event.getGuild();
+
                     if (guild == null) {
                         reply(event, "Get can only be used inside a server.");
                         return;
@@ -221,7 +234,7 @@ public class AppealCommands extends ListenerAdapter {
         }
 
         GuildID guildId = GuildID.fromGuild(guild);
-        List<AppealData> openAppeals = AppealRepository.getInstance().getOpenAppeals(guildId);
+        List<AppealData> openAppeals = AppealRepository.getInstance().getOpenAppealsForGuild(guildId);
 
         if (openAppeals.isEmpty()) {
             reply(event, "No open appeals for this server.");
@@ -237,7 +250,7 @@ public class AppealCommands extends ListenerAdapter {
         for (AppealData appeal : appealsToShow) {
             User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
             if (appellant != null) {
-                event.getHook().sendMessage(AppealEmbedUI.buildAppealNotificationEmbed(appeal, appellant)).setEphemeral(true).queue();
+                event.getHook().sendMessage(AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant)).setEphemeral(true).queue();
             }
         }
     }
@@ -273,7 +286,7 @@ public class AppealCommands extends ListenerAdapter {
         }
 
         GuildID guildId = GuildID.fromGuild(guild);
-        List<AppealData> openAppeals = AppealRepository.getInstance().getOpenAppeals(guildId);
+        List<AppealData> openAppeals = AppealRepository.getInstance().getOpenAppealsForGuild(guildId);
         AppealData appeal = openAppeals.stream()
                 .filter(a -> a.id().equals(appealId))
                 .findFirst()
@@ -286,7 +299,7 @@ public class AppealCommands extends ListenerAdapter {
 
         User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
         if (appellant != null) {
-            event.reply(AppealEmbedUI.buildAppealNotificationEmbed(appeal, appellant)).setEphemeral(true).queue();
+            event.reply(AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant)).setEphemeral(true).queue();
         } else {
             reply(event, "Could not retrieve appellant information.");
         }
@@ -337,11 +350,46 @@ public class AppealCommands extends ListenerAdapter {
 
 
     /**
+     * Handles the {@code /appeal user} subcommand.
+     * Displays all open appeals for a specific user in the guild as rich embeds. Administrator only.
+     *
+     * @param event the interaction event, must not be {@code null}
+     * @param guild the guild in which the command was issued, must not be {@code null}
+     */
+    private void handleUser(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
+        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(guild, "guild must not be null");
+
+        if (!DiscordUtils.isAdmin(event.getMember())) {
+            reply(event, "Only administrators can view appeals.");
+            return;
+        }
+
+        User targetUser = Objects.requireNonNull(event.getOption("user", OptionMapping::getAsUser));
+        GuildID guildId = GuildID.fromGuild(guild);
+        UserID userId = UserID.fromUser(targetUser);
+
+        List<AppealData> userAppeals = AppealRepository.getInstance().getOpenAppealsForUserInGuild(guildId, userId);
+
+        if (userAppeals.isEmpty()) {
+            reply(event, "No open appeals for user " + targetUser.getAsTag() + " in this server.");
+            return;
+        }
+
+        event.reply("Open appeals for " + targetUser.getEffectiveName() + " (" + userAppeals.size() + "):").setEphemeral(true).queue();
+        for (AppealData appeal : userAppeals) {
+            event.getHook().sendMessage(AppealEmbedUI.buildAppealEmbedForAdmins(appeal, targetUser)).setEphemeral(true).queue();
+        }
+    }
+
+
+    /**
      * Sends an ephemeral reply to the interaction.
      *
      * @param event   the interaction event, must not be {@code null}
      * @param message the reply text, must not be {@code null}
      */
+
     private static void reply(@NotNull SlashCommandInteractionEvent event, @NotNull String message) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(message, "message must not be null");
