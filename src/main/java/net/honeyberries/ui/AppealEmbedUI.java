@@ -36,7 +36,7 @@ public class AppealEmbedUI {
      * @return a {@code MessageCreateData} with the embed and action buttons
      */
     @NotNull
-    public static MessageCreateData buildAppealNotificationEmbed(
+    public static MessageCreateData buildAppealEmbedForAdmins(
             @NotNull AppealData appeal,
             @NotNull User appellant) {
         Objects.requireNonNull(appeal, "appeal must not be null");
@@ -81,6 +81,59 @@ public class AppealEmbedUI {
         return new MessageCreateBuilder()
                 .setEmbeds(embed.build())
                 .addComponents(ActionRow.of(acceptBtn, rejectBtn))
+                .build();
+    }
+
+    /**
+     * Builds a rich appeal notification embed without buttons (for sending to the appellant via DM).
+     * Displays the appellant, original action details, and the appeal reason.
+     *
+     * @param appeal the appeal data with embedded action info, must not be {@code null}
+     * @param appellant the user who submitted the appeal, must not be {@code null}
+     * @return a {@code MessageCreateData} with the embed and no components
+     */
+    @NotNull
+    public static MessageCreateData buildAppealEmbedForAppellant(
+            @NotNull AppealData appeal,
+            @NotNull User appellant) {
+        Objects.requireNonNull(appeal, "appeal must not be null");
+        Objects.requireNonNull(appellant, "appellant must not be null");
+
+        ActionData action = appeal.actionData();
+        UserID appellantId = UserID.fromUser(appellant);
+
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle(ActionHelper.actionEmoji(action.action()) + " Appeal — " + action.action().name())
+                .setColor(Color.CYAN)
+                .setTimestamp(appeal.submittedTimestamp())
+                .addField("Appellant", DiscordUtils.userMention(appellantId), true)
+                .addField("Moderator", DiscordUtils.userMention(action.moderatorId()), true)
+                .addField("Action Type", action.action().name(), true)
+                .addField("Original Reason", action.reason(), false)
+                .addField("Appeal Reason", appeal.reason(), false)
+                .setThumbnail(appellant.getEffectiveAvatarUrl())
+                .setFooter("Appeal ID: " + appeal.id());
+
+        if (action.action() == ActionType.TIMEOUT && action.timeoutDuration() > 0) {
+            Instant expiresAt = action.timestamp().plusSeconds(action.timeoutDuration());
+            embed.addField("Duration",
+                    formatDuration(action.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                    false);
+        }
+
+        if (action.action() == ActionType.BAN && action.banDuration() > 0) {
+            if (action.banDuration() >= Integer.MAX_VALUE) {
+                embed.addField("Duration", "Permanent", false);
+            } else {
+                Instant expiresAt = action.timestamp().plusSeconds(action.banDuration());
+                embed.addField("Duration",
+                        formatDuration(action.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                        false);
+            }
+        }
+
+        return new MessageCreateBuilder()
+                .setEmbeds(embed.build())
                 .build();
     }
 

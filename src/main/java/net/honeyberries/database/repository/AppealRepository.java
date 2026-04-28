@@ -15,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -135,7 +134,7 @@ public class AppealRepository {
      * @throws NullPointerException if {@code guildId} is {@code null}
      */
     @NotNull
-    public List<AppealData> getOpenAppeals(@NotNull GuildID guildId) {
+    public List<AppealData> getOpenAppealsForGuild(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = """
             SELECT ma.appeal_id, ma.guild_id, ma.user_id, ma.action_id, ma.reason, ma.submitted_at,
@@ -171,6 +170,8 @@ public class AppealRepository {
             return List.of();
         }
     }
+
+
 
     /**
      * Maps a result set row (with joined action columns) into an {@code AppealData} with embedded {@code ActionData}.
@@ -208,6 +209,7 @@ public class AppealRepository {
         );
     }
 
+
     /**
      * Retrieves the UUIDs of all open appeals for a user in a guild.
      * Used to filter out already-appealed actions from the appeal selection menu.
@@ -222,7 +224,7 @@ public class AppealRepository {
         Objects.requireNonNull(userId, "userId must not be null");
         String sql = """
             SELECT action_id FROM moderation_appeals
-            WHERE guild_id = ? AND user_id = ? AND is_open = TRUE AND action_id IS NOT NULL
+            WHERE guild_id = ? AND user_id = ? AND is_open = TRUE
         """;
 
         try {
@@ -248,9 +250,58 @@ public class AppealRepository {
         }
     }
 
+
+    /**
+     * Retrieves all open appeals for a specific user in a guild.
+     *
+     * @param guildId the guild to query, must not be {@code null}
+     * @param userId  the user whose appeals to query, must not be {@code null}
+     * @return list of open appeal records for the user, never {@code null}
+     */
+    @NotNull
+    public List<AppealData> getOpenAppealsForUserInGuild(@NotNull GuildID guildId, @NotNull UserID userId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+        Objects.requireNonNull(userId, "userId must not be null");
+        String sql = """
+            SELECT ma.appeal_id, ma.guild_id, ma.user_id, ma.action_id, ma.reason, ma.submitted_at,
+                   gma.moderator_id, gma.action, gma.reason AS action_reason,
+                   gma.timeout_duration, gma.ban_duration, gma.created_at
+            FROM moderation_appeals ma
+            JOIN guild_moderation_actions gma ON ma.action_id = gma.action_id
+            WHERE ma.guild_id = ?
+              AND ma.user_id = ?
+              AND ma.is_open = TRUE
+              AND NOT EXISTS (
+                    SELECT 1 FROM guild_moderation_action_reversals r
+                    WHERE r.action_id = ma.action_id
+                  )
+            ORDER BY ma.submitted_at
+        """;
+
+        try {
+            return database.query(conn -> {
+                List<AppealData> results = new ArrayList<>();
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setLong(1, guildId.value());
+                    ps.setLong(2, userId.value());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            results.add(mapAppealWithAction(rs));
+                        }
+                    }
+                }
+                return results;
+            });
+        } catch (Exception e) {
+            logger.error("Failed to fetch open appeals for user {} in guild {}", userId, guildId, e);
+            return List.of();
+        }
+    }
+
+
     /**
      * Retrieves the UUIDs of all open appeals for a user across all guilds.
-     * Used by the appeal system in DMs where the user may be banned from some guilds.
+     * Used in DM context to filter out already-appealed actions.
      *
      * @param userId the user whose appeals to fetch, must not be {@code null}
      * @return list of action_id UUIDs that have open appeals, never {@code null}
@@ -259,8 +310,8 @@ public class AppealRepository {
     public List<UUID> getAllOpenAppealActionIds(@NotNull UserID userId) {
         Objects.requireNonNull(userId, "userId must not be null");
         String sql = """
-            SELECT action_id FROM moderation_appeals
-            WHERE user_id = ? AND is_open = TRUE AND action_id IS NOT NULL
+            SELECT DISTINCT action_id FROM moderation_appeals
+            WHERE user_id = ? AND is_open = TRUE
         """;
 
         try {
@@ -280,8 +331,10 @@ public class AppealRepository {
                 return results;
             });
         } catch (Exception e) {
-            logger.error("Failed to fetch all open appeal action IDs for user {}", userId, e);
+            logger.error("Failed to fetch open appeal action IDs for user {}", userId, e);
             return List.of();
         }
     }
+
+
 }

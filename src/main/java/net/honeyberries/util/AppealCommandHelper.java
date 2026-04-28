@@ -1,13 +1,12 @@
 package net.honeyberries.util;
 
-import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.EmbedBuilder;
-import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.honeyberries.action.RollbackHandler;
 import net.honeyberries.database.repository.AppealRepository;
@@ -15,8 +14,10 @@ import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.action.AppealData;
+import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.preferences.PreferencesManager;
 import net.honeyberries.ui.AppealEmbedUI;
 import org.jetbrains.annotations.NotNull;
@@ -141,16 +142,19 @@ public class AppealCommandHelper {
         }
 
         // Load the full AppealData from DB (with embedded ActionData)
-        List<AppealData> openAppeals = appealRepository.getOpenAppeals(action.guildId());
+        List<AppealData> openAppeals = appealRepository.getOpenAppealsForGuild(action.guildId());
         AppealData appeal = openAppeals.stream()
                 .filter(a -> a.id().equals(appealId))
                 .findFirst()
                 .orElse(null);
 
-        // Notify moderators
+        // Notify moderators and the appealent.
         Guild guild = event.getJDA().getGuildById(action.guildId().value());
+
         if (guild != null && appeal != null) {
-            notifyModerators(event.getJDA(), guild, appeal, event.getUser());
+            notifyModerators(guild, appeal, event.getUser());
+            sendAppealConfirmationToAppellant(event.getUser(), appeal);
+
         } else if (guild == null) {
             logger.warn("Guild {} not found for appeal notification", action.guildId().value());
         } else {
@@ -164,30 +168,46 @@ public class AppealCommandHelper {
      * Sends a notification to moderators in the audit log channel with Accept/Reject buttons.
      */
     private void notifyModerators(
-            @NotNull JDA jda,
             @NotNull Guild guild,
             @NotNull AppealData appeal,
             @NotNull User appellant) {
         try {
-            var prefs = PreferencesManager.getInstance().getOrDefaultPreferences(new GuildID(guild.getIdLong()));
-            var auditLogChannel = guild.getTextChannelById(prefs.auditLogChannelId().value());
+            GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(new GuildID(guild.getIdLong()));
 
-            if (auditLogChannel == null) {
-                // Fallback to hardcoded channel name if no preference is set
-                auditLogChannel = guild.getTextChannels().stream()
-                        .filter(channel -> channel.getName().equals("audit-log"))
-                        .findFirst()
-                        .orElse(null);
+            ChannelID auditChannel = prefs.auditLogChannelId();
+
+            if (auditChannel == null) {
+                logger.debug("Audit log channel not configured in guild {} — appeal will not be notified to moderators", guild.getId());
+                return;
             }
+
+            TextChannel auditLogChannel = guild.getTextChannelById(auditChannel.value());
+
 
             if (auditLogChannel == null) {
                 logger.debug("Audit log channel not found in guild {} — appeal will not be notified to moderators", guild.getId());
                 return;
             }
 
-            auditLogChannel.sendMessage(AppealEmbedUI.buildAppealNotificationEmbed(appeal, appellant)).queue();
+            auditLogChannel.sendMessage(AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant)).queue();
         } catch (Exception e) {
             logger.error("Failed to notify moderators of appeal {} in guild {}", appeal.id(), guild.getId(), e);
+        }
+    }
+
+    /**
+     * Sends the appeal confirmation embed to the appellant via DM (without buttons).
+     */
+    private void sendAppealConfirmationToAppellant(
+            @NotNull User appellant,
+            @NotNull AppealData appeal) {
+        try {
+            appellant.openPrivateChannel()
+                    .flatMap(channel -> channel.sendMessage(AppealEmbedUI.buildAppealEmbedForAppellant(appeal, appellant)))
+                    .queue(success -> logger.info("Appeal confirmation sent to user {} for appeal {}", appellant.getId(), appeal.id()),
+                           error -> logger.warn("Failed to send appeal confirmation to user {} for appeal {}", appellant.getId(), appeal.id()));
+        } catch (Exception e) {
+            logger.error("Failed to send appeal confirmation to appellant {} for appeal {}", appellant.getId(), appeal.id(), e);
         }
     }
 
@@ -221,7 +241,7 @@ public class AppealCommandHelper {
         }
 
         // Load the guild from the event
-        var guild = event.getGuild();
+        Guild guild = event.getGuild();
         if (guild == null) {
             event.reply("Guild not found.").setEphemeral(true).queue();
             return;
@@ -230,7 +250,7 @@ public class AppealCommandHelper {
         GuildID guildId = new GuildID(guild.getIdLong());
 
         // Find the appeal in the open appeals list
-        List<AppealData> openAppeals = appealRepository.getOpenAppeals(guildId);
+        List<AppealData> openAppeals = appealRepository.getOpenAppealsForGuild(guildId);
         AppealData appeal = openAppeals.stream()
                 .filter(a -> a.id().equals(appealId))
                 .findFirst()
@@ -286,7 +306,7 @@ public class AppealCommandHelper {
             }
 
             // Update the embed: change to red with "Rejected" title
-            updateAppealEmbedRejected(event, appeal, moderatorName);
+            updateAppealEmbedRejected(event, appeal);
             event.getHook().sendMessage("Appeal rejected.").setEphemeral(true).queue();
         }
     }
@@ -322,8 +342,7 @@ public class AppealCommandHelper {
      */
     private void updateAppealEmbedRejected(
             @NotNull ButtonInteractionEvent event,
-            @NotNull AppealData appeal,
-            @NotNull String moderatorName) {
+            @NotNull AppealData appeal) {
         event.deferEdit().queue();
 
         EmbedBuilder embed = new EmbedBuilder()
