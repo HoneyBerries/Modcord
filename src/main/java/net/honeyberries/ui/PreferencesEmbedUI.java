@@ -14,6 +14,7 @@ import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.preferences.PreferencesManager;
 import org.jetbrains.annotations.NotNull;
 
+import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -33,7 +34,7 @@ public class PreferencesEmbedUI {
         return new EmbedBuilder()
                 .setTitle(title)
                 .setDescription("Configure your moderation settings below.")
-                .setColor(0x5865F2)
+                .setColor(Color.CYAN)
                 .build();
     }
 

@@ -10,8 +10,16 @@ import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
+import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.action.RollbackHandler;
+import net.honeyberries.database.repository.GuildModerationActionsRepository;
+import net.honeyberries.datatypes.action.ActionData;
+import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
+import net.honeyberries.preferences.PreferencesManager;
+import net.honeyberries.ui.RollbackEmbedUI;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -129,11 +137,46 @@ public class RollbackCommands extends ListenerAdapter {
 
         String reason = event.getOption("reason", DEFAULT_REASON, OptionMapping::getAsString);
 
+        // Fetch the action before rollback to use for the embed
+        ActionData action = GuildModerationActionsRepository.getInstance().getActionById(actionId);
+        if (action == null) {
+            reply(event, "Action `" + actionId + "` not found in the database.");
+            return;
+        }
+
         boolean success = RollbackHandler.getInstance().rollbackAction(actionId, reason);
         if (success) {
-            reply(event, "Successfully rolled back action `" + actionId + "`.");
-            logger.info("Action {} rolled back by {} in guild {} — reason: {}",
-                    actionId, event.getUser().getId(), guild.getId(), reason);
+            try {
+                // Retrieve the target user for the embed
+                User target = event.getJDA().retrieveUserById(action.userId().value()).complete();
+                if (target == null) {
+                    logger.warn("Could not retrieve target user {} for rollback embed", action.userId().value());
+                    reply(event, "Successfully rolled back action `" + actionId + "`.");
+                    return;
+                }
+
+                // Build and send the rollback embed to the audit channel
+                GuildID guildId = new GuildID(guild.getIdLong());
+                GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
+                ChannelID auditChannelId = prefs.auditLogChannelId();
+
+                if (auditChannelId != null) {
+                    TextChannel auditChannel = guild.getTextChannelById(auditChannelId.value());
+                    if (auditChannel != null) {
+                        auditChannel.sendMessage(RollbackEmbedUI.buildRollbackEmbed(action, target, event.getUser(), reason))
+                                .queue(success2 -> logger.info("Rollback embed posted to audit channel for action {}", actionId),
+                                       error -> logger.warn("Failed to post rollback embed to audit channel", error));
+                    }
+                }
+
+                // Send ephemeral success reply
+                reply(event, "✅ Successfully rolled back action `" + actionId + "`.");
+                logger.info("Action {} rolled back by {} in guild {} — reason: {}",
+                        actionId, event.getUser().getId(), guild.getId(), reason);
+            } catch (Exception e) {
+                logger.error("Error building/sending rollback embed for action {}", actionId, e);
+                reply(event, "✅ Successfully rolled back action `" + actionId + "`.");
+            }
         } else {
             reply(event, "Failed to roll back action `" + actionId + "`. "
                     + "It may not exist, may have already been reversed, or the bot lacks permissions.");

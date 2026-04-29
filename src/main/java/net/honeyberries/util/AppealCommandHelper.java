@@ -279,11 +279,11 @@ public class AppealCommandHelper {
             String closeNote = "Accepted by " + moderatorName;
             appealRepository.closeAppeal(guildId, appealId, closeNote);
 
-            // DM the appellant
+            // DM the appellant with approval embed
             User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
             if (appellant != null) {
                 appellant.openPrivateChannel()
-                        .flatMap(channel -> channel.sendMessage("✅ Your appeal has been accepted. The action has been reversed."))
+                        .flatMap(channel -> channel.sendMessage(AppealEmbedUI.buildApprovalDmEmbed(appeal, event.getUser())))
                         .queue(success -> logger.info("DM sent to appellant {} for accepted appeal {}", appeal.userId().value(), appealId),
                                error -> logger.warn("Failed to DM appellant {} for accepted appeal {}", appeal.userId().value(), appealId));
             }
@@ -296,11 +296,11 @@ public class AppealCommandHelper {
             String closeNote = "Rejected by " + moderatorName;
             appealRepository.closeAppeal(guildId, appealId, closeNote);
 
-            // DM the appellant
+            // DM the appellant with rejection embed
             User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
             if (appellant != null) {
                 appellant.openPrivateChannel()
-                        .flatMap(channel -> channel.sendMessage("❌ Your appeal has been reviewed and rejected."))
+                        .flatMap(channel -> channel.sendMessage(AppealEmbedUI.buildRejectionDmEmbed(appeal, event.getUser())))
                         .queue(success -> logger.info("DM sent to appellant {} for rejected appeal {}", appeal.userId().value(), appealId),
                                error -> logger.warn("Failed to DM appellant {} for rejected appeal {}", appeal.userId().value(), appealId));
             }

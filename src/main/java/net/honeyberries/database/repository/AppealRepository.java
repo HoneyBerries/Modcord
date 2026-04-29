@@ -300,6 +300,48 @@ public class AppealRepository {
 
 
     /**
+     * Retrieves a specific appeal by ID, scoped to a guild (tenant isolation).
+     * Prevents admins in one guild from viewing appeals from another guild.
+     *
+     * @param guildId the guild where the appeal should reside, must not be {@code null}
+     * @param appealId the UUID of the appeal to fetch, must not be {@code null}
+     * @return the appeal data if found in the given guild, {@code null} otherwise
+     * @throws NullPointerException if {@code guildId} or {@code appealId} is {@code null}
+     */
+    @Nullable
+    public AppealData getAppealByIdRestrictedToGuild(@NotNull GuildID guildId, @NotNull UUID appealId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+        Objects.requireNonNull(appealId, "appealId must not be null");
+        String sql = """
+            SELECT ma.appeal_id, ma.guild_id, ma.user_id, ma.action_id, ma.reason, ma.submitted_at,
+                   gma.moderator_id, gma.action, gma.reason AS action_reason,
+                   gma.timeout_duration, gma.ban_duration, gma.created_at
+            FROM moderation_appeals ma
+            JOIN guild_moderation_actions gma ON ma.action_id = gma.action_id
+            WHERE ma.appeal_id = ?
+              AND ma.guild_id = ?
+        """;
+
+        try {
+            return database.query(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setObject(1, appealId);
+                    ps.setLong(2, guildId.value());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            return mapAppealWithAction(rs);
+                        }
+                    }
+                }
+                return null;
+            });
+        } catch (Exception e) {
+            logger.error("Failed to fetch appeal {} in guild {}", appealId, guildId, e);
+            return null;
+        }
+    }
+
+    /**
      * Retrieves the UUIDs of all open appeals for a user across all guilds.
      * Used in DM context to filter out already-appealed actions.
      *

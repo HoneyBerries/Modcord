@@ -286,14 +286,10 @@ public class AppealCommands extends ListenerAdapter {
         }
 
         GuildID guildId = GuildID.fromGuild(guild);
-        List<AppealData> openAppeals = AppealRepository.getInstance().getOpenAppealsForGuild(guildId);
-        AppealData appeal = openAppeals.stream()
-                .filter(a -> a.id().equals(appealId))
-                .findFirst()
-                .orElse(null);
+        AppealData appeal = AppealRepository.getInstance().getAppealByIdRestrictedToGuild(guildId, appealId);
 
         if (appeal == null) {
-            reply(event, "Appeal not found or has been resolved.");
+            reply(event, "Appeal not found in this guild or has been resolved.");
             return;
         }
 
@@ -372,7 +368,7 @@ public class AppealCommands extends ListenerAdapter {
         List<AppealData> userAppeals = AppealRepository.getInstance().getOpenAppealsForUserInGuild(guildId, userId);
 
         if (userAppeals.isEmpty()) {
-            reply(event, "No open appeals for user " + targetUser.getAsTag() + " in this server.");
+            reply(event, "No open appeals for user " + targetUser.getEffectiveAvatarUrl() + " in this server.");
             return;
         }
 

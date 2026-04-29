@@ -60,7 +60,7 @@ public class AppealEmbedUI {
         if (action.action() == ActionType.TIMEOUT && action.timeoutDuration() > 0) {
             Instant expiresAt = action.timestamp().plusSeconds(action.timeoutDuration());
             embed.addField("Duration",
-                    formatDuration(action.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                    EmbedHelper.formatDuration(action.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
                     false);
         }
 
@@ -70,7 +70,7 @@ public class AppealEmbedUI {
             } else {
                 Instant expiresAt = action.timestamp().plusSeconds(action.banDuration());
                 embed.addField("Duration",
-                        formatDuration(action.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                        EmbedHelper.formatDuration(action.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
                         false);
             }
         }
@@ -117,7 +117,7 @@ public class AppealEmbedUI {
         if (action.action() == ActionType.TIMEOUT && action.timeoutDuration() > 0) {
             Instant expiresAt = action.timestamp().plusSeconds(action.timeoutDuration());
             embed.addField("Duration",
-                    formatDuration(action.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                    EmbedHelper.formatDuration(action.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
                     false);
         }
 
@@ -127,7 +127,7 @@ public class AppealEmbedUI {
             } else {
                 Instant expiresAt = action.timestamp().plusSeconds(action.banDuration());
                 embed.addField("Duration",
-                        formatDuration(action.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                        EmbedHelper.formatDuration(action.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
                         false);
             }
         }
@@ -135,27 +135,6 @@ public class AppealEmbedUI {
         return new MessageCreateBuilder()
                 .setEmbeds(embed.build())
                 .build();
-    }
-
-    /**
-     * Formats a duration in seconds into a human-readable string (e.g., "1d 2h 30m").
-     *
-     * @param seconds the duration in seconds
-     * @return a formatted duration string
-     */
-    @NotNull
-    private static String formatDuration(long seconds) {
-        long days    = seconds / 86400;
-        long hours   = (seconds % 86400) / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs    = seconds % 60;
-
-        StringBuilder sb = new StringBuilder();
-        if (days    > 0) sb.append(days).append("d ");
-        if (hours   > 0) sb.append(hours).append("h ");
-        if (minutes > 0) sb.append(minutes).append("m ");
-        if (secs    > 0 || sb.isEmpty()) sb.append(secs).append("s");
-        return sb.toString().trim();
     }
 
     /**
@@ -217,6 +196,70 @@ public class AppealEmbedUI {
 
         return Modal.create("appeal:submit:" + actionId, "Submit Appeal")
                 .addComponents(reasonLabel)
+                .build();
+    }
+
+    /**
+     * Builds a rich approval confirmation embed sent to the appellant via DM.
+     *
+     * @param appeal the appeal data with embedded action info, must not be {@code null}
+     * @param resolvedBy the moderator who approved the appeal, must not be {@code null}
+     * @return a {@code MessageCreateData} with the approval embed
+     */
+    @NotNull
+    public static MessageCreateData buildApprovalDmEmbed(
+            @NotNull AppealData appeal,
+            @NotNull User resolvedBy) {
+        return buildAppealDecisionEmbed(appeal, resolvedBy, "✅ Appeal Approved", Color.GREEN);
+    }
+
+    /**
+     * Builds a rich rejection confirmation embed sent to the appellant via DM.
+     *
+     * @param appeal the appeal data with embedded action info, must not be {@code null}
+     * @param resolvedBy the moderator who rejected the appeal, must not be {@code null}
+     * @return a {@code MessageCreateData} with the rejection embed
+     */
+    @NotNull
+    public static MessageCreateData buildRejectionDmEmbed(
+            @NotNull AppealData appeal,
+            @NotNull User resolvedBy) {
+        return buildAppealDecisionEmbed(appeal, resolvedBy, "❌ Appeal Rejected", Color.RED);
+    }
+
+    /**
+     * Shared builder for appeal decision embeds (approval/rejection).
+     */
+    @NotNull
+    private static MessageCreateData buildAppealDecisionEmbed(
+            @NotNull AppealData appeal,
+            @NotNull User resolvedBy,
+            @NotNull String title,
+            @NotNull Color color) {
+        Objects.requireNonNull(appeal, "appeal must not be null");
+        Objects.requireNonNull(resolvedBy, "resolvedBy must not be null");
+        Objects.requireNonNull(title, "title must not be null");
+        Objects.requireNonNull(color, "color must not be null");
+
+        ActionData action = appeal.actionData();
+
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle(title)
+                .setColor(color)
+                .setTimestamp(Instant.now())
+                .addField("Action Type", ActionHelper.actionEmoji(action.action()) + " " + action.action().name(), true)
+                .addField("Original Reason", action.reason(), false)
+                .addField("Appeal Reason", appeal.reason(), false)
+                .addField("Resolved By", DiscordUtils.userMention(UserID.fromUser(resolvedBy)), true)
+                .setThumbnail(resolvedBy.getEffectiveAvatarUrl())
+                .setFooter("Appeal ID: " + appeal.id());
+
+        EmbedHelper.addDurationField(embed, action.action(), action.timestamp(),
+                action.action() == ActionType.TIMEOUT ? action.timeoutDuration() : action.banDuration(),
+                "Duration");
+
+        return new MessageCreateBuilder()
+                .setEmbeds(embed.build())
                 .build();
     }
 
