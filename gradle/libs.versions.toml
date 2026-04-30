@@ -7,7 +7,7 @@ org-liquibase-gradle = { id = "org.liquibase.gradle", version = "3.1.0" }
 
 [libraries]
 
-openai-java = "com.openai:openai-java:4.32.0"
+openai-java = "com.openai:openai-java:4.33.0"
 
 gson = "com.google.code.gson:gson:2.14.0"
 jackson-databind = "tools.jackson.core:jackson-databind:3.1.2"
@@ -28,8 +28,9 @@ dotenv-kotlin = "io.github.cdimascio:dotenv-kotlin:6.5.1"
 
 junit-platform-launcher = "org.junit.platform:junit-platform-launcher:6.0.3"
 ##                                                                ⬆ :6.1.0-M1"
+##                                                                ⬆ :6.1.0-RC1"
 
-postgresql = "org.postgresql:postgresql:42.7.10"
+postgresql = "org.postgresql:postgresql:42.7.11"
 
 hikari-cp = "com.zaxxer:HikariCP:7.0.2"
 
@@ -37,6 +38,6 @@ liquibase-core = "org.liquibase:liquibase-core:5.0.2"
 
 picocli = "info.picocli:picocli:4.7.7"
 
-jline = "org.jline:jline:4.0.12"
+jline = "org.jline:jline:4.0.14"
 
 apache-commons-lang3 = "org.apache.commons:commons-lang3:3.20.0"

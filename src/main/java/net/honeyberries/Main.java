@@ -13,11 +13,14 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import sun.misc.Signal;
+
 import java.nio.file.Paths;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Application entry point responsible for wiring together the database, Discord bot, and recurring maintenance tasks.
@@ -31,6 +34,8 @@ public class Main {
     private static @Nullable JDA discordBot;
     /** Scheduler hosting recurring maintenance tasks. */
     private static @Nullable ScheduledExecutorService scheduler;
+    /** Guards against re-entrant or concurrent shutdown calls. */
+    private static final AtomicBoolean shuttingDown = new AtomicBoolean(false);
 
     /**
      * Boots the application by preparing the database, connecting to Discord, and starting background tasks.
@@ -40,6 +45,16 @@ public class Main {
      */
     static void main(@NotNull String[] args) {
         Objects.requireNonNull(args, "args must not be null");
+
+        Signal.handle(new Signal("TERM"), sig -> {
+            logger.info("Received SIGTERM, initiating shutdown");
+            shutdown();
+        });
+        Signal.handle(new Signal("INT"), sig -> {
+            logger.info("Received SIGINT (Ctrl+C), initiating shutdown");
+            shutdown();
+        });
+
         Main main = new Main();
         try {
             main.setupDatabase();
@@ -52,8 +67,9 @@ public class Main {
                         Thread.sleep(5000); // Wait for 5 seconds before shutting down
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
+                    } finally {
+                        shutdown();
                     }
-                    shutdown();
                 });
             }
 
@@ -99,6 +115,10 @@ public class Main {
      * Safe to invoke even if startup failed partway through.
      */
     public static void shutdown() {
+        if (!shuttingDown.compareAndSet(false, true)) {
+            return;
+        }
+
         logger.info("Program shutdown initiated");
 
         logger.info("Stopping tasks");
