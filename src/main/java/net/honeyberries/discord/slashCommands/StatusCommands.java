@@ -70,11 +70,6 @@ public class StatusCommands extends ListenerAdapter {
         Objects.requireNonNull(event, "event must not be null");
         if (!event.getName().equals("status")) return;
 
-        if (!event.isFromGuild()) {
-            event.reply("This command can only be used in servers!").setEphemeral(true).queue();
-            return;
-        }
-
         try {
             String subcommand = event.getSubcommandName();
             if (subcommand == null) {
