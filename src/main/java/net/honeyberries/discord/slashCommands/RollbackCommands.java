@@ -15,6 +15,7 @@ import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.honeyberries.action.RollbackHandler;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
+import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.services.NotificationService;
 import net.honeyberries.ui.RollbackEmbedUI;
 import net.honeyberries.util.DiscordUtils;
@@ -138,6 +139,11 @@ public class RollbackCommands extends ListenerAdapter {
         ActionData action = GuildModerationActionsRepository.getInstance().getActionById(actionId);
         if (action == null) {
             reply(event, "Action `" + actionId + "` not found in the database.");
+            return;
+        }
+
+        if (!action.guildId().equals(GuildID.fromGuild(guild))) {
+            reply(event, "Action `" + actionId + "` does not belong to this guild.");
             return;
         }
 
