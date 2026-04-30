@@ -1,29 +1,21 @@
 package net.honeyberries.action;
 
-import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.entities.UserSnowflake;
-import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
-import net.dv8tion.jda.api.utils.messages.MessageCreateData;
-import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.repository.GuildModerationActionsRepository;
-import net.honeyberries.database.repository.GuildPreferencesRepository;
-import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.action.MessageDeletion;
-import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.discord.JDAManager;
+import net.honeyberries.services.NotificationService;
 import net.honeyberries.ui.ActionEmbedUI;
 import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,8 +37,6 @@ public class ActionHandler {
     private final Logger logger = LoggerFactory.getLogger(ActionHandler.class);
     /** JDA client for Discord API calls. */
 
-    @NotNull
-    private final JDA jda = JDAManager.getInstance().getJDA();
 
     private ActionHandler() {}
 
@@ -73,18 +63,18 @@ public class ActionHandler {
      */
     public boolean processAction(@NotNull ActionData actionData) {
         Objects.requireNonNull(actionData, "actionData must not be null");
-        Guild guild = jda.getGuildById(actionData.guildId().value());
+        Guild guild = JDAManager.getInstance().getJDA().getGuildById(actionData.guildId().value());
         if (guild == null) {
             logger.warn("Cannot process action {}: guild {} not found", actionData.id(), actionData.guildId());
             return false;
         }
 
-        sendUserDmBestEffort(guild, actionData);
+        sendActionDataToDM(guild, actionData);
         boolean deletionsApplied = applyMessageDeletions(guild, actionData);
         boolean actionApplied = applyModerationAction(guild, actionData);
 
         if (actionApplied) {
-            sendAuditLogBestEffort(guild, actionData);
+            sendActionDataToAuditLog(guild, actionData);
         }
 
         return actionApplied && deletionsApplied;
@@ -191,6 +181,7 @@ public class ActionHandler {
         return true;
     }
 
+
     /**
      * Kicks the target user from the guild.
      *
@@ -214,6 +205,7 @@ public class ActionHandler {
         return true;
     }
 
+
     /**
      * Bans the target user from the guild.
      *
@@ -236,6 +228,7 @@ public class ActionHandler {
         }
     }
 
+
     /**
      * Unbans the target user from the guild.
      *
@@ -256,8 +249,8 @@ public class ActionHandler {
             logger.warn("Failed to unban user {}, error: {}", actionData.userId().value(), e.getMessage());
             return false;
         }
-
     }
+
 
     /**
      * Attempts to send a direct message notification to the target user.
@@ -267,67 +260,38 @@ public class ActionHandler {
      * @param guild      the guild in which the action occurred
      * @param actionData the action to notify about
      */
-    private void sendUserDmBestEffort(@NotNull Guild guild, @NotNull ActionData actionData) {
-        Objects.requireNonNull(guild, "guild must not be null");
-        Objects.requireNonNull(actionData, "actionData must not be null");
-        if (actionData.action() == ActionType.NULL || actionData.action() == ActionType.DELETE) {
-            return;
-        }
+    private void sendActionDataToDM(@NotNull Guild guild, @NotNull ActionData actionData) {
+        if (actionData.action() == ActionType.NULL) return;
 
         User target = actionData.userId().toUser();
         if (target == null) return;
 
-        MessageCreateData embed = ActionEmbedUI.buildNotificationEmbed(actionData, target);
+        boolean success = NotificationService.getInstance().sendDm(actionData.userId(),
+                ActionEmbedUI.buildNotificationEmbed(actionData, target));
 
-        try {
-            target.openPrivateChannel().complete().sendMessage(embed).complete();
-        } catch (Exception e) {
-            logger.warn("Failed to DM user {} for action {}", actionData.userId(), actionData.id(), e);
+        if (!success) {
+            logger.warn("Failed to send DM to user {} in guild {}: user not found", actionData.userId(), guild.getId());
         }
     }
 
     /**
      * Attempts to post an audit log entry to the guild's designated audit channel.
      * Must be called AFTER the moderation action is applied so the log only reflects actions that actually succeeded.
-     * Silently skips if no audit channel is configured or if the database is unavailable.
+     * Silently skips if no audit channel is configured.
      *
      * @param guild      the guild in which the action occurred
      * @param actionData the action to audit log
      */
-    private void sendAuditLogBestEffort(@NotNull Guild guild, @NotNull ActionData actionData) {
+    private void sendActionDataToAuditLog(@NotNull Guild guild, @NotNull ActionData actionData) {
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
-        if (actionData.action() == ActionType.NULL || actionData.action() == ActionType.DELETE) {
-            return;
-        }
+        if (actionData.action() == ActionType.NULL || actionData.action() == ActionType.DELETE) return;
 
-        try {
-            if (!Database.getInstance().isHealthy()) {
-                logger.debug("Skipping audit log for action {} — database unavailable", actionData.id());
-                return;
-            }
+        User target = actionData.userId().toUser();
+        if (target == null) return;
 
-            @Nullable
-            GuildPreferences preferences = GuildPreferencesRepository.getInstance()
-                    .getGuildPreferences(actionData.guildId());
-            if (preferences == null || preferences.auditLogChannelId() == null) {
-                return;
-            }
-
-            Channel auditChannel = guild.getGuildChannelById(preferences.auditLogChannelId().value());
-            if (!(auditChannel instanceof MessageChannel messageChannel)) {
-                logger.warn("Audit log channel {} is missing or not message-capable in guild {}",
-                        preferences.auditLogChannelId(), guild.getId());
-                return;
-            }
-
-            User target = actionData.userId().toUser();
-            if (target == null) return;
-
-            messageChannel.sendMessage(ActionEmbedUI.buildNotificationEmbed(actionData, target)).complete();
-        } catch (Exception e) {
-            logger.warn("Failed to post audit embed for action {} in guild {}", actionData.id(), guild.getId(), e);
-        }
+        NotificationService.getInstance().postToAuditChannel(guild,
+                ActionEmbedUI.buildNotificationEmbed(actionData, target));
     }
 
 

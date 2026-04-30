@@ -1,24 +1,21 @@
 package net.honeyberries.util;
 
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.User;
-import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
-import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.honeyberries.action.RollbackHandler;
 import net.honeyberries.database.repository.AppealRepository;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.action.AppealData;
-import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
-import net.honeyberries.datatypes.preferences.GuildPreferences;
-import net.honeyberries.preferences.PreferencesManager;
+import net.honeyberries.services.NotificationService;
 import net.honeyberries.ui.AppealEmbedUI;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -33,6 +30,7 @@ public class AppealCommandHelper {
     private static final Logger logger = LoggerFactory.getLogger(AppealCommandHelper.class);
     private final GuildModerationActionsRepository actionRepository = GuildModerationActionsRepository.getInstance();
     private final AppealRepository appealRepository = AppealRepository.getInstance();
+
 
     /**
      * Handles /appeal submit by fetching the user's moderation actions and presenting them in a select menu.
@@ -97,6 +95,7 @@ public class AppealCommandHelper {
         event.replyModal(AppealEmbedUI.buildAppealModal(selectedActionId))
                 .queue();
     }
+
 
     /**
      * Handles the modal submission for the appeal reason.
@@ -171,29 +170,10 @@ public class AppealCommandHelper {
             @NotNull Guild guild,
             @NotNull AppealData appeal,
             @NotNull User appellant) {
-        try {
-            GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(new GuildID(guild.getIdLong()));
-
-            ChannelID auditChannel = prefs.auditLogChannelId();
-
-            if (auditChannel == null) {
-                logger.debug("Audit log channel not configured in guild {} — appeal will not be notified to moderators", guild.getId());
-                return;
-            }
-
-            TextChannel auditLogChannel = guild.getTextChannelById(auditChannel.value());
-
-
-            if (auditLogChannel == null) {
-                logger.debug("Audit log channel not found in guild {} — appeal will not be notified to moderators", guild.getId());
-                return;
-            }
-
-            auditLogChannel.sendMessage(AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant)).queue();
-        } catch (Exception e) {
-            logger.error("Failed to notify moderators of appeal {} in guild {}", appeal.id(), guild.getId(), e);
-        }
+        NotificationService.getInstance().postToAuditChannel(guild,
+                AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant));
     }
+
 
     /**
      * Sends the appeal confirmation embed to the appellant via DM (without buttons).
@@ -201,14 +181,8 @@ public class AppealCommandHelper {
     private void sendAppealConfirmationToAppellant(
             @NotNull User appellant,
             @NotNull AppealData appeal) {
-        try {
-            appellant.openPrivateChannel()
-                    .flatMap(channel -> channel.sendMessage(AppealEmbedUI.buildAppealEmbedForAppellant(appeal, appellant)))
-                    .queue(success -> logger.info("Appeal confirmation sent to user {} for appeal {}", appellant.getId(), appeal.id()),
-                           error -> logger.warn("Failed to send appeal confirmation to user {} for appeal {}", appellant.getId(), appeal.id()));
-        } catch (Exception e) {
-            logger.error("Failed to send appeal confirmation to appellant {} for appeal {}", appellant.getId(), appeal.id(), e);
-        }
+        NotificationService.getInstance().sendDm(appeal.userId(),
+                AppealEmbedUI.buildAppealEmbedForAppellant(appeal, appellant));
     }
 
     /**
@@ -279,50 +253,39 @@ public class AppealCommandHelper {
             String closeNote = "Accepted by " + moderatorName;
             appealRepository.closeAppeal(guildId, appealId, closeNote);
 
-            // DM the appellant with approval embed
-            User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
-            if (appellant != null) {
-                appellant.openPrivateChannel()
-                        .flatMap(channel -> channel.sendMessage(AppealEmbedUI.buildApprovalDmEmbed(appeal, event.getUser())))
-                        .queue(success -> logger.info("DM sent to appellant {} for accepted appeal {}", appeal.userId().value(), appealId),
-                               error -> logger.warn("Failed to DM appellant {} for accepted appeal {}", appeal.userId().value(), appealId));
-            }
-
-            // Update the embed: change to green with "Accepted" title
-            updateAppealEmbedAccepted(event, appeal, moderatorName);
+            NotificationService.getInstance().sendDm(appeal.userId(),
+                    AppealEmbedUI.buildApprovalDmEmbed(appeal, event.getUser()));
+            updateAppealEmbed(event, appeal, "✅ Appeal Accepted", Color.GREEN);
             event.getHook().sendMessage("Appeal accepted.").setEphemeral(true).queue();
+
         } else {
             // Reject: close the appeal without rollback
             String closeNote = "Rejected by " + moderatorName;
             appealRepository.closeAppeal(guildId, appealId, closeNote);
 
-            // DM the appellant with rejection embed
-            User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
-            if (appellant != null) {
-                appellant.openPrivateChannel()
-                        .flatMap(channel -> channel.sendMessage(AppealEmbedUI.buildRejectionDmEmbed(appeal, event.getUser())))
-                        .queue(success -> logger.info("DM sent to appellant {} for rejected appeal {}", appeal.userId().value(), appealId),
-                               error -> logger.warn("Failed to DM appellant {} for rejected appeal {}", appeal.userId().value(), appealId));
-            }
+            NotificationService.getInstance().sendDm(appeal.userId(),
+                    AppealEmbedUI.buildRejectionDmEmbed(appeal, event.getUser()));
 
-            // Update the embed: change to red with "Rejected" title
-            updateAppealEmbedRejected(event, appeal);
+            updateAppealEmbed(event, appeal, "❌ Appeal Rejected", Color.RED);
             event.getHook().sendMessage("Appeal rejected.").setEphemeral(true).queue();
         }
     }
 
+
     /**
-     * Updates the appeal embed to show "Accepted" status with buttons disabled.
+     * Updates the appeal embed in place to reflect the resolution outcome (accepted/rejected).
+     * Removes the Accept/Reject buttons and sets the title and color accordingly.
      */
-    private void updateAppealEmbedAccepted(
+    private void updateAppealEmbed(
             @NotNull ButtonInteractionEvent event,
             @NotNull AppealData appeal,
-            @NotNull String moderatorName) {
+            @NotNull String title,
+            @NotNull Color color) {
         event.deferEdit().queue();
 
         EmbedBuilder embed = new EmbedBuilder()
-                .setTitle("✅ Appeal Accepted")
-                .setColor(Color.GREEN)
+                .setTitle(title)
+                .setColor(color)
                 .setTimestamp(appeal.submittedTimestamp())
                 .addField("Appellant", DiscordUtils.userMention(appeal.userId()), true)
                 .addField("Moderator", DiscordUtils.userMention(appeal.actionData().moderatorId()), true)
@@ -333,34 +296,10 @@ public class AppealCommandHelper {
                 .setFooter("Appeal ID: " + appeal.id());
 
         event.getHook().editOriginalEmbeds(embed.build())
-                .setComponents() // Clear all components (buttons)
+                .setComponents()
                 .queue();
     }
 
-    /**
-     * Updates the appeal embed to show "Rejected" status with buttons disabled.
-     */
-    private void updateAppealEmbedRejected(
-            @NotNull ButtonInteractionEvent event,
-            @NotNull AppealData appeal) {
-        event.deferEdit().queue();
-
-        EmbedBuilder embed = new EmbedBuilder()
-                .setTitle("❌ Appeal Rejected")
-                .setColor(Color.RED)
-                .setTimestamp(appeal.submittedTimestamp())
-                .addField("Appellant", DiscordUtils.userMention(appeal.userId()), true)
-                .addField("Moderator", DiscordUtils.userMention(appeal.actionData().moderatorId()), true)
-                .addField("Action Type", appeal.actionData().action().name(), true)
-                .addField("Original Reason", appeal.actionData().reason(), false)
-                .addField("Appeal Reason", appeal.reason(), false)
-                .addField("Resolved by", DiscordUtils.userMention(new UserID(event.getUser().getIdLong())), true)
-                .setFooter("Appeal ID: " + appeal.id());
-
-        event.getHook().editOriginalEmbeds(embed.build())
-                .setComponents() // Clear all components (buttons)
-                .queue();
-    }
 
     /**
      * Checks if an action type can be appealed.
