@@ -37,6 +37,10 @@ public class Main {
     /** Guards against re-entrant or concurrent shutdown calls. */
     private static final AtomicBoolean shuttingDown = new AtomicBoolean(false);
 
+    static {
+        ResourceInitializer.initialize();
+    }
+
     /**
      * Boots the application by preparing the database, connecting to Discord, and starting background tasks.
      * When invoked with {@code --test}, the process will shut down automatically after a short grace period to let tests complete.

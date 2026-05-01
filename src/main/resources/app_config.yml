@@ -1,0 +1,70 @@
+# 0. DATABASE SETTINGS
+# ========================================
+database:
+  # PostgreSQL database URL (host, port, database name)
+  # Format: jdbc:postgresql://host:port/database
+  url: "jdbc:postgresql://modcord-test-db.postgres.database.azure.com:5432/postgres"
+  
+  # PostgreSQL database username
+  username: "ModcordTestAdmin"
+  
+  # Database password — loaded from environment variable (see PASSWORD env var handling below)
+  # DO NOT put the password here. Use the POSTGRES_DB_PASSWORD environment variable instead.
+
+# ========================================
+# 1. CACHE SETTINGS
+# ========================================
+cache:
+  # Refresh interval (seconds) for the server rules cache.
+  rules_cache_refresh: 60
+
+  # Refresh interval (seconds) for channel guidelines cache.
+  channel_guidelines_cache_refresh: 60
+
+
+# ========================================
+# 2. MODERATION SETTINGS
+# ========================================
+
+moderation:
+  # Messages received within this window (seconds) are grouped for batch moderation.
+  # Lower = faster response, higher = better API efficiency.
+  moderation_queue_duration: 30
+
+  # Number of recent messages to fetch for context (including historical messages).
+  # Provides context for violations. Recommended: 20-100 messages.
+  num_history_context_messages: 50
+
+  # Maximum age (seconds) of messages to fetch for context.
+  history_context_max_age: 86400
+
+
+
+# ========================================
+# 3. AI API & INFERENCE SETTINGS
+# ========================================
+
+ai_settings:
+  # OpenAI-compatible API endpoint (vLLM, LM Studio, Ollama, etc.)
+  base_url: "https://api.inference.wandb.ai/v1"
+
+  # Model name/identifier to use for inference
+  model_name: "moonshotai/Kimi-K2.5"
+
+  # Timeout for the AI inference request (seconds)
+  api_request_timeout: 3600
+
+
+# Default server rules for all servers. Used if no server-specific rules are defined.
+generic_server_rules: |
+  (These are just generic rules. You should not treat them as specific as regular server rules.)
+  
+  1. Be respectful to other users and the server.
+  2. No spamming.
+  3. No hate speech or discrimination.
+  4. Keep content safe for all ages unless explicitly allowed in the channel guidelines.
+  5. Follow Discord's Terms of Service.
+
+
+# Default channel guidelines for all channels. Used if no channel-specific guidelines are defined.
+generic_channel_guidelines: "No specific guidelines."
