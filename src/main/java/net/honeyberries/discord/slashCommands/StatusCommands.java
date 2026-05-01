@@ -43,12 +43,13 @@ public class StatusCommands extends ListenerAdapter {
         SubcommandData healthSub = new SubcommandData("health", "Checks if the bot is healthy");
         SubcommandData pingSub = new SubcommandData("ping", "Checks the bot's ping");
         SubcommandData uptimeSub = new SubcommandData("uptime", "Checks the bot's uptime");
+        SubcommandData guildsSub = new SubcommandData("guilds", "Shows the number of guilds the bot is in");
 
-        SlashCommandData statusCommand = Commands.slash("status", "Bot health and status monitoring").addSubcommands(healthSub, pingSub, uptimeSub);
+        SlashCommandData statusCommand = Commands.slash("status", "Bot health and status monitoring").addSubcommands(healthSub, pingSub, uptimeSub, guildsSub);
 
         try {
             Objects.requireNonNull(commands.addCommands(statusCommand));
-            logger.info("Registered /status with subcommands: health, ping, uptime");
+            logger.info("Registered /status with subcommands: health, ping, uptime, guilds");
         } catch (Exception e) {
             logger.error("Failed to register status commands", e);
             throw new RuntimeException(e);
@@ -81,6 +82,7 @@ public class StatusCommands extends ListenerAdapter {
                 case "health" -> handleHealthCommand(event);
                 case "ping" -> handlePingCommand(event);
                 case "uptime" -> handleUptimeCommand(event);
+                case "guilds" -> handleGuildsCommand(event);
                 default -> event.reply("Unknown subcommand").setEphemeral(true).queue();
             }
         } catch (Exception e) {
@@ -157,5 +159,20 @@ public class StatusCommands extends ListenerAdapter {
         );
 
         event.reply(uptimeMessage).setEphemeral(true).queue();
+    }
+
+    /**
+     * Handles the guilds subcommand.
+     *
+     * <p>Reports the number of guilds the bot is currently a member of.
+     *
+     * @param event the slash command interaction event. Must not be null.
+     * @throws NullPointerException if event is null
+     */
+    private void handleGuildsCommand(@NotNull SlashCommandInteractionEvent event) {
+        Objects.requireNonNull(event, "event must not be null");
+        int guildCount = event.getJDA().getGuilds().size();
+        String guildsMessage = String.format(":globe_with_meridians:  Bot is in **%d** guild(s)", guildCount);
+        event.reply(guildsMessage).setEphemeral(true).queue();
     }
 }
