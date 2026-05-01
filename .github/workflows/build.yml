@@ -35,4 +35,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: modcord-build
-          path: build/libs/
+          path: build/libs/*-all.jar

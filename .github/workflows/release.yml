@@ -53,7 +53,7 @@ jobs:
         with:
           tag: v${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
-          artifacts: 'build/libs/*'
+          artifacts: 'build/libs/*-all.jar'
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
