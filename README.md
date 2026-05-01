@@ -1,6 +1,7 @@
 # Modcord: AI-Powered Discord Moderation
 
 [![GitHub Repo](https://img.shields.io/badge/repo-HoneyBerries%2FModcord-181717?logo=github)](https://github.com/HoneyBerries/Modcord)
+[![Latest Release](https://img.shields.io/github/v/release/HoneyBerries/Modcord?sort=semver)](https://github.com/HoneyBerries/Modcord/releases/latest)
 [![Java 25+](https://img.shields.io/badge/java-25%2B-orange?logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Gradle](https://img.shields.io/badge/build-Gradle-02303A?logo=gradle&logoColor=white)](https://gradle.org/)
 [![Discord](https://img.shields.io/badge/platform-Discord-5865F2?logo=discord&logoColor=white)](https://discord.com/)
@@ -8,7 +9,7 @@
 [![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-Custom-lightgrey)](https://github.com/HoneyBerries/Modcord/blob/main/LICENSE.md)
 
-**Latest Version:** v3.2.0 | **Last Updated:** April 2026
+**Last Updated:** May 2026
 
 ---
 

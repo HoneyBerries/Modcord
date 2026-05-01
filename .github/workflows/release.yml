@@ -32,10 +32,10 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew assemble
 
-      - name: Extract version from build.gradle.kts
+      - name: Extract version from gradle.properties
         id: version
         run: |
-          VERSION=$(grep -oP 'version = "\K[^"]+' build.gradle.kts)
+          VERSION=$(grep 'project_version=' gradle.properties | cut -d'=' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
