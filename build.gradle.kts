@@ -28,7 +28,7 @@ plugins {
 }
 
 group = "net.honeyberries"
-version = "3.3.0"
+version = providers.gradleProperty("project_version").get()
 
 repositories {
     mavenCentral()
