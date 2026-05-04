@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(./gradlew compileJava)",
+      "Bash(timeout 15 ./gradlew runTest)"
     ]
   }
 }

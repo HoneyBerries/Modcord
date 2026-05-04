@@ -13,6 +13,7 @@ import net.honeyberries.discord.slashCommands.ActionCommands;
 import net.honeyberries.discord.slashCommands.AppealCommands;
 import net.honeyberries.discord.slashCommands.DebugCommands;
 import net.honeyberries.discord.slashCommands.ExcludeCommand;
+import net.honeyberries.discord.slashCommands.HelpCommands;
 import net.honeyberries.discord.slashCommands.ModerationCommands;
 import net.honeyberries.discord.slashCommands.PreferencesCommands;
 import net.honeyberries.discord.slashCommands.RollbackCommands;
@@ -120,6 +121,11 @@ public class JDAManager {
         jda.addEventListener(appealCommands);
         appealCommands.registerAppealCommands(commands);
         logger.info("Added AppealCommands to queue");
+
+        HelpCommands helpCommands = new HelpCommands();
+        jda.addEventListener(helpCommands);
+        helpCommands.registerHelpCommands(commands);
+        logger.info("Added HelpCommands to queue");
 
         commands.queue();
         logger.info("All slash commands synced — bot setup complete");
