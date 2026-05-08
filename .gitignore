@@ -45,6 +45,9 @@ bin/
 .env.*.local
 !.env.example
 
+### Configuration Files ###
+config/
+
 
 ### Log Files ###
 /logs
