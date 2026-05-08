@@ -5,10 +5,15 @@ import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import net.honeyberries.ResourceInitializer;
 import org.jetbrains.annotations.Nullable;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -88,7 +93,7 @@ class InferenceEngineTest {
         
         @Test
         @DisplayName("Should successfully call AI inference with simple message")
-        void testSimpleAIInference() throws ExecutionException, InterruptedException {
+        void testSimpleAIInference() throws ExecutionException, InterruptedException, TimeoutException {
             ChatCompletionMessageParam userMessage = ChatCompletionMessageParam.ofUser(
                 ChatCompletionUserMessageParam.builder()
                     .content("Say 'Hello HoneyBerries'")
@@ -96,7 +101,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
             String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a non-null response");
@@ -107,7 +112,7 @@ class InferenceEngineTest {
 
         @Test
         @DisplayName("Should handle mathematical reasoning in AI")
-        void testAIMathematicalReasoning() throws ExecutionException, InterruptedException {
+        void testAIMathematicalReasoning() throws ExecutionException, InterruptedException, TimeoutException {
             ChatCompletionMessageParam userMessage = ChatCompletionMessageParam.ofUser(
                 ChatCompletionUserMessageParam.builder()
                     .content("What is 1 + 2 + 3 + ... + 100? Just answer with the number.")
@@ -115,7 +120,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
             String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
@@ -125,7 +130,7 @@ class InferenceEngineTest {
 
         @Test
         @DisplayName("Should handle question answering")
-        void testAIQuestionAnswering() throws ExecutionException, InterruptedException {
+        void testAIQuestionAnswering() throws ExecutionException, InterruptedException, TimeoutException {
             ChatCompletionMessageParam userMessage = ChatCompletionMessageParam.ofUser(
                 ChatCompletionUserMessageParam.builder()
                     .content("What is the capital of France and the United States")
@@ -133,7 +138,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
             String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
@@ -144,7 +149,7 @@ class InferenceEngineTest {
 
         @Test
         @DisplayName("Should handle multiple messages in conversation")
-        void testAIConversationWithMultipleMessages() throws ExecutionException, InterruptedException {
+        void testAIConversationWithMultipleMessages() throws ExecutionException, InterruptedException, TimeoutException {
             List<ChatCompletionMessageParam> messages = List.of(
                 ChatCompletionMessageParam.ofUser(
                     ChatCompletionUserMessageParam.builder()
@@ -164,7 +169,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(messages, null);
-            ChatCompletionAssistantMessageParam response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
             String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
@@ -174,7 +179,7 @@ class InferenceEngineTest {
 
         @Test
         @DisplayName("Should return non-null even if responseFormat is null")
-        void testAIInferenceWithNullResponseFormat() throws ExecutionException, InterruptedException {
+        void testAIInferenceWithNullResponseFormat() throws ExecutionException, InterruptedException, TimeoutException {
             ChatCompletionMessageParam userMessage = ChatCompletionMessageParam.ofUser(
                 ChatCompletionUserMessageParam.builder()
                     .content("Respond with 'OK'")
@@ -182,7 +187,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get();
+            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
 
             assertNotNull(response, "AI should return a response even with null responseFormat");
         }
