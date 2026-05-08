@@ -1,5 +1,6 @@
 package net.honeyberries.database;
 
+import net.honeyberries.ResourceInitializer;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
@@ -11,6 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Guild Rules Repo Tests")
 public class TestGuildRulesRepo {
+
+    static {
+        ResourceInitializer.initialize();
+    }
 
     private static final Database database = Database.getInstance();
     private final GuildRulesRepository repository = GuildRulesRepository.getInstance();

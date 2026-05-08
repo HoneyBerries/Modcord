@@ -1,5 +1,7 @@
 package net.honeyberries.config;
 
+import net.honeyberries.ResourceInitializer;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -14,6 +16,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("AppConfig Test Suite")
 class AppConfigTest {
+
+    static {
+        ResourceInitializer.initialize();
+    }
 
     private AppConfig appConfig;
     private static final Path REAL_CONFIG_PATH = Paths.get("./config/app_config.yml").toAbsolutePath();

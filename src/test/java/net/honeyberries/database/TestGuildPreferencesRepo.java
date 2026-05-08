@@ -1,5 +1,6 @@
 package net.honeyberries.database;
 
+import net.honeyberries.ResourceInitializer;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.datatypes.discord.ChannelID;
@@ -11,6 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Guild Preferences Repo Tests")
 public class TestGuildPreferencesRepo {
+
+    static {
+        ResourceInitializer.initialize();
+    }
 
     private static final Database database = Database.getInstance();
     private final GuildPreferencesRepository repository = GuildPreferencesRepository.getInstance();

@@ -3,6 +3,7 @@ package net.honeyberries.ai;
 import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
+import net.honeyberries.ResourceInitializer;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.*;
 
@@ -14,9 +15,13 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("Inference Engine Test")
 //@Disabled("This test requires an OpenAI API key to be set in the environment variables")
 class InferenceEngineTest {
-    
+
+    static {
+        ResourceInitializer.initialize();
+    }
+
     private InferenceEngine inferenceEngine;
-    
+
     @BeforeEach
     void setUp() {
         inferenceEngine = InferenceEngine.getInstance();

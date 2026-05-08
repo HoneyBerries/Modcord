@@ -1,5 +1,6 @@
 package net.honeyberries.database;
 
+import net.honeyberries.ResourceInitializer;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.ExcludedEntitiesRepository;
 import net.honeyberries.datatypes.discord.ChannelID;
@@ -12,6 +13,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Excluded Entities Repo Tests")
 public class TestExcludedEntitiesRepo {
+
+    static {
+        ResourceInitializer.initialize();
+    }
 
     private static final Database database = Database.getInstance();
     private final ExcludedEntitiesRepository repository = ExcludedEntitiesRepository.getInstance();

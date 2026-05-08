@@ -1,5 +1,6 @@
 package net.honeyberries.database;
 
+import net.honeyberries.ResourceInitializer;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.SpecialUsersRepository;
 import net.honeyberries.datatypes.discord.DiscordUser;
@@ -10,6 +11,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Special Users Repo Tests")
 public class TestSpecialUsersRepo {
+
+    static {
+        ResourceInitializer.initialize();
+    }
 
     private static final Database database = Database.getInstance();
     private final SpecialUsersRepository repository = SpecialUsersRepository.getInstance();

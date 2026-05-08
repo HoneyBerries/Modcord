@@ -1,5 +1,6 @@
 package net.honeyberries.database;
 
+import net.honeyberries.ResourceInitializer;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.ChannelGuidelinesRepository;
 import net.honeyberries.datatypes.content.ChannelGuidelines;
@@ -11,6 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Channel Guidelines Repo Tests")
 public class TestChannelGuidelinesRepo {
+
+    static {
+        ResourceInitializer.initialize();
+    }
 
     private static final Database database = Database.getInstance();
     private final ChannelGuidelinesRepository repository = ChannelGuidelinesRepository.getInstance();

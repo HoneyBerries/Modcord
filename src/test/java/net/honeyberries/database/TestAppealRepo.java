@@ -1,5 +1,6 @@
 package net.honeyberries.database;
 
+import net.honeyberries.ResourceInitializer;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.AppealRepository;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
@@ -14,6 +15,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Appeal Repo Tests")
 public class TestAppealRepo {
+
+    static {
+        ResourceInitializer.initialize();
+    }
 
     private static final Database database = Database.getInstance();
     private final AppealRepository repository = AppealRepository.getInstance();

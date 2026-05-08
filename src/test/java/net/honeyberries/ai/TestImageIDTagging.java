@@ -7,6 +7,7 @@ import com.openai.models.chat.completions.ChatCompletionContentPart;
 import com.openai.models.chat.completions.ChatCompletionContentPartImage;
 import com.openai.models.chat.completions.ChatCompletionContentPartText;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import net.honeyberries.ResourceInitializer;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.util.TokenManager;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,10 @@ import java.util.List;
 
 //@Disabled("This test is for manual experimentation with image ID tagging and is not meant for automated test runs.")
 public class TestImageIDTagging {
+
+    static {
+        ResourceInitializer.initialize();
+    }
 
     private final Logger logger = LoggerFactory.getLogger(TestImageIDTagging.class);
 
