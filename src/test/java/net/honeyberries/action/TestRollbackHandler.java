@@ -100,10 +100,9 @@ public class TestRollbackHandler {
         return guild;
     }
 
-    private Member ensureMemberPresent(Guild guild, long userId) {
+    private void ensureMemberPresent(Guild guild, long userId) {
         Member member = guild.retrieveMemberById(userId).complete();
         Assumptions.assumeTrue(member != null, "Member " + userId + " not found in test guild.");
-        return member;
     }
 
     private void clearTimeoutIfPresent(Guild guild, long userId) {
