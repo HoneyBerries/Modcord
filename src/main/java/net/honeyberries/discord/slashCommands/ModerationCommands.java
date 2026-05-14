@@ -252,12 +252,13 @@ public class ModerationCommands extends ListenerAdapter {
         Objects.requireNonNull(targetUser, "targetUser must not be null");
         Objects.requireNonNull(actionType, "actionType must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
+        UserID moderatorId = resolveModeratorIdentity(guild, moderator);
         ActionData actionData = new ActionData(
                 UUID.randomUUID(),
                 Instant.now(),
                 GuildID.fromGuild(guild),
                 UserID.fromUser(targetUser),
-                new UserID(moderator.getIdLong()),
+                moderatorId,
                 actionType,
                 reason,
                 timeoutDuration,
@@ -278,6 +279,27 @@ public class ModerationCommands extends ListenerAdapter {
         }
 
         reply(event, "Applied **" + actionType.name().toLowerCase() + "** to " + targetUser.getAsMention() + ".");
+    }
+
+    /**
+     * Resolves the moderator identity that should be stored for embeds and audit records.
+     *
+     * <p>If the invoking moderator is in the special-users list, the bot user is used
+     * to avoid exposing the real moderator identity in notification embeds.
+     *
+     * @param guild the guild where the action occurs. Must not be null.
+     * @param moderator the member who invoked the command. Must not be null.
+     * @return moderator identity to persist with the action
+     * @throws NullPointerException if guild or moderator is null
+     */
+    @NotNull
+    private UserID resolveModeratorIdentity(@NotNull Guild guild, @NotNull Member moderator) {
+        Objects.requireNonNull(guild, "guild must not be null");
+        Objects.requireNonNull(moderator, "moderator must not be null");
+        if (specialUsersRepository.isSpecialUser(moderator.getUser())) {
+            return UserID.fromUser(guild.getJDA().getSelfUser());
+        }
+        return UserID.fromUser(moderator.getUser());
     }
 
     /**
