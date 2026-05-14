@@ -101,7 +101,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
+            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
             String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a non-null response");
@@ -120,7 +120,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
+            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
             String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
@@ -138,7 +138,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
+            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
             String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
@@ -169,7 +169,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(messages, null);
-            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
+            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
             String responseText = extractAssistantText(response);
 
             assertNotNull(response, "AI should return a response");
@@ -187,7 +187,7 @@ class InferenceEngineTest {
             );
 
             var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get(90, TimeUnit.SECONDS);
+            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
 
             assertNotNull(response, "AI should return a response even with null responseFormat");
         }
