@@ -49,7 +49,7 @@ ai_settings:
   base_url: "https://api.inference.wandb.ai/v1"
 
   # Model name/identifier to use for inference
-  model_name: "moonshotai/Kimi-K2.6"
+  model_name: "google/gemma-4-31B-it"
 
   # Timeout for the AI inference request (seconds)
   api_request_timeout: 3600
