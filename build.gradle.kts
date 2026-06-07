@@ -88,12 +88,6 @@ liquibase {
 }
 
 
-tasks.withType<JavaCompile> {
-    if (JavaVersion.current() < JavaVersion.VERSION_25) {
-        throw GradleException("Java 25 or newer is required! Current version: ${JavaVersion.current()}")
-    }
-}
-
 tasks.named<ShadowJar>("shadowJar") {
     manifest.attributes["Main-Class"] = "net.honeyberries.Main"
 }
