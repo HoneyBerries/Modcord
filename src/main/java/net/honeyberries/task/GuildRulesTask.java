@@ -126,7 +126,7 @@ public class GuildRulesTask implements Runnable {
             }
 
         } catch (Exception e) {
-            logger.error("Error updating rules for guild {}", guild.getId(), e);
+            logger.error("Error updating rules for guild {}, error: {}", guild.getId(), e.getMessage());
             return UpdateOutcome.FAILED;
         }
     }
