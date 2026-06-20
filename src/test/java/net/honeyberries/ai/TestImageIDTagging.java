@@ -31,7 +31,7 @@ public class TestImageIDTagging {
     public TestImageIDTagging() {
         String apiKey = TokenManager.getOpenAIKey();
         String endpoint = AppConfig.getInstance().getAIEndpoint();
-        this.modelName = "moonshotai/Kimi-K2.5";
+        this.modelName = AppConfig.getInstance().getAIModelName();
 
         this.openAIClient = OpenAIOkHttpClientAsync.builder()
                 .apiKey(apiKey)
