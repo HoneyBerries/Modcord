@@ -75,7 +75,7 @@ public class ChannelGuidelinesTask implements Runnable {
                         updatedCount, skippedCount, results.size());
             }
         } catch (Exception e) {
-            logger.error("Error in ChannelGuidelinesTask", e);
+            logger.error("Error in ChannelGuidelinesTask, error: {}", e.getMessage());
         }
     }
 
@@ -109,7 +109,7 @@ public class ChannelGuidelinesTask implements Runnable {
             return persistChannelGuidelines(guildId, channelId, channel.getName(), guidelinesText);
 
         } catch (Exception e) {
-            logger.error("Error updating guidelines for channel {}", channel.getId(), e);
+            logger.error("Error updating guidelines for channel {}, error: {}", channel.getId(), e.getMessage());
             return UpdateOutcome.FAILED;
         }
     }

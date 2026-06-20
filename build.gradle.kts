@@ -88,12 +88,6 @@ liquibase {
 }
 
 
-tasks.withType<JavaCompile> {
-    if (JavaVersion.current() < JavaVersion.VERSION_25) {
-        throw GradleException("Java 25 or newer is required! Current version: ${JavaVersion.current()}")
-    }
-}
-
 tasks.named<ShadowJar>("shadowJar") {
     manifest.attributes["Main-Class"] = "net.honeyberries.Main"
 }
@@ -105,6 +99,7 @@ tasks.register<JavaExec>("run") {
 
     mainClass.set("net.honeyberries.Main")
     classpath = sourceSets["main"].runtimeClasspath
+    jvmArgs("-DLOG_LEVEL=DEBUG")
 }
 
 tasks.register<JavaExec>("runTest") {
@@ -113,6 +108,7 @@ tasks.register<JavaExec>("runTest") {
 
     mainClass.set("net.honeyberries.Main")
     classpath = sourceSets["main"].runtimeClasspath
+    jvmArgs("-DLOG_LEVEL=DEBUG")
     args("--test")
 }
 

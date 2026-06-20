@@ -20,8 +20,8 @@
         </encoder>
     </appender>
 
-    <!-- Bot package INFO -->
-    <logger name="net.honeyberries" level="INFO" additivity="false">
+    <!-- Bot package: overridden per-environment via LOG_LEVEL env var (default INFO) -->
+    <logger name="net.honeyberries" level="${LOG_LEVEL:-INFO}" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
