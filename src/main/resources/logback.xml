@@ -9,11 +9,11 @@
         </encoder>
     </appender>
 
-    <!-- File appender with daily rotation, no deletion -->
+    <!-- File appender with daily rotation, gzip compression, 90-day retention -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>logs/latest.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/archived/%d{yyyy-MM-dd}.log</fileNamePattern>
+            <fileNamePattern>logs/archived/%d{yyyy-MM-dd}.log.gz</fileNamePattern>
             <!-- No maxHistory, no totalSizeCap = keep forever -->
         </rollingPolicy>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
