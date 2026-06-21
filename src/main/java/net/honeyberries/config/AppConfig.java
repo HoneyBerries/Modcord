@@ -1,6 +1,7 @@
 package net.honeyberries.config;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -119,7 +120,7 @@ public class AppConfig {
         validatePositive("cache.channel_guidelines_cache_refresh", getGuidelinesSyncIntervalOrNull());
         validatePositive("moderation.moderation_queue_duration", getModerationQueueDurationOrNull());
         validateNonNegative("moderation.num_history_context_messages", getHistoryContextMaxMessagesOrNull());
-        validatePositive("moderation.history_context_max_age", getHistoryContextMaxAgeOrNull());
+        validateNonNegative("moderation.history_context_max_age", getHistoryContextMaxAgeOrNull());
     }
 
     /**
@@ -498,7 +499,7 @@ public class AppConfig {
     }
 
     private Double getModerationQueueDurationOrNull() {
-        return readDoubleSetting("moderation", "moderation_queue_duration");
+        return readDoubleSetting("moderation", "queue_duration");
     }
 
     private Long getHistoryContextMaxMessagesOrNull() {
@@ -509,6 +510,7 @@ public class AppConfig {
         return readDoubleSetting("moderation", "history_context_max_age");
     }
 
+    @Nullable
     private String readStringSetting(@NotNull String section, @NotNull String key) {
         Map<String, Object> sectionData = readSection(section);
         if (sectionData == null) {
@@ -518,6 +520,7 @@ public class AppConfig {
         return value != null ? value.toString() : null;
     }
 
+    @Nullable
     private Long readLongSetting(@NotNull String section, @NotNull String key) {
         Map<String, Object> sectionData = readSection(section);
         if (sectionData == null) {
@@ -527,11 +530,13 @@ public class AppConfig {
         return value instanceof Number number ? number.longValue() : null;
     }
 
+    @Nullable
     private Integer readIntSetting(@NotNull String section, @NotNull String key) {
         Long value = readLongSetting(section, key);
         return value != null ? Math.toIntExact(value) : null;
     }
 
+    @Nullable
     private Double readDoubleSetting(@NotNull String section, @NotNull String key) {
         Map<String, Object> sectionData = readSection(section);
         if (sectionData == null) {
@@ -541,6 +546,7 @@ public class AppConfig {
         return value instanceof Number number ? number.doubleValue() : null;
     }
 
+    @Nullable
     @SuppressWarnings("unchecked")
     private Map<String, Object> readSection(@NotNull String section) {
         Object sectionObj = data.get(section);

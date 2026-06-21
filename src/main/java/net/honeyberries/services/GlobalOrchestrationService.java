@@ -231,7 +231,7 @@ public class GlobalOrchestrationService {
     }
 
     /**
-     * Schedules a delayed processing run for a guild, replacing any previous scheduled run.
+     * Schedules a delayed processing run for a guild if one is not already scheduled.
      * Calculates the delay in milliseconds from {@code AppConfig.getModerationQueueDuration()},
      * ensures a minimum delay of 1 millisecond, and schedules the run on the executor.
      * <p>
@@ -252,9 +252,10 @@ public class GlobalOrchestrationService {
             return;
         }
 
-        ScheduledFuture<?> previous = scheduledGuildRuns.remove(guildId);
-        if (previous != null) {
-            previous.cancel(false);
+        // If a run is already scheduled, do not schedule a new one or reset the timer.
+        // This ensures the batch window starts from the first message in the batch.
+        if (scheduledGuildRuns.containsKey(guildId)) {
+            return;
         }
 
         long delayMillis = Math.round(AppConfig.getInstance().getModerationQueueDuration() * 1000.0);

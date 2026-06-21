@@ -43,7 +43,10 @@ public class InferenceEngine {
 
     private final String modelName;
     /** Stored for log messages only. */
+
     private final String endpoint;
+
+    /** OpenAI client for making API calls. */
     private final OpenAIClientAsync openAIClient;
 
     /** Retry and failure mechanism */
@@ -68,11 +71,7 @@ public class InferenceEngine {
 
         this.circuitBreaker = buildCircuitBreaker();
         this.retry = buildRetry();
-        this.retryScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "inference-retry-scheduler");
-            t.setDaemon(true);
-            return t;
-        });
+        this.retryScheduler = Executors.newSingleThreadScheduledExecutor();
 
         logger.info("InferenceEngine initialized: endpoint={}, model={}", endpoint, modelName);
     }

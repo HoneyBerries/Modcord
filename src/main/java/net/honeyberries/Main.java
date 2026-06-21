@@ -130,12 +130,9 @@ public class Main {
         if (scheduler != null) {
             scheduler.shutdown();
             try {
-                if (!scheduler.awaitTermination(15, TimeUnit.SECONDS)) {
+                if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
                     logger.warn("Scheduled tasks did not stop in time, forcing shutdown");
                     scheduler.shutdownNow();
-                    if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                        logger.warn("Scheduled tasks are still running after forced shutdown");
-                    }
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

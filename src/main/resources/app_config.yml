@@ -29,7 +29,7 @@ cache:
 moderation:
   # Messages received within this window (seconds) are grouped for batch moderation.
   # Lower = faster response, higher = better API efficiency.
-  moderation_queue_duration: 30
+  queue_duration: 30
 
   # Number of recent messages to fetch for context (including historical messages).
   # Provides context for violations. Recommended: 20-100 messages.
