@@ -15,11 +15,8 @@ import net.honeyberries.discord.JDAManager;
 import org.junit.jupiter.api.*;
 
 import java.time.Instant;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 @DisplayName("Action Handler Tests")
 @Tag("integration")
@@ -63,16 +60,15 @@ public class TestActionHandler {
     }
 
     @Test
-    @DisplayName("test account 2 should be timeouted")
+    @DisplayName("test account 2 should be timed out for 2 minutes")
     void shouldTimeoutTestAccount2() {
         Guild guild = getGuildOrSkip();
-        Member member = ensureMemberPresent(guild, TEST_ACCOUNT_2_ID);
+        ensureMemberPresent(guild, TEST_ACCOUNT_2_ID);
         ensureOutputChannelPresent(guild);
 
         clearTimeoutIfPresent(guild, TEST_ACCOUNT_2_ID);
 
-        long timeoutSeconds = 120;
-        ActionData actionData = createAction(TEST_ACCOUNT_2_ID, ActionType.TIMEOUT, timeoutSeconds, 0);
+        ActionData actionData = createAction(TEST_ACCOUNT_2_ID, ActionType.TIMEOUT, 120, 0);
 
         boolean applied = actionHandler.processAction(actionData);
         Assertions.assertTrue(applied, "TIMEOUT action should apply successfully for test account 2");
@@ -83,43 +79,22 @@ public class TestActionHandler {
     }
 
     @Test
-    @DisplayName("test account 3 action should be warn/timeout/null with 1/3 random selection")
-    void testAccount3RandomSelectionAndExecution() {
+    @DisplayName("test account 3 should be timed out for 5 minutes")
+    void shouldTimeoutTestAccount3() {
         Guild guild = getGuildOrSkip();
         ensureMemberPresent(guild, TEST_ACCOUNT_3_ID);
         ensureOutputChannelPresent(guild);
 
-        Map<ActionType, Integer> counts = new EnumMap<>(ActionType.class);
-        counts.put(ActionType.WARN, 0);
-        counts.put(ActionType.TIMEOUT, 0);
-        counts.put(ActionType.NULL, 0);
+        clearTimeoutIfPresent(guild, TEST_ACCOUNT_3_ID);
 
-        int trials = 900;
-        ActionType lastPicked = ActionType.NULL; // <-- track the last pick inside the loop
-        for (int i = 0; i < trials; i++) {
-            lastPicked = pickRandomActionForAccount3();
-            counts.computeIfPresent(lastPicked, (k, v) -> v + 1);
-        }
-
-        double warnRatio = counts.get(ActionType.WARN) / (double) trials;
-        double timeoutRatio = counts.get(ActionType.TIMEOUT) / (double) trials;
-        double nullRatio = counts.get(ActionType.NULL) / (double) trials;
-
-        Assertions.assertTrue(warnRatio > 0.25 && warnRatio < 0.42,
-                "WARN ratio should be near 1/3; actual=" + warnRatio);
-        Assertions.assertTrue(timeoutRatio > 0.25 && timeoutRatio < 0.42,
-                "TIMEOUT ratio should be near 1/3; actual=" + timeoutRatio);
-        Assertions.assertTrue(nullRatio > 0.25 && nullRatio < 0.42,
-                "NULL ratio should be near 1/3; actual=" + nullRatio);
-
-        // Re-use lastPicked instead of calling pickRandomActionForAccount3() again,
-        // which was generating a second independent action and causing double-application.
-        long timeoutSeconds = lastPicked == ActionType.TIMEOUT ? 120 : 0;
-        ActionData actionData = createAction(TEST_ACCOUNT_3_ID, lastPicked, timeoutSeconds, 0);
+        ActionData actionData = createAction(TEST_ACCOUNT_3_ID, ActionType.TIMEOUT, 300, 0);
 
         boolean applied = actionHandler.processAction(actionData);
-        Assertions.assertTrue(applied,
-                "Random action should apply successfully for test account 3 when picked action is " + lastPicked);
+        Assertions.assertTrue(applied, "TIMEOUT action should apply successfully for test account 3");
+
+        Member refreshed = guild.retrieveMemberById(TEST_ACCOUNT_3_ID).complete();
+        Assertions.assertNotNull(refreshed, "Timed out member should still be retrievable");
+        Assertions.assertTrue(refreshed.isTimedOut(), "test account 3 should be timed out after action application");
     }
 
     private ActionData createAction(long userId, ActionType actionType, long timeoutDuration, long banDuration) {
@@ -137,15 +112,6 @@ public class TestActionHandler {
         );
     }
 
-    private ActionType pickRandomActionForAccount3() {
-        int pick = ThreadLocalRandom.current().nextInt(3);
-        return switch (pick) {
-            case 0 -> ActionType.WARN;
-            case 1 -> ActionType.TIMEOUT;
-            default -> ActionType.NULL;
-        };
-    }
-
     private Guild getGuildOrSkip() {
         JDA jda = JDAManager.getInstance().getJDA();
         Guild guild = jda.getGuildById(TEST_GUILD_ID);
@@ -153,10 +119,9 @@ public class TestActionHandler {
         return guild;
     }
 
-    private Member ensureMemberPresent(Guild guild, long userId) {
+    private void ensureMemberPresent(Guild guild, long userId) {
         Member member = guild.retrieveMemberById(userId).complete();
         Assumptions.assumeTrue(member != null, "Member " + userId + " not found in test guild.");
-        return member;
     }
 
     private void ensureOutputChannelPresent(Guild guild) {
