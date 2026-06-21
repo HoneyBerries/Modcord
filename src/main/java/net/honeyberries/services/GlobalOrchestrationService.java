@@ -175,7 +175,7 @@ public class GlobalOrchestrationService {
             boolean success = service.runPipeline();
 
             if (!success) {
-                logger.warn("Guild {} processing produced no actionable results", guild.getId());
+                logger.debug("Guild {} processing cycle completed with no moderation actions", guild.getId());
             }
         } catch (Exception e) {
             logger.error("Unhandled failure while processing guild {}", guild.getId(), e);

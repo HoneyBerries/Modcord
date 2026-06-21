@@ -49,16 +49,14 @@ dependencies {
     implementation(libs.postgresql)
     implementation(libs.hikari.cp)
     implementation(libs.liquibase.core)
+    implementation(libs.resilience4j.all)
 
-    implementation(libs.picocli)
-    implementation(libs.jline)
 
     // Liquibase runtime classpath
     liquibaseRuntime(libs.liquibase.core)
     liquibaseRuntime(libs.postgresql)
     liquibaseRuntime(libs.slf4j.api)
     liquibaseRuntime(libs.logback.classic)
-    liquibaseRuntime(libs.picocli)
     liquibaseRuntime(libs.apache.commons.lang3)
 
     testImplementation(platform(Testing.junit.bom))

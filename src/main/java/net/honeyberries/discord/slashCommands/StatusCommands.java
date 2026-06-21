@@ -7,6 +7,8 @@ import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import net.honeyberries.ai.InferenceEngine;
 import net.honeyberries.database.Database;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -114,6 +116,26 @@ public class StatusCommands extends ListenerAdapter {
             healthStatus.append(":floppy_disk:  **Database Status:** Connected & Healthy\n");
         } else {
             healthStatus.append(":x:  **Database Status:** Broken or Unreachable\n");
+        }
+
+        CircuitBreaker cb = InferenceEngine.getInstance().getCircuitBreaker();
+        CircuitBreaker.State cbState = cb.getState();
+        CircuitBreaker.Metrics metrics = cb.getMetrics();
+
+        float failureRate = metrics.getFailureRate();
+        String failureRateStr = failureRate < 0 ? "N/A" : String.format("%.0f%%", failureRate);
+
+        healthStatus.append("\n");
+        switch (cbState) {
+            case CLOSED -> healthStatus.append(String.format(
+                    ":white_check_mark:  **AI Inference:** Healthy (failure rate: %s over last %d calls)\n",
+                    failureRateStr, metrics.getNumberOfBufferedCalls()));
+            case OPEN -> healthStatus.append(
+                    ":x:  **AI Inference:** Circuit Open — endpoint unreachable, calls suppressed\n");
+            case HALF_OPEN -> healthStatus.append(
+                    ":warning:  **AI Inference:** Recovering — probing endpoint\n");
+            default -> healthStatus.append(String.format(
+                    ":question:  **AI Inference:** %s\n", cbState.name()));
         }
 
         event.reply(healthStatus.toString()).setEphemeral(true).queue();

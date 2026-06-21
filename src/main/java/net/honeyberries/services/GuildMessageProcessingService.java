@@ -434,21 +434,22 @@ public class GuildMessageProcessingService {
         conversation.add(ChatCompletionMessageParam.ofSystem(systemPrompt));
         conversation.add(ChatCompletionMessageParam.ofUser(inputs));
 
+        long timeoutSecs = AppConfig.getInstance().getAIRequestTimeout();
+        logger.info("Submitting moderation batch for guild {} to LLM", guildId.value());
+        CompletableFuture<ChatCompletionAssistantMessageParam> inferenceFuture =
+                InferenceEngine.getInstance().generateResponse(conversation, schema);
         try {
-            long timeoutSecs = AppConfig.getInstance().getAIRequestTimeout();
-            logger.info("Submitting moderation batch for guild {} to LLM", guildId.value());
-            response = InferenceEngine.getInstance()
-                    .generateResponse(conversation, schema)
-                    .get(timeoutSecs, TimeUnit.SECONDS);
+            response = inferenceFuture.get(timeoutSecs, TimeUnit.SECONDS);
             conversation.add(ChatCompletionMessageParam.ofAssistant(response));
         } catch (TimeoutException e) {
-            logger.error("AI inference timed out for guild {} after {}s",
-                    guildId, AppConfig.getInstance().getAIRequestTimeout());
+            inferenceFuture.cancel(true);
+            logger.error("AI inference timed out for guild {} after {}s", guildId, timeoutSecs);
             return List.of();
         } catch (ExecutionException e) {
             logger.error("Error during AI inference for guild {}", guildId, e);
             return List.of();
         } catch (InterruptedException e) {
+            inferenceFuture.cancel(true);
             logger.warn("AI inference interrupted for guild {}", guildId);
             Thread.currentThread().interrupt();
             return List.of();
