@@ -112,13 +112,13 @@ public class GuildRulesTask implements Runnable {
             // Fetch and persist rules
             String updatedRules = getGuildRulesFromDiscord(guild, rulesChannelID);
             if (updatedRules == null || updatedRules.isBlank()) {
-                logger.debug("No rules found for guild: {} ({}).", guild.getName(), guildId.value());
+                logger.debug("No rules found for guild: {} ({}), skipping.", guild.getName(), guildId.value());
                 return UpdateOutcome.SKIPPED;
             }
 
             GuildRules currentGuildRules = new GuildRules(guildId, rulesChannelID, updatedRules);
             if (GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(currentGuildRules)) {
-                logger.debug("Updated rules for guild: {} ({})", guild.getName(), guildId.value());
+                logger.debug("Updated rules for guild: {} ({}), successful", guild.getName(), guildId.value());
                 return UpdateOutcome.UPDATED;
             } else {
                 logger.warn("Failed to update rules for guild: {} ({})", guild.getName(), guildId.value());

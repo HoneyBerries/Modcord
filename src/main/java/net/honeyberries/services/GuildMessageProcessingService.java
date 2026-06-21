@@ -34,6 +34,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -390,7 +391,7 @@ public class GuildMessageProcessingService {
 
         List<ModerationMessage> historyMessages = fetchHistoryContextFromDiscord(currentMessages);
 
-        List<ModerationUser> users        = buildModerationUsers(currentMessages);
+        List<ModerationUser> users  = buildModerationUsers(currentMessages);
         List<ModerationUser> historyUsers = buildModerationUsers(historyMessages);
 
         GuildModerationBatch batch = new GuildModerationBatch(
@@ -434,24 +435,14 @@ public class GuildMessageProcessingService {
         conversation.add(ChatCompletionMessageParam.ofSystem(systemPrompt));
         conversation.add(ChatCompletionMessageParam.ofUser(inputs));
 
-        long timeoutSecs = AppConfig.getInstance().getAIRequestTimeout();
         logger.info("Submitting moderation batch for guild {} to LLM", guildId.value());
         CompletableFuture<ChatCompletionAssistantMessageParam> inferenceFuture =
                 InferenceEngine.getInstance().generateResponse(conversation, schema);
         try {
-            response = inferenceFuture.get(timeoutSecs, TimeUnit.SECONDS);
+            response = inferenceFuture.join();
             conversation.add(ChatCompletionMessageParam.ofAssistant(response));
-        } catch (TimeoutException e) {
-            inferenceFuture.cancel(true);
-            logger.error("AI inference timed out for guild {} after {}s", guildId, timeoutSecs);
-            return List.of();
-        } catch (ExecutionException e) {
-            logger.error("Error during AI inference for guild {}", guildId, e);
-            return List.of();
-        } catch (InterruptedException e) {
-            inferenceFuture.cancel(true);
-            logger.warn("AI inference interrupted for guild {}", guildId);
-            Thread.currentThread().interrupt();
+        } catch (CompletionException e) {
+            logger.error("Error during AI inference for guild {}", guildId, e.getCause());
             return List.of();
         }
 
