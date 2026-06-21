@@ -33,9 +33,8 @@ public class UnbanWatcherTask implements Runnable {
 
     /**
      * Duration sentinel used throughout the system to mark a permanent ban.
-     * Matches the historical value written to the database for legacy permanent bans.
      */
-    public static final long PERMANENT_BAN_SENTINEL = Integer.MAX_VALUE;
+    public static final long PERMANENT_BAN_SENTINEL = -1L;
 
     /** Logger for task execution and ban expiration events. */
     private static final Logger logger = LoggerFactory.getLogger(UnbanWatcherTask.class);
@@ -243,7 +242,7 @@ public class UnbanWatcherTask implements Runnable {
      */
     private boolean isBanExpired(@NotNull ActionData action) {
         Objects.requireNonNull(action, "action must not be null");
-        if (action.banDuration() <= 0 || action.banDuration() >= PERMANENT_BAN_SENTINEL) {
+        if (action.banDuration() <= 0) {
             return false;
         }
 
