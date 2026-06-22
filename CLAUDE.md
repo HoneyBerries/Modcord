@@ -5,58 +5,78 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Run the bot
+# Run the bot (with DEBUG logging)
 ./gradlew run
 
-# Run with --test flag (auto-shuts down after 5 seconds)
+# Run with --test flag (auto-shuts down after 5 seconds for testing)
 ./gradlew runTest
 
-# Build a fat/shadow JAR
+# Build a fat/shadow JAR (creates build/libs/modcord-all.jar)
 ./gradlew assemble
 
-# Run unit tests
+# Run all unit tests
 ./gradlew test
+
+# Run integration tests only (requires live Discord bot + test guild)
+./gradlew test --include-group integration
+
+# Format code with Spotless
+./gradlew spotlessApply
 ```
+
+Set log level via JVM flag: `-DLOG_LEVEL=INFO|DEBUG|WARN|ERROR` (defaults to DEBUG in Gradle tasks, INFO in production).
 
 ## Environment Setup
 
 Copy `.env.example` to `.env` and fill in:
 
 ```
-DISCORD_BOT_TOKEN=...
-OPENAI_API_KEY=...
-POSTGRES_DB_PASSWORD=...
+DISCORD_BOT_TOKEN=<your Discord bot token>
+OPENAI_API_KEY=<your OpenAI/LLM provider API key>
+POSTGRES_DB_PASSWORD=<database password>
 ```
 
-Runtime config lives in `config/app_config.yml` (AI endpoint, model name, moderation timing, context windows, fallback rules). The system prompt is in `config/system_prompt.md`.
+Runtime config lives in `config/app_config.yml`:
+- **Database:** PostgreSQL connection (host, port, database, username; password from env var)
+- **Cache:** Refresh intervals for guild rules and channel guidelines (default: 60s)
+- **Moderation:** Queue duration (default: 30s), history context window (default: 50 messages, max age 24h)
+- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 3600s)
+- **Generic rules/guidelines:** Fallback text for servers with no custom configuration
+
+The system prompt is in `config/system_prompt.md` — customize to fit your community's values.
 
 ## Architecture
 
-Modcord is an AI-powered Discord moderation bot. Java 25, Gradle, JDA, PostgreSQL (via HikariCP), Liquibase for schema migrations, and an OpenAI-compatible inference client.
+Modcord is an AI-powered Discord moderation bot. Java 25, Gradle, JDA, PostgreSQL (via HikariCP), Liquibase for schema migrations, OpenAI-compatible inference client (with Resilience4j retry/circuit breaker).
 
 ### Startup flow (`Main.java`)
 
 1. `Database.initialize(AppConfig)` — opens HikariCP pool, runs Liquibase migrations
 2. `JDAManager.getInstance()` — connects to Discord, registers all slash commands and event listeners
-3. Scheduled tasks start: `UnbanWatcherTask`, `GuildRulesTask`, `ChannelGuidelinesTask`
+3. Scheduled tasks start: `UnbanWatcherTask`, `GuildRulesTask`, `ChannelGuidelinesTask` (thread pool: 8 threads)
+4. `GlobalOrchestrationService` is implicitly initialized on first message — maintains per-guild queues and scheduling logic
+
+**Shutdown flow:** gracefully stops tasks, drops pending moderation queues, shuts down the bot, closes database. Safe even if startup failed partway through.
 
 ### Message processing pipeline
 
-The core flow is message → batch → AI → action:
+The core flow is message → batch → AI → action. Resilience is built in at the inference layer:
 
-1. **`MessageListener`** receives Discord message events and calls `GlobalOrchestrationService.addMessage()`
-2. **`GlobalOrchestrationService`** (singleton) maintains per-guild queues and schedules a delayed processing run per guild, coalescing rapid arrivals into a single batch. Prevents concurrent processing of the same guild via an in-flight set.
-3. **`GuildMessageProcessingService`** (one per guild, lazily created) manages the actual queue with arrival timestamps. When `runPipeline()` is called:
+1. **`MessageListener`** receives Discord message events, calls `GlobalOrchestrationService.addMessage()`
+2. **`GlobalOrchestrationService`** (singleton) maintains per-guild queues and schedules a delayed processing run (default: 30s via config `queue_duration`). Coalesces rapid arrivals into a single batch. Prevents concurrent processing via an in-flight set; if new messages arrive during processing, reschedules a new run after the current one completes.
+3. **`GuildMessageProcessingService`** (one per guild, lazily created) manages the message queue with arrival timestamps. When `runPipeline()` is called:
    - Gets queued messages (current window)
-   - Fetches historical context from Discord via `HistoryFetcher`
+   - Fetches historical context from Discord via `HistoryFetcher` (configurable window: `num_history_context_messages`, `history_context_max_age`)
    - Builds `GuildModerationBatch` with `ModerationUser` objects (user details, roles, per-channel message lists)
    - Generates a dynamic JSON schema via `DynamicSchemaGenerator` (constrains AI output to actual users/channels in the batch)
    - Builds the dynamic system prompt via `DynamicSystemPrompt` (injects guild-specific rules and channel guidelines from DB)
-   - Calls `InferenceEngine.generateResponse()` (async, OpenAI SDK)
+   - Calls `InferenceEngine.generateResponse()` (async, wrapped in Resilience4j retry + circuit breaker)
    - Parses the JSON response via `ActionDataJSONParser` into `ActionData` objects
    - Logs to DB (`AILogRepository`, `GuildModerationActionsRepository`)
    - Executes actions in parallel via `ActionHandler`
 4. **`ActionHandler`** (singleton) executes each `ActionData`: sends user DM → deletes flagged messages → applies moderation action (timeout/kick/ban/unban) → posts to audit log channel
+
+**Inference resilience (Resilience4j):** InferenceEngine decorates all OpenAI calls with circuit breaker → retry pattern. Retries are transparent to the circuit breaker (all retry attempts count as one failure). Circuit opens after threshold failures; calls rejected immediately until half-open → probe succeeds. Retry and circuit breaker state are logged and exposed via `/status` command.
 
 ### Key singletons
 
@@ -79,21 +99,32 @@ All major services are singletons accessed via `getInstance()`: `Database`, `App
 
 ### Tests
 
-`AppConfigTest` — unit tests against `config/app_config.yml`, no external dependencies.
+**Unit tests** run with `./gradlew test` (no external dependencies):
+- `AppConfigTest` — validates `config/app_config.yml` parsing
 
-`TestActionHandler` — integration tests tagged `@Tag("integration")` that require a live Discord bot connection and a real test guild (hardcoded IDs). They use JUnit `Assumptions` to skip gracefully if the bot isn't connected.
+**Integration tests** (tagged `@Tag("integration")`) require a live Discord bot + test guild. Run with `./gradlew test --include-group integration`. Tests use JUnit `Assumptions` to skip gracefully if the bot isn't connected (configurable via hardcoded guild IDs in test class).
+
+Failures in integration tests don't block CI if bot is unavailable (graceful skip).
+
+## Java 25+ Features
+
+The codebase uses Java 25-specific APIs:
+- **Virtual threads** (`Thread.startVirtualThread()`) — used in `Main.java` for test mode shutdown delay to avoid blocking the main thread
+- **Toolchain requirement** — enforced in `build.gradle.kts` via `JavaLanguageVersion.of(25)`
+
+If adding new threads, prefer `Thread.startVirtualThread()` over traditional `new Thread()` for lightweight, scalable concurrency.
 
 ## JDA Best Practices
 
-**Never use cache-only lookups.** Methods like `getUserById()`, `getMemberById()`, `getChannelById()` only check the local cache and return null if the entity isn't cached. This breaks when users leave the server, members go offline, or entities haven't been cached yet.
+**Never use cache-only lookups** (e.g., `getUserById()`, `getMemberById()`, `getChannelById()`) — they only check local cache and return null if the entity isn't cached. Breaks when users leave, members go offline, or entities haven't been cached yet.
 
 **Always use retrieval methods instead:**
 - `jda.retrieveUserById(id).complete()` — fetches from Discord API if not cached
 - `jda.retrieveMemberById(guildId, userId).complete()` — fetches member from API if not cached
 - `guild.retrieveChannelById(id).complete()` — fetches channel from API if not cached
 
-For async/non-blocking use (preferred in Discord handlers):
+For async/non-blocking use (preferred in Discord event handlers):
 - `.queue(success, failure)` — queue async fetch with success/failure callbacks
-- `.complete()` — synchronous, blocks until response (use sparingly in event handlers)
+- `.complete()` — synchronous, blocks until response (use sparingly)
 
-This ensures reliability even when entities aren't in cache, e.g., resolving user info for actions targeting users who've left the server.
+This ensures reliability even when entities aren't cached (e.g., resolving user info for actions targeting users who've left the server).
