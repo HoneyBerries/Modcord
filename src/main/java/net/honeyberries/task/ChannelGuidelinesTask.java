@@ -48,7 +48,7 @@ public class ChannelGuidelinesTask implements Runnable {
 
     @Override
     public void run() {
-        logger.info("ChannelGuidelinesTask started");
+        logger.debug("ChannelGuidelinesTask started");
 
         if (!Database.getInstance().isHealthy()) {
             logger.warn("Skipping ChannelGuidelinesTask because database is unavailable");
@@ -71,7 +71,7 @@ public class ChannelGuidelinesTask implements Runnable {
                 logger.warn("ChannelGuidelinesTask completed with {} updated, {} skipped, {} failed out of {} channels",
                         updatedCount, skippedCount, failedCount, results.size());
             } else {
-                logger.info("ChannelGuidelinesTask completed with {} updated and {} skipped out of {} channels",
+                logger.debug("ChannelGuidelinesTask completed with {} updated and {} skipped out of {} channels",
                         updatedCount, skippedCount, results.size());
             }
         } catch (Exception e) {

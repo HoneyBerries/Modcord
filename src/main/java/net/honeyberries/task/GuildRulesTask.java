@@ -45,7 +45,7 @@ public class GuildRulesTask implements Runnable {
      */
     @Override
     public void run() {
-        logger.info("GuildRulesTask started");
+        logger.debug("GuildRulesTask started");
 
         if (!Database.getInstance().isHealthy()) {
             logger.warn("Skipping GuildRulesTask because database is unavailable");
@@ -68,7 +68,7 @@ public class GuildRulesTask implements Runnable {
                 logger.warn("GuildRulesTask completed with {} updated, {} skipped, {} failed out of {} guilds",
                         updatedCount, skippedCount, failedCount, results.size());
             } else {
-                logger.info("GuildRulesTask completed with {} updated and {} skipped out of {} guilds",
+                logger.debug("GuildRulesTask completed with {} updated and {} skipped out of {} guilds",
                         updatedCount, skippedCount, results.size());
             }
 
