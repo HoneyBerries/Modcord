@@ -54,4 +54,4 @@ jobs:
             mv *-all.jar Modcord.jar
             sudo systemctl start modcord
             sleep 3
-            systemctl is-active --quiet modcord && echo "✅ Modcord is running" || echo "❌ Modcord failed to start"
+            systemctl is-active --quiet modcord && echo "✅ Modcord is running" || { echo "❌ Modcord failed to start"; exit 1; }
