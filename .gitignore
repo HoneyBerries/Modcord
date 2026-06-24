@@ -55,3 +55,8 @@ config/
 
 # Other files to ignore
 /Modcord-old-python-version
+
+# AI Stuff
+.codex/
+.claude/
+.gemini/
