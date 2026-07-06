@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Inference Engine Test")
 //@Disabled("This test requires an OpenAI API key to be set in the environment variables")
+@Tag("integration")
 class InferenceEngineTest {
 
     static {

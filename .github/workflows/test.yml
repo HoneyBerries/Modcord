@@ -12,10 +12,25 @@ jobs:
   runProgramTest:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: modcord_ci
+          POSTGRES_PASSWORD: modcord_ci
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      POSTGRES_DB_PASSWORD: ${{ secrets.POSTGRES_DB_PASSWORD }}
+      POSTGRES_DB_PASSWORD: modcord_ci
 
     steps:
       - uses: actions/checkout@v6
@@ -30,11 +45,23 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Point app config at the CI Postgres service
+        run: |
+          mkdir -p config
+          sed \
+            -e 's#url: "jdbc:postgresql://.*"#url: "jdbc:postgresql://localhost:5432/postgres"#' \
+            -e 's#username: ".*"#username: "modcord_ci"#' \
+            src/main/resources/app_config.yml > config/app_config.yml
+
       - name: Run Program Test
         run: ./gradlew runTest
 
   runUnitTests:
     runs-on: ubuntu-latest
+
+    env:
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
       - uses: actions/checkout@v6
