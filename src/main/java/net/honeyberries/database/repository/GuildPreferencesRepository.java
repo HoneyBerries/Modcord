@@ -69,8 +69,9 @@ public class GuildPreferencesRepository {
                             INSERT INTO guild_preferences (
                                 guild_id, ai_enabled, rules_channel_id,
                                 auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
-                                auto_kick_enabled, auto_ban_enabled, audit_log_channel_id
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                auto_kick_enabled, auto_ban_enabled, audit_log_channel_id,
+                                remove_on_delete_enabled
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON CONFLICT (guild_id) DO UPDATE SET
                                 ai_enabled             = EXCLUDED.ai_enabled,
                                 rules_channel_id       = EXCLUDED.rules_channel_id,
@@ -79,7 +80,8 @@ public class GuildPreferencesRepository {
                                 auto_timeout_enabled   = EXCLUDED.auto_timeout_enabled,
                                 auto_kick_enabled      = EXCLUDED.auto_kick_enabled,
                                 auto_ban_enabled       = EXCLUDED.auto_ban_enabled,
-                                audit_log_channel_id   = EXCLUDED.audit_log_channel_id
+                                audit_log_channel_id   = EXCLUDED.audit_log_channel_id,
+                                remove_on_delete_enabled = EXCLUDED.remove_on_delete_enabled
                         """;
 
                 try (PreparedStatement ps = conn.prepareStatement(upsertSql)) {
@@ -106,6 +108,8 @@ public class GuildPreferencesRepository {
                         ps.setNull(9, Types.BIGINT);
                     }
 
+                    ps.setBoolean(10, guildPreferences.removeOnDeleteEnabled());
+
                     ps.executeUpdate();
                 }
             });
@@ -131,7 +135,8 @@ public class GuildPreferencesRepository {
         String sql = """
                     SELECT guild_id, ai_enabled, rules_channel_id,
                            auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
-                           auto_kick_enabled, auto_ban_enabled, audit_log_channel_id
+                           auto_kick_enabled, auto_ban_enabled, audit_log_channel_id,
+                           remove_on_delete_enabled
                     FROM guild_preferences
                     WHERE guild_id = ?
                 """;
@@ -207,6 +212,7 @@ public class GuildPreferencesRepository {
                 rs.getBoolean("auto_timeout_enabled"),
                 rs.getBoolean("auto_kick_enabled"),
                 rs.getBoolean("auto_ban_enabled"),
+                rs.getBoolean("remove_on_delete_enabled"),
                 auditLogChannelId
         );
     }

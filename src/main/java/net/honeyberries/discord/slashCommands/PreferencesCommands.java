@@ -121,11 +121,19 @@ public class PreferencesCommands extends ListenerAdapter {
                         "Enable or disable this action (leave empty to view current)", false)
         );
 
+        SubcommandData removeOnDeleteSub = new SubcommandData(
+                "remove_on_delete",
+                "Enable or disable removing deleted messages from the moderation queue (or view current setting)"
+        ).addOptions(
+                new OptionData(OptionType.BOOLEAN, "enabled",
+                        "true = remove on delete (old behavior); false = catch ghost pings (leave empty to view)", false)
+        );
+
         SlashCommandData preferencesCommand = Commands.slash(
                 "preferences",
                 "Manage guild preferences and settings"
         ).addSubcommands(
-                aiSub, rulesChannelSub, auditChannelSub, settingsSub, resetSub, actionSub);
+                aiSub, rulesChannelSub, auditChannelSub, settingsSub, resetSub, actionSub, removeOnDeleteSub);
 
         commands.addCommands(preferencesCommand);
         logger.info("Registered /preferences command with subcommands");
@@ -162,6 +170,7 @@ public class PreferencesCommands extends ListenerAdapter {
                 case "settings"          -> helper.handleSettings(event);
                 case "reset"             -> helper.handleReset(event, guild);
                 case "action"            -> helper.handleAction(event, guild);
+                case "remove_on_delete"  -> helper.handleRemoveOnDelete(event, guild);
                 default                  -> event.reply("Unknown subcommand.").setEphemeral(true).queue();
             }
         } catch (Exception e) {

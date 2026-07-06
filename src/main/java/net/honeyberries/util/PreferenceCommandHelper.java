@@ -116,6 +116,36 @@ public class PreferenceCommandHelper {
     }
 
     /**
+     * Handles the {@code /preferences remove_on_delete} subcommand.
+     *
+     * <p>If {@code enabled} is omitted, reports the current setting. Otherwise,
+     * enables or disables removal of deleted messages from the moderation queue for the guild.</p>
+     *
+     * @param event the slash command interaction event
+     * @param guild the guild where the command was invoked (validated)
+     * @throws NullPointerException if event or guild is null
+     */
+    public void handleRemoveOnDelete(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
+        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(guild, "guild must not be null");
+        try {
+            GuildID guildId = GuildID.fromGuild(guild);
+            Boolean enabled = event.getOption("enabled", OptionMapping::getAsBoolean);
+
+            if (enabled == null) {
+                reportRemoveOnDeleteStatus(event, guildId);
+                return;
+            }
+
+            updateRemoveOnDeleteStatus(event, guildId, enabled);
+        } catch (Exception e) {
+            logger.error("Error handling remove_on_delete subcommand", e);
+            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
+                    .setEphemeral(true).queue();
+        }
+    }
+
+    /**
      * Handles the {@code /preferences set_rules_channel} subcommand.
      *
      * <p>If {@code channel} is omitted, reports the currently configured channel.
@@ -307,6 +337,8 @@ public class PreferenceCommandHelper {
             handleAiToggleButton(event, guildId);
         } else if (componentId.startsWith("pref_action_")) {
             handleActionToggleButton(event, guildId, componentId);
+        } else if (componentId.equals("pref_remove_on_delete_toggle")) {
+            handleRemoveOnDeleteToggleButton(event, guildId);
         }
     }
 
@@ -487,6 +519,20 @@ public class PreferenceCommandHelper {
     }
 
     /**
+     * Handles the remove-on-delete toggle button click.
+     *
+     * @param event the button interaction event
+     * @param guildId the guild ID
+     */
+    private void handleRemoveOnDeleteToggleButton(@NotNull ButtonInteractionEvent event, @NotNull GuildID guildId) {
+        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
+        prefs = prefs.withRemoveOnDeleteEnabled(!prefs.removeOnDeleteEnabled());
+        PreferencesManager.getInstance().updatePreferences(prefs);
+        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed("flags"))
+                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, "flags")).queue();
+    }
+
+    /**
      * Handles channel selection in entity select menus.
      *
      * @param event the entity select interaction event
@@ -540,6 +586,43 @@ public class PreferenceCommandHelper {
             event.reply("AI moderation has been **" + status + "** for this guild.")
                     .setEphemeral(true).queue();
             logger.debug("Guild {} AI moderation set to {}", guildId.value(), enabled);
+        } else {
+            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
+                    .setEphemeral(true).queue();
+        }
+    }
+
+    /**
+     * Reports the current remove-on-delete status for a guild.
+     *
+     * @param event the slash command interaction event
+     * @param guildId the guild ID
+     */
+    private void reportRemoveOnDeleteStatus(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId) {
+        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
+        String status = prefs.removeOnDeleteEnabled() ? "**enabled**" : "**disabled**";
+        event.reply("Remove-on-delete is currently " + status
+                        + " for this guild (when disabled, deleted messages are still evaluated — catching ghost pings).")
+                .setEphemeral(true).queue();
+    }
+
+    /**
+     * Updates the remove-on-delete status for a guild.
+     *
+     * @param event the slash command interaction event
+     * @param guildId the guild ID
+     * @param enabled the desired enabled state
+     */
+    private void updateRemoveOnDeleteStatus(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId, boolean enabled) {
+        GuildPreferences prefs = PreferencesManager.getInstance()
+                .getOrDefaultPreferences(guildId)
+                .withRemoveOnDeleteEnabled(enabled);
+
+        if (PreferencesManager.getInstance().updatePreferences(prefs)) {
+            String status = enabled ? "enabled" : "disabled";
+            event.reply("Remove-on-delete has been **" + status + "** for this guild.")
+                    .setEphemeral(true).queue();
+            logger.debug("Guild {} remove-on-delete set to {}", guildId.value(), enabled);
         } else {
             event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
                     .setEphemeral(true).queue();

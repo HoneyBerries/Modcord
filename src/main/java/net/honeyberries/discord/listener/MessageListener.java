@@ -7,8 +7,10 @@ import net.dv8tion.jda.api.events.message.MessageUpdateEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.honeyberries.database.repository.ExcludedEntitiesRepository;
 import net.honeyberries.datatypes.discord.*;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.message.HistoryFetcher;
 import net.honeyberries.message.MessageFilter;
+import net.honeyberries.preferences.PreferencesManager;
 import net.honeyberries.services.GlobalOrchestrationService;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -114,8 +116,16 @@ public class MessageListener extends ListenerAdapter {
 
         MessageID messageID = new MessageID(event.getMessageIdLong());
         Guild guild = event.getGuild();
+        if (guild == null) {
+            return;
+        }
 
-        GlobalOrchestrationService.getInstance().removeMessage(guild, messageID);
+        GuildID guildID = GuildID.fromGuild(guild);
+        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildID);
+
+        if (prefs.removeOnDeleteEnabled()) {
+            GlobalOrchestrationService.getInstance().removeMessage(guild, messageID);
+        }
     }
     
     

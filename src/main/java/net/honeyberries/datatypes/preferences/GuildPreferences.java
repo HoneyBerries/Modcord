@@ -22,6 +22,7 @@ public record GuildPreferences(
         boolean             autoTimeoutEnabled,
         boolean             autoKickEnabled,
         boolean             autoBanEnabled,
+        boolean             removeOnDeleteEnabled,
         @Nullable ChannelID auditLogChannelId
 ) {
     // ── Compact canonical constructor ────────────────────────────────────────
@@ -62,6 +63,7 @@ public record GuildPreferences(
                 .autoTimeoutEnabled(autoTimeoutEnabled)
                 .autoKickEnabled(autoKickEnabled)
                 .autoBanEnabled(autoBanEnabled)
+                .removeOnDeleteEnabled(removeOnDeleteEnabled)
                 .auditLogChannelId(auditLogChannelId);
     }
 
@@ -75,6 +77,7 @@ public record GuildPreferences(
     public @NotNull GuildPreferences withAutoTimeoutEnabled(boolean v)     { return toBuilder().autoTimeoutEnabled(v).build(); }
     public @NotNull GuildPreferences withAutoKickEnabled(boolean v)        { return toBuilder().autoKickEnabled(v).build(); }
     public @NotNull GuildPreferences withAutoBanEnabled(boolean v)         { return toBuilder().autoBanEnabled(v).build(); }
+    public @NotNull GuildPreferences withRemoveOnDeleteEnabled(boolean v) { return toBuilder().removeOnDeleteEnabled(v).build(); }
     public @NotNull GuildPreferences withAuditLogChannelId(@Nullable ChannelID v) { return toBuilder().auditLogChannelId(v).build(); }
     public @NotNull GuildPreferences withAuditLogChannelId(long v)         { return withAuditLogChannelId(new ChannelID(v)); }
 
@@ -92,6 +95,7 @@ public record GuildPreferences(
         private boolean             autoTimeoutEnabled = true;
         private boolean             autoKickEnabled    = true;
         private boolean             autoBanEnabled     = true;
+        private boolean             removeOnDeleteEnabled = false;
         private @Nullable ChannelID auditLogChannelId  = null;
 
         public Builder(@NotNull GuildID guildId) {
@@ -106,6 +110,7 @@ public record GuildPreferences(
         public @NotNull Builder autoTimeoutEnabled(boolean v)               { autoTimeoutEnabled = v; return this; }
         public @NotNull Builder autoKickEnabled(boolean v)                  { autoKickEnabled = v;    return this; }
         public @NotNull Builder autoBanEnabled(boolean v)                   { autoBanEnabled = v;     return this; }
+        public @NotNull Builder removeOnDeleteEnabled(boolean v)            { removeOnDeleteEnabled = v; return this; }
         public @NotNull Builder auditLogChannelId(@Nullable ChannelID v)    { auditLogChannelId = v;  return this; }
         public @NotNull Builder auditLogChannelId(long v)                   { return auditLogChannelId(new ChannelID(v)); }
 
@@ -119,6 +124,7 @@ public record GuildPreferences(
                     autoTimeoutEnabled,
                     autoKickEnabled,
                     autoBanEnabled,
+                    removeOnDeleteEnabled,
                     auditLogChannelId
             );
         }

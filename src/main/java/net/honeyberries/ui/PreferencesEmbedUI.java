@@ -30,7 +30,12 @@ public class PreferencesEmbedUI {
     @NotNull
     public static MessageEmbed buildSettingsEmbed(@NotNull String category) {
         Objects.requireNonNull(category, "category must not be null");
-        String title = category.equals("general") ? "Guild Preferences: General" : "Guild Preferences: Automated Actions";
+        String title = switch (category) {
+            case "general" -> "Guild Preferences: General";
+            case "actions" -> "Guild Preferences: Automated Actions";
+            case "flags"   -> "Guild Preferences: Feature Flags";
+            default -> "Guild Preferences";
+        };
         return new EmbedBuilder()
                 .setTitle(title)
                 .setDescription("Configure your moderation settings below.")
@@ -72,6 +77,8 @@ public class PreferencesEmbedUI {
         } else if (category.equals("actions")) {
             rows.add(buildAiToggleRow(prefs));
             rows.add(buildActionToggleRow(prefs));
+        } else if (category.equals("flags")) {
+            rows.add(buildRemoveOnDeleteToggleRow(prefs));
         }
 
         rows.add(buildNavigationRow(category));
@@ -90,6 +97,25 @@ public class PreferencesEmbedUI {
                 Button.primary("pref_ai_toggle",
                                 "AI Moderation: " + (aiEnabled ? "ON" : "OFF"))
                         .withStyle(aiEnabled ? ButtonStyle.SUCCESS : ButtonStyle.DANGER)
+        );
+    }
+
+    /**
+     * Builds the "remove on delete" toggle button row.
+     *
+     * <p>Styled inverted from other toggles: since {@code removeOnDeleteEnabled = false}
+     * is the default and desirable state (deleted messages stay queued for moderation,
+     * catching ghost pings), green (SUCCESS) is shown when the flag is {@code false}.</p>
+     *
+     * @param prefs the current guild preferences
+     * @return an action row containing the remove-on-delete toggle button
+     */
+    private static ActionRow buildRemoveOnDeleteToggleRow(@NotNull GuildPreferences prefs) {
+        boolean removeOnDelete = prefs.removeOnDeleteEnabled();
+        return ActionRow.of(
+                Button.primary("pref_remove_on_delete_toggle",
+                                "Catch Ghost Pings: " + (removeOnDelete ? "OFF" : "ON"))
+                        .withStyle(removeOnDelete ? ButtonStyle.DANGER : ButtonStyle.SUCCESS)
         );
     }
 
@@ -155,6 +181,7 @@ public class PreferencesEmbedUI {
                 StringSelectMenu.create("pref_nav")
                         .addOption("General Settings", "general", "AI, Rules, Audit Logs")
                         .addOption("Automated Actions", "actions", "Toggles for Warn, Ban, etc.")
+                        .addOption("Feature Flags", "flags", "Additional one-off toggles")
                         .setDefaultValues(currentCategory)
                         .build()
         );
