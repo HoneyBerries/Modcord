@@ -30,16 +30,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
+      - name: Run Program Test
         run: ./gradlew runTest
 
   runUnitTests:
     runs-on: ubuntu-latest
-
-    env:
-      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      POSTGRES_DB_PASSWORD: ${{ secrets.POSTGRES_DB_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v6
@@ -54,5 +49,5 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Run Unit Tests
-        run: ./gradlew cleanTest test
+      - name: Run All Tests
+        run: ./gradlew cleanTest test integrationTest

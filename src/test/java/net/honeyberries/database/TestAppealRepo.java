@@ -1,12 +1,11 @@
 package net.honeyberries.database;
 
-import net.honeyberries.ResourceInitializer;
-import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.AppealRepository;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.support.PostgresTestSupport;
 import org.junit.jupiter.api.*;
 
 import java.util.UUID;
@@ -14,25 +13,17 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Appeal Repo Tests")
-public class TestAppealRepo {
-
-    static {
-        ResourceInitializer.initialize();
-    }
+@Tag("integration")
+public class TestAppealRepo extends PostgresTestSupport {
 
     private static final Database database = Database.getInstance();
     private final AppealRepository repository = AppealRepository.getInstance();
     private final GuildModerationActionsRepository actionsRepository = new GuildModerationActionsRepository();
-    
+
     private static final GuildID TEST_GUILD_ID = new GuildID(123456789L);
     private static final UserID TEST_USER_ID = new UserID(111L);
     private static final UserID MOD_USER_ID = new UserID(999L);
     private static final UUID ACTION_ID = UUID.randomUUID();
-
-    @BeforeAll
-    static void setup() {
-        database.initialize(AppConfig.getInstance());
-    }
 
     @BeforeEach
     void setupBaseData() {

@@ -19,7 +19,7 @@ public class ResourceInitializer {
             copyIfMissing("system_prompt.md", "./config/system_prompt.md");
             copyIfMissing(".env.example", "./.env.example");
         } catch (IOException e) {
-            logger.error("Failed to initialize resources", e);
+            logger.error("Failed to initializeFromConfig resources", e);
             throw new RuntimeException(e);
         }
     }

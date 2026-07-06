@@ -62,6 +62,10 @@ dependencies {
     testImplementation(platform(Testing.junit.bom))
     testImplementation(Testing.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.junit.jupiter)
 }
 
 // === Enforce Java 25+ ===
@@ -112,5 +116,18 @@ tasks.register<JavaExec>("runTest") {
 
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("integration")
+    }
+}
+
+tasks.register<Test>("integrationTest") {
+    group = "verification"
+    description = "Runs tests tagged \"integration\" (hit a Testcontainers-backed Postgres and the real LLM/Discord APIs)"
+
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform {
+        includeTags("integration")
+    }
 }

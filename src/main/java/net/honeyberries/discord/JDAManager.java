@@ -55,9 +55,9 @@ public class JDAManager {
             this.jda.awaitReady();
             logger.info("Discord bot connected as {}", jda.getSelfUser().getName());
         } catch (InterruptedException e) {
-            logger.error("Failed to initialize Discord bot", e);
+            logger.error("Failed to initializeFromConfig Discord bot", e);
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Failed to initialize Discord bot", e);
+            throw new RuntimeException("Failed to initializeFromConfig Discord bot", e);
         }
     }
 

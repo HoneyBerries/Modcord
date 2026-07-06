@@ -5,13 +5,12 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.honeyberries.ResourceInitializer;
-import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.discord.JDAManager;
+import net.honeyberries.support.PostgresTestSupport;
 import org.junit.jupiter.api.*;
 
 import java.time.Instant;
@@ -22,14 +21,11 @@ import java.util.UUID;
 @Tag("integration")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class TestActionHandler {
+public class TestActionHandler extends PostgresTestSupport {
 
     static {
         ResourceInitializer.initialize();
     }
-
-    private static final Database database = Database.getInstance();
-    private static final AppConfig appConfig = AppConfig.getInstance();
 
     private static final long TEST_ACCOUNT_1_ID = 1104649796821729320L;
     private static final long TEST_ACCOUNT_2_ID = 1180022370375835731L;
@@ -39,12 +35,6 @@ public class TestActionHandler {
     private static final long TEST_CHANNEL_OUTPUT_ID = 1489002480477143265L;
 
     private final ActionHandler actionHandler = ActionHandler.getInstance();
-
-
-    @BeforeAll
-    static void setup() {
-        database.initialize(appConfig);
-    }
 
     @Test
     @DisplayName("test account 1 should be warned")

@@ -1,32 +1,23 @@
 package net.honeyberries.database;
 
-import net.honeyberries.ResourceInitializer;
-import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.support.PostgresTestSupport;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Guild Rules Repo Tests")
-public class TestGuildRulesRepo {
-
-    static {
-        ResourceInitializer.initialize();
-    }
+@Tag("integration")
+public class TestGuildRulesRepo extends PostgresTestSupport {
 
     private static final Database database = Database.getInstance();
     private final GuildRulesRepository repository = GuildRulesRepository.getInstance();
-    
+
     private static final GuildID TEST_GUILD_ID = new GuildID(123456789L);
     private static final ChannelID TEST_CHANNEL_ID = new ChannelID(987654321L);
-
-    @BeforeAll
-    static void setup() {
-        database.initialize(AppConfig.getInstance());
-    }
 
     @BeforeEach
     void setupGuild() {

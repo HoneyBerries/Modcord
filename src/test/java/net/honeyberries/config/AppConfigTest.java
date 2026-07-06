@@ -34,7 +34,7 @@ class AppConfigTest {
     class ConstructorTests {
 
         @Test
-        @DisplayName("Should initialize AppConfig with valid config path")
+        @DisplayName("Should initializeFromConfig AppConfig with valid config path")
         void testConstructorWithValidPath() {
             AppConfig config = new AppConfig(REAL_CONFIG_PATH);
             assertNotNull(config);
@@ -53,7 +53,7 @@ class AppConfigTest {
             Path invalidPath = Paths.get("./nonexistent/config.yml");
             AppConfig config = new AppConfig(invalidPath);
             assertNotNull(config);
-            // Should still initialize without throwing exception
+            // Should still initializeFromConfig without throwing exception
         }
     }
 

@@ -8,6 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -52,7 +53,7 @@ class InferenceEngineTest {
     class InitializationTests {
         
         @Test
-        @DisplayName("Should initialize InferenceEngine successfully")
+        @DisplayName("Should initializeFromConfig InferenceEngine successfully")
         void testInitializationSuccessful() {
             assertNotNull(inferenceEngine, "InferenceEngine should be initialized");
         }
@@ -89,6 +90,7 @@ class InferenceEngineTest {
     
     @Nested
     @DisplayName("AI Inference Tests (Real API Calls)")
+    @Tag("integration")
     class AIInferenceTests {
         
         @Test

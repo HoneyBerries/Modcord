@@ -4,7 +4,6 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.honeyberries.ResourceInitializer;
-import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.Database;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
@@ -12,6 +11,7 @@ import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.discord.JDAManager;
+import net.honeyberries.support.PostgresTestSupport;
 import org.junit.jupiter.api.*;
 
 import java.time.Instant;
@@ -22,14 +22,11 @@ import java.util.UUID;
 @Tag("integration")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class TestRollbackHandler {
+public class TestRollbackHandler extends PostgresTestSupport {
 
     static {
         ResourceInitializer.initialize();
     }
-
-    private static final Database database = Database.getInstance();
-    private static final AppConfig appConfig = AppConfig.getInstance();
 
     private static final long TEST_ACCOUNT_2_ID = 1180022370375835731L;
     private static final long TEST_GUILD_ID = 1488762869880324200L;
@@ -39,8 +36,13 @@ public class TestRollbackHandler {
     private final GuildModerationActionsRepository actionRepository = GuildModerationActionsRepository.getInstance();
 
     @BeforeAll
-    static void setup() {
-        database.initialize(appConfig);
+    void seedGuildPreferences() {
+        Database.getInstance().transaction(conn -> {
+            try (var ps = conn.prepareStatement("INSERT INTO guild_preferences (guild_id) VALUES (?) ON CONFLICT DO NOTHING")) {
+                ps.setLong(1, TEST_GUILD_ID);
+                ps.executeUpdate();
+            }
+        });
     }
 
     @Test

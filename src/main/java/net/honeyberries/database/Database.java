@@ -26,7 +26,7 @@ import java.sql.SQLException;
  * <p><b>Typical usage</b>
  * <pre>{@code
  * Database db = Database.getInstance();
- * db.initialize(config);
+ * db.initializeFromConfig(config);
  *
  * String name = db.query(conn -> {
  *     try (PreparedStatement stmt = conn.prepareStatement(
@@ -101,18 +101,30 @@ public class Database {
      * @throws NullPointerException if {@code config} is {@code null}
      * @throws DatabaseException if initialization fails, including when POSTGRES_DB_PASSWORD environment variable is not set or if schema initialization fails
      */
-    public synchronized void initialize(@NotNull AppConfig config) {
+    public synchronized void initializeFromConfig(@NotNull AppConfig config) {
+        String dbPassword = TokenManager.getDBPassword();
+        if (dbPassword.isBlank()) {
+            throw new DatabaseException("POSTGRES_DB_PASSWORD environment variable is not set");
+        }
+        initialize(config.getDatabaseUrl(), config.getDatabaseUsername(), dbPassword);
+    }
+
+    /**
+     * Opens the connection pool and initializes the database schema via Liquibase migrations,
+     * connecting to the given JDBC URL/credentials directly instead of reading them from
+     * {@link AppConfig}. Intended for pointing the pool at a test-only database (e.g. a
+     * Testcontainers-managed Postgres instance) without needing an {@code AppConfig} or
+     * {@code POSTGRES_DB_PASSWORD} environment variable.
+     *
+     * @param dbUrl the JDBC URL of the database, must not be {@code null}
+     * @param dbUsername the username for the database connection, must not be {@code null}
+     * @param dbPassword the password for the database connection, must not be {@code null}
+     * @throws DatabaseException if initialization fails
+     */
+    public synchronized void initialize(@NotNull String dbUrl, @NotNull String dbUsername, @NotNull String dbPassword) {
         if (initialized) {
             logger.debug("Already initialized, skipping");
             return;
-        }
-
-        String dbUrl = config.getDatabaseUrl();
-        String dbUsername = config.getDatabaseUsername();
-        String dbPassword = TokenManager.getDBPassword();
-
-        if (dbPassword.isBlank()) {
-            throw new DatabaseException("POSTGRES_DB_PASSWORD environment variable is not set");
         }
 
         logger.info("Initializing PostgreSQL connection pool at {}", dbUrl);

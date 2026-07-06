@@ -1,35 +1,26 @@
 package net.honeyberries.database;
 
-import net.honeyberries.ResourceInitializer;
-import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.ExcludedEntitiesRepository;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.RoleID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.support.PostgresTestSupport;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Excluded Entities Repo Tests")
-public class TestExcludedEntitiesRepo {
-
-    static {
-        ResourceInitializer.initialize();
-    }
+@Tag("integration")
+public class TestExcludedEntitiesRepo extends PostgresTestSupport {
 
     private static final Database database = Database.getInstance();
     private final ExcludedEntitiesRepository repository = ExcludedEntitiesRepository.getInstance();
-    
+
     private static final GuildID TEST_GUILD_ID = new GuildID(123456789L);
     private static final UserID TEST_USER_ID = new UserID(111L);
     private static final RoleID TEST_ROLE_ID = new RoleID(222L);
     private static final ChannelID TEST_CHANNEL_ID = new ChannelID(333L);
-
-    @BeforeAll
-    static void setup() {
-        database.initialize(AppConfig.getInstance());
-    }
 
     @BeforeEach
     void setupGuild() {

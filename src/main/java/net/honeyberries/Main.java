@@ -88,7 +88,7 @@ public class Main {
         logger.info("Initializing database");
         AppConfig config = new AppConfig(Paths.get("./config/app_config.yml"));
         logger.info("AI Configuration - Model: {}, Endpoint: {}", config.getAIModelName(), config.getAIEndpoint());
-        Database.getInstance().initialize(config);
+        Database.getInstance().initializeFromConfig(config);
         logger.info("Database initialized successfully");
     }
 

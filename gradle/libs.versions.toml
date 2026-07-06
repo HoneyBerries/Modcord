@@ -36,3 +36,7 @@ apache-commons-lang3 = "org.apache.commons:commons-lang3:3.20.0"
 
 
 resilience4j-all = "io.github.resilience4j:resilience4j-all:2.4.0"
+
+testcontainers-bom = "org.testcontainers:testcontainers-bom:2.0.5"
+testcontainers-postgresql = "org.testcontainers:testcontainers-postgresql:2.0.5"
+testcontainers-junit-jupiter = "org.testcontainers:testcontainers-junit-jupiter:2.0.5"

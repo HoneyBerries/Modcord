@@ -1,31 +1,21 @@
 package net.honeyberries.database;
 
-import net.honeyberries.ResourceInitializer;
-import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.SpecialUsersRepository;
 import net.honeyberries.datatypes.discord.DiscordUser;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.support.PostgresTestSupport;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Special Users Repo Tests")
-public class TestSpecialUsersRepo {
+@Tag("integration")
+public class TestSpecialUsersRepo extends PostgresTestSupport {
 
-    static {
-        ResourceInitializer.initialize();
-    }
-
-    private static final Database database = Database.getInstance();
     private final SpecialUsersRepository repository = SpecialUsersRepository.getInstance();
-    
+
     private static final UserID TEST_USER_ID = new UserID(123456789L);
     private static final DiscordUser TEST_USER = new DiscordUser(TEST_USER_ID, "testuser");
-
-    @BeforeAll
-    static void setup() {
-        database.initialize(AppConfig.getInstance());
-    }
 
     @AfterEach
     void cleanup() {

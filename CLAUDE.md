@@ -17,8 +17,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Run all unit tests
 ./gradlew test
 
-# Run integration tests only (requires live Discord bot + test guild)
-./gradlew test --include-group integration
+# Run integration tests only (hits a Testcontainers-backed Postgres; some also require a live Discord bot + test guild or a real LLM API key)
+./gradlew integrationTest
 
 # Format code with Spotless
 ./gradlew spotlessApply
@@ -99,10 +99,13 @@ All major services are singletons accessed via `getInstance()`: `Database`, `App
 
 ### Tests
 
-**Unit tests** run with `./gradlew test` (no external dependencies):
+**Unit tests** run with `./gradlew test` (no external dependencies, no network access):
 - `AppConfigTest` — validates `config/app_config.yml` parsing
 
-**Integration tests** (tagged `@Tag("integration")`) require a live Discord bot + test guild. Run with `./gradlew test --include-group integration`. Tests use JUnit `Assumptions` to skip gracefully if the bot isn't connected (configurable via hardcoded guild IDs in test class).
+**Integration tests** (tagged `@Tag("integration")`) touch a real database and/or the real LLM/Discord APIs. Run with `./gradlew integrationTest`.
+- Database-repository tests (`net.honeyberries.database.*`) extend `PostgresTestSupport`, which starts a throwaway Postgres Testcontainer (Liquibase migrations applied automatically) instead of touching the shared Azure-hosted database — no external DB access or secrets required.
+- `InferenceEngineTest$AIInferenceTests` and `TestImageIDTagging` make real calls to the configured LLM endpoint and need `OPENAI_API_KEY`.
+- `TestActionHandler` and `TestRollbackHandler` additionally require a live Discord bot + test guild; they use JUnit `Assumptions` to skip gracefully if the bot isn't connected (configurable via hardcoded guild IDs in test class).
 
 Failures in integration tests don't block CI if bot is unavailable (graceful skip).
 
