@@ -2,33 +2,33 @@
 
 [plugins]
 
-com-gradleup-shadow = { id = "com.gradleup.shadow", version = "9.4.2" }
+com-gradleup-shadow = { id = "com.gradleup.shadow", version = "9.5.1" }
 org-liquibase-gradle = { id = "org.liquibase.gradle", version = "3.1.0" }
 
 [libraries]
 
-openai-java = "com.openai:openai-java:4.39.1"
+openai-java = "com.openai:openai-java:4.42.0"
 
 gson = "com.google.code.gson:gson:2.14.0"
-jackson-databind = "tools.jackson.core:jackson-databind:3.2.0"
+jackson-databind = "tools.jackson.core:jackson-databind:3.2.1"
 
-jda = "net.dv8tion:JDA:6.4.2"
+jda = "net.dv8tion:JDA:6.5.0"
 
 snakeyaml = "org.yaml:snakeyaml:2.6"
 
 slf4j-api = "org.slf4j:slf4j-api:2.0.18"
 
-logback-classic = "ch.qos.logback:logback-classic:1.5.34"
+logback-classic = "ch.qos.logback:logback-classic:1.5.38"
 
 dotenv-java = "io.github.cdimascio:dotenv-java:3.2.0"
 
 dotenv-kotlin = "io.github.cdimascio:dotenv-kotlin:6.5.1"
 
-junit-platform-launcher = "org.junit.platform:junit-platform-launcher:6.1.0"
+junit-platform-launcher = "org.junit.platform:junit-platform-launcher:6.1.1"
 
-postgresql = "org.postgresql:postgresql:42.7.11"
+postgresql = "org.postgresql:postgresql:42.7.13"
 
-hikari-cp = "com.zaxxer:HikariCP:7.0.2"
+hikari-cp = "com.zaxxer:HikariCP:7.1.0"
 
 liquibase-core = "org.liquibase:liquibase-core:5.0.3"
 

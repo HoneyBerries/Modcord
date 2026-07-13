@@ -17,7 +17,7 @@ jobs:
       POSTGRES_DB_PASSWORD: ${{ secrets.POSTGRES_DB_PASSWORD }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Java 25
         uses: actions/setup-java@v5
