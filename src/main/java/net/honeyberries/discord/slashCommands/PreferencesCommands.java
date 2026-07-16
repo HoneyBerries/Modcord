@@ -129,11 +129,19 @@ public class PreferencesCommands extends ListenerAdapter {
                         "true = remove on delete (old behavior); false = catch ghost pings (leave empty to view)", false)
         );
 
+        SubcommandData appealsSub = new SubcommandData(
+                "appeals",
+                "Enable or disable whether users can submit moderation appeals (or view current setting)"
+        ).addOptions(
+                new OptionData(OptionType.BOOLEAN, "enabled",
+                        "Allow or block moderation appeals (leave empty to view current)", false)
+        );
+
         SlashCommandData preferencesCommand = Commands.slash(
                 "preferences",
                 "Manage guild preferences and settings"
         ).addSubcommands(
-                aiSub, rulesChannelSub, auditChannelSub, settingsSub, resetSub, actionSub, removeOnDeleteSub);
+                aiSub, rulesChannelSub, auditChannelSub, settingsSub, resetSub, actionSub, removeOnDeleteSub, appealsSub);
 
         commands.addCommands(preferencesCommand);
         logger.info("Registered /preferences command with subcommands");
@@ -171,6 +179,7 @@ public class PreferencesCommands extends ListenerAdapter {
                 case "reset"             -> helper.handleReset(event, guild);
                 case "action"            -> helper.handleAction(event, guild);
                 case "remove_on_delete"  -> helper.handleRemoveOnDelete(event, guild);
+                case "appeals"           -> helper.handleAppeals(event, guild);
                 default                  -> event.reply("Unknown subcommand.").setEphemeral(true).queue();
             }
         } catch (Exception e) {
