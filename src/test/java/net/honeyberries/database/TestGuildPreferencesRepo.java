@@ -43,6 +43,30 @@ public class TestGuildPreferencesRepo extends PostgresTestSupport {
         assertEquals(TEST_CHANNEL_ID, retrieved.rulesChannelID());
         assertEquals(TEST_CHANNEL_ID, retrieved.auditLogChannelId());
         assertFalse(retrieved.autoWarnEnabled());
+        assertTrue(retrieved.appealsEnabled(), "Appeals should default to enabled");
+    }
+
+    @Test
+    @DisplayName("Should default appeals to enabled")
+    void shouldDefaultAppealsEnabled() {
+        GuildPreferences prefs = GuildPreferences.defaults(TEST_GUILD_ID);
+        assertTrue(prefs.appealsEnabled(), "Appeals should be enabled by default");
+
+        repository.addOrUpdateGuildPreferences(prefs);
+        GuildPreferences retrieved = repository.getGuildPreferences(TEST_GUILD_ID);
+        assertNotNull(retrieved);
+        assertTrue(retrieved.appealsEnabled(), "Appeals should persist as enabled by default");
+    }
+
+    @Test
+    @DisplayName("Should persist appeals disabled after toggle")
+    void shouldPersistAppealsDisabled() {
+        GuildPreferences prefs = GuildPreferences.defaults(TEST_GUILD_ID).withAppealsEnabled(false);
+        assertTrue(repository.addOrUpdateGuildPreferences(prefs), "Upsert should succeed");
+
+        GuildPreferences retrieved = repository.getGuildPreferences(TEST_GUILD_ID);
+        assertNotNull(retrieved);
+        assertFalse(retrieved.appealsEnabled(), "Appeals should be disabled after toggle");
     }
 
     @Test

@@ -23,7 +23,8 @@ public record GuildPreferences(
         boolean             autoKickEnabled,
         boolean             autoBanEnabled,
         boolean             removeOnDeleteEnabled,
-        @Nullable ChannelID auditLogChannelId
+        @Nullable ChannelID auditLogChannelId,
+        boolean             appealsEnabled
 ) {
     // ── Compact canonical constructor ────────────────────────────────────────
 
@@ -64,7 +65,8 @@ public record GuildPreferences(
                 .autoKickEnabled(autoKickEnabled)
                 .autoBanEnabled(autoBanEnabled)
                 .removeOnDeleteEnabled(removeOnDeleteEnabled)
-                .auditLogChannelId(auditLogChannelId);
+                .auditLogChannelId(auditLogChannelId)
+                .appealsEnabled(appealsEnabled);
     }
 
     // ── Convenience withers (one-liners via toBuilder) ────────────────────────
@@ -80,6 +82,7 @@ public record GuildPreferences(
     public @NotNull GuildPreferences withRemoveOnDeleteEnabled(boolean v) { return toBuilder().removeOnDeleteEnabled(v).build(); }
     public @NotNull GuildPreferences withAuditLogChannelId(@Nullable ChannelID v) { return toBuilder().auditLogChannelId(v).build(); }
     public @NotNull GuildPreferences withAuditLogChannelId(long v)         { return withAuditLogChannelId(new ChannelID(v)); }
+    public @NotNull GuildPreferences withAppealsEnabled(boolean v)         { return toBuilder().appealsEnabled(v).build(); }
 
     // ── Builder ───────────────────────────────────────────────────────────────
 
@@ -97,6 +100,7 @@ public record GuildPreferences(
         private boolean             autoBanEnabled     = true;
         private boolean             removeOnDeleteEnabled = false;
         private @Nullable ChannelID auditLogChannelId  = null;
+        private boolean             appealsEnabled     = true;
 
         public Builder(@NotNull GuildID guildId) {
             this.guildId = Objects.requireNonNull(guildId, "guildId must not be null");
@@ -113,6 +117,7 @@ public record GuildPreferences(
         public @NotNull Builder removeOnDeleteEnabled(boolean v)            { removeOnDeleteEnabled = v; return this; }
         public @NotNull Builder auditLogChannelId(@Nullable ChannelID v)    { auditLogChannelId = v;  return this; }
         public @NotNull Builder auditLogChannelId(long v)                   { return auditLogChannelId(new ChannelID(v)); }
+        public @NotNull Builder appealsEnabled(boolean v)                   { appealsEnabled = v;     return this; }
 
         public @NotNull GuildPreferences build() {
             return new GuildPreferences(
@@ -125,7 +130,8 @@ public record GuildPreferences(
                     autoKickEnabled,
                     autoBanEnabled,
                     removeOnDeleteEnabled,
-                    auditLogChannelId
+                    auditLogChannelId,
+                    appealsEnabled
             );
         }
     }

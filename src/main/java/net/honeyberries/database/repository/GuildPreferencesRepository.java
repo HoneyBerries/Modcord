@@ -70,8 +70,8 @@ public class GuildPreferencesRepository {
                                 guild_id, ai_enabled, rules_channel_id,
                                 auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
                                 auto_kick_enabled, auto_ban_enabled, audit_log_channel_id,
-                                remove_on_delete_enabled
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                remove_on_delete_enabled, appeals_enabled
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON CONFLICT (guild_id) DO UPDATE SET
                                 ai_enabled             = EXCLUDED.ai_enabled,
                                 rules_channel_id       = EXCLUDED.rules_channel_id,
@@ -81,7 +81,8 @@ public class GuildPreferencesRepository {
                                 auto_kick_enabled      = EXCLUDED.auto_kick_enabled,
                                 auto_ban_enabled       = EXCLUDED.auto_ban_enabled,
                                 audit_log_channel_id   = EXCLUDED.audit_log_channel_id,
-                                remove_on_delete_enabled = EXCLUDED.remove_on_delete_enabled
+                                remove_on_delete_enabled = EXCLUDED.remove_on_delete_enabled,
+                                appeals_enabled        = EXCLUDED.appeals_enabled
                         """;
 
                 try (PreparedStatement ps = conn.prepareStatement(upsertSql)) {
@@ -109,6 +110,7 @@ public class GuildPreferencesRepository {
                     }
 
                     ps.setBoolean(10, guildPreferences.removeOnDeleteEnabled());
+                    ps.setBoolean(11, guildPreferences.appealsEnabled());
 
                     ps.executeUpdate();
                 }
@@ -136,7 +138,7 @@ public class GuildPreferencesRepository {
                     SELECT guild_id, ai_enabled, rules_channel_id,
                            auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
                            auto_kick_enabled, auto_ban_enabled, audit_log_channel_id,
-                           remove_on_delete_enabled
+                           remove_on_delete_enabled, appeals_enabled
                     FROM guild_preferences
                     WHERE guild_id = ?
                 """;
@@ -213,7 +215,8 @@ public class GuildPreferencesRepository {
                 rs.getBoolean("auto_kick_enabled"),
                 rs.getBoolean("auto_ban_enabled"),
                 rs.getBoolean("remove_on_delete_enabled"),
-                auditLogChannelId
+                auditLogChannelId,
+                rs.getBoolean("appeals_enabled")
         );
     }
 

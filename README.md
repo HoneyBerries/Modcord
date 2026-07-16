@@ -173,7 +173,11 @@ Configure how the bot behaves in your server:
 - `ai` — Enable or disable AI moderation for the guild
 - `rules_channel` — Set the channel where server rules are posted
 - `audit_channel` — Set the channel for moderation action logs
-- `settings` — View current preferences and configuration
+- `action` — Enable or disable a specific moderation action (warn, timeout, delete, kick, ban)
+- `appeals` — Allow or block users from submitting moderation appeals (default: allow)
+- `remove_on_delete` — Whether deleted messages are removed from the moderation queue (default: keep, to catch ghost pings)
+- `settings` — View and manage current preferences with an interactive interface
+- `reset` — Reset all preferences to their default values
 
 #### `/mod` — Manual Moderation Actions
 Take direct moderation action against users:

@@ -15,6 +15,7 @@ import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.action.AppealData;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.preferences.PreferencesManager;
 import net.honeyberries.services.NotificationService;
 import net.honeyberries.ui.AppealEmbedUI;
 import org.jetbrains.annotations.NotNull;
@@ -55,6 +56,15 @@ public class AppealCommandHelper {
         } else {
             // Guild context: fetch actions for this specific guild
             GuildID guildId = new GuildID(event.getGuild().getIdLong());
+
+            // Block outright if this guild has disabled appeals
+            if (!appealsEnabledForGuild(guildId)) {
+                event.reply("Appeals are disabled for this server.")
+                        .setEphemeral(true)
+                        .queue();
+                return;
+            }
+
             allActions.addAll(actionRepository.getActionsByUser(guildId, userId));
 
             // Collect already-appealed action IDs for this guild
@@ -62,10 +72,17 @@ public class AppealCommandHelper {
             alreadyAppealedIds.addAll(appealedIds);
         }
 
-        // Filter: keep only BAN, KICK, WARN, TIMEOUT; remove already-appealed actions
+        // Cache per-guild appeals-enabled lookups so the DM filter below hits the DB once per guild
+        Map<GuildID, Boolean> appealsEnabledCache = new HashMap<>();
+
+        // Filter: keep only BAN, KICK, WARN, TIMEOUT; remove already-appealed actions;
+        // and drop actions whose originating guild has disabled appeals (matters for the DM flow,
+        // where a single submission can span multiple guilds).
         List<ActionData> eligibleActions = allActions.stream()
                 .filter(action -> isAppealableActionType(action.action()))
                 .filter(action -> !alreadyAppealedIds.contains(action.id()))
+                .filter(action -> appealsEnabledCache
+                        .computeIfAbsent(action.guildId(), this::appealsEnabledForGuild))
                 .toList();
 
         if (eligibleActions.isEmpty()) {
@@ -124,6 +141,13 @@ public class AppealCommandHelper {
         ActionData action = actionRepository.getActionById(actionId);
         if (action == null) {
             event.reply("The action you are appealing no longer exists.").setEphemeral(true).queue();
+            return;
+        }
+
+        // Re-check the guild's appeals flag: guards against a stale select menu submitted
+        // after an admin disabled appeals between the menu being shown and this submission.
+        if (!appealsEnabledForGuild(action.guildId())) {
+            event.reply("Appeals are disabled for this server.").setEphemeral(true).queue();
             return;
         }
 
@@ -308,5 +332,16 @@ public class AppealCommandHelper {
         return actionType == ActionType.BAN
                 || actionType == ActionType.KICK
                 || actionType == ActionType.TIMEOUT;
+    }
+
+    /**
+     * Checks whether the given guild currently allows moderation appeals.
+     *
+     * @param guildId the guild to check, must not be {@code null}
+     * @return {@code true} if appeals are enabled (the default) for the guild
+     */
+    private boolean appealsEnabledForGuild(@NotNull GuildID guildId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+        return PreferencesManager.getInstance().getOrDefaultPreferences(guildId).appealsEnabled();
     }
 }

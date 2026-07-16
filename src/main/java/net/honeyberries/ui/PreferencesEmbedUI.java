@@ -79,6 +79,7 @@ public class PreferencesEmbedUI {
             rows.add(buildActionToggleRow(prefs));
         } else if (category.equals("flags")) {
             rows.add(buildRemoveOnDeleteToggleRow(prefs));
+            rows.add(buildAppealsToggleRow(prefs));
         }
 
         rows.add(buildNavigationRow(category));
@@ -116,6 +117,24 @@ public class PreferencesEmbedUI {
                 Button.primary("pref_remove_on_delete_toggle",
                                 "Catch Ghost Pings: " + (removeOnDelete ? "OFF" : "ON"))
                         .withStyle(removeOnDelete ? ButtonStyle.DANGER : ButtonStyle.SUCCESS)
+        );
+    }
+
+    /**
+     * Builds the "appeals" toggle button row.
+     *
+     * <p>Styled like other feature toggles: green (SUCCESS) when appeals are enabled
+     * (the default), red (DANGER) when disabled.</p>
+     *
+     * @param prefs the current guild preferences
+     * @return an action row containing the appeals toggle button
+     */
+    private static ActionRow buildAppealsToggleRow(@NotNull GuildPreferences prefs) {
+        boolean appealsEnabled = prefs.appealsEnabled();
+        return ActionRow.of(
+                Button.primary("pref_appeals_toggle",
+                                "Appeals: " + (appealsEnabled ? "ON" : "OFF"))
+                        .withStyle(appealsEnabled ? ButtonStyle.SUCCESS : ButtonStyle.DANGER)
         );
     }
 
