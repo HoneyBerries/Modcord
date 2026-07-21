@@ -1,9 +1,8 @@
 name: Claude Dependency Update
 
 on:
-  schedule:
-    # Every 14 days on Sunday at 00:00 UTC
-    - cron: '0 0 */14 * *'
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
