@@ -1,8 +1,6 @@
 name: Claude Dependency Update
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -23,7 +21,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_args: |
-            --allowedTools "Bash,Read,Edit,Write"
+            --dangerously-skip-permissions
           prompt: |
             Work from the `dev` branch of this repo. Never touch `main`.
 
