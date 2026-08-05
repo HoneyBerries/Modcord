@@ -2,12 +2,12 @@
 
 [plugins]
 
-com-gradleup-shadow = { id = "com.gradleup.shadow", version = "9.6.0" }
+com-gradleup-shadow = { id = "com.gradleup.shadow", version = "9.6.1" }
 org-liquibase-gradle = { id = "org.liquibase.gradle", version = "3.1.0" }
 
 [libraries]
 
-openai-java = "com.openai:openai-java:4.43.0"
+openai-java = "com.openai:openai-java:4.49.0"
 
 gson = "com.google.code.gson:gson:2.14.0"
 jackson-databind = "tools.jackson.core:jackson-databind:3.2.1"
@@ -20,7 +20,7 @@ slf4j-api = "org.slf4j:slf4j-api:2.0.18"
 ##                           ⬆ :2.1.0-alpha0"
 ##                           ⬆ :2.1.0-alpha1"
 
-logback-classic = "ch.qos.logback:logback-classic:1.5.38"
+logback-classic = "ch.qos.logback:logback-classic:1.6.1"
 
 dotenv-java = "io.github.cdimascio:dotenv-java:3.2.0"
 
