@@ -7,7 +7,7 @@ org-liquibase-gradle = { id = "org.liquibase.gradle", version = "3.1.0" }
 
 [libraries]
 
-openai-java = "com.openai:openai-java:4.49.0"
+openai-java = "com.openai:openai-java:4.50.0"
 
 gson = "com.google.code.gson:gson:2.14.0"
 jackson-databind = "tools.jackson.core:jackson-databind:3.2.1"
@@ -26,7 +26,7 @@ dotenv-java = "io.github.cdimascio:dotenv-java:3.2.0"
 
 dotenv-kotlin = "io.github.cdimascio:dotenv-kotlin:6.5.1"
 
-junit-platform-launcher = "org.junit.platform:junit-platform-launcher:6.1.2"
+junit-platform-launcher = "org.junit.platform:junit-platform-launcher:6.1.3"
 
 postgresql = "org.postgresql:postgresql:42.7.13"
 
