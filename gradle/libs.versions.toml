@@ -7,7 +7,7 @@ org-liquibase-gradle = { id = "org.liquibase.gradle", version = "3.1.0" }
 
 [libraries]
 
-openai-java = "com.openai:openai-java:4.51.0"
+openai-java = "com.openai:openai-java:4.52.0"
 
 gson = "com.google.code.gson:gson:2.14.0"
 jackson-databind = "tools.jackson.core:jackson-databind:3.2.2"
@@ -32,7 +32,7 @@ postgresql = "org.postgresql:postgresql:42.7.13"
 
 hikari-cp = "com.zaxxer:HikariCP:7.1.0"
 
-liquibase-core = "org.liquibase:liquibase-core:5.0.3"
+liquibase-core = "org.liquibase:liquibase-core:5.0.4"
 
 apache-commons-lang3 = "org.apache.commons:commons-lang3:3.20.0"
 
