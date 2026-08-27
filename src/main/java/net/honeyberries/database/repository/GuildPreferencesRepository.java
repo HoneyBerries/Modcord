@@ -70,7 +70,7 @@ public class GuildPreferencesRepository {
                                 guild_id, ai_enabled, rules_channel_id,
                                 auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
                                 auto_kick_enabled, auto_ban_enabled, audit_log_channel_id,
-                                remove_on_delete_enabled, appeals_enabled
+                                remove_on_delete, appeals_enabled
                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON CONFLICT (guild_id) DO UPDATE SET
                                 ai_enabled             = EXCLUDED.ai_enabled,
@@ -81,7 +81,7 @@ public class GuildPreferencesRepository {
                                 auto_kick_enabled      = EXCLUDED.auto_kick_enabled,
                                 auto_ban_enabled       = EXCLUDED.auto_ban_enabled,
                                 audit_log_channel_id   = EXCLUDED.audit_log_channel_id,
-                                remove_on_delete_enabled = EXCLUDED.remove_on_delete_enabled,
+                                remove_on_delete       = EXCLUDED.remove_on_delete,
                                 appeals_enabled        = EXCLUDED.appeals_enabled
                         """;
 
@@ -138,7 +138,7 @@ public class GuildPreferencesRepository {
                     SELECT guild_id, ai_enabled, rules_channel_id,
                            auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
                            auto_kick_enabled, auto_ban_enabled, audit_log_channel_id,
-                           remove_on_delete_enabled, appeals_enabled
+                           remove_on_delete, appeals_enabled
                     FROM guild_preferences
                     WHERE guild_id = ?
                 """;
@@ -214,7 +214,7 @@ public class GuildPreferencesRepository {
                 rs.getBoolean("auto_timeout_enabled"),
                 rs.getBoolean("auto_kick_enabled"),
                 rs.getBoolean("auto_ban_enabled"),
-                rs.getBoolean("remove_on_delete_enabled"),
+                rs.getBoolean("remove_on_delete"),
                 auditLogChannelId,
                 rs.getBoolean("appeals_enabled")
         );
