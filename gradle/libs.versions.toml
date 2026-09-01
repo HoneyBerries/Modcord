@@ -7,14 +7,14 @@ org-liquibase-gradle = { id = "org.liquibase.gradle", version = "3.1.0" }
 
 [libraries]
 
-openai-java = "com.openai:openai-java:4.52.0"
+openai-java = "com.openai:openai-java:4.55.0"
 
 gson = "com.google.code.gson:gson:2.14.0"
 jackson-databind = "tools.jackson.core:jackson-databind:3.2.2"
 
 jda = "net.dv8tion:JDA:6.5.0"
 
-snakeyaml = "org.yaml:snakeyaml:2.6"
+snakeyaml = "org.yaml:snakeyaml:2.7"
 
 slf4j-api = "org.slf4j:slf4j-api:2.0.18"
 ##                           ⬆ :2.1.0-alpha0"
