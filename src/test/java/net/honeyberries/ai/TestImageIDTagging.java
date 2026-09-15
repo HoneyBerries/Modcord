@@ -63,9 +63,9 @@ public class TestImageIDTagging {
 
     @Test
     public void testImageIDTagging() {
-        String urlA = "https://honeyberries.net/assets/backgrounds/home-banner.webp";
-        String urlB = "https://honeyberries.net/assets/backgrounds/minecraft-page-background.webp";
-        String urlC = "https://honeyberries.net/assets/backgrounds/gem-smp-background.webp";
+        String urlA = "https://pub-5b49e517109f46b7a979427602d9a9f0.r2.dev/home-banner.webp";
+        String urlB = "https://pub-5b49e517109f46b7a979427602d9a9f0.r2.dev/minecraft-page-background.webp";
+        String urlC = "https://pub-5b49e517109f46b7a979427602d9a9f0.r2.dev/gem-smp-background.webp";
 
         ChatCompletionCreateParams params = ChatCompletionCreateParams.builder()
             .model(this.modelName)
