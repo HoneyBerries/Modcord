@@ -96,17 +96,24 @@ public class Database {
     /**
      * Opens the connection pool and initializes the database schema via Liquibase migrations.
      * Must be called once before any database operations.
+     * <p>
+     * The {@code db.url}, {@code db.username}, and {@code db.password} system properties, when
+     * set, override the corresponding values from {@code config} and the
+     * {@code POSTGRES_DB_PASSWORD} environment variable, respectively. This lets callers (e.g.
+     * {@code runTest}) point the pool at a throwaway database without editing {@code config/app_config.yml}.
      *
      * @param config the application configuration containing database URL, username, and password environment variable reference, must not be {@code null}
      * @throws NullPointerException if {@code config} is {@code null}
      * @throws DatabaseException if initialization fails, including when POSTGRES_DB_PASSWORD environment variable is not set or if schema initialization fails
      */
     public synchronized void initializeFromConfig(@NotNull AppConfig config) {
-        String dbPassword = TokenManager.getDBPassword();
+        String dbUrl = System.getProperty("db.url", config.getDatabaseUrl());
+        String dbUsername = System.getProperty("db.username", config.getDatabaseUsername());
+        String dbPassword = System.getProperty("db.password", TokenManager.getDBPassword());
         if (dbPassword.isBlank()) {
             throw new DatabaseException("POSTGRES_DB_PASSWORD environment variable is not set");
         }
-        initialize(config.getDatabaseUrl(), config.getDatabaseUsername(), dbPassword);
+        initialize(dbUrl, dbUsername, dbPassword);
     }
 
     /**

@@ -106,12 +106,11 @@ tasks.register<JavaExec>("run") {
 
 tasks.register<JavaExec>("runTest") {
     group = "application"
-    description = "Runs the bot with --test flag (auto-shuts down after 5 seconds)"
+    description = "Boots the real Main against a throwaway Testcontainers Postgres (auto-shuts down after 5 seconds)"
 
-    mainClass.set("net.honeyberries.Main")
-    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("net.honeyberries.RunTestHarness")
+    classpath = sourceSets["test"].runtimeClasspath
     jvmArgs("-DLOG_LEVEL=DEBUG")
-    args("--test")
 }
 
 

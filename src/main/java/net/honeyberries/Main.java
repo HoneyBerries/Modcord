@@ -65,7 +65,7 @@ public class Main {
             main.setupDiscordBot();
             main.setupTasks();
         } finally {
-            if (args.length != 0 && args[0].equalsIgnoreCase("--test")) {
+            if (args.length != 0 && args[0].equalsIgnoreCase("--runtest")) {
                 Thread.startVirtualThread(() -> {
                     try {
                         Thread.sleep(5000); // Wait for 5 seconds before shutting down
