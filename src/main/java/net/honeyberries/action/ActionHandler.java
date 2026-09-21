@@ -285,7 +285,7 @@ public class ActionHandler {
     private void sendActionDataToAuditLog(@NotNull Guild guild, @NotNull ActionData actionData) {
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(actionData, "actionData must not be null");
-        if (actionData.action() == ActionType.NULL || actionData.action() == ActionType.DELETE) return;
+        if (actionData.action() == ActionType.NULL) return;
 
         User target = actionData.userId().toUser();
         if (target == null) return;

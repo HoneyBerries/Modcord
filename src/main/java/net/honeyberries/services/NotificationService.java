@@ -3,7 +3,8 @@ package net.honeyberries.services;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.User;
-import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.channel.Channel;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
@@ -71,9 +72,9 @@ public class NotificationService {
                 logger.debug("Audit channel not configured for guild {} — skipping post", guild.getId());
                 return;
             }
-            TextChannel channel = guild.getTextChannelById(auditChannelId.value());
-            if (channel == null) {
-                logger.warn("Audit channel {} not found in guild {}", auditChannelId.value(), guild.getId());
+            Channel auditChannel = guild.getGuildChannelById(auditChannelId.value());
+            if (!(auditChannel instanceof MessageChannel channel)) {
+                logger.warn("Audit channel {} not found or not message-capable in guild {}", auditChannelId.value(), guild.getId());
                 return;
             }
             channel.sendMessage(message).queue(
