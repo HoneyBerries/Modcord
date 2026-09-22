@@ -37,7 +37,8 @@ public class JDAManager {
     private final @NotNull JDA jda;
 
     /**
-     * Initializes the JDA instance with all gateway intents enabled.
+     * Initializes the JDA instance with all gateway intents enabled except {@link GatewayIntent#GUILD_PRESENCES},
+     * which the bot does not use.
      * Retrieves bot token via {@link TokenManager}, sets activity status,
      * and awaits bot readiness.
      *
@@ -50,7 +51,8 @@ public class JDAManager {
             this.jda = JDABuilder.createDefault(
                     TokenManager.getDiscordBotToken(),
                     GatewayIntent.getIntents(GatewayIntent.ALL_INTENTS)
-            ).setActivity(Activity.watching("your server while you sleep")).build();
+            ).disableIntents(GatewayIntent.GUILD_PRESENCES)
+                    .setActivity(Activity.watching("your server while you sleep")).build();
 
             this.jda.awaitReady();
             logger.info("Discord bot connected as {}", jda.getSelfUser().getName());
