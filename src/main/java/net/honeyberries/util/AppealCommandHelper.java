@@ -307,17 +307,7 @@ public class AppealCommandHelper {
             @NotNull Color color) {
         event.deferEdit().queue();
 
-        EmbedBuilder embed = new EmbedBuilder()
-                .setTitle(title)
-                .setColor(color)
-                .setTimestamp(appeal.submittedTimestamp())
-                .addField("Appellant", DiscordUtils.userMention(appeal.userId()), true)
-                .addField("Moderator", DiscordUtils.userMention(appeal.actionData().moderatorId()), true)
-                .addField("Action Type", appeal.actionData().action().name(), true)
-                .addField("Original Reason", appeal.actionData().reason(), false)
-                .addField("Appeal Reason", appeal.reason(), false)
-                .addField("Resolved by", DiscordUtils.userMention(new UserID(event.getUser().getIdLong())), true)
-                .setFooter("Appeal ID: " + appeal.id());
+        EmbedBuilder embed = AppealEmbedUI.buildResolvedAppealEmbed(appeal, event.getUser(), title, color);
 
         event.getHook().editOriginalEmbeds(embed.build())
                 .setComponents()

@@ -22,7 +22,12 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
 import java.util.Objects;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
  * Business-logic helper for the {@code /preferences} slash command.
@@ -43,6 +48,11 @@ import java.util.Objects;
 public class PreferenceCommandHelper {
 
     private static final Logger logger = LoggerFactory.getLogger(PreferenceCommandHelper.class);
+
+    /** Canonical, comma-separated list of valid moderation action names, e.g. "warn, timeout, delete, kick, ban". */
+    private static final String VALID_ACTIONS_LIST = Arrays.stream(ActionType.getModerationActions())
+            .map(ActionType::toString)
+            .collect(Collectors.joining(", "));
 
     private final SpecialUsersRepository specialUsersRepo = SpecialUsersRepository.getInstance();
 
@@ -98,21 +108,11 @@ public class PreferenceCommandHelper {
     public void handleEnableAi(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
-        try {
-            GuildID guildId = GuildID.fromGuild(guild);
-            Boolean enabled = event.getOption("enabled", OptionMapping::getAsBoolean);
-
-            if (enabled == null) {
-                reportAiStatus(event, guildId);
-                return;
-            }
-
-            updateAiStatus(event, guildId, enabled);
-        } catch (Exception e) {
-            logger.error("Error handling enable_ai subcommand", e);
-            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
-                    .setEphemeral(true).queue();
-        }
+        handleBooleanPreferenceSubcommand(event, guild, "enable_ai",
+                GuildPreferences::aiEnabled, GuildPreferences::withAiEnabled,
+                "AI moderation is currently %s for this guild.",
+                "AI moderation has been **%s** for this guild.",
+                "AI moderation");
     }
 
     /**
@@ -128,21 +128,11 @@ public class PreferenceCommandHelper {
     public void handleRemoveOnDelete(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
-        try {
-            GuildID guildId = GuildID.fromGuild(guild);
-            Boolean enabled = event.getOption("enabled", OptionMapping::getAsBoolean);
-
-            if (enabled == null) {
-                reportRemoveOnDeleteStatus(event, guildId);
-                return;
-            }
-
-            updateRemoveOnDeleteStatus(event, guildId, enabled);
-        } catch (Exception e) {
-            logger.error("Error handling remove_on_delete subcommand", e);
-            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
-                    .setEphemeral(true).queue();
-        }
+        handleBooleanPreferenceSubcommand(event, guild, "remove_on_delete",
+                GuildPreferences::removeOnDeleteEnabled, GuildPreferences::withRemoveOnDeleteEnabled,
+                "Remove-on-delete is currently %s for this guild (when disabled, deleted messages are still evaluated — catching ghost pings).",
+                "Remove-on-delete has been **%s** for this guild.",
+                "remove-on-delete");
     }
 
     /**
@@ -158,21 +148,11 @@ public class PreferenceCommandHelper {
     public void handleAppeals(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
-        try {
-            GuildID guildId = GuildID.fromGuild(guild);
-            Boolean enabled = event.getOption("enabled", OptionMapping::getAsBoolean);
-
-            if (enabled == null) {
-                reportAppealsStatus(event, guildId);
-                return;
-            }
-
-            updateAppealsStatus(event, guildId, enabled);
-        } catch (Exception e) {
-            logger.error("Error handling appeals subcommand", e);
-            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
-                    .setEphemeral(true).queue();
-        }
+        handleBooleanPreferenceSubcommand(event, guild, "appeals",
+                GuildPreferences::appealsEnabled, GuildPreferences::withAppealsEnabled,
+                "Moderation appeals are currently %s for this guild.",
+                "Moderation appeals have been **%s** for this guild.",
+                "appeals");
     }
 
     /**
@@ -188,22 +168,8 @@ public class PreferenceCommandHelper {
     public void handleSetRulesChannel(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
-        try {
-            GuildID guildId = GuildID.fromGuild(guild);
-            GuildChannel channel = event.getOption("channel", null, OptionMapping::getAsChannel);
-
-            if (channel == null) {
-                GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-                displayCurrentChannel(event, guild, prefs.rulesChannelID(), "Rules channel");
-                return;
-            }
-
-            updateRulesChannel(event, guildId, channel);
-        } catch (Exception e) {
-            logger.error("Error handling set_rules_channel subcommand", e);
-            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
-                    .setEphemeral(true).queue();
-        }
+        handleChannelPreferenceSubcommand(event, guild, "set_rules_channel",
+                GuildPreferences::rulesChannelID, GuildPreferences::withRulesChannelId, "Rules channel");
     }
 
     /**
@@ -219,22 +185,8 @@ public class PreferenceCommandHelper {
     public void handleSetAuditChannel(@NotNull SlashCommandInteractionEvent event, @NotNull Guild guild) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(guild, "guild must not be null");
-        try {
-            GuildID guildId = GuildID.fromGuild(guild);
-            GuildChannel channel = event.getOption("channel", null, OptionMapping::getAsChannel);
-
-            if (channel == null) {
-                GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-                displayCurrentChannel(event, guild, prefs.auditLogChannelId(), "Audit log channel");
-                return;
-            }
-
-            updateAuditChannel(event, guildId, channel);
-        } catch (Exception e) {
-            logger.error("Error handling set_audit_channel subcommand", e);
-            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
-                    .setEphemeral(true).queue();
-        }
+        handleChannelPreferenceSubcommand(event, guild, "set_audit_channel",
+                GuildPreferences::auditLogChannelId, GuildPreferences::withAuditLogChannelId, "Audit log channel");
     }
 
     // =========================================================================
@@ -448,9 +400,7 @@ public class PreferenceCommandHelper {
         GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
 
         StringBuilder sb = new StringBuilder("**Current Moderation Actions:**\n");
-        for (ActionType action : new ActionType[]{
-                ActionType.WARN, ActionType.TIMEOUT, ActionType.DELETE, ActionType.KICK, ActionType.BAN
-        }) {
+        for (ActionType action : ActionType.getModerationActions()) {
             boolean enabled = PreferencesManager.getInstance().getActionEnabled(prefs, action);
             sb.append("• **").append(action.toString().toLowerCase()).append("**: ")
                     .append(enabled ? "✅ enabled" : "❌ disabled").append("\n");
@@ -469,7 +419,7 @@ public class PreferenceCommandHelper {
     private void handleActionViewOne(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId, @NotNull String actionStr) {
         ActionType actionType = ActionType.parseActionType(actionStr);
         if (actionType == null) {
-            event.reply("Invalid action. Valid options are: warn, timeout, delete, kick, ban")
+            event.reply("Invalid action. Valid options are: " + VALID_ACTIONS_LIST)
                     .setEphemeral(true).queue();
             return;
         }
@@ -491,7 +441,7 @@ public class PreferenceCommandHelper {
     private void handleActionUpdate(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId, @NotNull String actionStr, boolean enabled) {
         ActionType actionType = ActionType.parseActionType(actionStr);
         if (actionType == null) {
-            event.reply("Invalid action. Valid options are: warn, timeout, delete, kick, ban")
+            event.reply("Invalid action. Valid options are: " + VALID_ACTIONS_LIST)
                     .setEphemeral(true).queue();
             return;
         }
@@ -521,11 +471,7 @@ public class PreferenceCommandHelper {
      * @param guildId the guild ID
      */
     private void handleAiToggleButton(@NotNull ButtonInteractionEvent event, @NotNull GuildID guildId) {
-        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-        prefs = prefs.withAiEnabled(!prefs.aiEnabled());
-        PreferencesManager.getInstance().updatePreferences(prefs);
-        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed("actions"))
-                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, "actions")).queue();
+        handleBooleanToggleButton(event, guildId, GuildPreferences::aiEnabled, GuildPreferences::withAiEnabled, "actions");
     }
 
     /**
@@ -546,8 +492,7 @@ public class PreferenceCommandHelper {
             prefs = PreferencesManager.getInstance().setActionEnabled(prefs, actionType, !enabled);
             PreferencesManager.getInstance().updatePreferences(prefs);
         }
-        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed("actions"))
-                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, "actions")).queue();
+        renderSettingsCategory(event, guildId, "actions");
     }
 
     /**
@@ -557,11 +502,7 @@ public class PreferenceCommandHelper {
      * @param guildId the guild ID
      */
     private void handleRemoveOnDeleteToggleButton(@NotNull ButtonInteractionEvent event, @NotNull GuildID guildId) {
-        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-        prefs = prefs.withRemoveOnDeleteEnabled(!prefs.removeOnDeleteEnabled());
-        PreferencesManager.getInstance().updatePreferences(prefs);
-        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed("flags"))
-                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, "flags")).queue();
+        handleBooleanToggleButton(event, guildId, GuildPreferences::removeOnDeleteEnabled, GuildPreferences::withRemoveOnDeleteEnabled, "flags");
     }
 
     /**
@@ -571,11 +512,40 @@ public class PreferenceCommandHelper {
      * @param guildId the guild ID
      */
     private void handleAppealsToggleButton(@NotNull ButtonInteractionEvent event, @NotNull GuildID guildId) {
+        handleBooleanToggleButton(event, guildId, GuildPreferences::appealsEnabled, GuildPreferences::withAppealsEnabled, "flags");
+    }
+
+    /**
+     * Generic handler for a boolean-preference toggle button: flips the value returned by
+     * {@code getter}, persists it via {@code setter}, and re-renders the given settings category.
+     *
+     * @param event the button interaction event
+     * @param guildId the guild ID
+     * @param getter reads the current boolean value from preferences
+     * @param setter returns preferences with the boolean value replaced
+     * @param category the settings category to re-render (e.g. "actions" or "flags")
+     */
+    private void handleBooleanToggleButton(@NotNull ButtonInteractionEvent event,
+                                           @NotNull GuildID guildId,
+                                           @NotNull Predicate<GuildPreferences> getter,
+                                           @NotNull BiFunction<GuildPreferences, Boolean, GuildPreferences> setter,
+                                           @NotNull String category) {
         GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-        prefs = prefs.withAppealsEnabled(!prefs.appealsEnabled());
+        prefs = setter.apply(prefs, !getter.test(prefs));
         PreferencesManager.getInstance().updatePreferences(prefs);
-        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed("flags"))
-                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, "flags")).queue();
+        renderSettingsCategory(event, guildId, category);
+    }
+
+    /**
+     * Re-renders the settings embed and components for the given category on a button interaction.
+     *
+     * @param event the button interaction event
+     * @param guildId the guild ID
+     * @param category the settings category to render (e.g. "actions" or "flags")
+     */
+    private void renderSettingsCategory(@NotNull ButtonInteractionEvent event, @NotNull GuildID guildId, @NotNull String category) {
+        event.editMessageEmbeds(PreferencesEmbedUI.buildSettingsEmbed(category))
+                .setComponents(PreferencesEmbedUI.buildSettingsComponents(guildId, category)).queue();
     }
 
     /**
@@ -603,35 +573,88 @@ public class PreferenceCommandHelper {
     // =========================================================================
 
     /**
-     * Reports the current AI moderation status.
+     * Generic handler for a boolean-preference subcommand that follows the
+     * "get option → if null report, else update" shape (e.g. {@code enable_ai}, {@code appeals}).
      *
      * @param event the slash command interaction event
-     * @param guildId the guild ID
+     * @param guild the guild where the command was invoked
+     * @param errorContext short subcommand name used in the error log line (e.g. "enable_ai")
+     * @param getter reads the current boolean value from preferences
+     * @param setter returns preferences with the boolean value replaced
+     * @param reportFormat message format (single {@code %s} for the bold status) used when reporting
+     * @param updateFormat message format (single {@code %s} for the plain status) used when updating
+     * @param logLabel short label identifying the preference in debug log lines
      */
-    private void reportAiStatus(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId) {
-        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-        String status = prefs.aiEnabled() ? "**enabled**" : "**disabled**";
-        event.reply("AI moderation is currently " + status + " for this guild.")
-                .setEphemeral(true).queue();
+    private void handleBooleanPreferenceSubcommand(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull Guild guild,
+            @NotNull String errorContext,
+            @NotNull Predicate<GuildPreferences> getter,
+            @NotNull BiFunction<GuildPreferences, Boolean, GuildPreferences> setter,
+            @NotNull String reportFormat,
+            @NotNull String updateFormat,
+            @NotNull String logLabel) {
+        try {
+            GuildID guildId = GuildID.fromGuild(guild);
+            Boolean enabled = event.getOption("enabled", OptionMapping::getAsBoolean);
+
+            if (enabled == null) {
+                reportBooleanPreference(event, guildId, getter, reportFormat);
+                return;
+            }
+
+            updateBooleanPreference(event, guildId, enabled, setter, updateFormat, logLabel);
+        } catch (Exception e) {
+            logger.error("Error handling {} subcommand", errorContext, e);
+            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
+                    .setEphemeral(true).queue();
+        }
     }
 
     /**
-     * Updates the AI moderation status for a guild.
+     * Reports the current value of a boolean preference.
+     *
+     * @param event the slash command interaction event
+     * @param guildId the guild ID
+     * @param getter reads the current boolean value from preferences
+     * @param messageFormat message format with a single {@code %s} for the bold status
+     *                      (e.g. {@code "**enabled**"} or {@code "**disabled**"})
+     */
+    private void reportBooleanPreference(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull GuildID guildId,
+            @NotNull Predicate<GuildPreferences> getter,
+            @NotNull String messageFormat) {
+        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
+        String status = getter.test(prefs) ? "**enabled**" : "**disabled**";
+        event.reply(String.format(messageFormat, status)).setEphemeral(true).queue();
+    }
+
+    /**
+     * Updates a boolean preference for a guild.
      *
      * @param event the slash command interaction event
      * @param guildId the guild ID
      * @param enabled the desired enabled state
+     * @param setter returns preferences with the boolean value replaced
+     * @param messageFormat message format with a single {@code %s} for the plain status
+     *                      (e.g. {@code "enabled"} or {@code "disabled"})
+     * @param logLabel short label identifying the preference in the debug log line
      */
-    private void updateAiStatus(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId, boolean enabled) {
-        GuildPreferences prefs = PreferencesManager.getInstance()
-                .getOrDefaultPreferences(guildId)
-                .withAiEnabled(enabled);
+    private void updateBooleanPreference(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull GuildID guildId,
+            boolean enabled,
+            @NotNull BiFunction<GuildPreferences, Boolean, GuildPreferences> setter,
+            @NotNull String messageFormat,
+            @NotNull String logLabel) {
+        GuildPreferences prefs = setter.apply(
+                PreferencesManager.getInstance().getOrDefaultPreferences(guildId), enabled);
 
         if (PreferencesManager.getInstance().updatePreferences(prefs)) {
             String status = enabled ? "enabled" : "disabled";
-            event.reply("AI moderation has been **" + status + "** for this guild.")
-                    .setEphemeral(true).queue();
-            logger.debug("Guild {} AI moderation set to {}", guildId.value(), enabled);
+            event.reply(String.format(messageFormat, status)).setEphemeral(true).queue();
+            logger.debug("Guild {} {} set to {}", guildId.value(), logLabel, enabled);
         } else {
             event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
                     .setEphemeral(true).queue();
@@ -639,116 +662,64 @@ public class PreferenceCommandHelper {
     }
 
     /**
-     * Reports the current remove-on-delete status for a guild.
+     * Generic handler for a channel-preference subcommand that follows the
+     * "get option → if null display current, else update" shape (e.g. {@code set_rules_channel}).
      *
      * @param event the slash command interaction event
-     * @param guildId the guild ID
+     * @param guild the guild where the command was invoked
+     * @param errorContext short subcommand name used in the error log line (e.g. "set_rules_channel")
+     * @param getter reads the currently configured channel ID from preferences
+     * @param setter returns preferences with the channel ID replaced
+     * @param channelLabel human-readable label, e.g. {@code "Rules channel"}
      */
-    private void reportRemoveOnDeleteStatus(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId) {
-        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-        String status = prefs.removeOnDeleteEnabled() ? "**enabled**" : "**disabled**";
-        event.reply("Remove-on-delete is currently " + status
-                        + " for this guild (when disabled, deleted messages are still evaluated — catching ghost pings).")
-                .setEphemeral(true).queue();
-    }
+    private void handleChannelPreferenceSubcommand(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull Guild guild,
+            @NotNull String errorContext,
+            @NotNull Function<GuildPreferences, ChannelID> getter,
+            @NotNull BiFunction<GuildPreferences, ChannelID, GuildPreferences> setter,
+            @NotNull String channelLabel) {
+        try {
+            GuildID guildId = GuildID.fromGuild(guild);
+            GuildChannel channel = event.getOption("channel", null, OptionMapping::getAsChannel);
 
-    /**
-     * Updates the remove-on-delete status for a guild.
-     *
-     * @param event the slash command interaction event
-     * @param guildId the guild ID
-     * @param enabled the desired enabled state
-     */
-    private void updateRemoveOnDeleteStatus(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId, boolean enabled) {
-        GuildPreferences prefs = PreferencesManager.getInstance()
-                .getOrDefaultPreferences(guildId)
-                .withRemoveOnDeleteEnabled(enabled);
+            if (channel == null) {
+                GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
+                displayCurrentChannel(event, guild, getter.apply(prefs), channelLabel);
+                return;
+            }
 
-        if (PreferencesManager.getInstance().updatePreferences(prefs)) {
-            String status = enabled ? "enabled" : "disabled";
-            event.reply("Remove-on-delete has been **" + status + "** for this guild.")
-                    .setEphemeral(true).queue();
-            logger.debug("Guild {} remove-on-delete set to {}", guildId.value(), enabled);
-        } else {
+            updateChannelPreference(event, guildId, channel, setter, channelLabel);
+        } catch (Exception e) {
+            logger.error("Error handling {} subcommand", errorContext, e);
             event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
                     .setEphemeral(true).queue();
         }
     }
 
     /**
-     * Reports the current appeals status for a guild.
+     * Updates a channel preference for a guild.
      *
      * @param event the slash command interaction event
      * @param guildId the guild ID
+     * @param channel the new channel
+     * @param setter returns preferences with the channel ID replaced
+     * @param channelLabel human-readable label, e.g. {@code "Rules channel"}
      */
-    private void reportAppealsStatus(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId) {
-        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
-        String status = prefs.appealsEnabled() ? "**enabled**" : "**disabled**";
-        event.reply("Moderation appeals are currently " + status + " for this guild.")
-                .setEphemeral(true).queue();
-    }
-
-    /**
-     * Updates the appeals status for a guild.
-     *
-     * @param event the slash command interaction event
-     * @param guildId the guild ID
-     * @param enabled the desired enabled state
-     */
-    private void updateAppealsStatus(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId, boolean enabled) {
-        GuildPreferences prefs = PreferencesManager.getInstance()
-                .getOrDefaultPreferences(guildId)
-                .withAppealsEnabled(enabled);
+    private void updateChannelPreference(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull GuildID guildId,
+            @NotNull GuildChannel channel,
+            @NotNull BiFunction<GuildPreferences, ChannelID, GuildPreferences> setter,
+            @NotNull String channelLabel) {
+        GuildPreferences prefs = setter.apply(
+                PreferencesManager.getInstance().getOrDefaultPreferences(guildId),
+                new ChannelID(channel.getIdLong()));
 
         if (PreferencesManager.getInstance().updatePreferences(prefs)) {
-            String status = enabled ? "enabled" : "disabled";
-            event.reply("Moderation appeals have been **" + status + "** for this guild.")
+            event.reply(channelLabel + " has been set to " + channel.getAsMention())
                     .setEphemeral(true).queue();
-            logger.debug("Guild {} appeals set to {}", guildId.value(), enabled);
-        } else {
-            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
-                    .setEphemeral(true).queue();
-        }
-    }
-
-    /**
-     * Updates the rules channel for a guild.
-     *
-     * @param event the slash command interaction event
-     * @param guildId the guild ID
-     * @param channel the new rules channel
-     */
-    private void updateRulesChannel(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId, @NotNull GuildChannel channel) {
-        GuildPreferences prefs = PreferencesManager.getInstance()
-                .getOrDefaultPreferences(guildId)
-                .withRulesChannelId(new ChannelID(channel.getIdLong()));
-
-        if (PreferencesManager.getInstance().updatePreferences(prefs)) {
-            event.reply("Rules channel has been set to " + channel.getAsMention())
-                    .setEphemeral(true).queue();
-            logger.debug("Guild {} rules channel set to {}", guildId.value(), channel.getId());
-        } else {
-            event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
-                    .setEphemeral(true).queue();
-        }
-    }
-
-    /**
-     * Updates the audit log channel for a guild.
-     *
-     * @param event the slash command interaction event
-     * @param guildId the guild ID
-     * @param channel the new audit log channel
-     */
-    private void updateAuditChannel(@NotNull SlashCommandInteractionEvent event, @NotNull GuildID guildId, @NotNull GuildChannel channel) {
-        GuildPreferences prefs = PreferencesManager.getInstance()
-                .getOrDefaultPreferences(guildId)
-                .withAuditLogChannelId(new ChannelID(channel.getIdLong()));
-
-        if (PreferencesManager.getInstance().updatePreferences(prefs)) {
-            event.reply("Audit log channel has been set to " + channel.getAsMention())
-                    .setEphemeral(true).queue();
-            logger.debug("Guild {} audit log channel set to {}", guildId.value(), channel.getId());
+            logger.debug("Guild {} {} set to {}", guildId.value(), channelLabel.toLowerCase(), channel.getId());
         } else {
             event.reply(PreferencesCommands.PreferencesMessages.UPDATE_FAILED)
                     .setEphemeral(true).queue();

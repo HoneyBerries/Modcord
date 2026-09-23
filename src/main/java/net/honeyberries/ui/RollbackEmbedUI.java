@@ -2,7 +2,6 @@ package net.honeyberries.ui;
 
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.User;
-import net.dv8tion.jda.api.utils.TimeFormat;
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.honeyberries.datatypes.action.ActionData;
@@ -63,21 +62,9 @@ public class RollbackEmbedUI {
      * Adds the "Original Duration" field to a rollback embed with "would have expired" wording.
      */
     private static void addRollbackDurationField(@NotNull EmbedBuilder embed, @NotNull ActionData action) {
-        if (action.action() == ActionType.TIMEOUT && action.timeoutDuration() > 0) {
-            Instant expiresAt = action.timestamp().plusSeconds(action.timeoutDuration());
-            embed.addField("Original Duration",
-                    EmbedHelper.formatDuration(action.timeoutDuration()) + " — would have expired " + TimeFormat.RELATIVE.format(expiresAt),
-                    false);
-        } else if (action.action() == ActionType.BAN && action.banDuration() > 0) {
-            if (action.banDuration() >= Integer.MAX_VALUE) {
-                embed.addField("Original Duration", "Permanent", false);
-            } else {
-                Instant expiresAt = action.timestamp().plusSeconds(action.banDuration());
-                embed.addField("Original Duration",
-                        EmbedHelper.formatDuration(action.banDuration()) + " — would have expired " + TimeFormat.RELATIVE.format(expiresAt),
-                        false);
-            }
-        }
+        long duration = action.action() == ActionType.TIMEOUT ? action.timeoutDuration() : action.banDuration();
+        EmbedHelper.addDurationField(embed, action.action(), action.timestamp(), duration,
+                "Original Duration", "would have expired");
     }
 
 }
