@@ -5,7 +5,6 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-import net.honeyberries.database.Database;
 import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.database.repository.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
@@ -16,12 +15,12 @@ import net.honeyberries.message.EmbedParser;
 import net.honeyberries.discord.JDAManager;
 import net.honeyberries.preferences.Onboarding;
 import net.honeyberries.util.DiscordUtils;
+import net.honeyberries.util.GuildEnsurer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -30,51 +29,21 @@ import java.util.stream.Collectors;
  * This task goes through each guild and updates the rules_text while preserving
  * the rules_channel_id set by users.
  */
-public class GuildRulesTask implements Runnable {
+public class GuildRulesTask extends AbstractScheduledTask {
 
-    private enum UpdateOutcome {
-        UPDATED,
-        SKIPPED,
-        FAILED
-    }
-
-    private final Logger logger = LoggerFactory.getLogger(GuildRulesTask.class);
-
-    /**
-     * Runs this operation.
-     */
     @Override
-    public void run() {
-        logger.debug("GuildRulesTask started");
-
-        if (!Database.getInstance().isHealthy()) {
-            logger.warn("Skipping GuildRulesTask because database is unavailable");
-            return;
-        }
-
+    protected List<TaskOutcome> processItems() {
         JDA jda = JDAManager.getInstance().getJDA();
 
-        try {
-            // Collect outcomes from updateGuildRules for each guild
-            List<UpdateOutcome> results = jda.getGuilds().parallelStream()
-                    .map(this::updateGuildRules)
-                    .toList();
+        // Collect outcomes from updateGuildRules for each guild
+        return jda.getGuilds().parallelStream()
+                .map(this::updateGuildRules)
+                .toList();
+    }
 
-            long updatedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.UPDATED).count();
-            long skippedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.SKIPPED).count();
-            long failedCount = results.stream().filter(outcome -> outcome == UpdateOutcome.FAILED).count();
-
-            if (failedCount > 0) {
-                logger.warn("GuildRulesTask completed with {} updated, {} skipped, {} failed out of {} guilds",
-                        updatedCount, skippedCount, failedCount, results.size());
-            } else {
-                logger.debug("GuildRulesTask completed with {} updated and {} skipped out of {} guilds",
-                        updatedCount, skippedCount, results.size());
-            }
-
-        } catch (Exception e) {
-            logger.error("Error in GuildRulesTask", e);
-        }
+    @Override
+    protected String itemUnitName() {
+        return "guilds";
     }
 
     /**
@@ -87,14 +56,14 @@ public class GuildRulesTask implements Runnable {
      * @param guild the guild whose rules need to be updated; must not be null
      * @return the outcome of the update operation, which can be one of UPDATED, SKIPPED, or FAILED
      */
-    private UpdateOutcome updateGuildRules(@NotNull Guild guild) {
+    private TaskOutcome updateGuildRules(@NotNull Guild guild) {
         try {
             GuildID guildId = GuildID.fromGuild(guild);
 
             // Ensure guild exists in guild preferences database before inserting guild rules
             // This prevents foreign key constraint violations
-            if (!ensureGuildExists(guildId, guild)) {
-                return UpdateOutcome.FAILED;
+            if (!GuildEnsurer.ensureGuildExists(guildId, guild)) {
+                return TaskOutcome.FAILED;
             }
 
             // Resolve rules channel ID with fallback chain: preferences → cached rules → onboarding backfill
@@ -104,48 +73,31 @@ public class GuildRulesTask implements Runnable {
                 logger.debug("No rules channel configured for guild: {} ({}), storing unconfigured state", guild.getName(), guildId.value());
                 if (!GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(new GuildRules(guildId, null, null))) {
                     logger.warn("Failed to persist unconfigured rules state for guild: {} ({})", guild.getName(), guildId.value());
-                    return UpdateOutcome.FAILED;
+                    return TaskOutcome.FAILED;
                 }
-                return UpdateOutcome.SKIPPED;
+                return TaskOutcome.SKIPPED;
             }
 
             // Fetch and persist rules
             String updatedRules = getGuildRulesFromDiscord(guild, rulesChannelID);
             if (updatedRules == null || updatedRules.isBlank()) {
                 logger.debug("No rules found for guild: {} ({}), skipping.", guild.getName(), guildId.value());
-                return UpdateOutcome.SKIPPED;
+                return TaskOutcome.SKIPPED;
             }
 
             GuildRules currentGuildRules = new GuildRules(guildId, rulesChannelID, updatedRules);
             if (GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(currentGuildRules)) {
                 logger.debug("Updated rules for guild: {} ({}), successful", guild.getName(), guildId.value());
-                return UpdateOutcome.UPDATED;
+                return TaskOutcome.UPDATED;
             } else {
                 logger.warn("Failed to update rules for guild: {} ({})", guild.getName(), guildId.value());
-                return UpdateOutcome.FAILED;
+                return TaskOutcome.FAILED;
             }
 
         } catch (Exception e) {
             logger.error("Error updating rules for guild {}, error: {}", guild.getId(), e.getMessage());
-            return UpdateOutcome.FAILED;
+            return TaskOutcome.FAILED;
         }
-    }
-
-    /**
-     * Ensures the guild exists in the database, onboarding if necessary.
-     */
-    private boolean ensureGuildExists(@NotNull GuildID guildId, @NotNull Guild guild) {
-        GuildPreferences existing = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
-        if (existing != null) {
-            return true;
-        }
-
-        logger.debug("Guild {} not found in database, onboarding with default preferences", guildId.value());
-        boolean success = Onboarding.getInstance().setupGuild(guild);
-        if (!success) {
-            logger.error("Failed to onboard guild {}", guild.getName());
-        }
-        return success;
     }
 
     /**
@@ -194,7 +146,7 @@ public class GuildRulesTask implements Runnable {
 
             return messages.reversed().stream()
                     .map(this::extractRuleText)
-                    .filter(s -> !(s == null))
+                    .filter(Objects::nonNull)
                     .collect(Collectors.joining("\n\n"));
 
         } catch (InterruptedException e) {

@@ -242,7 +242,7 @@ public class UnbanWatcherTask implements Runnable {
      */
     private boolean isBanExpired(@NotNull ActionData action) {
         Objects.requireNonNull(action, "action must not be null");
-        if (action.banDuration() <= 0) {
+        if (action.banDuration() == PERMANENT_BAN_SENTINEL || action.banDuration() <= 0) {
             return false;
         }
 
