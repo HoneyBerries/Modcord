@@ -2,12 +2,9 @@ package net.honeyberries.database.repository;
 
 import com.openai.core.ObjectMappers;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
-import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -17,7 +14,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -27,7 +23,7 @@ import java.util.UUID;
  * Tracks AI detection events, inference results, and moderation decisions for audit and analysis purposes.
  * Provides methods to persist, retrieve, and query AI activity logs scoped by guild and user.
  */
-public class AILogRepository {
+public class AILogRepository extends RepositoryBase {
 
 	/** Jackson object mapper for serialization. */
 	private static final ObjectMapper objectMapper = new ObjectMapper();
@@ -40,10 +36,6 @@ public class AILogRepository {
 			@NotNull OffsetDateTime timestamp
 	) {}
 
-	/** Logger for recording database operations. */
-	private final Logger logger = LoggerFactory.getLogger(AILogRepository.class);
-	/** Database connection pool. */
-	private final Database database;
 	/** Singleton instance. */
 	private static final AILogRepository INSTANCE = new AILogRepository();
 
@@ -61,7 +53,7 @@ public class AILogRepository {
 	 * Constructs a new repository, retrieving the singleton database instance.
 	 */
 	public AILogRepository() {
-		this.database = Database.getInstance();
+		super();
 	}
 
 	/**
@@ -81,7 +73,7 @@ public class AILogRepository {
 			VALUES (?, CAST(? AS JSONB))
 		""";
 
-		try {
+		return safeTransaction(conn -> {
 			// Extract actual conversation data into a meaningful structure
 			ArrayNode conversationArray = objectMapper.createArrayNode();
 			for (ChatCompletionMessageParam message : conversation) {
@@ -89,17 +81,12 @@ public class AILogRepository {
 			}
 			String jsonString = objectMapper.writeValueAsString(conversationArray);
 
-			database.transaction(conn -> {
-				try (PreparedStatement ps = conn.prepareStatement(sql)) {
-					ps.setLong(1, guildId.value());
-					ps.setString(2, jsonString);
-					ps.executeUpdate();
-				}
-			});
-			return true;
-		} catch (Exception e) {
-			return false;
-		}
+			try (PreparedStatement ps = conn.prepareStatement(sql)) {
+				ps.setLong(1, guildId.value());
+				ps.setString(2, jsonString);
+				ps.executeUpdate();
+			}
+		}, "Failed to add AI log entry for guild {}", guildId);
 	}
 
 	/**
@@ -140,22 +127,8 @@ public class AILogRepository {
 			WHERE interaction_id = ?
 		""";
 
-		try {
-			return database.query(conn -> {
-				try (PreparedStatement ps = conn.prepareStatement(sql)) {
-					ps.setObject(1, interactionId);
-					try (ResultSet rs = ps.executeQuery()) {
-						if (rs.next()) {
-							return mapEntry(rs);
-						}
-						return null;
-					}
-				}
-			});
-		} catch (Exception e) {
-			logger.error("Failed to fetch AI log entry by interactionId", e);
-			return null;
-		}
+		return safeQueryOne(sql, ps -> ps.setObject(1, interactionId), this::mapEntry,
+				"Failed to fetch AI log entry by interactionId", interactionId);
 	}
 
 	/**
@@ -181,27 +154,10 @@ public class AILogRepository {
 			LIMIT ?
 		""";
 
-		try {
-			return database.query(conn -> {
-				List<AILogEntry> entries = new ArrayList<>();
-
-				try (PreparedStatement ps = conn.prepareStatement(sql)) {
-					ps.setLong(1, guildId.value());
-					ps.setInt(2, limit);
-
-					try (ResultSet rs = ps.executeQuery()) {
-						while (rs.next()) {
-							entries.add(mapEntry(rs));
-						}
-					}
-				}
-
-				return entries;
-			});
-		} catch (Exception e) {
-			logger.error("Failed to fetch recent AI log entries by guild", e);
-			return List.of();
-		}
+		return safeQueryList(sql, ps -> {
+			ps.setLong(1, guildId.value());
+			ps.setInt(2, limit);
+		}, this::mapEntry, "Failed to fetch recent AI log entries by guild", guildId);
 	}
 
 	/**

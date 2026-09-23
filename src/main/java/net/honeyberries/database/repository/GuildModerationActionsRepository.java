@@ -11,15 +11,16 @@ import net.honeyberries.datatypes.discord.MessageID;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -28,26 +29,18 @@ import java.util.UUID;
  * Manages the lifecycle of {@link ActionData} instances, enabling retrieval by action ID, guild, or user.
  * Also handles transactional updates to ensure action records and their deletion specs remain synchronized.
  */
-public class GuildModerationActionsRepository {
+public class GuildModerationActionsRepository extends RepositoryBase {
 
     /**
      * Singleton instance.
      */
     private static final GuildModerationActionsRepository INSTANCE = new GuildModerationActionsRepository();
-    /**
-     * Logger for recording database operations.
-     */
-    private final Logger logger = LoggerFactory.getLogger(GuildModerationActionsRepository.class);
-    /**
-     * Database connection pool.
-     */
-    private final Database database;
 
     /**
      * Constructs a new repository, retrieving the singleton database instance.
      */
     public GuildModerationActionsRepository() {
-        this.database = Database.getInstance();
+        super();
     }
 
     /**
@@ -70,50 +63,44 @@ public class GuildModerationActionsRepository {
      */
     public boolean addActionToDatabase(@NotNull ActionData actionData) {
         Objects.requireNonNull(actionData, "actionData must not be null");
-        try {
-            database.transaction(conn -> {
-                String insertActionSql = """
-                            INSERT INTO guild_moderation_actions (
-                                action_id, guild_id, user_id, moderator_id, action, reason,
-                                timeout_duration, ban_duration, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """;
 
-                try (PreparedStatement ps = conn.prepareStatement(insertActionSql)) {
+        return safeTransaction(conn -> {
+            String insertActionSql = """
+                        INSERT INTO guild_moderation_actions (
+                            action_id, guild_id, user_id, moderator_id, action, reason,
+                            timeout_duration, ban_duration, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+
+            try (PreparedStatement ps = conn.prepareStatement(insertActionSql)) {
+                ps.setObject(1, actionData.id());
+                ps.setLong(2, actionData.guildId().value());
+                ps.setLong(3, actionData.userId().value());
+                ps.setLong(4, actionData.moderatorId().value());
+                ps.setString(5, actionData.action().name());
+                ps.setString(6, actionData.reason());
+                ps.setLong(7, actionData.timeoutDuration());
+                ps.setLong(8, actionData.banDuration());
+                ps.setTimestamp(9, Timestamp.from(actionData.timestamp()));
+                ps.executeUpdate();
+            }
+
+            String insertDeletionSql = """
+                        INSERT INTO guild_moderation_action_deletions (
+                            action_id, channel_id, message_id
+                        ) VALUES (?, ?, ?)
+                    """;
+
+            try (PreparedStatement ps = conn.prepareStatement(insertDeletionSql)) {
+                for (MessageDeletion deletion : actionData.deletions()) {
                     ps.setObject(1, actionData.id());
-                    ps.setLong(2, actionData.guildId().value());
-                    ps.setLong(3, actionData.userId().value());
-                    ps.setLong(4, actionData.moderatorId().value());
-                    ps.setString(5, actionData.action().name());
-                    ps.setString(6, actionData.reason());
-                    ps.setLong(7, actionData.timeoutDuration());
-                    ps.setLong(8, actionData.banDuration());
-                    ps.setTimestamp(9, Timestamp.from(actionData.timestamp()));
-                    ps.executeUpdate();
+                    ps.setLong(2, deletion.channelId().value());
+                    ps.setLong(3, deletion.messageId().value());
+                    ps.addBatch();
                 }
-
-                String insertDeletionSql = """
-                            INSERT INTO guild_moderation_action_deletions (
-                                action_id, channel_id, message_id
-                            ) VALUES (?, ?, ?)
-                        """;
-
-                try (PreparedStatement ps = conn.prepareStatement(insertDeletionSql)) {
-                    for (MessageDeletion deletion : actionData.deletions()) {
-                        ps.setObject(1, actionData.id());
-                        ps.setLong(2, deletion.channelId().value());
-                        ps.setLong(3, deletion.messageId().value());
-                        ps.addBatch();
-                    }
-                    ps.executeBatch();
-                }
-            });
-
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to add action to database", e);
-            return false;
-        }
+                ps.executeBatch();
+            }
+        }, "Failed to add action to database");
     }
 
     /**
@@ -132,23 +119,9 @@ public class GuildModerationActionsRepository {
                     WHERE action_id = ?
                 """;
 
-        try {
-            return database.query(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setObject(1, actionId);
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            return mapAction(rs);
-                        }
-                        return null;
-                    }
-                }
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch action by interactionID", e);
-            return null;
-        }
+        List<ActionData> results = queryActionsWithDeletions(sql, ps -> ps.setObject(1, actionId),
+                "Failed to fetch action by interactionID", actionId);
+        return results.isEmpty() ? null : results.get(0);
     }
 
     /**
@@ -169,26 +142,8 @@ public class GuildModerationActionsRepository {
                     ORDER BY created_at DESC
                 """;
 
-        try {
-            return database.query(conn -> {
-                List<ActionData> actions = new ArrayList<>();
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            actions.add(mapAction(rs));
-                        }
-                    }
-                }
-
-                return actions;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch actions by guild", e);
-            return List.of();
-        }
+        return queryActionsWithDeletions(sql, ps -> ps.setLong(1, guildId.value()),
+                "Failed to fetch actions by guild", guildId);
     }
 
     /**
@@ -208,27 +163,10 @@ public class GuildModerationActionsRepository {
                     ORDER BY created_at DESC
                 """;
 
-        try {
-            return database.query(conn -> {
-                List<ActionData> actions = new ArrayList<>();
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-                    ps.setLong(2, userId.value());
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            actions.add(mapAction(rs));
-                        }
-                    }
-                }
-
-                return actions;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch actions by user", e);
-            return List.of();
-        }
+        return queryActionsWithDeletions(sql, ps -> {
+            ps.setLong(1, guildId.value());
+            ps.setLong(2, userId.value());
+        }, "Failed to fetch actions by user", guildId, userId);
     }
 
     /**
@@ -248,26 +186,8 @@ public class GuildModerationActionsRepository {
                     ORDER BY created_at DESC
                 """;
 
-        try {
-            return database.query(conn -> {
-                List<ActionData> actions = new ArrayList<>();
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, userId.value());
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            actions.add(mapAction(rs));
-                        }
-                    }
-                }
-
-                return actions;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch actions by user across all guilds", e);
-            return List.of();
-        }
+        return queryActionsWithDeletions(sql, ps -> ps.setLong(1, userId.value()),
+                "Failed to fetch actions by user across all guilds", userId);
     }
 
 
@@ -295,39 +215,52 @@ public class GuildModerationActionsRepository {
                     LIMIT ?
                 """;
 
-        try {
-            return database.query(conn -> {
-                List<ActionData> actions = new ArrayList<>();
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-                    ps.setInt(2, limit);
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            actions.add(mapAction(rs));
-                        }
-                    }
-                }
-
-                return actions;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch recent actions", e);
-            return List.of();
-        }
+        return queryActionsWithDeletions(sql, ps -> {
+            ps.setLong(1, guildId.value());
+            ps.setInt(2, limit);
+        }, "Failed to fetch recent actions", guildId, limit);
     }
 
     /**
-     * Reconstructs an {@code ActionData} instance from a database result row.
-     * Fetches associated message deletions and populates them into the action builder.
+     * Runs a {@code guild_moderation_actions} query and attaches each row's message deletions,
+     * fetching all deletions for the result set in a single batched follow-up query instead of one
+     * query per action (avoids an N+1 query pattern for list-returning lookups).
+     *
+     * @param sql          the {@code guild_moderation_actions} SELECT to run
+     * @param binder       binds the SQL's placeholders
+     * @param errorMessage SLF4J-style error message logged on failure
+     * @param errorArgs    values substituted into {@code errorMessage}
+     * @return matching actions with deletions populated, in result-set order, never {@code null}
+     */
+    @NotNull
+    private List<ActionData> queryActionsWithDeletions(
+            @NotNull String sql,
+            Database.StatementBinder binder,
+            @NotNull String errorMessage,
+            Object... errorArgs
+    ) {
+        return safeQueryForList(conn -> {
+            List<ActionRow> rows = fetchList(conn, sql, binder, this::mapActionRow);
+            return attachDeletionsAndBuild(conn, rows);
+        }, errorMessage, errorArgs);
+    }
+
+    /**
+     * A partially built action (row data mapped, deletions not yet attached) paired with the action ID
+     * used to look up its deletions. {@link ActionDataBuilder} does not expose an id getter, so the id
+     * extracted while mapping the row is carried alongside it.
+     */
+    private record ActionRow(@NotNull UUID id, @NotNull ActionDataBuilder builder) {}
+
+    /**
+     * Maps one {@code guild_moderation_actions} row into an {@link ActionRow}, without deletions.
      *
      * @param rs the result set positioned at a row from guild_moderation_actions
-     * @return the reconstructed {@code ActionData}
+     * @return the row's id and a builder populated with its core fields
      * @throws SQLException if a column cannot be accessed
      */
     @NotNull
-    private ActionData mapAction(@NotNull ResultSet rs) throws SQLException {
+    private ActionRow mapActionRow(@NotNull ResultSet rs) throws SQLException {
         Objects.requireNonNull(rs, "rs must not be null");
         UUID actionId = (UUID) rs.getObject("action_id");
 
@@ -343,51 +276,57 @@ public class GuildModerationActionsRepository {
                 rs.getLong("ban_duration")
         );
 
-        getDeletionsByActionId(actionId).forEach(builder::addMessageDeletion);
-
-        return builder.build();
+        return new ActionRow(actionId, builder);
     }
 
     /**
-     * Retrieves all message deletion specs associated with a moderation action.
-     * Returns an empty list if no deletions are found or if a database error occurs.
+     * Batch-fetches message deletions for every action in {@code rows} in a single query (instead of
+     * one query per action) and attaches each action's deletions to its builder before building the
+     * final {@link ActionData} list.
      *
-     * @param actionId the action ID to fetch deletions for
-     * @return a list of {@code MessageDeletion} instances, never {@code null}
-     * @throws NullPointerException if {@code actionId} is {@code null}
+     * @param conn the connection to run the batched deletions query on
+     * @param rows the mapped rows (without deletions) to complete, in the order they should be returned
+     * @return completed actions, in the same order as {@code rows}
+     * @throws SQLException if the deletions query fails
      */
     @NotNull
-    private List<MessageDeletion> getDeletionsByActionId(@NotNull UUID actionId) {
-        Objects.requireNonNull(actionId, "actionId must not be null");
-        String sql = """
-                    SELECT channel_id, message_id
-                    FROM guild_moderation_action_deletions
-                    WHERE action_id = ?
-                """;
-
-        try {
-            return database.query(conn -> {
-                List<MessageDeletion> deletions = new ArrayList<>();
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setObject(1, actionId);
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            ChannelID channelId = new ChannelID(rs.getLong("channel_id"));
-                            MessageID messageId = new MessageID(rs.getLong("message_id"));
-
-                            deletions.add(new MessageDeletion(channelId, messageId));
-                        }
-                    }
-                }
-
-                return deletions;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch deletions", e);
+    private List<ActionData> attachDeletionsAndBuild(@NotNull Connection conn, @NotNull List<ActionRow> rows) throws SQLException {
+        if (rows.isEmpty()) {
             return List.of();
         }
+
+        UUID[] actionIds = rows.stream().map(ActionRow::id).toArray(UUID[]::new);
+        Map<UUID, List<MessageDeletion>> deletionsByAction = new HashMap<>();
+
+        String sql = """
+                    SELECT action_id, channel_id, message_id
+                    FROM guild_moderation_action_deletions
+                    WHERE action_id = ANY(?)
+                """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setArray(1, conn.createArrayOf("uuid", actionIds));
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    UUID actionId = (UUID) rs.getObject("action_id");
+                    ChannelID channelId = new ChannelID(rs.getLong("channel_id"));
+                    MessageID messageId = new MessageID(rs.getLong("message_id"));
+                    deletionsByAction
+                            .computeIfAbsent(actionId, k -> new ArrayList<>())
+                            .add(new MessageDeletion(channelId, messageId));
+                }
+            }
+        }
+
+        List<ActionData> actions = new ArrayList<>(rows.size());
+        for (ActionRow row : rows) {
+            for (MessageDeletion deletion : deletionsByAction.getOrDefault(row.id(), List.of())) {
+                row.builder().addMessageDeletion(deletion);
+            }
+            actions.add(row.builder().build());
+        }
+        return actions;
     }
 
     /**
@@ -407,17 +346,14 @@ public class GuildModerationActionsRepository {
                         reason      = EXCLUDED.reason,
                         reversed_at = EXCLUDED.reversed_at
                 """;
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setObject(1, actionId);
-                    ps.setString(2, reason);
-                    ps.executeUpdate();
-                }
-            });
-        } catch (Exception e) {
-            logger.warn("Failed to record reversal for action {}", actionId, e);
-        }
+
+        safeTransaction(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setObject(1, actionId);
+                ps.setString(2, reason);
+                ps.executeUpdate();
+            }
+        }, "Failed to record reversal for action {}", actionId);
     }
 
 }
