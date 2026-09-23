@@ -22,6 +22,7 @@ import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.RoleID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -93,22 +94,21 @@ public class ExcludeCommand extends ListenerAdapter {
         String commandName = event.getName();
         if (!commandName.equals("exclude")) return;
 
-        Guild guild = event.getGuild();
+        Guild guild = SlashCommandUtils.validateGuildContext(event, "This command can only be used in servers!");
         if (guild == null) {
-            reply(event, "This command can only be used in servers!");
             return;
         }
 
         Member member = event.getMember();
         if (member == null || (!member.hasPermission(Permission.MANAGE_SERVER)
                 && !SpecialUsersRepository.getInstance().isSpecialUser(event.getUser()))) {
-            reply(event, "You need **Administrator** permissions to use this command.");
+            SlashCommandUtils.replyEphemeral(event, "You need **Administrator** permissions to use this command.");
             return;
         }
 
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
-            reply(event, "Please specify a subcommand.");
+            SlashCommandUtils.replyEphemeral(event, "Please specify a subcommand.");
             return;
         }
 
@@ -125,18 +125,18 @@ public class ExcludeCommand extends ListenerAdapter {
             GuildChannelUnion channel = event.getOption("channel", OptionMapping::getAsChannel);
 
             if (user == null && role == null && channel == null) {
-                reply(event, "Please provide at least one user, role, or channel.");
+                SlashCommandUtils.replyEphemeral(event, "Please provide at least one user, role, or channel.");
                 return;
             }
 
             switch (subcommand) {
                 case "add"    -> handleAdd(event, guildID, user, role, channel);
                 case "remove" -> handleRemove(event, guildID, user, role, channel);
-                default       -> reply(event, "Unknown subcommand.");
+                default       -> SlashCommandUtils.replyEphemeral(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
             logger.error("Unexpected error in /exclude {}", subcommand, e);
-            reply(event, "An unexpected error occurred. Please try again.");
+            SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred. Please try again.");
         }
     }
 
@@ -195,7 +195,7 @@ public class ExcludeCommand extends ListenerAdapter {
         String message = results.isEmpty()
                 ? "No changes made."
                 : String.join("\n", results);
-        reply(event, message);
+        SlashCommandUtils.replyEphemeral(event, message);
     }
 
     /**
@@ -253,7 +253,7 @@ public class ExcludeCommand extends ListenerAdapter {
         String message = results.isEmpty()
                 ? "No changes made."
                 : String.join("\n", results);
-        reply(event, message);
+        SlashCommandUtils.replyEphemeral(event, message);
     }
 
     /**
@@ -279,7 +279,7 @@ public class ExcludeCommand extends ListenerAdapter {
         ExcludedEntitiesRepository.ExcludedEntities excluded = repository.getExcludedEntities(guildID);
 
         if (excluded.userIDs().isEmpty() && excluded.roleIDs().isEmpty() && excluded.channelIDs().isEmpty()) {
-            reply(event, "There are no excluded users, roles, or channels in this server.");
+            SlashCommandUtils.replyEphemeral(event, "There are no excluded users, roles, or channels in this server.");
             return;
         }
 
@@ -308,7 +308,7 @@ public class ExcludeCommand extends ListenerAdapter {
                 + "\n\n**Excluded channels:**\n"
                 + channelsSection;
 
-        reply(event, message);
+        SlashCommandUtils.replyEphemeral(event, message);
     }
 
     /**
@@ -374,19 +374,4 @@ public class ExcludeCommand extends ListenerAdapter {
         return "- <#" + channelId.value() + "> (deleted channel)";
     }
 
-    /**
-     * Sends an ephemeral reply to a slash command interaction.
-     *
-     * <p>All user-facing replies from exclude commands go through here to ensure 
-     * consistent behavior and avoid repeating {@code setEphemeral(true)}.
-     *
-     * @param event the slash command interaction event. Must not be null.
-     * @param message the message to send. Must not be null.
-     * @throws NullPointerException if event or message is null
-     */
-    private static void reply(@NotNull SlashCommandInteractionEvent event, @NotNull String message) {
-        Objects.requireNonNull(event, "event must not be null");
-        Objects.requireNonNull(message, "message must not be null");
-        event.reply(message).setEphemeral(true).queue();
-    }
 }

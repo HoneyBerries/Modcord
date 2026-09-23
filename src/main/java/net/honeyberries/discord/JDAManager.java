@@ -3,6 +3,7 @@ package net.honeyberries.discord;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
+import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.discord.listener.GuildListener;
@@ -23,6 +24,8 @@ import net.honeyberries.util.TokenManager;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.function.BiConsumer;
 
 
 /**
@@ -73,64 +76,46 @@ public class JDAManager {
         logger.info("Registering slash commands");
         CommandListUpdateAction commands = jda.updateCommands();
 
-        jda.addEventListener(new ShutdownCommands());
         jda.addEventListener(new GuildListener());
         jda.addEventListener(new MessageListener());
         jda.addEventListener(new UserListener());
         jda.addEventListener(new RoleListener());
 
-        ShutdownCommands shutdownCommands = new ShutdownCommands();
-        jda.addEventListener(shutdownCommands);
-        shutdownCommands.registerShutdownCommands(commands);
-        logger.info("Added ShutdownCommands to queue");
-
-        StatusCommands statusCommands = new StatusCommands();
-        jda.addEventListener(statusCommands);
-        statusCommands.registerStatusCommands(commands);
-        logger.info("Added StatusCommands to queue");
-
-        DebugCommands debugCommands = new DebugCommands();
-        jda.addEventListener(debugCommands);
-        debugCommands.registerDebugCommands(commands);
-        logger.info("Added DebugCommands to queue");
-
-        ExcludeCommand excludeCommand = new ExcludeCommand();
-        jda.addEventListener(excludeCommand);
-        excludeCommand.registerExcludeCommands(commands);
-        logger.info("Added ExcludeCommand to queue");
-
-        PreferencesCommands preferencesCommands = new PreferencesCommands();
-        jda.addEventListener(preferencesCommands);
-        preferencesCommands.registerPreferencesCommands(commands);
-        logger.info("Added PreferencesCommands to queue");
-
-        ModerationCommands moderationCommands = new ModerationCommands();
-        jda.addEventListener(moderationCommands);
-        moderationCommands.registerModerationCommands(commands);
-        logger.info("Added ModerationCommands to queue");
-
-        ActionCommands actionCommands = new ActionCommands();
-        jda.addEventListener(actionCommands);
-        actionCommands.registerActionCommands(commands);
-        logger.info("Added ActionCommands to queue");
-
-        RollbackCommands rollbackCommands = new RollbackCommands();
-        jda.addEventListener(rollbackCommands);
-        rollbackCommands.registerRollbackCommands(commands);
-        logger.info("Added RollbackCommands to queue");
-
-        AppealCommands appealCommands = new AppealCommands();
-        jda.addEventListener(appealCommands);
-        appealCommands.registerAppealCommands(commands);
-        logger.info("Added AppealCommands to queue");
-
-        HelpCommands helpCommands = new HelpCommands();
-        jda.addEventListener(helpCommands);
-        helpCommands.registerHelpCommands(commands);
-        logger.info("Added HelpCommands to queue");
+        registerCommandHandler(new ShutdownCommands(), ShutdownCommands::registerShutdownCommands, "ShutdownCommands", commands);
+        registerCommandHandler(new StatusCommands(), StatusCommands::registerStatusCommands, "StatusCommands", commands);
+        registerCommandHandler(new DebugCommands(), DebugCommands::registerDebugCommands, "DebugCommands", commands);
+        registerCommandHandler(new ExcludeCommand(), ExcludeCommand::registerExcludeCommands, "ExcludeCommand", commands);
+        registerCommandHandler(new PreferencesCommands(), PreferencesCommands::registerPreferencesCommands, "PreferencesCommands", commands);
+        registerCommandHandler(new ModerationCommands(), ModerationCommands::registerModerationCommands, "ModerationCommands", commands);
+        registerCommandHandler(new ActionCommands(), ActionCommands::registerActionCommands, "ActionCommands", commands);
+        registerCommandHandler(new RollbackCommands(), RollbackCommands::registerRollbackCommands, "RollbackCommands", commands);
+        registerCommandHandler(new AppealCommands(), AppealCommands::registerAppealCommands, "AppealCommands", commands);
+        registerCommandHandler(new HelpCommands(), HelpCommands::registerHelpCommands, "HelpCommands", commands);
 
         commands.queue();
         logger.info("All slash commands synced — bot setup complete");
+    }
+
+    /**
+     * Registers a single slash-command handler: attaches it as an event listener, lets it
+     * queue its own commands onto the shared {@link CommandListUpdateAction}, and logs completion.
+     * Collapses the repeated "add listener, register commands, log" shape used for every
+     * command handler in {@link #registerCommands()} into a single call site per handler.
+     *
+     * @param handler  the command handler instance to register; also attached as an event listener
+     * @param register callback that has {@code handler} queue its slash commands onto {@code commands}
+     * @param name     human-readable name of the handler, used only for the completion log message
+     * @param commands the shared command update action to queue commands onto
+     * @param <T>      the handler type, must extend {@link ListenerAdapter}
+     */
+    private <T extends ListenerAdapter> void registerCommandHandler(
+            @NotNull T handler,
+            @NotNull BiConsumer<T, CommandListUpdateAction> register,
+            @NotNull String name,
+            @NotNull CommandListUpdateAction commands) {
+        jda.addEventListener(handler);
+        register.accept(handler, commands);
+        logger.info("Added {} to queue", name);
     }
 
 

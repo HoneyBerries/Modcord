@@ -10,6 +10,7 @@ import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.util.PreferenceCommandHelper;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -166,7 +167,7 @@ public class PreferencesCommands extends ListenerAdapter {
 
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
-            event.reply("Please specify a subcommand.").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "Please specify a subcommand.");
             return;
         }
 
@@ -180,12 +181,11 @@ public class PreferencesCommands extends ListenerAdapter {
                 case "action"            -> helper.handleAction(event, guild);
                 case "remove_on_delete"  -> helper.handleRemoveOnDelete(event, guild);
                 case "appeals"           -> helper.handleAppeals(event, guild);
-                default                  -> event.reply("Unknown subcommand.").setEphemeral(true).queue();
+                default                  -> SlashCommandUtils.replyEphemeral(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
             logger.error("Error handling /preferences {}", subcommand, e);
-            event.reply("An unexpected error occurred while processing the command.")
-                    .setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred while processing the command.");
         }
     }
 }

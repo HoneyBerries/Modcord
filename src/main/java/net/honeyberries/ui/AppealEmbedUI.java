@@ -9,7 +9,6 @@ import net.dv8tion.jda.api.components.textinput.TextInput;
 import net.dv8tion.jda.api.components.textinput.TextInputStyle;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.modals.Modal;
-import net.dv8tion.jda.api.utils.TimeFormat;
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.honeyberries.datatypes.action.ActionData;
@@ -42,38 +41,7 @@ public class AppealEmbedUI {
         Objects.requireNonNull(appeal, "appeal must not be null");
         Objects.requireNonNull(appellant, "appellant must not be null");
 
-        ActionData action = appeal.actionData();
-        UserID appellantId = UserID.fromUser(appellant);
-
-        EmbedBuilder embed = new EmbedBuilder()
-                .setTitle(ActionHelper.actionEmoji(action.action()) + " Appeal — " + action.action().name())
-                .setColor(Color.CYAN)
-                .setTimestamp(appeal.submittedTimestamp())
-                .addField("Appellant", DiscordUtils.userMention(appellantId), true)
-                .addField("Moderator", DiscordUtils.userMention(action.moderatorId()), true)
-                .addField("Action Type", action.action().name(), true)
-                .addField("Original Reason", action.reason(), false)
-                .addField("Appeal Reason", appeal.reason(), false)
-                .setThumbnail(appellant.getEffectiveAvatarUrl())
-                .setFooter("Appeal ID: " + appeal.id());
-
-        if (action.action() == ActionType.TIMEOUT && action.timeoutDuration() > 0) {
-            Instant expiresAt = action.timestamp().plusSeconds(action.timeoutDuration());
-            embed.addField("Duration",
-                    EmbedHelper.formatDuration(action.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
-                    false);
-        }
-
-        if (action.action() == ActionType.BAN && action.banDuration() > 0) {
-            if (action.banDuration() >= Integer.MAX_VALUE) {
-                embed.addField("Duration", "Permanent", false);
-            } else {
-                Instant expiresAt = action.timestamp().plusSeconds(action.banDuration());
-                embed.addField("Duration",
-                        EmbedHelper.formatDuration(action.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
-                        false);
-            }
-        }
+        EmbedBuilder embed = buildAppealEmbedCore(appeal, appellant);
 
         Button acceptBtn = Button.success("appeal:accept:" + appeal.id(), "✅ Accept");
         Button rejectBtn = Button.danger("appeal:reject:" + appeal.id(), "❌ Reject");
@@ -99,6 +67,25 @@ public class AppealEmbedUI {
         Objects.requireNonNull(appeal, "appeal must not be null");
         Objects.requireNonNull(appellant, "appellant must not be null");
 
+        EmbedBuilder embed = buildAppealEmbedCore(appeal, appellant);
+
+        return new MessageCreateBuilder()
+                .setEmbeds(embed.build())
+                .build();
+    }
+
+    /**
+     * Shared builder for the appeal notification embed (fields, styling, duration handling)
+     * used by both the admin (with buttons) and appellant (no buttons) variants.
+     *
+     * @param appeal the appeal data with embedded action info, must not be {@code null}
+     * @param appellant the user who submitted the appeal, must not be {@code null}
+     * @return an {@code EmbedBuilder} populated with the common appeal notification fields
+     */
+    @NotNull
+    private static EmbedBuilder buildAppealEmbedCore(
+            @NotNull AppealData appeal,
+            @NotNull User appellant) {
         ActionData action = appeal.actionData();
         UserID appellantId = UserID.fromUser(appellant);
 
@@ -114,27 +101,11 @@ public class AppealEmbedUI {
                 .setThumbnail(appellant.getEffectiveAvatarUrl())
                 .setFooter("Appeal ID: " + appeal.id());
 
-        if (action.action() == ActionType.TIMEOUT && action.timeoutDuration() > 0) {
-            Instant expiresAt = action.timestamp().plusSeconds(action.timeoutDuration());
-            embed.addField("Duration",
-                    EmbedHelper.formatDuration(action.timeoutDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
-                    false);
-        }
+        EmbedHelper.addDurationField(embed, action.action(), action.timestamp(),
+                action.action() == ActionType.TIMEOUT ? action.timeoutDuration() : action.banDuration(),
+                "Duration");
 
-        if (action.action() == ActionType.BAN && action.banDuration() > 0) {
-            if (action.banDuration() >= Integer.MAX_VALUE) {
-                embed.addField("Duration", "Permanent", false);
-            } else {
-                Instant expiresAt = action.timestamp().plusSeconds(action.banDuration());
-                embed.addField("Duration",
-                        EmbedHelper.formatDuration(action.banDuration()) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
-                        false);
-            }
-        }
-
-        return new MessageCreateBuilder()
-                .setEmbeds(embed.build())
-                .build();
+        return embed;
     }
 
     /**
@@ -263,5 +234,42 @@ public class AppealEmbedUI {
                 .build();
     }
 
+    /**
+     * Builds an embed reflecting a resolved appeal (accepted/rejected), for editing the original
+     * appeal notification message in place. Unlike {@link #buildAppealEmbedForAdmins}, this omits
+     * the appellant's avatar thumbnail and duration field, and adds a "Resolved by" field instead
+     * of action buttons.
+     *
+     * @param appeal the appeal data with embedded action info, must not be {@code null}
+     * @param resolvedBy the moderator who resolved the appeal, must not be {@code null}
+     * @param title the resolution title (e.g., "✅ Appeal Accepted"), must not be {@code null}
+     * @param color the embed color, must not be {@code null}
+     * @return an {@code EmbedBuilder} populated with the resolved appeal fields
+     */
+    @NotNull
+    public static EmbedBuilder buildResolvedAppealEmbed(
+            @NotNull AppealData appeal,
+            @NotNull User resolvedBy,
+            @NotNull String title,
+            @NotNull Color color) {
+        Objects.requireNonNull(appeal, "appeal must not be null");
+        Objects.requireNonNull(resolvedBy, "resolvedBy must not be null");
+        Objects.requireNonNull(title, "title must not be null");
+        Objects.requireNonNull(color, "color must not be null");
+
+        ActionData action = appeal.actionData();
+
+        return new EmbedBuilder()
+                .setTitle(title)
+                .setColor(color)
+                .setTimestamp(appeal.submittedTimestamp())
+                .addField("Appellant", DiscordUtils.userMention(appeal.userId()), true)
+                .addField("Moderator", DiscordUtils.userMention(action.moderatorId()), true)
+                .addField("Action Type", action.action().name(), true)
+                .addField("Original Reason", action.reason(), false)
+                .addField("Appeal Reason", appeal.reason(), false)
+                .addField("Resolved by", DiscordUtils.userMention(UserID.fromUser(resolvedBy)), true)
+                .setFooter("Appeal ID: " + appeal.id());
+    }
 
 }

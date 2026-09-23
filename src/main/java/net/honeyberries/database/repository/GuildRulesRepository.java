@@ -1,16 +1,11 @@
 package net.honeyberries.database.repository;
 
-import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.content.GuildRules;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.Types;
 import java.util.Objects;
 
@@ -19,25 +14,17 @@ import java.util.Objects;
  * Associates rules with a guild and optionally with a rules channel for synchronization.
  * Supports upsert operations to refresh rules without key conflicts.
  */
-public class GuildRulesRepository {
+public class GuildRulesRepository extends RepositoryBase {
     /**
      * Singleton instance.
      */
     private static final GuildRulesRepository INSTANCE = new GuildRulesRepository();
-    /**
-     * Logger for recording database operations.
-     */
-    private final Logger logger = LoggerFactory.getLogger(GuildRulesRepository.class);
-    /**
-     * Database connection pool.
-     */
-    private final Database database;
 
     /**
      * Constructs a new repository, retrieving the singleton database instance.
      */
     public GuildRulesRepository() {
-        this.database = Database.getInstance();
+        super();
     }
 
     /**
@@ -61,37 +48,28 @@ public class GuildRulesRepository {
      */
     public boolean addOrReplaceGuildRulesToDatabase(@NotNull GuildRules guildRules) {
         Objects.requireNonNull(guildRules, "guildRules must not be null");
-        try {
-            database.transaction(conn -> {
-                String sql = """
-                            INSERT INTO guild_rules (guild_id, rules_channel_id, rules_text)
-                            VALUES (?, ?, ?)
-                            ON CONFLICT (guild_id) DO UPDATE SET
-                                rules_channel_id = EXCLUDED.rules_channel_id,
-                                rules_text = EXCLUDED.rules_text
-                        """;
+        String sql = """
+                    INSERT INTO guild_rules (guild_id, rules_channel_id, rules_text)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (guild_id) DO UPDATE SET
+                        rules_channel_id = EXCLUDED.rules_channel_id,
+                        rules_text = EXCLUDED.rules_text
+                """;
 
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildRules.guildId().value());
-                    if (guildRules.rulesChannelId() != null) {
-                        ps.setLong(2, guildRules.rulesChannelId().value());
-                    } else {
-                        ps.setNull(2, Types.BIGINT);
-                    }
+        return safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildRules.guildId().value());
+                ChannelID rulesChannelId = guildRules.rulesChannelId();
+                bindNullableLong(ps, 2, rulesChannelId == null ? null : rulesChannelId.value());
 
-                    if (guildRules.rulesText() != null) {
-                        ps.setString(3, guildRules.rulesText());
-                    } else {
-                        ps.setNull(3, Types.VARCHAR);
-                    }
-                    ps.executeUpdate();
+                if (guildRules.rulesText() != null) {
+                    ps.setString(3, guildRules.rulesText());
+                } else {
+                    ps.setNull(3, Types.VARCHAR);
                 }
-            });
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to add/update guild rules in database", e);
-            return false;
-        }
+                ps.executeUpdate();
+            }
+        }, "Failed to add/update guild rules in database");
     }
 
     /**
@@ -111,30 +89,16 @@ public class GuildRulesRepository {
                     WHERE guild_id = ?
                 """;
 
-        try {
-            return database.query(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
+        return safeQueryOne(sql, ps -> ps.setLong(1, guildId.value()), rs -> {
+            long rulesChannelRaw = rs.getLong("rules_channel_id");
+            ChannelID rulesChannelId = rs.wasNull() ? null : new ChannelID(rulesChannelRaw);
 
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            long rulesChannelRaw = rs.getLong("rules_channel_id");
-                            ChannelID rulesChannelId = rs.wasNull() ? null : new ChannelID(rulesChannelRaw);
-
-                            return new GuildRules(
-                                    new GuildID(rs.getLong("guild_id")),
-                                    rulesChannelId,
-                                    rs.getString("rules_text")
-                            );
-                        }
-                        return null;
-                    }
-                }
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch guild rules from database", e);
-            return null;
-        }
+            return new GuildRules(
+                    new GuildID(rs.getLong("guild_id")),
+                    rulesChannelId,
+                    rs.getString("rules_text")
+            );
+        }, "Failed to fetch guild rules from database");
     }
 
 }

@@ -10,6 +10,7 @@ import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import net.honeyberries.ai.InferenceEngine;
 import net.honeyberries.database.Database;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,7 +77,7 @@ public class StatusCommands extends ListenerAdapter {
         try {
             String subcommand = event.getSubcommandName();
             if (subcommand == null) {
-                event.reply("Please specify a subcommand!").setEphemeral(true).queue();
+                SlashCommandUtils.replyEphemeral(event, "Please specify a subcommand!");
                 return;
             }
 
@@ -85,11 +86,11 @@ public class StatusCommands extends ListenerAdapter {
                 case "ping" -> handlePingCommand(event);
                 case "uptime" -> handleUptimeCommand(event);
                 case "guilds" -> handleGuildsCommand(event);
-                default -> event.reply("Unknown subcommand").setEphemeral(true).queue();
+                default -> SlashCommandUtils.replyEphemeral(event, "Unknown subcommand");
             }
         } catch (Exception e) {
             logger.error("Error processing /status command: {}", event.getSubcommandName(), e);
-            event.reply("An error occurred while processing your command").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "An error occurred while processing your command");
         }
     }
 
@@ -138,7 +139,7 @@ public class StatusCommands extends ListenerAdapter {
                     ":question:  **AI Inference:** %s\n", cbState.name()));
         }
 
-        event.reply(healthStatus.toString()).setEphemeral(true).queue();
+        SlashCommandUtils.replyEphemeral(event, healthStatus.toString());
     }
 
     /**
@@ -154,7 +155,7 @@ public class StatusCommands extends ListenerAdapter {
         Objects.requireNonNull(event, "event must not be null");
         long ping = event.getJDA().getGatewayPing();
         String pingMessage = String.format(":ping_pong:  Pong! Gateway ping: %dms", ping);
-        event.reply(pingMessage).setEphemeral(true).queue();
+        SlashCommandUtils.replyEphemeral(event, pingMessage);
     }
 
     /**
@@ -180,7 +181,7 @@ public class StatusCommands extends ListenerAdapter {
                 weeks, days, hours, minutes, seconds
         );
 
-        event.reply(uptimeMessage).setEphemeral(true).queue();
+        SlashCommandUtils.replyEphemeral(event, uptimeMessage);
     }
 
     /**
@@ -195,6 +196,6 @@ public class StatusCommands extends ListenerAdapter {
         Objects.requireNonNull(event, "event must not be null");
         int guildCount = event.getJDA().getGuilds().size();
         String guildsMessage = String.format(":globe_with_meridians:  Bot is in **%d** guild(s)", guildCount);
-        event.reply(guildsMessage).setEphemeral(true).queue();
+        SlashCommandUtils.replyEphemeral(event, guildsMessage);
     }
 }

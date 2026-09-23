@@ -47,20 +47,40 @@ public class EmbedHelper {
             @NotNull Instant actionTimestamp,
             long duration,
             @NotNull String fieldLabel) {
+        addDurationField(embed, actionType, actionTimestamp, duration, fieldLabel, "expires");
+    }
+
+    /**
+     * Adds duration fields to an embed for TIMEOUT or BAN actions, using a custom expiry verb phrase.
+     * For TIMEOUT: shows the duration with expiration time.
+     * For BAN: shows "Permanent" if infinite, otherwise shows duration with expiration.
+     *
+     * @param embed the embed to add fields to, must not be {@code null}
+     * @param actionType the action type, must not be {@code null}
+     * @param actionTimestamp the timestamp when the action was created, must not be {@code null}
+     * @param duration the duration in seconds (ignored if action type doesn't support it)
+     * @param fieldLabel the label for the duration field (e.g., "Duration" or "Original Duration")
+     * @param expiryVerb the verb phrase preceding the relative timestamp (e.g., "expires" or "would have expired")
+     */
+    public static void addDurationField(
+            @NotNull EmbedBuilder embed,
+            @NotNull ActionType actionType,
+            @NotNull Instant actionTimestamp,
+            long duration,
+            @NotNull String fieldLabel,
+            @NotNull String expiryVerb) {
         if (actionType == ActionType.TIMEOUT && duration > 0) {
             Instant expiresAt = actionTimestamp.plusSeconds(duration);
             embed.addField(fieldLabel,
-                    formatDuration(duration) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                    formatDuration(duration) + " — " + expiryVerb + " " + TimeFormat.RELATIVE.format(expiresAt),
                     false);
-        }
-
-        if (actionType == ActionType.BAN && duration > 0) {
+        } else if (actionType == ActionType.BAN && duration > 0) {
             if (duration >= Integer.MAX_VALUE) {
                 embed.addField(fieldLabel, "Permanent", false);
             } else {
                 Instant expiresAt = actionTimestamp.plusSeconds(duration);
                 embed.addField(fieldLabel,
-                        formatDuration(duration) + " — expires " + TimeFormat.RELATIVE.format(expiresAt),
+                        formatDuration(duration) + " — " + expiryVerb + " " + TimeFormat.RELATIVE.format(expiresAt),
                         false);
             }
         }

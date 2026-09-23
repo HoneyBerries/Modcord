@@ -67,4 +67,19 @@ public enum ActionType {
             default        -> null;
         };
     }
+
+    /**
+     * Returns the moderation action types a guild can independently enable/disable,
+     * excluding {@link #UNBAN} (not user-configurable) and {@link #NULL} (not a real action).
+     *
+     * <p>Order is stable and matches the canonical display order used across the
+     * {@code /preferences} command.
+     *
+     * @return a new array containing {@link #WARN}, {@link #TIMEOUT}, {@link #DELETE},
+     *         {@link #KICK}, and {@link #BAN}, in that order
+     */
+    @NotNull
+    public static ActionType[] getModerationActions() {
+        return new ActionType[]{WARN, TIMEOUT, DELETE, KICK, BAN};
+    }
 }

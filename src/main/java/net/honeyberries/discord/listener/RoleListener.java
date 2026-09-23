@@ -33,10 +33,12 @@ public class RoleListener extends ListenerAdapter {
         GuildID guildID = GuildID.fromGuild(event.getGuild());
         RoleID roleID = new RoleID(event.getRole().getIdLong());
 
-        boolean removed = excludedEntitiesRepository.unmarkExcluded(guildID, roleID);
-        if (!removed) {
-            logger.warn("Failed to clean up deleted role {} from exclusions in guild {}", roleID.value(), guildID.value());
-        }
+        ExclusionCleanupSupport.cleanupExclusionOnRemoval(
+                logger,
+                () -> excludedEntitiesRepository.unmarkExcluded(guildID, roleID),
+                "deleted role",
+                roleID.value(),
+                guildID);
     }
 
 }
