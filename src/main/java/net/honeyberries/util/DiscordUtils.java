@@ -30,6 +30,23 @@ public class DiscordUtils {
     }
 
     /**
+     * Checks whether a member has any of the permissions typically required for manual
+     * moderation actions.
+     *
+     * @param member the member to check. Must not be {@code null}
+     * @return {@code true} if the member has MODERATE_MEMBERS, KICK_MEMBERS, BAN_MEMBERS, or
+     *         administrative privileges (see {@link #isAdmin(Member)})
+     * @throws NullPointerException if member is null
+     */
+    public static boolean hasAnyModerationPermission(@NotNull Member member) {
+        Objects.requireNonNull(member, "member must not be null");
+        return member.hasPermission(Permission.MODERATE_MEMBERS)
+                || member.hasPermission(Permission.KICK_MEMBERS)
+                || member.hasPermission(Permission.BAN_MEMBERS)
+                || isAdmin(member);
+    }
+
+    /**
      * Returns the Discord mention string for a user ID (e.g., "<@12345>").
      *
      * @param userId the user ID to mention, must not be {@code null}

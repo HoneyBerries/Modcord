@@ -15,14 +15,17 @@ import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.honeyberries.ui.ActionEmbedUI;
 import net.honeyberries.util.DiscordUtils;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -77,21 +80,20 @@ public class ActionCommands extends ListenerAdapter {
             return;
         }
 
-        Guild guild = event.getGuild();
+        Guild guild = SlashCommandUtils.validateGuildContext(event, "This command can only be used in servers.");
         if (guild == null) {
-            reply(event, "This command can only be used in servers.");
             return;
         }
 
         Member member = event.getMember();
         if (!DiscordUtils.isAdmin(member)) {
-            reply(event, "Only administrators can browse moderation actions.");
+            SlashCommandUtils.replyEphemeral(event, "Only administrators can browse moderation actions.");
             return;
         }
 
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
-            reply(event, "Please specify a subcommand.");
+            SlashCommandUtils.replyEphemeral(event, "Please specify a subcommand.");
             return;
         }
 
@@ -100,11 +102,11 @@ public class ActionCommands extends ListenerAdapter {
                 case "list" -> handleList(event, guild);
                 case "user" -> handleUser(event, guild);
                 case "get"  -> handleGet(event, guild);
-                default     -> reply(event, "Unknown subcommand.");
+                default     -> SlashCommandUtils.replyEphemeral(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
             logger.error("Error handling /action {}", subcommand, e);
-            reply(event, "An unexpected error occurred.");
+            SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred.");
         }
     }
 
@@ -123,7 +125,7 @@ public class ActionCommands extends ListenerAdapter {
 
         int limit = event.getOption("limit", DEFAULT_LIMIT, OptionMapping::getAsInt);
         if (limit <= 0) {
-            reply(event, "Limit must be a positive number.");
+            SlashCommandUtils.replyEphemeral(event, "Limit must be a positive number.");
             return;
         }
 
@@ -131,18 +133,19 @@ public class ActionCommands extends ListenerAdapter {
         List<ActionData> recentActions = GuildModerationActionsRepository.getInstance().getRecentActiveActions(guildId, limit);
 
         if (recentActions.isEmpty()) {
-            reply(event, "No recent active moderation actions found for this server.");
+            SlashCommandUtils.replyEphemeral(event, "No recent active moderation actions found for this server.");
             return;
         }
 
-        event.reply("Recent active moderation actions:").setEphemeral(true).queue();
-        for (ActionData action : recentActions) {
+        List<MessageCreateData> embeds = recentActions.stream()
+                .map(action -> {
+                    User user = event.getJDA().retrieveUserById(action.userId().value()).complete();
+                    return user != null ? ActionEmbedUI.buildNotificationEmbed(action, user) : null;
+                })
+                .filter(Objects::nonNull)
+                .toList();
 
-            User user = event.getJDA().retrieveUserById(action.userId().value()).complete();
-            if (user != null) {
-                event.getHook().sendMessage(ActionEmbedUI.buildNotificationEmbed(action, user)).setEphemeral(true).queue();
-            }
-        }
+        SlashCommandUtils.sendEphemeralEmbeds(event, "Recent active moderation actions:", embeds);
     }
 
     /**
@@ -165,14 +168,15 @@ public class ActionCommands extends ListenerAdapter {
                 .getActionsByUser(guildId, userId);
 
         if (userActions.isEmpty()) {
-            reply(event, "No actions found for that user.");
+            SlashCommandUtils.replyEphemeral(event, "No actions found for that user.");
             return;
         }
 
-        event.reply("Moderation actions for <@" + targetUser.getId() + ">:").setEphemeral(true).queue();
-        for (ActionData action : userActions) {
-            event.getHook().sendMessage(ActionEmbedUI.buildNotificationEmbed(action, targetUser)).setEphemeral(true).queue();
-        }
+        List<MessageCreateData> embeds = userActions.stream()
+                .map(action -> ActionEmbedUI.buildNotificationEmbed(action, targetUser))
+                .toList();
+
+        SlashCommandUtils.sendEphemeralEmbeds(event, "Moderation actions for <@" + targetUser.getId() + ">:", embeds);
     }
 
 
@@ -189,53 +193,39 @@ public class ActionCommands extends ListenerAdapter {
         Objects.requireNonNull(guild, "guild must not be null");
 
         String actionIdStr = event.getOption("action_id", OptionMapping::getAsString);
-        if (actionIdStr == null || actionIdStr.isBlank()) {
-            reply(event, "Please provide a valid action UUID.");
+        Optional<UUID> parsedActionId = SlashCommandUtils.parseUuidOrReplyError(
+                event,
+                actionIdStr,
+                "Please provide a valid action UUID.",
+                "Invalid action ID format. Please provide a valid UUID (e.g. `a1b2c3d4-...`)."
+        );
+        if (parsedActionId.isEmpty()) {
             return;
         }
-
-        UUID actionId;
-        try {
-            actionId = UUID.fromString(actionIdStr.strip());
-        } catch (IllegalArgumentException e) {
-            reply(event, "Invalid action ID format. Please provide a valid UUID (e.g. `a1b2c3d4-...`).");
-            return;
-        }
+        UUID actionId = parsedActionId.get();
 
         ActionData action = GuildModerationActionsRepository.getInstance().getActionById(actionId);
         if (action == null) {
-            reply(event, "Action `" + actionId + "` not found.");
+            SlashCommandUtils.replyEphemeral(event, "Action `" + actionId + "` not found.");
             return;
         }
 
         GuildID guildId = GuildID.fromGuild(guild);
         if (!action.guildId().equals(guildId)) {
-            reply(event, "Action `" + actionId + "` does not belong to this guild.");
+            SlashCommandUtils.replyEphemeral(event, "Action `" + actionId + "` does not belong to this guild.");
             return;
         }
 
         User user = event.getJDA().retrieveUserById(action.userId().value()).complete();
         if (user != null) {
-            event.reply("").setEphemeral(true).queue();
-            event.getHook().sendMessage(ActionEmbedUI.buildNotificationEmbed(action, user)).setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "");
+            SlashCommandUtils.sendEphemeralFollowUp(event, ActionEmbedUI.buildNotificationEmbed(action, user));
         } else {
-            event.reply("").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "");
             event.getJDA().retrieveUserById(action.userId().value())
-                .queue(resolvedUser -> event.getHook().sendMessage(ActionEmbedUI.buildNotificationEmbed(action, resolvedUser)).setEphemeral(true).queue(),
-                       ex -> reply(event, "Could not resolve user for action `" + actionId + "`.")
+                .queue(resolvedUser -> SlashCommandUtils.sendEphemeralFollowUp(event, ActionEmbedUI.buildNotificationEmbed(action, resolvedUser)),
+                       ex -> SlashCommandUtils.replyEphemeral(event, "Could not resolve user for action `" + actionId + "`.")
                 );
         }
-    }
-
-    /**
-     * Sends an ephemeral reply to the interaction.
-     *
-     * @param event   the interaction event, must not be {@code null}
-     * @param message the reply text, must not be {@code null}
-     */
-    private static void reply(@NotNull SlashCommandInteractionEvent event, @NotNull String message) {
-        Objects.requireNonNull(event, "event must not be null");
-        Objects.requireNonNull(message, "message must not be null");
-        event.reply(message).setEphemeral(true).queue();
     }
 }

@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.honeyberries.database.repository.SpecialUsersRepository;
 import net.honeyberries.Main;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,11 +60,11 @@ public class ShutdownCommands extends ListenerAdapter {
 
 
         if (!SpecialUsersRepository.getInstance().isSpecialUser(event.getUser())) {
-            event.reply("You need developer permissions to use this command").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "You need developer permissions to use this command");
             return;
         }
 
-        event.reply("Shutting down bot...").setEphemeral(true).queue();
+        SlashCommandUtils.replyEphemeral(event, "Shutting down bot...");
         String guildInfo = event.getGuild() != null ? event.getGuild().getId() : "DM";
         logger.info("Shutdown initiated by user {} in {}", event.getUser().getId(), guildInfo);
 

@@ -1,6 +1,5 @@
 package net.honeyberries.discord.slashCommands;
 
-import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
@@ -21,6 +20,7 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.util.DiscordUtils;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -107,27 +107,26 @@ public class ModerationCommands extends ListenerAdapter {
             return;
         }
 
-        Guild guild = event.getGuild();
+        Guild guild = SlashCommandUtils.validateGuildContext(event, "This command can only be used in servers!");
         if (guild == null) {
-            reply(event, "This command can only be used in servers!");
             return;
         }
 
         Member moderator = event.getMember();
-        if (moderator == null || !hasAnyModerationPermission(moderator)) {
-            reply(event, "You need moderation permissions to use this command.");
+        if (moderator == null || !DiscordUtils.hasAnyModerationPermission(moderator)) {
+            SlashCommandUtils.replyEphemeral(event, "You need moderation permissions to use this command.");
             return;
         }
 
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
-            reply(event, "Please specify a moderation action.");
+            SlashCommandUtils.replyEphemeral(event, "Please specify a moderation action.");
             return;
         }
 
         User targetUser = event.getOption("user", OptionMapping::getAsUser);
         if (targetUser == null) {
-            reply(event, "Please provide a valid user.");
+            SlashCommandUtils.replyEphemeral(event, "Please provide a valid user.");
             return;
         }
 
@@ -140,11 +139,11 @@ public class ModerationCommands extends ListenerAdapter {
                 case "kick" -> executeAction(event, guild, moderator, targetUser, ActionType.KICK, reason, 0, 0);
                 case "ban" -> handleBan(event, guild, moderator, targetUser, reason);
                 case "unban" -> executeAction(event, guild, moderator, targetUser, ActionType.UNBAN, reason, 0, 0);
-                default -> reply(event, "Unknown moderation action.");
+                default -> SlashCommandUtils.replyEphemeral(event, "Unknown moderation action.");
             }
         } catch (Exception e) {
             logger.error("Error handling /mod {}", subcommand, e);
-            reply(event, "An unexpected error occurred while processing the command.");
+            SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred while processing the command.");
         }
     }
 
@@ -176,7 +175,7 @@ public class ModerationCommands extends ListenerAdapter {
         Objects.requireNonNull(reason, "reason must not be null");
         Long minutes = event.getOption("minutes", OptionMapping::getAsLong);
         if (minutes == null || minutes <= 0 || minutes > MAX_TIMEOUT_MINUTES) {
-            reply(event, "Timeout duration must be between 1 and 40320 minutes.");
+            SlashCommandUtils.replyEphemeral(event, "Timeout duration must be between 1 and 40320 minutes.");
             return;
         }
 
@@ -211,7 +210,7 @@ public class ModerationCommands extends ListenerAdapter {
         Objects.requireNonNull(reason, "reason must not be null");
         Long days = event.getOption("days", OptionMapping::getAsLong);
         if (days == null || days <= 0 || days > MAX_BAN_DAYS) {
-            reply(event, "Ban duration must be between 1 and 365 days.");
+            SlashCommandUtils.replyEphemeral(event, "Ban duration must be between 1 and 365 days.");
             return;
         }
 
@@ -274,11 +273,11 @@ public class ModerationCommands extends ListenerAdapter {
 
         boolean applied = ActionHandler.getInstance().processAction(actionData);
         if (!applied) {
-            reply(event, "Failed to apply " + actionType.name().toLowerCase() + " for " + targetUser.getAsMention() + ".");
+            SlashCommandUtils.replyEphemeral(event, "Failed to apply " + actionType.name().toLowerCase() + " for " + targetUser.getAsMention() + ".");
             return;
         }
 
-        reply(event, "Applied **" + actionType.name().toLowerCase() + "** to " + targetUser.getAsMention() + ".");
+        SlashCommandUtils.replyEphemeral(event, "Applied **" + actionType.name().toLowerCase() + "** to " + targetUser.getAsMention() + ".");
     }
 
     /**
@@ -302,34 +301,4 @@ public class ModerationCommands extends ListenerAdapter {
         return UserID.fromUser(moderator.getUser());
     }
 
-    /**
-     * Checks whether a member has any of the required moderation permissions.
-     *
-     * @param member the member to check. Must not be null.
-     * @return true if the member has MODERATE_MEMBERS, KICK_MEMBERS, BAN_MEMBERS, or ADMINISTRATOR permission
-     * @throws NullPointerException if member is null
-     */
-    private static boolean hasAnyModerationPermission(@NotNull Member member) {
-        Objects.requireNonNull(member, "member must not be null");
-        return member.hasPermission(Permission.MODERATE_MEMBERS)
-                || member.hasPermission(Permission.KICK_MEMBERS)
-                || member.hasPermission(Permission.BAN_MEMBERS)
-                || DiscordUtils.isAdmin(member);
-    }
-
-    /**
-     * Sends an ephemeral reply to a slash command interaction.
-     *
-     * <p>All user-facing replies from moderation commands go through here to ensure 
-     * consistent behavior and avoid repeating {@code setEphemeral(true)}.
-     *
-     * @param event the slash command interaction event. Must not be null.
-     * @param message the message to send. Must not be null.
-     * @throws NullPointerException if event or message is null
-     */
-    private static void reply(@NotNull SlashCommandInteractionEvent event, @NotNull String message) {
-        Objects.requireNonNull(event, "event must not be null");
-        Objects.requireNonNull(message, "message must not be null");
-        event.reply(message).setEphemeral(true).queue();
-    }
 }

@@ -19,11 +19,13 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.services.NotificationService;
 import net.honeyberries.ui.RollbackEmbedUI;
 import net.honeyberries.util.DiscordUtils;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -79,32 +81,31 @@ public class RollbackCommands extends ListenerAdapter {
             return;
         }
 
-        Guild guild = event.getGuild();
+        Guild guild = SlashCommandUtils.validateGuildContext(event, "This command can only be used in servers.");
         if (guild == null) {
-            reply(event, "This command can only be used in servers.");
             return;
         }
 
         Member member = event.getMember();
         if (!DiscordUtils.isAdmin(member)) {
-            reply(event, "Only administrators can roll back moderation actions.");
+            SlashCommandUtils.replyEphemeral(event, "Only administrators can roll back moderation actions.");
             return;
         }
 
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
-            reply(event, "Please specify a subcommand.");
+            SlashCommandUtils.replyEphemeral(event, "Please specify a subcommand.");
             return;
         }
 
         try {
             switch (subcommand) {
                 case "action" -> handleRollbackAction(event, guild);
-                default       -> reply(event, "Unknown subcommand.");
+                default       -> SlashCommandUtils.replyEphemeral(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
             logger.error("Error handling /rollback {}", subcommand, e);
-            reply(event, "An unexpected error occurred.");
+            SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred.");
         }
     }
 
@@ -120,30 +121,28 @@ public class RollbackCommands extends ListenerAdapter {
         Objects.requireNonNull(guild, "guild must not be null");
 
         String actionIdStr = event.getOption("action_id", OptionMapping::getAsString);
-        if (actionIdStr == null || actionIdStr.isBlank()) {
-            reply(event, "Please provide a valid action UUID.");
+        Optional<UUID> parsedActionId = SlashCommandUtils.parseUuidOrReplyError(
+                event,
+                actionIdStr,
+                "Please provide a valid action UUID.",
+                "Invalid action ID format. Please provide a valid UUID (e.g. `a1b2c3d4-...`)."
+        );
+        if (parsedActionId.isEmpty()) {
             return;
         }
-
-        UUID actionId;
-        try {
-            actionId = UUID.fromString(actionIdStr.strip());
-        } catch (IllegalArgumentException e) {
-            reply(event, "Invalid action ID format. Please provide a valid UUID (e.g. `a1b2c3d4-...`).");
-            return;
-        }
+        UUID actionId = parsedActionId.get();
 
         String reason = event.getOption("reason", DEFAULT_REASON, OptionMapping::getAsString);
 
         // Fetch the action before rollback to use for the embed
         ActionData action = GuildModerationActionsRepository.getInstance().getActionById(actionId);
         if (action == null) {
-            reply(event, "Action `" + actionId + "` not found in the database.");
+            SlashCommandUtils.replyEphemeral(event, "Action `" + actionId + "` not found in the database.");
             return;
         }
 
         if (!action.guildId().equals(GuildID.fromGuild(guild))) {
-            reply(event, "Action `" + actionId + "` does not belong to this guild.");
+            SlashCommandUtils.replyEphemeral(event, "Action `" + actionId + "` does not belong to this guild.");
             return;
         }
 
@@ -153,7 +152,7 @@ public class RollbackCommands extends ListenerAdapter {
                 User target = event.getJDA().retrieveUserById(action.userId().value()).complete();
                 if (target == null) {
                     logger.warn("Could not retrieve target user {} for rollback notifications", action.userId().value());
-                    reply(event, "✅ Successfully rolled back action `" + actionId + "`.");
+                    SlashCommandUtils.replyEphemeral(event, "✅ Successfully rolled back action `" + actionId + "`.");
                     return;
                 }
 
@@ -161,28 +160,16 @@ public class RollbackCommands extends ListenerAdapter {
                 NotificationService.getInstance().sendDm(action.userId(), embed);
                 NotificationService.getInstance().postToAuditChannel(guild, embed);
 
-                reply(event, "✅ Successfully rolled back action `" + actionId + "`.");
+                SlashCommandUtils.replyEphemeral(event, "✅ Successfully rolled back action `" + actionId + "`.");
                 logger.info("Action {} rolled back by {} in guild {} — reason: {}",
                         actionId, event.getUser().getId(), guild.getId(), reason);
             } catch (Exception e) {
                 logger.error("Error sending rollback notifications for action {}", actionId, e);
-                reply(event, "✅ Successfully rolled back action `" + actionId + "`.");
+                SlashCommandUtils.replyEphemeral(event, "✅ Successfully rolled back action `" + actionId + "`.");
             }
         } else {
-            reply(event, "Failed to roll back action `" + actionId + "`. "
+            SlashCommandUtils.replyEphemeral(event, "Failed to roll back action `" + actionId + "`. "
                     + "It may not exist, may have already been reversed, or the bot lacks permissions.");
         }
-    }
-
-    /**
-     * Sends an ephemeral reply to the interaction.
-     *
-     * @param event   the interaction event, must not be {@code null}
-     * @param message the reply text, must not be {@code null}
-     */
-    private static void reply(@NotNull SlashCommandInteractionEvent event, @NotNull String message) {
-        Objects.requireNonNull(event, "event must not be null");
-        Objects.requireNonNull(message, "message must not be null");
-        event.reply(message).setEphemeral(true).queue();
     }
 }
