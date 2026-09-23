@@ -73,7 +73,6 @@ public class JDAManager {
         logger.info("Registering slash commands");
         CommandListUpdateAction commands = jda.updateCommands();
 
-        jda.addEventListener(new ShutdownCommands());
         jda.addEventListener(new GuildListener());
         jda.addEventListener(new MessageListener());
         jda.addEventListener(new UserListener());
