@@ -33,10 +33,12 @@ public class UserListener extends ListenerAdapter {
         GuildID guildID = GuildID.fromGuild(event.getGuild());
         UserID userID = new UserID(event.getUser().getIdLong());
 
-        boolean removed = excludedEntitiesRepository.unmarkExcluded(guildID, userID);
-        if (!removed) {
-            logger.warn("Failed to clean up removed user {} from exclusions in guild {}", userID.value(), guildID.value());
-        }
+        ExclusionCleanupSupport.cleanupExclusionOnRemoval(
+                logger,
+                () -> excludedEntitiesRepository.unmarkExcluded(guildID, userID),
+                "removed user",
+                userID.value(),
+                guildID);
     }
 
 }
