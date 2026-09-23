@@ -17,15 +17,18 @@ import net.honeyberries.database.repository.AppealRepository;
 import net.honeyberries.datatypes.action.AppealData;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.honeyberries.ui.AppealEmbedUI;
 import net.honeyberries.util.AppealCommandHelper;
 import net.honeyberries.util.DiscordUtils;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -98,7 +101,7 @@ public class AppealCommands extends ListenerAdapter {
 
         String subcommand = event.getSubcommandName();
         if (subcommand == null) {
-            reply(event, "Please specify a subcommand.");
+            SlashCommandUtils.replyEphemeral(event, "Please specify a subcommand.");
             return;
         }
 
@@ -106,43 +109,38 @@ public class AppealCommands extends ListenerAdapter {
             switch (subcommand) {
                 case "submit" -> handleSubmit(event);
                 case "list"   -> {
-                    Guild guild = event.getGuild();
+                    Guild guild = SlashCommandUtils.validateGuildContext(event, "List can only be used inside a server.");
                     if (guild == null) {
-                        reply(event, "List can only be used inside a server.");
                         return;
                     }
                     handleList(event, guild);
                 }
                 case "user"   -> {
-                    Guild guild = event.getGuild();
+                    Guild guild = SlashCommandUtils.validateGuildContext(event, "User appeals can only be checked inside a server.");
                     if (guild == null) {
-                        reply(event, "User appeals can only be checked inside a server.");
                         return;
                     }
                     handleUser(event, guild);
                 }
                 case "get"    -> {
-                    Guild guild = event.getGuild();
-
+                    Guild guild = SlashCommandUtils.validateGuildContext(event, "Get can only be used inside a server.");
                     if (guild == null) {
-                        reply(event, "Get can only be used inside a server.");
                         return;
                     }
                     handleGet(event, guild);
                 }
                 case "close"  -> {
-                    Guild guild = event.getGuild();
+                    Guild guild = SlashCommandUtils.validateGuildContext(event, "Close can only be used inside a server.");
                     if (guild == null) {
-                        reply(event, "Close can only be used inside a server.");
                         return;
                     }
                     handleClose(event, guild);
                 }
-                default       -> reply(event, "Unknown subcommand.");
+                default       -> SlashCommandUtils.replyEphemeral(event, "Unknown subcommand.");
             }
         } catch (Exception e) {
             logger.error("Error handling /appeal {}", subcommand, e);
-            reply(event, "An unexpected error occurred.");
+            SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred.");
         }
     }
 
@@ -160,7 +158,7 @@ public class AppealCommands extends ListenerAdapter {
             helper.handleActionSelect(event);
         } catch (Exception e) {
             logger.error("Error handling appeal action select", e);
-            event.reply("An unexpected error occurred.").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred.");
         }
     }
 
@@ -178,7 +176,7 @@ public class AppealCommands extends ListenerAdapter {
             helper.handleModalSubmit(event);
         } catch (Exception e) {
             logger.error("Error handling appeal modal submission", e);
-            event.reply("An unexpected error occurred.").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred.");
         }
     }
 
@@ -194,7 +192,7 @@ public class AppealCommands extends ListenerAdapter {
                 helper.handleAppealButton(event);
             } catch (Exception e) {
                 logger.error("Error handling appeal button interaction", e);
-                event.reply("An unexpected error occurred.").setEphemeral(true).queue();
+                SlashCommandUtils.replyEphemeral(event, "An unexpected error occurred.");
             }
         }
     }
@@ -223,13 +221,13 @@ public class AppealCommands extends ListenerAdapter {
         Objects.requireNonNull(guild, "guild must not be null");
 
         if (!DiscordUtils.isAdmin(event.getMember())) {
-            reply(event, "Only administrators can view appeals.");
+            SlashCommandUtils.replyEphemeral(event, "Only administrators can view appeals.");
             return;
         }
 
         int limit = event.getOption("limit", DEFAULT_LIMIT, OptionMapping::getAsInt);
         if (limit <= 0) {
-            reply(event, "Limit must be a positive number.");
+            SlashCommandUtils.replyEphemeral(event, "Limit must be a positive number.");
             return;
         }
 
@@ -237,7 +235,7 @@ public class AppealCommands extends ListenerAdapter {
         List<AppealData> openAppeals = AppealRepository.getInstance().getOpenAppealsForGuild(guildId);
 
         if (openAppeals.isEmpty()) {
-            reply(event, "No open appeals for this server.");
+            SlashCommandUtils.replyEphemeral(event, "No open appeals for this server.");
             return;
         }
 
@@ -246,13 +244,19 @@ public class AppealCommands extends ListenerAdapter {
                 .limit(limit)
                 .toList();
 
-        event.reply("Open appeals (" + appealsToShow.size() + " of " + openAppeals.size() + "):").setEphemeral(true).queue();
-        for (AppealData appeal : appealsToShow) {
-            User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
-            if (appellant != null) {
-                event.getHook().sendMessage(AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant)).setEphemeral(true).queue();
-            }
-        }
+        List<MessageCreateData> embeds = appealsToShow.stream()
+                .map(appeal -> {
+                    User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
+                    return appellant != null ? AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant) : null;
+                })
+                .filter(Objects::nonNull)
+                .toList();
+
+        SlashCommandUtils.sendEphemeralEmbeds(
+                event,
+                "Open appeals (" + appealsToShow.size() + " of " + openAppeals.size() + "):",
+                embeds
+        );
     }
 
     /**
@@ -267,37 +271,35 @@ public class AppealCommands extends ListenerAdapter {
         Objects.requireNonNull(guild, "guild must not be null");
 
         if (!DiscordUtils.isAdmin(event.getMember())) {
-            reply(event, "Only administrators can view appeals.");
+            SlashCommandUtils.replyEphemeral(event, "Only administrators can view appeals.");
             return;
         }
 
         String appealIdStr = event.getOption("appeal_id", OptionMapping::getAsString);
-        if (appealIdStr == null || appealIdStr.isBlank()) {
-            reply(event, "Please provide the appeal UUID.");
+        Optional<UUID> parsedAppealId = SlashCommandUtils.parseUuidOrReplyError(
+                event,
+                appealIdStr,
+                "Please provide the appeal UUID.",
+                "Invalid appeal ID format. Please provide a valid UUID."
+        );
+        if (parsedAppealId.isEmpty()) {
             return;
         }
-
-        UUID appealId;
-        try {
-            appealId = UUID.fromString(appealIdStr.strip());
-        } catch (IllegalArgumentException e) {
-            reply(event, "Invalid appeal ID format. Please provide a valid UUID.");
-            return;
-        }
+        UUID appealId = parsedAppealId.get();
 
         GuildID guildId = GuildID.fromGuild(guild);
         AppealData appeal = AppealRepository.getInstance().getAppealByIdRestrictedToGuild(guildId, appealId);
 
         if (appeal == null) {
-            reply(event, "Appeal not found in this guild or has been resolved.");
+            SlashCommandUtils.replyEphemeral(event, "Appeal not found in this guild or has been resolved.");
             return;
         }
 
         User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
         if (appellant != null) {
-            event.reply(AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant)).setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant));
         } else {
-            reply(event, "Could not retrieve appellant information.");
+            SlashCommandUtils.replyEphemeral(event, "Could not retrieve appellant information.");
         }
     }
 
@@ -313,34 +315,32 @@ public class AppealCommands extends ListenerAdapter {
         Objects.requireNonNull(guild, "guild must not be null");
 
         if (!DiscordUtils.isAdmin(event.getMember())) {
-            reply(event, "Only administrators can close appeals.");
+            SlashCommandUtils.replyEphemeral(event, "Only administrators can close appeals.");
             return;
         }
 
         String appealIdStr = event.getOption("appeal_id", OptionMapping::getAsString);
-        if (appealIdStr == null || appealIdStr.isBlank()) {
-            reply(event, "Please provide the appeal UUID.");
+        Optional<UUID> parsedAppealId = SlashCommandUtils.parseUuidOrReplyError(
+                event,
+                appealIdStr,
+                "Please provide the appeal UUID.",
+                "Invalid appeal ID format. Please provide a valid UUID."
+        );
+        if (parsedAppealId.isEmpty()) {
             return;
         }
-
-        UUID appealId;
-        try {
-            appealId = UUID.fromString(appealIdStr.strip());
-        } catch (IllegalArgumentException e) {
-            reply(event, "Invalid appeal ID format. Please provide a valid UUID.");
-            return;
-        }
+        UUID appealId = parsedAppealId.get();
 
         String note = event.getOption("note", "No note provided.", OptionMapping::getAsString);
         GuildID guildId = GuildID.fromGuild(guild);
         boolean closed = AppealRepository.getInstance().closeAppeal(guildId, appealId, note);
 
         if (closed) {
-            reply(event, "Appeal `" + appealId + "` has been closed.");
+            SlashCommandUtils.replyEphemeral(event, "Appeal `" + appealId + "` has been closed.");
             logger.info("Appeal {} closed by {} in guild {} — note: {}",
                     appealId, event.getUser().getId(), guild.getId(), note);
         } else {
-            reply(event, "Could not close appeal `" + appealId + "`. It may not exist or is already resolved.");
+            SlashCommandUtils.replyEphemeral(event, "Could not close appeal `" + appealId + "`. It may not exist or is already resolved.");
         }
     }
 
@@ -357,7 +357,7 @@ public class AppealCommands extends ListenerAdapter {
         Objects.requireNonNull(guild, "guild must not be null");
 
         if (!DiscordUtils.isAdmin(event.getMember())) {
-            reply(event, "Only administrators can view appeals.");
+            SlashCommandUtils.replyEphemeral(event, "Only administrators can view appeals.");
             return;
         }
 
@@ -368,27 +368,18 @@ public class AppealCommands extends ListenerAdapter {
         List<AppealData> userAppeals = AppealRepository.getInstance().getOpenAppealsForUserInGuild(guildId, userId);
 
         if (userAppeals.isEmpty()) {
-            reply(event, "No open appeals for user " + targetUser.getEffectiveAvatarUrl() + " in this server.");
+            SlashCommandUtils.replyEphemeral(event, "No open appeals for user " + targetUser.getEffectiveAvatarUrl() + " in this server.");
             return;
         }
 
-        event.reply("Open appeals for " + targetUser.getEffectiveName() + " (" + userAppeals.size() + "):").setEphemeral(true).queue();
-        for (AppealData appeal : userAppeals) {
-            event.getHook().sendMessage(AppealEmbedUI.buildAppealEmbedForAdmins(appeal, targetUser)).setEphemeral(true).queue();
-        }
-    }
+        List<MessageCreateData> embeds = userAppeals.stream()
+                .map(appeal -> AppealEmbedUI.buildAppealEmbedForAdmins(appeal, targetUser))
+                .toList();
 
-
-    /**
-     * Sends an ephemeral reply to the interaction.
-     *
-     * @param event   the interaction event, must not be {@code null}
-     * @param message the reply text, must not be {@code null}
-     */
-
-    private static void reply(@NotNull SlashCommandInteractionEvent event, @NotNull String message) {
-        Objects.requireNonNull(event, "event must not be null");
-        Objects.requireNonNull(message, "message must not be null");
-        event.reply(message).setEphemeral(true).queue();
+        SlashCommandUtils.sendEphemeralEmbeds(
+                event,
+                "Open appeals for " + targetUser.getEffectiveName() + " (" + userAppeals.size() + "):",
+                embeds
+        );
     }
 }

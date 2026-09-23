@@ -18,6 +18,7 @@ import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.message.EmbedParser;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -87,8 +88,7 @@ public class DebugCommands extends ListenerAdapter {
             return;
         }
 
-        if (!event.isFromGuild()) {
-            event.reply("This command can only be used in servers!").setEphemeral(true).queue();
+        if (SlashCommandUtils.validateGuildContext(event, "This command can only be used in servers!") == null) {
             return;
         }
 
@@ -97,7 +97,7 @@ public class DebugCommands extends ListenerAdapter {
                 || SpecialUsersRepository.getInstance().isSpecialUser(event.getUser()));
 
         if (!hasPermission) {
-            event.reply("You need administrator permissions to use this command").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "You need administrator permissions to use this command");
             return;
         }
 
@@ -106,7 +106,7 @@ public class DebugCommands extends ListenerAdapter {
             case "refresh-rules" -> handleRefreshRules(event);
             case "show-rules" -> handleShowRules(event);
             case "purge" -> handlePurge(event);
-            default -> event.reply("Unknown command").setEphemeral(true).queue();
+            default -> SlashCommandUtils.replyEphemeral(event, "Unknown command");
         }
     }
 
@@ -128,19 +128,18 @@ public class DebugCommands extends ListenerAdapter {
             GuildRules rules = refreshRulesFromDiscord(guild, guildId);
 
             if (rules == null || rules.rulesText() == null || rules.rulesText().isBlank()) {
-                event.reply("No rules found in the configured rules channel. Check channel ID, permissions, and channel content.")
-                        .setEphemeral(true)
-                        .queue();
+                SlashCommandUtils.replyEphemeral(event,
+                        "No rules found in the configured rules channel. Check channel ID, permissions, and channel content.");
                 return;
             }
 
             GuildRulesRepository.getInstance().addOrReplaceGuildRulesToDatabase(rules);
 
-            event.reply("Rules refreshed successfully!").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "Rules refreshed successfully!");
             logger.debug("Refreshed rules for guild: {}", guildId.value());
         } catch (Exception e) {
             logger.error("Error refreshing rules", e);
-            event.reply("Failed to refresh rules").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "Failed to refresh rules");
         }
     }
 
@@ -164,17 +163,17 @@ public class DebugCommands extends ListenerAdapter {
             if (rules == null || rules.rulesText() == null || rules.rulesText().isBlank()) {
                 rules = refreshRulesFromDiscord(guild, guildId);
                 if (rules == null || rules.rulesText() == null || rules.rulesText().isBlank()) {
-                    event.reply("No rules are currently configured for this guild.").setEphemeral(true).queue();
+                    SlashCommandUtils.replyEphemeral(event, "No rules are currently configured for this guild.");
                     return;
                 }
             }
 
             String message = "**Current Guild Rules:**\n\n" + rules.rulesText();
-            event.reply(message).setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, message);
             logger.debug("Showed rules for guild: {}", guildId.value());
         } catch (Exception e) {
             logger.error("Error showing rules", e);
-            event.reply("Failed to retrieve rules").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "Failed to retrieve rules");
         }
     }
 
@@ -307,7 +306,7 @@ public class DebugCommands extends ListenerAdapter {
             );
 
             if (targetChannel == null) {
-                event.reply("Please specify a valid text channel").setEphemeral(true).queue();
+                SlashCommandUtils.replyEphemeral(event, "Please specify a valid text channel");
                 return;
             }
 
@@ -317,7 +316,7 @@ public class DebugCommands extends ListenerAdapter {
             Guild guild = event.getGuild();
 
             // Reply first so the interaction doesn't break when the channel vanishes
-            event.reply("Purging " + targetChannel.getAsMention() + "...").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "Purging " + targetChannel.getAsMention() + "...");
 
             targetChannel.delete().queue(
                 ignored -> {
@@ -334,7 +333,7 @@ public class DebugCommands extends ListenerAdapter {
             );
         } catch (Exception e) {
             logger.error("Error purging channel", e);
-            event.reply("Failed to purge channel").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "Failed to purge channel");
         }
     }
 }

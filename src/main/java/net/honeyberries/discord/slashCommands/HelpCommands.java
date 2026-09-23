@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.interactions.commands.Command;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
+import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,10 +84,10 @@ public class HelpCommands extends ListenerAdapter {
             }
 
             embed.setDescription(description.toString());
-            event.replyEmbeds(embed.build()).setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, embed.build());
         } catch (Exception e) {
             logger.error("Error handling /help command", e);
-            event.reply("An error occurred while fetching the command list.").setEphemeral(true).queue();
+            SlashCommandUtils.replyEphemeral(event, "An error occurred while fetching the command list.");
         }
     }
 }
