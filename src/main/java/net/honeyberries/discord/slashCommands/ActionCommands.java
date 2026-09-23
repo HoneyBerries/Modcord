@@ -137,15 +137,15 @@ public class ActionCommands extends ListenerAdapter {
             return;
         }
 
-        List<MessageCreateData> embeds = recentActions.stream()
-                .map(action -> {
+        SlashCommandUtils.sendEphemeralEmbeds(
+                event,
+                "Recent active moderation actions:",
+                recentActions,
+                action -> {
                     User user = event.getJDA().retrieveUserById(action.userId().value()).complete();
                     return user != null ? ActionEmbedUI.buildNotificationEmbed(action, user) : null;
-                })
-                .filter(Objects::nonNull)
-                .toList();
-
-        SlashCommandUtils.sendEphemeralEmbeds(event, "Recent active moderation actions:", embeds);
+                }
+        );
     }
 
     /**

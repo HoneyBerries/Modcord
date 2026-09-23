@@ -244,18 +244,14 @@ public class AppealCommands extends ListenerAdapter {
                 .limit(limit)
                 .toList();
 
-        List<MessageCreateData> embeds = appealsToShow.stream()
-                .map(appeal -> {
-                    User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
-                    return appellant != null ? AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant) : null;
-                })
-                .filter(Objects::nonNull)
-                .toList();
-
         SlashCommandUtils.sendEphemeralEmbeds(
                 event,
                 "Open appeals (" + appealsToShow.size() + " of " + openAppeals.size() + "):",
-                embeds
+                appealsToShow,
+                appeal -> {
+                    User appellant = event.getJDA().retrieveUserById(appeal.userId().value()).complete();
+                    return appellant != null ? AppealEmbedUI.buildAppealEmbedForAdmins(appeal, appellant) : null;
+                }
         );
     }
 

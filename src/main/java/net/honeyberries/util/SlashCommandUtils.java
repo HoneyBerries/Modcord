@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * Shared helpers for slash-command (and related component/modal) interaction handlers.
@@ -155,6 +156,41 @@ public final class SlashCommandUtils {
         replyEphemeral(event, header);
         for (MessageCreateData embed : embeds) {
             sendEphemeralFollowUp(event, embed);
+        }
+    }
+
+    /**
+     * Sends an ephemeral header reply, acknowledging the interaction immediately, then maps each
+     * item to a follow-up embed and sends it via the hook, skipping items that map to
+     * {@code null}.
+     *
+     * <p>Prefer this overload over {@link #sendEphemeralEmbeds(SlashCommandInteractionEvent, String, List)}
+     * when {@code embedMapper} performs blocking work (e.g. a synchronous Discord API lookup via
+     * {@code .complete()}): acknowledging first ensures the reply is sent within Discord's 3-second
+     * interaction window regardless of how long the mapping takes.
+     *
+     * @param event       the slash command interaction event, must not be {@code null}
+     * @param header      the initial ephemeral reply text, must not be {@code null}
+     * @param items       the items to map to embeds and send as follow-ups, in order, must not be {@code null}
+     * @param embedMapper maps each item to a follow-up embed, or {@code null} to skip it, must not be {@code null}
+     */
+    public static <T> void sendEphemeralEmbeds(
+            @NotNull SlashCommandInteractionEvent event,
+            @NotNull String header,
+            @NotNull List<T> items,
+            @NotNull Function<T, MessageCreateData> embedMapper
+    ) {
+        Objects.requireNonNull(event, "event must not be null");
+        Objects.requireNonNull(header, "header must not be null");
+        Objects.requireNonNull(items, "items must not be null");
+        Objects.requireNonNull(embedMapper, "embedMapper must not be null");
+
+        replyEphemeral(event, header);
+        for (T item : items) {
+            MessageCreateData embed = embedMapper.apply(item);
+            if (embed != null) {
+                sendEphemeralFollowUp(event, embed);
+            }
         }
     }
 }
