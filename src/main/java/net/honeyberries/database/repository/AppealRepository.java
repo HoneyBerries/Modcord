@@ -9,14 +9,10 @@ import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -27,13 +23,13 @@ import java.util.UUID;
  * Appeals are stored in the {@code moderation_appeals} table with an is_open boolean flag.
  * Each appeal is linked to a specific moderation action via foreign key.
  */
-public class AppealRepository {
+public class AppealRepository extends RepositoryBase {
 
-    private static final Logger logger = LoggerFactory.getLogger(AppealRepository.class);
     private static final AppealRepository INSTANCE = new AppealRepository();
-    private final Database database = Database.getInstance();
 
-    private AppealRepository() {}
+    private AppealRepository() {
+        super();
+    }
 
     /**
      * Returns the singleton instance.
@@ -67,22 +63,18 @@ public class AppealRepository {
             VALUES (?, ?, ?, ?, ?, TRUE)
         """;
 
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setObject(1, id);
-                    ps.setLong(2, guildId.value());
-                    ps.setLong(3, userId.value());
-                    ps.setObject(4, actionId);
-                    ps.setString(5, reason);
-                    ps.executeUpdate();
-                }
-            });
-            return id;
-        } catch (Exception e) {
-            logger.error("Failed to create appeal for user {} in guild {}", userId.value(), guildId.value(), e);
-            return null;
-        }
+        boolean ok = safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setObject(1, id);
+                ps.setLong(2, guildId.value());
+                ps.setLong(3, userId.value());
+                ps.setObject(4, actionId);
+                ps.setString(5, reason);
+                ps.executeUpdate();
+            }
+        }, "Failed to create appeal for user {} in guild {}", userId.value(), guildId.value());
+
+        return ok ? id : null;
     }
 
     /**
@@ -109,20 +101,16 @@ public class AppealRepository {
               AND is_open = TRUE
         """;
 
-        try {
-            int updated = database.executeUpdate(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setString(1, note);
-                    ps.setObject(2, appealId);
-                    ps.setLong(3, guildId.value());
-                    return ps.executeUpdate();
-                }
-            });
-            return updated > 0;
-        } catch (Exception e) {
-            logger.error("Failed to close appeal {} in guild {}", appealId, guildId, e);
-            return false;
-        }
+        int updated = safeExecuteUpdate(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setString(1, note);
+                ps.setObject(2, appealId);
+                ps.setLong(3, guildId.value());
+                return ps.executeUpdate();
+            }
+        }, "Failed to close appeal {} in guild {}", appealId, guildId);
+
+        return updated > 0;
     }
 
     /**
@@ -136,41 +124,71 @@ public class AppealRepository {
     @NotNull
     public List<AppealData> getOpenAppealsForGuild(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
+        return queryOpenAppealsWithAction(
+                "ma.guild_id = ?",
+                ps -> ps.setLong(1, guildId.value()),
+                "Failed to fetch open appeals for guild {}", guildId
+        );
+    }
+
+    /**
+     * Retrieves all open appeals for a specific user in a guild.
+     *
+     * @param guildId the guild to query, must not be {@code null}
+     * @param userId  the user whose appeals to query, must not be {@code null}
+     * @return list of open appeal records for the user, never {@code null}
+     */
+    @NotNull
+    public List<AppealData> getOpenAppealsForUserInGuild(@NotNull GuildID guildId, @NotNull UserID userId) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+        Objects.requireNonNull(userId, "userId must not be null");
+        return queryOpenAppealsWithAction(
+                "ma.guild_id = ? AND ma.user_id = ?",
+                ps -> {
+                    ps.setLong(1, guildId.value());
+                    ps.setLong(2, userId.value());
+                },
+                "Failed to fetch open appeals for user {} in guild {}", userId, guildId
+        );
+    }
+
+    /**
+     * Shared query logic for "open appeals with their joined action data, not yet reversed,
+     * oldest first" filtered by an arbitrary WHERE clause fragment on the {@code ma} (moderation_appeals)
+     * alias. Both {@link #getOpenAppealsForGuild} and {@link #getOpenAppealsForUserInGuild} only differ
+     * in this filter, so the SQL and row mapping live here once.
+     *
+     * @param whereClause  a SQL boolean expression referencing the {@code ma} alias, combined with the
+     *                     open/not-reversed conditions via {@code AND}
+     * @param binder       binds the placeholders referenced by {@code whereClause}, in order
+     * @param errorMessage SLF4J-style error message logged on failure
+     * @param errorArgs    values substituted into {@code errorMessage}
+     * @return matching open appeals with embedded action data, ordered oldest-first, never {@code null}
+     */
+    @NotNull
+    private List<AppealData> queryOpenAppealsWithAction(
+            @NotNull String whereClause,
+            Database.StatementBinder binder,
+            @NotNull String errorMessage,
+            Object... errorArgs
+    ) {
         String sql = """
             SELECT ma.appeal_id, ma.guild_id, ma.user_id, ma.action_id, ma.reason, ma.submitted_at,
                    gma.moderator_id, gma.action, gma.reason AS action_reason,
                    gma.timeout_duration, gma.ban_duration, gma.created_at
             FROM moderation_appeals ma
             JOIN guild_moderation_actions gma ON ma.action_id = gma.action_id
-            WHERE ma.guild_id = ?
+            WHERE %s
               AND ma.is_open = TRUE
               AND NOT EXISTS (
                     SELECT 1 FROM guild_moderation_action_reversals r
                     WHERE r.action_id = ma.action_id
                   )
             ORDER BY ma.submitted_at
-        """;
+        """.formatted(whereClause);
 
-        try {
-            return database.query(conn -> {
-                List<AppealData> results = new ArrayList<>();
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            AppealData appeal = mapAppealWithAction(rs);
-                            results.add(appeal);
-                        }
-                    }
-                }
-                return results;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch open appeals for guild {}", guildId, e);
-            return List.of();
-        }
+        return safeQueryList(sql, binder, this::mapAppealWithAction, errorMessage, errorArgs);
     }
-
 
 
     /**
@@ -227,75 +245,10 @@ public class AppealRepository {
             WHERE guild_id = ? AND user_id = ? AND is_open = TRUE
         """;
 
-        try {
-            return database.query(conn -> {
-                List<UUID> results = new ArrayList<>();
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-                    ps.setLong(2, userId.value());
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            UUID actionId = (UUID) rs.getObject("action_id");
-                            if (actionId != null) {
-                                results.add(actionId);
-                            }
-                        }
-                    }
-                }
-                return results;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch open appeal action IDs for user {} in guild {}", userId, guildId, e);
-            return List.of();
-        }
-    }
-
-
-    /**
-     * Retrieves all open appeals for a specific user in a guild.
-     *
-     * @param guildId the guild to query, must not be {@code null}
-     * @param userId  the user whose appeals to query, must not be {@code null}
-     * @return list of open appeal records for the user, never {@code null}
-     */
-    @NotNull
-    public List<AppealData> getOpenAppealsForUserInGuild(@NotNull GuildID guildId, @NotNull UserID userId) {
-        Objects.requireNonNull(guildId, "guildId must not be null");
-        Objects.requireNonNull(userId, "userId must not be null");
-        String sql = """
-            SELECT ma.appeal_id, ma.guild_id, ma.user_id, ma.action_id, ma.reason, ma.submitted_at,
-                   gma.moderator_id, gma.action, gma.reason AS action_reason,
-                   gma.timeout_duration, gma.ban_duration, gma.created_at
-            FROM moderation_appeals ma
-            JOIN guild_moderation_actions gma ON ma.action_id = gma.action_id
-            WHERE ma.guild_id = ?
-              AND ma.user_id = ?
-              AND ma.is_open = TRUE
-              AND NOT EXISTS (
-                    SELECT 1 FROM guild_moderation_action_reversals r
-                    WHERE r.action_id = ma.action_id
-                  )
-            ORDER BY ma.submitted_at
-        """;
-
-        try {
-            return database.query(conn -> {
-                List<AppealData> results = new ArrayList<>();
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-                    ps.setLong(2, userId.value());
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            results.add(mapAppealWithAction(rs));
-                        }
-                    }
-                }
-                return results;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch open appeals for user {} in guild {}", userId, guildId, e);
-            return List.of();
-        }
+        return safeQueryList(sql, ps -> {
+            ps.setLong(1, guildId.value());
+            ps.setLong(2, userId.value());
+        }, this::mapActionId, "Failed to fetch open appeal action IDs for user {} in guild {}", userId, guildId);
     }
 
 
@@ -322,23 +275,10 @@ public class AppealRepository {
               AND ma.guild_id = ?
         """;
 
-        try {
-            return database.query(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setObject(1, appealId);
-                    ps.setLong(2, guildId.value());
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            return mapAppealWithAction(rs);
-                        }
-                    }
-                }
-                return null;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch appeal {} in guild {}", appealId, guildId, e);
-            return null;
-        }
+        return safeQueryOne(sql, ps -> {
+            ps.setObject(1, appealId);
+            ps.setLong(2, guildId.value());
+        }, this::mapAppealWithAction, "Failed to fetch appeal {} in guild {}", appealId, guildId);
     }
 
     /**
@@ -356,27 +296,18 @@ public class AppealRepository {
             WHERE user_id = ? AND is_open = TRUE
         """;
 
-        try {
-            return database.query(conn -> {
-                List<UUID> results = new ArrayList<>();
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, userId.value());
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            UUID actionId = (UUID) rs.getObject("action_id");
-                            if (actionId != null) {
-                                results.add(actionId);
-                            }
-                        }
-                    }
-                }
-                return results;
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch open appeal action IDs for user {}", userId, e);
-            return List.of();
-        }
+        return safeQueryList(sql, ps -> ps.setLong(1, userId.value()), this::mapActionId,
+                "Failed to fetch open appeal action IDs for user {}", userId);
     }
 
+    /**
+     * Maps the (NOT NULL) {@code action_id} column of a row into a {@code UUID}.
+     * Used for {@code SELECT action_id} projections shared by {@link #getOpenAppealActionIds} and
+     * {@link #getAllOpenAppealActionIds}.
+     */
+    @NotNull
+    private UUID mapActionId(@NotNull ResultSet rs) throws SQLException {
+        return (UUID) rs.getObject("action_id");
+    }
 
 }

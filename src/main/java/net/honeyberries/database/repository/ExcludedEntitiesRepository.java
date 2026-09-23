@@ -1,16 +1,11 @@
 package net.honeyberries.database.repository;
 
-import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.discord.RoleID;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -20,7 +15,7 @@ import java.util.Objects;
  * Manages user, role, and channel-level exemptions from automated moderation in guild contexts.
  * Exemptions prevent AI detection, auto-moderation actions, and other automated systems from targeting specific users, roles, or channels.
  */
-public class ExcludedEntitiesRepository {
+public class ExcludedEntitiesRepository extends RepositoryBase {
 
     /**
      * Immutable view of exclusions for a single guild.
@@ -31,17 +26,13 @@ public class ExcludedEntitiesRepository {
      */
     public record ExcludedEntities(@NotNull List<UserID> userIDs, @NotNull List<RoleID> roleIDs, @NotNull List<ChannelID> channelIDs) {}
 
-    private final Database database;
-    private final Logger logger = LoggerFactory.getLogger(ExcludedEntitiesRepository.class);
-
     private static final ExcludedEntitiesRepository INSTANCE = new ExcludedEntitiesRepository();
 
-
     /**
-     * Creates a repository instance backed by the shared {@link Database} singleton.
+     * Creates a repository instance backed by the shared {@link net.honeyberries.database.Database} singleton.
      */
     private ExcludedEntitiesRepository() {
-        this.database = Database.getInstance();
+        super();
     }
 
     /**
@@ -72,21 +63,16 @@ public class ExcludedEntitiesRepository {
             LIMIT 1
         """;
 
-        try {
-            return database.query(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, userID.value());
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        return rs.next();
-                    }
+        Boolean exists = safeQuery(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, userID.value());
+                try (var rs = ps.executeQuery()) {
+                    return rs.next();
                 }
-            });
-        } catch (Exception e) {
-            logger.error("Failed to check excluded user", e);
-            return false;
-        }
+            }
+        }, false, "Failed to check excluded user");
+        return Boolean.TRUE.equals(exists);
     }
 
     /**
@@ -107,21 +93,16 @@ public class ExcludedEntitiesRepository {
             LIMIT 1
         """;
 
-        try {
-            return database.query(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, roleID.value());
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        return rs.next();
-                    }
+        Boolean exists = safeQuery(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, roleID.value());
+                try (var rs = ps.executeQuery()) {
+                    return rs.next();
                 }
-            });
-        } catch (Exception e) {
-            logger.error("Failed to check excluded role", e);
-            return false;
-        }
+            }
+        }, false, "Failed to check excluded role");
+        return Boolean.TRUE.equals(exists);
     }
 
     /**
@@ -142,21 +123,16 @@ public class ExcludedEntitiesRepository {
             LIMIT 1
         """;
 
-        try {
-            return database.query(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, channelID.value());
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        return rs.next();
-                    }
+        Boolean exists = safeQuery(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, channelID.value());
+                try (var rs = ps.executeQuery()) {
+                    return rs.next();
                 }
-            });
-        } catch (Exception e) {
-            logger.error("Failed to check excluded channel", e);
-            return false;
-        }
+            }
+        }, false, "Failed to check excluded channel");
+        return Boolean.TRUE.equals(exists);
     }
 
 
@@ -179,19 +155,13 @@ public class ExcludedEntitiesRepository {
             ON CONFLICT (guild_id, user_id) WHERE user_id IS NOT NULL DO NOTHING
         """;
 
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, userID.value());
-                    ps.executeUpdate();
-                }
-            });
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to mark user as excluded", e);
-            return false;
-        }
+        return safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, userID.value());
+                ps.executeUpdate();
+            }
+        }, "Failed to mark user as excluded");
     }
 
 
@@ -214,19 +184,13 @@ public class ExcludedEntitiesRepository {
             ON CONFLICT (guild_id, role_id) WHERE role_id IS NOT NULL DO NOTHING
         """;
 
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, roleID.value());
-                    ps.executeUpdate();
-                }
-            });
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to mark role as excluded", e);
-            return false;
-        }
+        return safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, roleID.value());
+                ps.executeUpdate();
+            }
+        }, "Failed to mark role as excluded");
     }
 
     /**
@@ -248,19 +212,13 @@ public class ExcludedEntitiesRepository {
             ON CONFLICT (guild_id, channel_id) WHERE channel_id IS NOT NULL DO NOTHING
         """;
 
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, channelID.value());
-                    ps.executeUpdate();
-                }
-            });
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to mark channel as excluded", e);
-            return false;
-        }
+        return safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, channelID.value());
+                ps.executeUpdate();
+            }
+        }, "Failed to mark channel as excluded");
     }
 
     /**
@@ -281,19 +239,13 @@ public class ExcludedEntitiesRepository {
             WHERE guild_id = ? AND user_id = ? AND role_id IS NULL
         """;
 
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, userID.value());
-                    ps.executeUpdate();
-                }
-            });
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to unmark excluded user", e);
-            return false;
-        }
+        return safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, userID.value());
+                ps.executeUpdate();
+            }
+        }, "Failed to unmark excluded user");
     }
 
     /**
@@ -314,19 +266,13 @@ public class ExcludedEntitiesRepository {
             WHERE guild_id = ? AND role_id = ? AND user_id IS NULL
         """;
 
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, roleID.value());
-                    ps.executeUpdate();
-                }
-            });
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to unmark excluded role", e);
-            return false;
-        }
+        return safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, roleID.value());
+                ps.executeUpdate();
+            }
+        }, "Failed to unmark excluded role");
     }
 
     /**
@@ -347,19 +293,13 @@ public class ExcludedEntitiesRepository {
             WHERE guild_id = ? AND channel_id = ? AND user_id IS NULL AND role_id IS NULL
         """;
 
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
-                    ps.setLong(2, channelID.value());
-                    ps.executeUpdate();
-                }
-            });
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to unmark excluded channel", e);
-            return false;
-        }
+        return safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
+                ps.setLong(2, channelID.value());
+                ps.executeUpdate();
+            }
+        }, "Failed to unmark excluded channel");
     }
 
     /**
@@ -382,43 +322,40 @@ public class ExcludedEntitiesRepository {
             ORDER BY created_at
         """;
 
-        try {
-            return database.query(conn -> {
-                List<UserID> userIDs = new ArrayList<>();
-                List<RoleID> roleIDs = new ArrayList<>();
-                List<ChannelID> channelIDs = new ArrayList<>();
+        ExcludedEntities result = safeQuery(conn -> {
+            List<UserID> userIDs = new ArrayList<>();
+            List<RoleID> roleIDs = new ArrayList<>();
+            List<ChannelID> channelIDs = new ArrayList<>();
 
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildID.value());
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildID.value());
 
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            long userIdRaw = rs.getLong("user_id");
-                            if (!rs.wasNull()) {
-                                userIDs.add(new UserID(userIdRaw));
-                                continue;
-                            }
+                try (var rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        long userIdRaw = rs.getLong("user_id");
+                        if (!rs.wasNull()) {
+                            userIDs.add(new UserID(userIdRaw));
+                            continue;
+                        }
 
-                            long roleIdRaw = rs.getLong("role_id");
-                            if (!rs.wasNull()) {
-                                roleIDs.add(new RoleID(roleIdRaw));
-                                continue;
-                            }
+                        long roleIdRaw = rs.getLong("role_id");
+                        if (!rs.wasNull()) {
+                            roleIDs.add(new RoleID(roleIdRaw));
+                            continue;
+                        }
 
-                            long channelIdRaw = rs.getLong("channel_id");
-                            if (!rs.wasNull()) {
-                                channelIDs.add(new ChannelID(channelIdRaw));
-                            }
+                        long channelIdRaw = rs.getLong("channel_id");
+                        if (!rs.wasNull()) {
+                            channelIDs.add(new ChannelID(channelIdRaw));
                         }
                     }
                 }
+            }
 
-                return new ExcludedEntities(List.copyOf(userIDs), List.copyOf(roleIDs), List.copyOf(channelIDs));
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch excluded users, roles, and channels", e);
-            return new ExcludedEntities(List.of(), List.of(), List.of());
-        }
+            return new ExcludedEntities(List.copyOf(userIDs), List.copyOf(roleIDs), List.copyOf(channelIDs));
+        }, new ExcludedEntities(List.of(), List.of(), List.of()), "Failed to fetch excluded users, roles, and channels");
+
+        return result == null ? new ExcludedEntities(List.of(), List.of(), List.of()) : result;
     }
 
 }

@@ -1,15 +1,10 @@
 package net.honeyberries.database.repository;
 
 import net.dv8tion.jda.api.entities.User;
-import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.discord.DiscordUser;
 import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.util.Objects;
 
 /**
@@ -20,12 +15,8 @@ import java.util.Objects;
  * treat a Discord account as specially recognized regardless of server membership.
  * The repository keeps the stored username in sync with the user's snowflake.
  */
-public class SpecialUsersRepository {
+public class SpecialUsersRepository extends RepositoryBase {
 
-	/** Logger for recording database operations. */
-	private final Logger logger = LoggerFactory.getLogger(SpecialUsersRepository.class);
-	/** Database connection pool. */
-	private final Database database;
 	/** Singleton instance. */
 	private static final SpecialUsersRepository INSTANCE = new SpecialUsersRepository();
 
@@ -40,10 +31,10 @@ public class SpecialUsersRepository {
 	}
 
 	/**
-	 * Constructs a new repository backed by the shared {@link Database} singleton.
+	 * Constructs a new repository backed by the shared {@link net.honeyberries.database.Database} singleton.
 	 */
 	public SpecialUsersRepository() {
-		this.database = Database.getInstance();
+		super();
 	}
 
 	/**
@@ -62,20 +53,16 @@ public class SpecialUsersRepository {
 			LIMIT 1
 		""";
 
-		try {
-			return database.query(conn -> {
-				try (PreparedStatement ps = conn.prepareStatement(sql)) {
-					ps.setLong(1, userID.value());
+		Boolean exists = safeQuery(conn -> {
+			try (var ps = conn.prepareStatement(sql)) {
+				ps.setLong(1, userID.value());
 
-					try (ResultSet rs = ps.executeQuery()) {
-						return rs.next();
-					}
+				try (var rs = ps.executeQuery()) {
+					return rs.next();
 				}
-			});
-		} catch (Exception e) {
-			logger.error("Failed to check special user", e);
-			return false;
-		}
+			}
+		}, false, "Failed to check special user");
+		return Boolean.TRUE.equals(exists);
 	}
 
 
@@ -102,19 +89,13 @@ public class SpecialUsersRepository {
 				username = EXCLUDED.username
 		""";
 
-		try {
-			database.transaction(conn -> {
-				try (PreparedStatement ps = conn.prepareStatement(sql)) {
-					ps.setLong(1, discordUser.userId().value());
-					ps.setString(2, discordUser.username());
-					ps.executeUpdate();
-				}
-			});
-			return true;
-		} catch (Exception e) {
-			logger.error("Failed to add/update special user", e);
-			return false;
-		}
+		return safeTransaction(conn -> {
+			try (var ps = conn.prepareStatement(sql)) {
+				ps.setLong(1, discordUser.userId().value());
+				ps.setString(2, discordUser.username());
+				ps.executeUpdate();
+			}
+		}, "Failed to add/update special user");
 	}
 
 	/**
@@ -133,18 +114,12 @@ public class SpecialUsersRepository {
 			WHERE user_id = ?
 		""";
 
-		try {
-			database.transaction(conn -> {
-				try (PreparedStatement ps = conn.prepareStatement(sql)) {
-					ps.setLong(1, userID.value());
-					ps.executeUpdate();
-				}
-			});
-			return true;
-		} catch (Exception e) {
-			logger.error("Failed to remove special user", e);
-			return false;
-		}
+		return safeTransaction(conn -> {
+			try (var ps = conn.prepareStatement(sql)) {
+				ps.setLong(1, userID.value());
+				ps.executeUpdate();
+			}
+		}, "Failed to remove special user");
 	}
 
 

@@ -1,18 +1,13 @@
 package net.honeyberries.database.repository;
 
-import net.honeyberries.database.Database;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Types;
 import java.util.Objects;
 
 /**
@@ -20,26 +15,18 @@ import java.util.Objects;
  * Tracks settings such as AI enablement, auto-moderation actions, and designated channel IDs for notifications.
  * Supports upsert operations to keep preferences in sync with Discord configuration changes.
  */
-public class GuildPreferencesRepository {
+public class GuildPreferencesRepository extends RepositoryBase {
 
     /**
      * Singleton instance.
      */
     private static final GuildPreferencesRepository INSTANCE = new GuildPreferencesRepository();
-    /**
-     * Logger for recording database operations.
-     */
-    private final Logger logger = LoggerFactory.getLogger(GuildPreferencesRepository.class);
-    /**
-     * Database connection pool.
-     */
-    private final Database database;
 
     /**
      * Constructs a new repository, retrieving the singleton database instance.
      */
     public GuildPreferencesRepository() {
-        this.database = Database.getInstance();
+        super();
     }
 
     /**
@@ -63,64 +50,49 @@ public class GuildPreferencesRepository {
      */
     public boolean addOrUpdateGuildPreferences(@NotNull GuildPreferences guildPreferences) {
         Objects.requireNonNull(guildPreferences, "guildPreferences must not be null");
-        try {
-            database.transaction(conn -> {
-                String upsertSql = """
-                            INSERT INTO guild_preferences (
-                                guild_id, ai_enabled, rules_channel_id,
-                                auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
-                                auto_kick_enabled, auto_ban_enabled, audit_log_channel_id,
-                                remove_on_delete, appeals_enabled
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT (guild_id) DO UPDATE SET
-                                ai_enabled             = EXCLUDED.ai_enabled,
-                                rules_channel_id       = EXCLUDED.rules_channel_id,
-                                auto_warn_enabled      = EXCLUDED.auto_warn_enabled,
-                                auto_delete_enabled    = EXCLUDED.auto_delete_enabled,
-                                auto_timeout_enabled   = EXCLUDED.auto_timeout_enabled,
-                                auto_kick_enabled      = EXCLUDED.auto_kick_enabled,
-                                auto_ban_enabled       = EXCLUDED.auto_ban_enabled,
-                                audit_log_channel_id   = EXCLUDED.audit_log_channel_id,
-                                remove_on_delete       = EXCLUDED.remove_on_delete,
-                                appeals_enabled        = EXCLUDED.appeals_enabled
-                        """;
+        String upsertSql = """
+                    INSERT INTO guild_preferences (
+                        guild_id, ai_enabled, rules_channel_id,
+                        auto_warn_enabled, auto_delete_enabled, auto_timeout_enabled,
+                        auto_kick_enabled, auto_ban_enabled, audit_log_channel_id,
+                        remove_on_delete, appeals_enabled
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (guild_id) DO UPDATE SET
+                        ai_enabled             = EXCLUDED.ai_enabled,
+                        rules_channel_id       = EXCLUDED.rules_channel_id,
+                        auto_warn_enabled      = EXCLUDED.auto_warn_enabled,
+                        auto_delete_enabled    = EXCLUDED.auto_delete_enabled,
+                        auto_timeout_enabled   = EXCLUDED.auto_timeout_enabled,
+                        auto_kick_enabled      = EXCLUDED.auto_kick_enabled,
+                        auto_ban_enabled       = EXCLUDED.auto_ban_enabled,
+                        audit_log_channel_id   = EXCLUDED.audit_log_channel_id,
+                        remove_on_delete       = EXCLUDED.remove_on_delete,
+                        appeals_enabled        = EXCLUDED.appeals_enabled
+                """;
 
-                try (PreparedStatement ps = conn.prepareStatement(upsertSql)) {
-                    ps.setLong(1, guildPreferences.guildId().value());
-                    ps.setBoolean(2, guildPreferences.aiEnabled());
+        return safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(upsertSql)) {
+                ps.setLong(1, guildPreferences.guildId().value());
+                ps.setBoolean(2, guildPreferences.aiEnabled());
 
-                    ChannelID rulesChannelID = guildPreferences.rulesChannelID();
-                    if (rulesChannelID != null) {
-                        ps.setLong(3, rulesChannelID.value());
-                    } else {
-                        ps.setNull(3, Types.BIGINT);
-                    }
+                ChannelID rulesChannelID = guildPreferences.rulesChannelID();
+                bindNullableLong(ps, 3, rulesChannelID == null ? null : rulesChannelID.value());
 
-                    ps.setBoolean(4, guildPreferences.autoWarnEnabled());
-                    ps.setBoolean(5, guildPreferences.autoDeleteEnabled());
-                    ps.setBoolean(6, guildPreferences.autoTimeoutEnabled());
-                    ps.setBoolean(7, guildPreferences.autoKickEnabled());
-                    ps.setBoolean(8, guildPreferences.autoBanEnabled());
+                ps.setBoolean(4, guildPreferences.autoWarnEnabled());
+                ps.setBoolean(5, guildPreferences.autoDeleteEnabled());
+                ps.setBoolean(6, guildPreferences.autoTimeoutEnabled());
+                ps.setBoolean(7, guildPreferences.autoKickEnabled());
+                ps.setBoolean(8, guildPreferences.autoBanEnabled());
 
-                    ChannelID auditLogChannelId = guildPreferences.auditLogChannelId();
-                    if (auditLogChannelId != null) {
-                        ps.setLong(9, auditLogChannelId.value());
-                    } else {
-                        ps.setNull(9, Types.BIGINT);
-                    }
+                ChannelID auditLogChannelId = guildPreferences.auditLogChannelId();
+                bindNullableLong(ps, 9, auditLogChannelId == null ? null : auditLogChannelId.value());
 
-                    ps.setBoolean(10, guildPreferences.removeOnDeleteEnabled());
-                    ps.setBoolean(11, guildPreferences.appealsEnabled());
+                ps.setBoolean(10, guildPreferences.removeOnDeleteEnabled());
+                ps.setBoolean(11, guildPreferences.appealsEnabled());
 
-                    ps.executeUpdate();
-                }
-            });
-
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to add/update guild preferences in database", e);
-            return false;
-        }
+                ps.executeUpdate();
+            }
+        }, "Failed to add/update guild preferences in database");
     }
 
     /**
@@ -143,23 +115,8 @@ public class GuildPreferencesRepository {
                     WHERE guild_id = ?
                 """;
 
-        try {
-            return database.query(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            return mapPreferences(rs);
-                        }
-                        return null;
-                    }
-                }
-            });
-        } catch (Exception e) {
-            logger.error("Failed to fetch guild preferences from database", e);
-            return null;
-        }
+        return safeQueryOne(sql, ps -> ps.setLong(1, guildId.value()), this::mapPreferences,
+                "Failed to fetch guild preferences from database");
     }
 
     /**
@@ -173,16 +130,15 @@ public class GuildPreferencesRepository {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String sql = "DELETE FROM guild_preferences WHERE guild_id = ?";
 
-        try {
-            database.transaction(conn -> {
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setLong(1, guildId.value());
-                    ps.executeUpdate();
-                }
-            });
+        boolean ok = safeTransaction(conn -> {
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, guildId.value());
+                ps.executeUpdate();
+            }
+        }, "Failed to delete guild preferences from database");
+
+        if (ok) {
             logger.debug("Deleted guild preferences for guild {}", guildId);
-        } catch (Exception e) {
-            logger.error("Failed to delete guild preferences from database", e);
         }
     }
 
