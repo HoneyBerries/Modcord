@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openai.core.JsonValue;
 import com.openai.models.ResponseFormatJsonSchema;
+import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.content.GuildModerationBatch;
 import net.honeyberries.datatypes.content.ModerationUser;
 import net.honeyberries.datatypes.content.ModerationUserChannel;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.MessageID;
 import net.honeyberries.datatypes.discord.UserID;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
+import net.honeyberries.preferences.PreferencesManager;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -207,7 +210,8 @@ public class DynamicSchemaGenerator {
             }
         }
 
-        ArrayNode userSchemas = buildUserSchemas(userChannelMessages);
+        GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(batch.guildId());
+        ArrayNode userSchemas = buildUserSchemas(userChannelMessages, buildActionEnum(prefs));
         return buildRootSchema(guildId, userSchemas);
     }
 
@@ -232,11 +236,15 @@ public class DynamicSchemaGenerator {
      * Each user schema includes action type, reason, channel deletions, and timeout/ban durations.
      *
      * @param userChannelMessages map from user ID to channels to message IDs
+     * @param actionEnum          the action enum constraint shared by all users
      * @return array node containing one schema per user
      */
     @NotNull
-    private ArrayNode buildUserSchemas(@NotNull Map<UserID, Map<ChannelID, Set<MessageID>>> userChannelMessages) {
+    private ArrayNode buildUserSchemas(
+            @NotNull Map<UserID, Map<ChannelID, Set<MessageID>>> userChannelMessages,
+            @NotNull ObjectNode actionEnum) {
         Objects.requireNonNull(userChannelMessages, "userChannelMessages must not be null");
+        Objects.requireNonNull(actionEnum, "actionEnum must not be null");
         ArrayNode userSchemas = mapper.createArrayNode();
 
         for (Map.Entry<UserID, Map<ChannelID, Set<MessageID>>> userEntry : userChannelMessages.entrySet()) {
@@ -248,14 +256,15 @@ public class DynamicSchemaGenerator {
             ObjectNode userSchema = typeNode("object");
             ObjectNode userProps = userSchema.putObject("properties");
 
+            // Property order matters for generation: the model writes its reason before committing to an action.
             userProps.set("user_id", stringEnum(userId.toString()));
-            userProps.set("action", buildActionEnum());
             userProps.set("reason", typeNode("string"));
+            userProps.set("action", actionEnum.deepCopy());
             userProps.set("channels", fixedArray(channelSchemas));
             userProps.set("timeout_duration", intRange(0, 28 * 24 * 60 * 60));
             userProps.set("ban_duration", intRange(-1, 365 * 24 * 60 * 60));
 
-            seal(userSchema, "user_id", "action", "reason", "channels", "timeout_duration", "ban_duration");
+            seal(userSchema, "user_id", "reason", "action", "channels", "timeout_duration", "ban_duration");
             userSchemas.add(userSchema);
         }
 
@@ -305,15 +314,22 @@ public class DynamicSchemaGenerator {
 
     /**
      * Builds the action type enumeration constraint.
-     * Restricts the AI to valid moderation actions: null, delete, warn, timeout, kick, ban.
+     * Restricts the AI to "null" plus whichever of warn, delete, timeout, kick, and ban the guild has enabled.
      *
+     * @param prefs the guild's preferences
      * @return an object node with string type and enum constraint
      */
     @NotNull
-    private ObjectNode buildActionEnum() {
+    private ObjectNode buildActionEnum(@NotNull GuildPreferences prefs) {
+        Objects.requireNonNull(prefs, "prefs must not be null");
         ObjectNode actionProp = typeNode("string");
         ArrayNode actionEnum = actionProp.putArray("enum");
-        List.of("null", "delete", "warn", "timeout", "kick", "ban").forEach(actionEnum::add);
+        actionEnum.add("null");
+        for (ActionType type : List.of(ActionType.WARN, ActionType.DELETE, ActionType.TIMEOUT, ActionType.KICK, ActionType.BAN)) {
+            if (PreferencesManager.getInstance().getActionEnabled(prefs, type)) {
+                actionEnum.add(type.getValue());
+            }
+        }
         return actionProp;
     }
 

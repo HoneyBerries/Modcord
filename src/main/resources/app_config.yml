@@ -57,7 +57,7 @@ ai_settings:
 
 # Default server rules for all servers. Used if no server-specific rules are defined.
 generic_server_rules: |
-  (These are just generic rules. You should not treat them as specific as regular server rules.)
+  (This server has not set custom rules. These are sensible defaults; apply them with a light touch.)
   
   1. Be respectful to other users and the server.
   2. No spamming.
