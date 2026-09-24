@@ -1,8 +1,10 @@
 package net.honeyberries.ai;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openai.models.chat.completions.*;
 import net.dv8tion.jda.api.Permission;
@@ -12,10 +14,11 @@ import net.honeyberries.datatypes.content.*;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.MessageID;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -28,6 +31,12 @@ public class GuildModerationBatchToAIInput {
 
     /** JSON object mapper for serializing batch data. */
     private static final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** Single timestamp format for all times in the AI input; every value passed to it is UTC. */
+    private static final DateTimeFormatter UTC_TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
+
+    /** Maximum length (in code points) of the replied-to message preview included with replies. */
+    private static final int REPLY_PREVIEW_MAX_CODE_POINTS = 200;
 
     /** Holding any of these permissions marks a member as staff for moderation leniency. */
     private static final Set<Permission> STAFF_PERMISSIONS = EnumSet.of(
@@ -51,6 +60,7 @@ public class GuildModerationBatchToAIInput {
      * - guild: id, name
      * - users_to_moderate: profiles (roles, staff flag, last 30 days of moderation actions) of users with new messages
      * - channels: per-channel guidelines and a chronological timeline of history + new messages, each flagged is_new
+     *   and carrying reply_to (the replied-to message with a content preview, or null)
      * <p>
      * Images are deduplicated by imageId across all users and messages, then appended as:
      * "Image {imageId}:" (text label) followed by the image URL.
@@ -69,7 +79,7 @@ public class GuildModerationBatchToAIInput {
         try {
             // 1. Build the JSON payload (image_ids referenced inline per message)
             ObjectNode root = objectMapper.createObjectNode();
-            root.put("current_time_utc", LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS).toString());
+            root.put("current_time_utc", formatUtc(LocalDateTime.now(ZoneOffset.UTC)));
 
             ObjectNode guild = objectMapper.createObjectNode();
             guild.put("id", guildModerationBatch.guildId().toString());
@@ -233,7 +243,7 @@ public class GuildModerationBatchToAIInput {
         ObjectNode userNode = objectMapper.createObjectNode();
         userNode.put("user_id", user.userId().toString());
         userNode.put("username", user.username().username());
-        userNode.put("join_date", user.joinDate().toString());
+        userNode.put("join_date", formatUtc(user.joinDate()));
         userNode.put("is_staff", isStaff(user.discordMember()));
 
         ArrayNode rolesArray = objectMapper.createArrayNode();
@@ -247,8 +257,7 @@ public class GuildModerationBatchToAIInput {
             ObjectNode actionNode = objectMapper.createObjectNode();
             actionNode.put("action", action.action().getValue());
             actionNode.put("reason", action.reason());
-            actionNode.put("timestamp", LocalDateTime.ofInstant(action.timestamp(), ZoneOffset.UTC)
-                    .truncatedTo(ChronoUnit.SECONDS).toString());
+            actionNode.put("timestamp", formatUtc(LocalDateTime.ofInstant(action.timestamp(), ZoneOffset.UTC)));
             if (action.timeoutDuration() > 0) actionNode.put("timeout_duration", action.timeoutDuration());
             if (action.banDuration() != 0) actionNode.put("ban_duration", action.banDuration());
             actionsArray.add(actionNode);
@@ -326,9 +335,10 @@ public class GuildModerationBatchToAIInput {
                         messageNode.put("message_id", message.messageId().toString());
                         messageNode.put("author_id", e.author().userId().toString());
                         messageNode.put("author_name", e.author().username().username());
-                        messageNode.put("timestamp", message.timestamp().truncatedTo(ChronoUnit.SECONDS).toString());
+                        messageNode.put("timestamp", formatUtc(message.timestamp()));
                         messageNode.put("is_new", !message.isHistoryContextWindow());
                         messageNode.put("content", message.content());
+                        messageNode.set("reply_to", serializeReply(message.replyTo()));
 
                         // image_ids here match the labels added to the content parts
                         ArrayNode imageIdsArray = objectMapper.createArrayNode();
@@ -343,6 +353,57 @@ public class GuildModerationBatchToAIInput {
             channelsArray.add(channelNode);
         }
         return channelsArray;
+    }
+
+    /**
+     * Serializes the message a timeline message replies to, with a truncated preview of its content so the
+     * model can follow the exchange even when the original is outside the history window.
+     * Author and preview fields are {@code null} when Discord did not include the original (e.g. it was deleted).
+     *
+     * @param reply the reply details, or {@code null} if the message is not a reply
+     * @return a JSON object describing the replied-to message, or a JSON null node if not a reply
+     */
+    @NotNull
+    private static JsonNode serializeReply(@Nullable ModerationReply reply) {
+        if (reply == null) {
+            return NullNode.getInstance();
+        }
+        ObjectNode replyNode = objectMapper.createObjectNode();
+        replyNode.put("message_id", reply.messageId().toString());
+        replyNode.put("author_id", reply.authorId() != null ? reply.authorId().toString() : null);
+        replyNode.put("author_name", reply.authorName());
+        replyNode.put("content_preview", reply.content() != null ? truncate(reply.content(), REPLY_PREVIEW_MAX_CODE_POINTS) : null);
+        return replyNode;
+    }
+
+    /**
+     * Formats a UTC date-time as {@code yyyy-MM-ddTHH:mm:ssZ} so every timestamp given to the model has the
+     * same shape (plain {@code LocalDateTime.toString()} drops zero seconds and keeps nanoseconds).
+     *
+     * @param utcDateTime a date-time already expressed in UTC (must not be {@code null})
+     * @return the formatted timestamp
+     */
+    @NotNull
+    private static String formatUtc(@NotNull LocalDateTime utcDateTime) {
+        Objects.requireNonNull(utcDateTime, "utcDateTime must not be null");
+        return UTC_TIMESTAMP_FORMAT.format(utcDateTime);
+    }
+
+    /**
+     * Truncates text to at most {@code maxCodePoints} code points, appending an ellipsis when shortened.
+     * Counts code points rather than chars so emoji and other surrogate pairs are never split.
+     *
+     * @param text          the text to truncate (must not be {@code null})
+     * @param maxCodePoints the maximum number of code points to keep
+     * @return the original text if short enough, otherwise the truncated text followed by "…"
+     */
+    @NotNull
+    private static String truncate(@NotNull String text, int maxCodePoints) {
+        Objects.requireNonNull(text, "text must not be null");
+        if (text.codePointCount(0, text.length()) <= maxCodePoints) {
+            return text;
+        }
+        return text.substring(0, text.offsetByCodePoints(0, maxCodePoints)) + "…";
     }
 
     /**
