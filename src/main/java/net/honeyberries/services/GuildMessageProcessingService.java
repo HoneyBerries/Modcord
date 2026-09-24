@@ -15,8 +15,11 @@ import net.honeyberries.action.ActionHandler;
 import net.honeyberries.ai.*;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.AILogRepository;
+import net.honeyberries.database.repository.ChannelGuidelinesRepository;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
+import net.honeyberries.datatypes.content.ChannelGuidelines;
+import net.honeyberries.datatypes.content.ChannelMetadata;
 import net.honeyberries.datatypes.content.ModerationMessage;
 import net.honeyberries.datatypes.content.ModerationUser;
 import net.honeyberries.datatypes.content.ModerationUserChannel;
@@ -31,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -60,6 +64,9 @@ import java.util.stream.Collectors;
  * </ul>
  */
 public class GuildMessageProcessingService {
+
+    /** How far back to look for a user's prior moderation actions when building AI context. */
+    private static final Duration PAST_ACTIONS_LOOKBACK = Duration.ofDays(30);
 
     /** Logger for message queue lifecycle and processing pipeline. */
     private final Logger logger = LoggerFactory.getLogger(GuildMessageProcessingService.class);
@@ -397,9 +404,10 @@ public class GuildMessageProcessingService {
         GuildModerationBatch batch = new GuildModerationBatch(
                 guildId,
                 guild.getName(),
-                Map.of(),
+                buildChannelMetadata(currentMessages),
                 users,
-                historyUsers
+                historyUsers,
+                fetchPastActions(users)
         );
 
         ChatCompletionUserMessageParam inputs;
@@ -459,6 +467,59 @@ public class GuildMessageProcessingService {
             logger.error("Failed to parse AI response JSON for guild {}: {}", guildId, e.getOriginalMessage());
             return List.of();
         }
+    }
+
+    /**
+     * Builds channel metadata (name, guidelines, new-message count) for every channel with messages in the batch.
+     * Guidelines come from the channel guidelines table, falling back to the configured generic guidelines.
+     *
+     * @param currentMessages the messages being moderated (must not be {@code null})
+     * @return an insertion-ordered map of channel ID to metadata, never {@code null}
+     */
+    @NotNull
+    private Map<ChannelID, ChannelMetadata> buildChannelMetadata(@NotNull List<ModerationMessage> currentMessages) {
+        Objects.requireNonNull(currentMessages, "currentMessages must not be null");
+
+        Map<ChannelID, Long> counts = currentMessages.stream()
+                .collect(Collectors.groupingBy(ModerationMessage::channelId, LinkedHashMap::new, Collectors.counting()));
+
+        Map<ChannelID, ChannelMetadata> result = new LinkedHashMap<>();
+        for (Map.Entry<ChannelID, Long> entry : counts.entrySet()) {
+            ChannelID channelId = entry.getKey();
+            Channel channel = guild.getGuildChannelById(channelId.value());
+            String channelName = channel != null ? channel.getName() : "Unknown";
+
+            ChannelGuidelines stored = ChannelGuidelinesRepository.getInstance().getChannelGuidelines(guildId, channelId);
+            String guidelines = (stored != null && stored.guidelinesText() != null && !stored.guidelinesText().isBlank())
+                    ? stored.guidelinesText()
+                    : AppConfig.getInstance().getGenericChannelGuidelines();
+
+            result.put(channelId, new ChannelMetadata(channelId, channelName, guidelines, entry.getValue().intValue()));
+        }
+        return result;
+    }
+
+    /**
+     * Fetches each moderated user's recent active (non-reversed) moderation actions so the AI can escalate
+     * based on real records rather than guessing from chat history.
+     *
+     * @param users the users under moderation in this batch (must not be {@code null})
+     * @return a map of user ID to their recent actions (newest first); users with no actions are omitted
+     */
+    @NotNull
+    private Map<UserID, List<ActionData>> fetchPastActions(@NotNull List<ModerationUser> users) {
+        Objects.requireNonNull(users, "users must not be null");
+
+        Instant since = Instant.now().minus(PAST_ACTIONS_LOOKBACK);
+        Map<UserID, List<ActionData>> result = new HashMap<>();
+        for (ModerationUser user : users) {
+            List<ActionData> actions = GuildModerationActionsRepository.getInstance()
+                    .getRecentActiveActionsByUser(guildId, user.userId(), since);
+            if (!actions.isEmpty()) {
+                result.put(user.userId(), actions);
+            }
+        }
+        return result;
     }
 
     /**

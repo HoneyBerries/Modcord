@@ -1,7 +1,9 @@
 package net.honeyberries.datatypes.content;
 
+import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.discord.UserID;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -18,7 +20,8 @@ public record GuildModerationBatch(
         @NotNull String guildName,
         @NotNull Map<ChannelID, ChannelMetadata> channels,
         @NotNull List<ModerationUser> users,
-        @NotNull List<ModerationUser> historyUsers
+        @NotNull List<ModerationUser> historyUsers,
+        @NotNull Map<UserID, List<ActionData>> pastActions
 ) {
     /**
      * Compact constructor enforcing required references.
@@ -28,6 +31,7 @@ public record GuildModerationBatch(
      * @param channels     channel-to-context map for current messages; must not be {@code null}
      * @param users        active users involved in the current moderation batch; must not be {@code null}
      * @param historyUsers historical users providing additional context; must not be {@code null}
+     * @param pastActions  recent active moderation actions per user under moderation; must not be {@code null}
      * @throws NullPointerException if any non-nullable argument is {@code null}
      */
     public GuildModerationBatch {
@@ -36,6 +40,7 @@ public record GuildModerationBatch(
         Objects.requireNonNull(channels, "channels must not be null");
         Objects.requireNonNull(users, "users must not be null");
         Objects.requireNonNull(historyUsers, "historyUsers must not be null");
+        Objects.requireNonNull(pastActions, "pastActions must not be null");
     }
 
     /**
@@ -49,7 +54,7 @@ public record GuildModerationBatch(
             @NotNull GuildID guildId,
             @NotNull String guildName
     ) {
-        this(guildId, guildName, Map.of(), List.of(), List.of());
+        this(guildId, guildName, Map.of(), List.of(), List.of(), Map.of());
     }
 
     /**
