@@ -7,6 +7,7 @@ import net.honeyberries.datatypes.discord.MessageID;
 import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.message.EmbedParser;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -26,7 +27,8 @@ public record ModerationMessage(
         @NotNull GuildID guildId,
         @NotNull ChannelID channelId,
         @NotNull List<ModerationImage> images,
-        boolean isHistoryContextWindow
+        boolean isHistoryContextWindow,
+        @Nullable ModerationReply replyTo
 ) {
     /**
      * Validates non-null fields and preserves immutability of the images list reference.
@@ -39,6 +41,7 @@ public record ModerationMessage(
      * @param channelId              channel containing the message; must not be {@code null}
      * @param images                 attachments treated as moderation-relevant images; may be empty but not {@code null}
      * @param isHistoryContextWindow indicates whether the message came from a historical fetch window
+     * @param replyTo                the message this one replies to, or {@code null} if it is not a reply
      * @throws NullPointerException if any non-nullable argument is {@code null}
      */
     public ModerationMessage {
@@ -52,7 +55,7 @@ public record ModerationMessage(
     }
 
     /**
-     * Convenience constructor without images and history flag.
+     * Convenience constructor without images, history flag, or reply.
      *
      * @param messageId identifier of the Discord message; must not be {@code null}
      * @param userId    identifier of the author; must not be {@code null}
@@ -70,7 +73,7 @@ public record ModerationMessage(
             @NotNull GuildID guildId,
             @NotNull ChannelID channelId
     ) {
-        this(messageId, userId, content, timestamp, guildId, channelId, List.of(), false);
+        this(messageId, userId, content, timestamp, guildId, channelId, List.of(), false, null);
     }
 
     /**
@@ -101,7 +104,8 @@ public record ModerationMessage(
                 }
             }
 
-            return new ModerationMessage(msgId, authorId, content, timestamp, guildID, channelID, images, isHistoryContextWindow);
+            return new ModerationMessage(msgId, authorId, content, timestamp, guildID, channelID, images, isHistoryContextWindow,
+                    ModerationReply.fromMessage(msg));
 
         } else {
             String content = EmbedParser.parseEmbed(msg);
@@ -121,7 +125,8 @@ public record ModerationMessage(
                     GuildID.fromGuild(msg.getGuild()),
                     ChannelID.fromChannel(msg.getChannel()),
                     images,
-                    isHistoryContextWindow
+                    isHistoryContextWindow,
+                    ModerationReply.fromMessage(msg)
             );
         }
 
@@ -134,7 +139,7 @@ public record ModerationMessage(
      */
     @NotNull
     public ModerationMessage markAsHistory() {
-        return new ModerationMessage(this.messageId(), this.userId(), this.content(), this.timestamp(), this.guildId(), this.channelId(), this.images(), true);
+        return new ModerationMessage(this.messageId(), this.userId(), this.content(), this.timestamp(), this.guildId(), this.channelId(), this.images(), true, this.replyTo());
     }
 
     /**
@@ -157,7 +162,8 @@ public record ModerationMessage(
                 this.guildId(),
                 this.channelId(),
                 mergedImages,
-                this.isHistoryContextWindow()
+                this.isHistoryContextWindow(),
+                this.replyTo()
         );
     }
 

@@ -17,6 +17,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -219,6 +220,46 @@ public class GuildModerationActionsRepository extends RepositoryBase {
             ps.setLong(1, guildId.value());
             ps.setInt(2, limit);
         }, "Failed to fetch recent actions", guildId, limit);
+    }
+
+    /**
+     * Retrieves a user's active (non-reversed, non-NULL) moderation actions in a guild created on or after
+     * {@code since}, ordered newest first. Used to give the AI a factual record of prior moderation so it can
+     * escalate proportionately.
+     * Returns an empty list if no actions are found or if a database error occurs.
+     *
+     * @param guildId the guild to search in
+     * @param userId  the user ID to match
+     * @param since   the earliest creation time to include
+     * @return a list of active {@code ActionData} in reverse chronological order, never {@code null}
+     */
+    @NotNull
+    public List<ActionData> getRecentActiveActionsByUser(
+            @NotNull GuildID guildId,
+            @NotNull UserID userId,
+            @NotNull Instant since) {
+        Objects.requireNonNull(guildId, "guildId must not be null");
+        Objects.requireNonNull(userId, "userId must not be null");
+        Objects.requireNonNull(since, "since must not be null");
+        String sql = """
+                    SELECT gma.*
+                    FROM guild_moderation_actions gma
+                    WHERE gma.guild_id = ?
+                      AND gma.user_id = ?
+                      AND gma.created_at >= ?
+                      AND gma.action != 'NULL'
+                      AND NOT EXISTS (
+                            SELECT 1 FROM guild_moderation_action_reversals r
+                            WHERE r.action_id = gma.action_id
+                          )
+                    ORDER BY gma.created_at DESC
+                """;
+
+        return queryActionsWithDeletions(sql, ps -> {
+            ps.setLong(1, guildId.value());
+            ps.setLong(2, userId.value());
+            ps.setTimestamp(3, Timestamp.from(since));
+        }, "Failed to fetch recent active actions by user", guildId, userId);
     }
 
     /**
