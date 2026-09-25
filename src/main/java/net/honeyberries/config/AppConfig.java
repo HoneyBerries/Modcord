@@ -121,6 +121,7 @@ public class AppConfig {
         validatePositive("moderation.moderation_queue_duration", getModerationQueueDurationOrNull());
         validateNonNegative("moderation.num_history_context_messages", getHistoryContextMaxMessagesOrNull());
         validateNonNegative("moderation.history_context_max_age", getHistoryContextMaxAgeOrNull());
+        validatePositive("moderation.past_actions_lookback", getPastActionsLookbackOrNull());
     }
 
     /**
@@ -437,6 +438,21 @@ public class AppConfig {
     }
 
     /**
+     * Returns the number of seconds to look back for a user's prior moderation actions
+     * when building AI context. Actions older than this window, or reversed via rollback,
+     * are excluded from the record shown to the model.
+     *
+     * @return the past-actions lookback window in seconds
+     */
+    public long getPastActionsLookback() {
+        Long value = getPastActionsLookbackOrNull();
+        if (value != null) {
+            return value;
+        }
+        throw new RuntimeException("Past actions lookback not configured");
+    }
+
+    /**
      * Returns the maximum number of messages held per guild in-memory before the
      * oldest messages are dropped to apply backpressure against runaway activity.
      * <p>
@@ -508,6 +524,10 @@ public class AppConfig {
 
     private Double getHistoryContextMaxAgeOrNull() {
         return readDoubleSetting("moderation", "history_context_max_age");
+    }
+
+    private Long getPastActionsLookbackOrNull() {
+        return readLongSetting("moderation", "past_actions_lookback");
     }
 
     @Nullable
