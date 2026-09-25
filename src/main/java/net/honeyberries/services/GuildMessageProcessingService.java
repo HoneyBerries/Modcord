@@ -65,9 +65,6 @@ import java.util.stream.Collectors;
  */
 public class GuildMessageProcessingService {
 
-    /** How far back to look for a user's prior moderation actions when building AI context. */
-    private static final Duration PAST_ACTIONS_LOOKBACK = Duration.ofDays(30);
-
     /** Logger for message queue lifecycle and processing pipeline. */
     private final Logger logger = LoggerFactory.getLogger(GuildMessageProcessingService.class);
 
@@ -510,7 +507,7 @@ public class GuildMessageProcessingService {
     private Map<UserID, List<ActionData>> fetchPastActions(@NotNull List<ModerationUser> users) {
         Objects.requireNonNull(users, "users must not be null");
 
-        Instant since = Instant.now().minus(PAST_ACTIONS_LOOKBACK);
+        Instant since = Instant.now().minusSeconds(AppConfig.getInstance().getPastActionsLookback());
         Map<UserID, List<ActionData>> result = new HashMap<>();
         for (ModerationUser user : users) {
             List<ActionData> actions = GuildModerationActionsRepository.getInstance()

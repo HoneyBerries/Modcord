@@ -38,6 +38,10 @@ moderation:
   # Maximum age (seconds) of messages to fetch for context.
   history_context_max_age: 86400
 
+  # Lookback window (seconds) for a user's recent-actions record shown to the AI.
+  # Actions older than this, or reversed via rollback, are excluded.
+  past_actions_lookback: 2592000
+
 
 
 # ========================================

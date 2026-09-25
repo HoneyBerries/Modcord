@@ -312,6 +312,13 @@ class AppConfigTest {
         }
 
         @Test
+        @DisplayName("Should return past actions lookback")
+        void testGetPastActionsLookback() {
+            long lookback = appConfig.getPastActionsLookback();
+            assertTrue(lookback > 0, "Past actions lookback should be positive");
+        }
+
+        @Test
         @DisplayName("Should throw RuntimeException if moderation queue duration not configured")
         void testGetModerationQueueDurationNotConfigured() {
             AppConfig config = new AppConfig(Paths.get("./nonexistent/config.yml"));
@@ -330,6 +337,13 @@ class AppConfigTest {
         void testGetHistoryContextMaxAgeNotConfigured() {
             AppConfig config = new AppConfig(Paths.get("./nonexistent/config.yml"));
             assertThrows(RuntimeException.class, config::getHistoryContextMaxAge);
+        }
+
+        @Test
+        @DisplayName("Should throw RuntimeException if past actions lookback not configured")
+        void testGetPastActionsLookbackNotConfigured() {
+            AppConfig config = new AppConfig(Paths.get("./nonexistent/config.yml"));
+            assertThrows(RuntimeException.class, config::getPastActionsLookback);
         }
 
         @Test
@@ -508,6 +522,7 @@ class AppConfigTest {
         void testAllModerationSettingsAccessible() {
             assertDoesNotThrow(appConfig::getModerationQueueDuration, "Should get moderation queue duration");
             assertDoesNotThrow(appConfig::getHistoryContextMaxAge, "Should get history context max age");
+            assertDoesNotThrow(appConfig::getPastActionsLookback, "Should get past actions lookback");
             // History context max messages might not be configured, so we handle the exception
             try {
                 appConfig.getHistoryContextMaxMessages();
