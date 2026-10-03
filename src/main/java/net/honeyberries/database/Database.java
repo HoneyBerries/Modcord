@@ -2,6 +2,7 @@ package net.honeyberries.database;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariPoolMXBean;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.util.TokenManager;
 import liquibase.Liquibase;
@@ -179,9 +180,21 @@ public class Database {
         hikariConfig.setJdbcUrl(dbUrl);
         hikariConfig.setUsername(dbUsername);
         hikariConfig.setPassword(dbPassword);
-        
+
         hikariConfig.setPoolName("Modcord-Postgres-Pool");
-        
+
+        // The DB is remote (Azure), so size the pool small and recycle connections before
+        // Azure's ~4 minute idle-flow timeout can silently kill them.
+        hikariConfig.setMaximumPoolSize(10);
+        hikariConfig.setMinimumIdle(2);
+        hikariConfig.setConnectionTimeout(10_000);
+        hikariConfig.setValidationTimeout(3_000);
+        hikariConfig.setKeepaliveTime(120_000);
+        hikariConfig.setMaxLifetime(600_000);
+        hikariConfig.setIdleTimeout(300_000);
+        // Log a stack trace if a connection is held for >20s (a hung query or a leak).
+        hikariConfig.setLeakDetectionThreshold(20_000);
+
         return hikariConfig;
     }
 
@@ -320,8 +333,37 @@ public class Database {
         }
     }
 
+    /**
+     * Point-in-time snapshot of the HikariCP pool.
+     *
+     * @param active   connections currently borrowed by application threads
+     * @param idle     connections sitting idle in the pool
+     * @param total    total connections (active + idle)
+     * @param max      configured maximum pool size
+     * @param waiting  threads currently blocked waiting for a connection
+     */
+    public record PoolStats(int active, int idle, int total, int max, int waiting) {}
 
-
+    /**
+     * Returns a snapshot of the connection pool, or {@code null} if the pool is not initialized.
+     * Reads Hikari's MXBean counters only; never borrows a connection, so it cannot block even
+     * when the pool is exhausted.
+     *
+     * @return the current pool stats, or {@code null} if unavailable
+     */
+    @Nullable
+    public PoolStats getPoolStats() {
+        HikariDataSource ds = dataSource;
+        if (!initialized || ds == null) return null;
+        HikariPoolMXBean pool = ds.getHikariPoolMXBean();
+        if (pool == null) return null;
+        return new PoolStats(
+                pool.getActiveConnections(),
+                pool.getIdleConnections(),
+                pool.getTotalConnections(),
+                ds.getMaximumPoolSize(),
+                pool.getThreadsAwaitingConnection());
+    }
 
     private void safeRollback(Connection conn) {
         try {

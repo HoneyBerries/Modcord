@@ -94,6 +94,10 @@ public class ExcludeCommand extends ListenerAdapter {
         String commandName = event.getName();
         if (!commandName.equals("exclude")) return;
 
+        // Acknowledge immediately: the permission checks and handlers below hit the DB and Discord REST,
+        // and Discord drops the interaction if it isn't acknowledged within 3 seconds.
+        event.deferReply(true).queue();
+
         Guild guild = SlashCommandUtils.validateGuildContext(event, "This command can only be used in servers!");
         if (guild == null) {
             return;

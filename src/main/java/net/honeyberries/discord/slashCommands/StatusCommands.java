@@ -105,6 +105,8 @@ public class StatusCommands extends ListenerAdapter {
      */
     private void handleHealthCommand(@NotNull SlashCommandInteractionEvent event) {
         Objects.requireNonNull(event, "event must not be null");
+        // isHealthy() borrows a pool connection and can block when the pool is saturated.
+        event.deferReply(true).queue();
         StringBuilder healthStatus = new StringBuilder();
 
         if (event.getJDA().getStatus() != JDA.Status.CONNECTED) {
@@ -117,6 +119,15 @@ public class StatusCommands extends ListenerAdapter {
             healthStatus.append(":floppy_disk:  **Database Status:** Connected & Healthy\n");
         } else {
             healthStatus.append(":x:  **Database Status:** Broken or Unreachable\n");
+        }
+
+        // Pool counters come from Hikari's MXBean, so this never blocks even if the pool is exhausted.
+        Database.PoolStats pool = Database.getInstance().getPoolStats();
+        if (pool != null) {
+            String icon = pool.waiting() > 0 || pool.active() >= pool.max() ? ":warning:" : ":bar_chart:";
+            healthStatus.append(String.format(
+                    "%s  **DB Pool:** %d active, %d idle, %d/%d total, %d waiting\n",
+                    icon, pool.active(), pool.idle(), pool.total(), pool.max(), pool.waiting()));
         }
 
         CircuitBreaker cb = InferenceEngine.getInstance().getCircuitBreaker();

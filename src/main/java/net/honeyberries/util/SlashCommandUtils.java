@@ -37,6 +37,10 @@ public final class SlashCommandUtils {
     public static void replyEphemeral(@NotNull IReplyCallback event, @NotNull String message) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(message, "message must not be null");
+        if (event.isAcknowledged()) {
+            event.getHook().sendMessage(message).setEphemeral(true).queue();
+            return;
+        }
         event.reply(message).setEphemeral(true).queue();
     }
 
@@ -49,6 +53,10 @@ public final class SlashCommandUtils {
     public static void replyEphemeral(@NotNull IReplyCallback event, @NotNull MessageEmbed embed) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(embed, "embed must not be null");
+        if (event.isAcknowledged()) {
+            event.getHook().sendMessageEmbeds(embed).setEphemeral(true).queue();
+            return;
+        }
         event.replyEmbeds(embed).setEphemeral(true).queue();
     }
 
@@ -62,6 +70,10 @@ public final class SlashCommandUtils {
     public static void replyEphemeral(@NotNull IReplyCallback event, @NotNull MessageCreateData message) {
         Objects.requireNonNull(event, "event must not be null");
         Objects.requireNonNull(message, "message must not be null");
+        if (event.isAcknowledged()) {
+            event.getHook().sendMessage(message).setEphemeral(true).queue();
+            return;
+        }
         event.reply(message).setEphemeral(true).queue();
     }
 
