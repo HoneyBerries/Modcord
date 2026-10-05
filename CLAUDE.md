@@ -109,6 +109,8 @@ All major services are singletons accessed via `getInstance()`: `Database`, `App
 
 Failures in integration tests don't block CI if bot is unavailable (graceful skip).
 
+**CI gating:** `.github/workflows/unit-tests.yml` runs `./gradlew test` on every push/PR and is also a reusable workflow (`workflow_call`). `deploy.yml` and `release.yml` call it and `needs:` it, so a main push only deploys or releases if unit tests pass. Integration tests (`test.yml`) run separately and don't gate deploys, because they depend on live third-party APIs.
+
 ## Java 25+ Features
 
 The codebase uses Java 25-specific APIs:
