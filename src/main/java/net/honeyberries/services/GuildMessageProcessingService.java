@@ -14,7 +14,6 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.honeyberries.action.ActionHandler;
 import net.honeyberries.ai.*;
 import net.honeyberries.config.AppConfig;
-import net.honeyberries.database.repository.AILogRepository;
 import net.honeyberries.database.repository.ChannelGuidelinesRepository;
 import net.honeyberries.database.repository.GuildModerationActionsRepository;
 import net.honeyberries.datatypes.action.ActionData;
@@ -450,13 +449,6 @@ public class GuildMessageProcessingService {
             logger.error("Error during AI inference for guild {}", guildId, e.getCause());
             return List.of();
         }
-
-        // AI log persistence disabled: message content is no longer stored in the database
-        // for privacy reasons
-        // boolean saved = AILogRepository.getInstance().addLogEntry(guildId, conversation);
-        // if (!saved) {
-        //     logger.error("Failed to store AI response for guild {}", guildId);
-        // }
 
         try {
             UserID moderatorId = UserID.fromUser(guild.getJDA().getSelfUser());
