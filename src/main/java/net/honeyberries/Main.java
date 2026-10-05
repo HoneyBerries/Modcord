@@ -7,6 +7,7 @@ import net.honeyberries.discord.JDAManager;
 import net.honeyberries.services.GlobalOrchestrationService;
 import net.honeyberries.task.ChannelGuidelinesTask;
 import net.honeyberries.task.GuildRulesTask;
+import net.honeyberries.task.RetentionPurgeTask;
 import net.honeyberries.task.UnbanWatcherTask;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -113,6 +114,8 @@ public class Main {
         scheduler.scheduleAtFixedRate(new UnbanWatcherTask(), 0, rulesSyncInterval, TimeUnit.SECONDS);
         scheduler.scheduleAtFixedRate(new GuildRulesTask(), 0, guidelinesSyncInterval, TimeUnit.SECONDS);
         scheduler.scheduleAtFixedRate(new ChannelGuidelinesTask(), 0, 5, TimeUnit.MINUTES);
+        // Daily data-retention purge; the 1-minute delay lets startup (DB, JDA) settle first.
+        scheduler.scheduleAtFixedRate(new RetentionPurgeTask(), 1, TimeUnit.DAYS.toMinutes(1), TimeUnit.MINUTES);
     }
 
     /**

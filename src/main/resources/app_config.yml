@@ -45,6 +45,20 @@ moderation:
   past_actions_lookback: 2592000 # 30 days
 
 
+# ========================================
+# 2b. DATA RETENTION
+# ========================================
+# A daily task enforces these windows. Keep them in sync with the privacy policy.
+# Missing or non-positive values fall back to the defaults shown here.
+
+retention:
+  # Days to keep moderation actions (their appeals, reversals and message deletions go with them).
+  # Actions with an open appeal or a still-running temporary ban are never purged.
+  actions_days: 365
+
+  # Days after an appeal is resolved before its free text (user reason, moderator note) is redacted.
+  appeal_text_days: 90
+
 
 # ========================================
 # 3. AI API & INFERENCE SETTINGS
