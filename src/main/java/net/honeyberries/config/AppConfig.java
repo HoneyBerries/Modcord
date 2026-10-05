@@ -31,6 +31,9 @@ public class AppConfig {
     private static final Path CONFIG_PATH = Paths.get("./config/app_config.yml").toAbsolutePath();
     private static final Path SYSTEM_PROMPT_PATH = Paths.get("./config/system_prompt.md").toAbsolutePath();
 
+    private static final int DEFAULT_ACTION_RETENTION_DAYS = 365;
+    private static final int DEFAULT_APPEAL_TEXT_RETENTION_DAYS = 90;
+
     private final Path configPath;
     protected Map<String, Object> data;
     private String cachedSystemPrompt;
@@ -450,6 +453,32 @@ public class AppConfig {
             return value;
         }
         throw new RuntimeException("Past actions lookback not configured");
+    }
+
+    /**
+     * Returns how many days moderation actions (with their appeals and reversals) are kept before the
+     * retention task deletes them. Defaults to 365 when {@code retention.actions_days} is missing or
+     * not positive, so a config file without a {@code retention} section keeps working.
+     *
+     * @return the actions retention window in days
+     */
+    public int getActionRetentionDays() {
+        return readRetentionDays("actions_days", DEFAULT_ACTION_RETENTION_DAYS);
+    }
+
+    /**
+     * Returns how many days after resolution an appeal's free text is kept before the retention task
+     * redacts it. Defaults to 90 when {@code retention.appeal_text_days} is missing or not positive.
+     *
+     * @return the resolved-appeal text retention window in days
+     */
+    public int getAppealTextRetentionDays() {
+        return readRetentionDays("appeal_text_days", DEFAULT_APPEAL_TEXT_RETENTION_DAYS);
+    }
+
+    private int readRetentionDays(@NotNull String key, int defaultDays) {
+        Integer value = readIntSetting("retention", key);
+        return value != null && value > 0 ? value : defaultDays;
     }
 
     /**

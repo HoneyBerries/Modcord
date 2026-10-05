@@ -451,11 +451,12 @@ public class GuildMessageProcessingService {
             return List.of();
         }
 
-        // Store the AI response in the database
-        boolean saved = AILogRepository.getInstance().addLogEntry(guildId, conversation);
-        if (!saved) {
-            logger.error("Failed to store AI response for guild {}", guildId);
-        }
+        // AI log persistence disabled: message content is no longer stored in the database
+        // for privacy reasons
+        // boolean saved = AILogRepository.getInstance().addLogEntry(guildId, conversation);
+        // if (!saved) {
+        //     logger.error("Failed to store AI response for guild {}", guildId);
+        // }
 
         try {
             UserID moderatorId = UserID.fromUser(guild.getJDA().getSelfUser());
