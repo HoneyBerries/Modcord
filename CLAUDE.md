@@ -40,14 +40,14 @@ Runtime config lives in `config/app_config.yml`:
 - **Database:** PostgreSQL connection (host, port, database, username; password from env var)
 - **Cache:** Refresh intervals for guild rules and channel guidelines (default: 60s)
 - **Moderation:** Queue duration (default: 30s), history context window (default: 50 messages, max age 24h)
-- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 3600s)
+- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 300s)
 - **Generic rules/guidelines:** Fallback text for servers with no custom configuration
 
 The system prompt is in `config/system_prompt.md` — customize to fit your community's values.
 
 ## Architecture
 
-Modcord is an AI-powered Discord moderation bot. Java 25, Gradle, JDA, PostgreSQL (via HikariCP), Liquibase for schema migrations, OpenAI-compatible inference client (with Resilience4j retry/circuit breaker).
+Modcord is an AI-powered Discord moderation bot. Java 25, Gradle, JDA, PostgreSQL (via HikariCP), Liquibase for schema migrations, OpenAI-compatible inference client (with Resilience4j retry).
 
 ### Startup flow (`Main.java`)
 
@@ -70,13 +70,13 @@ The core flow is message → batch → AI → action. Resilience is built in at 
    - Builds `GuildModerationBatch` with `ModerationUser` objects (user details, roles, per-channel message lists)
    - Generates a dynamic JSON schema via `DynamicSchemaGenerator` (constrains AI output to actual users/channels in the batch)
    - Builds the dynamic system prompt via `DynamicSystemPrompt` (injects guild-specific rules and channel guidelines from DB)
-   - Calls `InferenceEngine.generateResponse()` (async, wrapped in Resilience4j retry + circuit breaker)
+   - Calls `InferenceEngine.generateResponse()` (async, wrapped in Resilience4j retry)
    - Parses the JSON response via `ActionDataJSONParser` into `ActionData` objects
    - Logs to DB (`AILogRepository`, `GuildModerationActionsRepository`)
    - Executes actions in parallel via `ActionHandler`
 4. **`ActionHandler`** (singleton) executes each `ActionData`: sends user DM → deletes flagged messages → applies moderation action (timeout/kick/ban/unban) → posts to audit log channel
 
-**Inference resilience (Resilience4j):** InferenceEngine decorates all OpenAI calls with circuit breaker → retry pattern. Retries are transparent to the circuit breaker (all retry attempts count as one failure). Circuit opens after threshold failures; calls rejected immediately until half-open → probe succeeds. Retry and circuit breaker state are logged and exposed via `/status` command.
+**Inference resilience (Resilience4j):** InferenceEngine retries failed OpenAI calls (Resilience4j defaults). There is no circuit breaker; last success/failure times are exposed via `/status`.
 
 ### Key singletons
 

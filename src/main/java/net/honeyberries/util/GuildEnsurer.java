@@ -27,12 +27,12 @@ public final class GuildEnsurer {
      *
      * @param guildId the identifier of the guild to check; must not be null
      * @param guild   the guild entity to onboard if it does not already exist; must not be null
-     * @return {@code true} if the guild already existed or was successfully onboarded, {@code false} otherwise
+     * @return {@code true} if the guild does not exist or failed to be onboarded, {@code false} otherwise
      */
-    public static boolean ensureGuildExists(@NotNull GuildID guildId, @NotNull Guild guild) {
+    public static boolean guildNotExists(@NotNull GuildID guildId, @NotNull Guild guild) {
         GuildPreferences existing = GuildPreferencesRepository.getInstance().getGuildPreferences(guildId);
         if (existing != null) {
-            return true;
+            return false;
         }
 
         logger.debug("Guild {} not found in database, onboarding with default preferences", guildId.value());
@@ -40,6 +40,6 @@ public final class GuildEnsurer {
         if (!success) {
             logger.error("Failed to onboard guild {}", guildId.value());
         }
-        return success;
+        return !success;
     }
 }

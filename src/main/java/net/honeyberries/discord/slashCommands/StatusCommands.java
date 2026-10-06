@@ -7,14 +7,15 @@ import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import net.honeyberries.ai.InferenceEngine;
 import net.honeyberries.database.Database;
 import net.honeyberries.util.SlashCommandUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.Objects;
 
 /**
@@ -130,27 +131,21 @@ public class StatusCommands extends ListenerAdapter {
                     icon, pool.active(), pool.idle(), pool.total(), pool.max(), pool.waiting()));
         }
 
-        CircuitBreaker cb = InferenceEngine.getInstance().getCircuitBreaker();
-        CircuitBreaker.State cbState = cb.getState();
-        CircuitBreaker.Metrics metrics = cb.getMetrics();
-
-        float failureRate = metrics.getFailureRate();
-        String failureRateStr = failureRate < 0 ? "N/A" : String.format("%.0f%%", failureRate);
-
-        healthStatus.append("\n");
-        switch (cbState) {
-            case CLOSED -> healthStatus.append(String.format(
-                    ":white_check_mark:  **AI Inference:** Healthy (failure rate: %s over last %d calls)\n",
-                    failureRateStr, metrics.getNumberOfBufferedCalls()));
-            case OPEN -> healthStatus.append(
-                    ":x:  **AI Inference:** Circuit Open — endpoint unreachable, calls suppressed\n");
-            case HALF_OPEN -> healthStatus.append(
-                    ":warning:  **AI Inference:** Recovering — probing endpoint\n");
-            default -> healthStatus.append(String.format(
-                    ":question:  **AI Inference:** %s\n", cbState.name()));
-        }
+        InferenceEngine engine = InferenceEngine.getInstance();
+        Instant lastSuccess = engine.getLastSuccess();
+        Instant lastFailure = engine.getLastFailure();
+        boolean failing = lastFailure != null && (lastSuccess == null || lastFailure.isAfter(lastSuccess));
+        healthStatus.append(String.format("\n%s  **AI Inference:** %s\n",
+                failing ? ":warning:" : ":white_check_mark:",
+                failing ? "Last call failed" : "OK"));
+        healthStatus.append(String.format("Last success: %s | Last failure: %s\n",
+                formatTime(lastSuccess), formatTime(lastFailure)));
 
         SlashCommandUtils.replyEphemeral(event, healthStatus.toString());
+    }
+
+    private static String formatTime(@Nullable Instant time) {
+        return time == null ? "never" : "<t:" + time.getEpochSecond() + ":R>";
     }
 
     /**

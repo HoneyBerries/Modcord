@@ -1,116 +1,51 @@
-# Modcord: AI-Powered Discord Moderation
+# Modcord
 
 [![GitHub Repo](https://img.shields.io/badge/repo-HoneyBerries%2FModcord-181717?logo=github)](https://github.com/HoneyBerries/Modcord)
 [![Latest Release](https://img.shields.io/github/v/release/HoneyBerries/Modcord?sort=semver)](https://github.com/HoneyBerries/Modcord/releases/latest)
 [![Java 25+](https://img.shields.io/badge/java-25%2B-orange?logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![Gradle](https://img.shields.io/badge/build-Gradle-02303A?logo=gradle&logoColor=white)](https://gradle.org/)
-[![Discord](https://img.shields.io/badge/platform-Discord-5865F2?logo=discord&logoColor=white)](https://discord.com/)
-[![OpenAI-Compatible](https://img.shields.io/badge/AI-OpenAI--compatible-10A37F?logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
-[![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![License](https://img.shields.io/badge/license-Custom-lightgrey)](https://github.com/HoneyBerries/Modcord/blob/main/LICENSE.md)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-**Last Updated:** May 2026
+An AI-powered Discord moderation bot. Instead of matching keywords, Modcord sends recent conversation history and your server's rules to an LLM and acts on the result, so it can tell "that's fire" in #gaming from an actual threat.
 
----
+- ✅ Context-aware: reads recent channel history (50 messages by default)
+- ✅ Per-server rules and per-channel guidelines
+- ✅ Every action is logged with its reasoning
+- ✅ Self-hostable, works with any OpenAI-compatible API (OpenAI, Ollama, etc.)
+- ✅ Free software under the GPL-3.0
 
-## Table of Contents
+## Contents
 
-- [What is Modcord?](#-what-is-modcord)
-- [Why Modcord?](#-why-modcord)
-- [How It Works](#-how-it-works)
-- [Quick Start](#-quick-start)
-- [Architecture](#-architecture)
-- [Commands](#-commands)
-- [Configuration](#-configuration)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Support](#-support)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Commands](#commands)
+- [Configuration](#configuration)
+- [Testing](#testing)
+- [Data handling and privacy](#data-handling-and-privacy)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
 
----
+## How it works
 
-## 🤖 What is Modcord?
+1. A message arrives and is queued per guild for a short delay (30s by default) so nearby messages are batched.
+2. The bot fetches recent history from the channel and loads the guild's rules and channel guidelines from the database.
+3. The batch and rules are sent to the configured LLM, which returns structured JSON.
+4. The response is parsed into actions (warn, delete, timeout, kick, ban). The user is notified and a summary is posted to the audit log channel.
+5. The action is recorded in the database for auditing and appeals.
 
-Modcord is an **AI-powered Discord moderation bot** that uses Large Language Models to understand conversation context and make intelligent moderation decisions—not just matching keywords.
+If nothing is wrong, the message is left alone. LLM calls are retried (Resilience4j), and the last success/failure time is shown in `/status`.
 
-Instead of flagging "fire" in #gaming (when the user meant it positively) or misunderstanding sarcasm and inside jokes, Modcord reads the **full conversation history** and applies server-specific rules with transparency.
+## Quick start
 
-### The Problem with Keyword Filtering
-
-Traditional moderation bots rely on keyword lists:
-
-- ❌ False positives (flagging innocent messages)
-- ❌ Missing context (single-message analysis)
-- ❌ No nuance (sarcasm, cultural references, tone)
-- ❌ Opaque decisions (users don't understand why they were moderated)
-
-### The Modcord Solution
-
-- ✅ **Context-aware** — reads the last 10–20 messages to understand intent
-- ✅ **Configurable per server** — define custom rules and channel guidelines
-- ✅ **Transparent** — logs reasoning for every decision
-- ✅ **Self-hostable** — run on your own infrastructure
-- ✅ **OpenAI-compatible** — works with OpenAI, Ollama, and other LLM providers
-- ✅ **Open source** — audit and modify the code yourself
-
-**Result:** Smarter decisions, fewer false positives, and happier communities.
-
----
-
-## 📊 Why Modcord?
-
-| Feature | Modcord | Keyword Bots | Manual Mods |
-|---------|---------|--------------|------------|
-| **Context-Aware** | ✅ Full conversation | ❌ Single message | ✅ Full context |
-| **Customizable** | ✅ Per-server rules | ✅ Yes | ✅ Yes |
-| **Transparent** | ✅ Reasoning logged | ❌ No explanation | ✅ Yes |
-| **Self-Hostable** | ✅ Your infrastructure | ❌ Cloud only | ✅ Yes |
-| **Open Source** | ✅ MIT-style license | ❌ Proprietary | N/A |
-| **LLM-Powered** | ✅ GPT-4, Ollama, etc. | ❌ No | N/A |
-| **Setup Time** | ⏱️ 10 minutes | ⏱️ 5 minutes | N/A |
-| **Cost** | 💰 LLM usage only | 💸 Free–Premium | 💸💸💸 Salary |
-
----
-
-## 🏗️ How It Works
-
-Modcord's moderation pipeline works in real-time as messages arrive:
-
-1. **Message arrives** in Discord
-2. **Batching** — recent messages are grouped together with a short delay to collect context efficiently
-3. **Context gathering** — the bot fetches previous messages from the channel to understand the conversation
-4. **Rule loading** — guild-specific rules and channel guidelines are retrieved from the database
-5. **LLM querying** — the conversation history and rules are sent to the LLM (OpenAI, Ollama, etc.)
-6. **Decision parsing** — the LLM response is parsed into a moderation decision
-7. **Action execution** — the decision is applied (allow/delete/warn/timeout/kick/ban), and the user is notified
-8. **Logging** — every decision is recorded in the database for auditing and appeals
-
-If no action is needed, the message is simply allowed through. If a violation is detected, the bot executes the appropriate moderation action and posts a summary to the audit log channel.
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Java 25+** (JDK 25 or newer)
-- **PostgreSQL 14+**
-- **Discord bot token** (from [Discord Developer Portal](https://discord.com/developers/applications))
-- **OpenAI API key** or Ollama instance (for LLM inference)
-
-### Clone the Repository
+You need Java 25+, PostgreSQL 14+, a [Discord bot token](https://discord.com/developers/applications), and an OpenAI API key or an Ollama instance.
 
 ```bash
 git clone https://github.com/HoneyBerries/Modcord.git
 cd Modcord
-```
-
-### Set Up Environment Variables
-
-```bash
 cp .env.example .env
 ```
 
-Edit `.env` and fill in your credentials:
+Fill in `.env`:
 
 ```env
 DISCORD_BOT_TOKEN=your_discord_bot_token
@@ -118,215 +53,104 @@ OPENAI_API_KEY=your_openai_api_key
 POSTGRES_DB_PASSWORD=your_database_password
 ```
 
-### Review Configuration
-
-Main settings live in [`config/app_config.yml`](config/app_config.yml):
-
-- PostgreSQL connection details
-- AI endpoint URL and model name
-- Moderation timing and context windows
-- Default rules and channel guidelines
-- Fallback behaviors
-
-The system prompt is in [`config/system_prompt.md`](config/system_prompt.md).
-
-### Run the Bot
+Review [`config/app_config.yml`](config/app_config.yml) (database, AI endpoint and model, timing, default rules) and [`config/system_prompt.md`](config/system_prompt.md), then:
 
 ```bash
-# Run the bot
-./gradlew run
-
-# Or build an executable JAR
-./gradlew assemble
-
-# Run tests
-./gradlew test
-
-# Run a short test run (auto-shuts down after 5s)
-./gradlew runTest
+./gradlew run        # run the bot
+./gradlew assemble   # build build/libs/modcord-all.jar
+./gradlew runTest    # start and auto-shut down after 5s
 ```
 
----
+## Commands
 
-## 🏗️ Architecture
+**`/preferences`** configures the bot for your server:
+- `ai`: enable or disable AI moderation
+- `rules_channel`, `audit_channel`: where rules are read from and actions are logged
+- `action`: enable or disable warn, delete, timeout, kick, or ban
+- `appeals`: allow or block appeals (default: allow)
+- `remove_on_delete`: whether deleted messages leave the queue (default: keep, to catch ghost pings)
+- `settings`: interactive view of current preferences
+- `reset`: restore defaults
 
-Modcord is built as a modular pipeline with clear separation of concerns:
+**`/mod`** takes manual action: `warn`, `timeout` (1-40,320 minutes), `kick`, `ban` (1-365 days), `unban`.
 
-- **Discord Integration** — Connects to Discord, registers commands, and listens for incoming messages
-- **Message Batching** — Buffers messages per guild to collect context efficiently before processing
-- **Context Gathering** — Fetches conversation history and server metadata from Discord and the database
-- **Rule Management** — Loads guild-specific rules, channel guidelines, and exclusions from the database
-- **LLM Interface** — Sends conversation context to an OpenAI-compatible LLM endpoint and parses responses
-- **Action Execution** — Applies moderation decisions in parallel (delete messages, timeout, kick, ban, etc.)
-- **Audit Logging** — Records all decisions to the database with reasoning for transparency and appeals
+**Others:** `/status` (health, ping, uptime), `/exclude` (exempt users, roles, or channels), `/rollback` (undo actions), `/appeal` (appeal or review decisions), `/shutdown`.
 
-All configuration is stored in PostgreSQL, allowing server admins to customize rules and settings without code changes. The system is designed to be non-blocking so message processing doesn't slow down the Discord bot itself.
+## Configuration
 
----
-
-## 📝 Commands
-
-### Core Commands
-
-#### `/preferences` — Guild Configuration
-Configure how the bot behaves in your server:
-- `ai` — Enable or disable AI moderation for the guild
-- `rules_channel` — Set the channel where server rules are posted
-- `audit_channel` — Set the channel for moderation action logs
-- `action` — Enable or disable a specific moderation action (warn, timeout, delete, kick, ban)
-- `appeals` — Allow or block users from submitting moderation appeals (default: allow)
-- `remove_on_delete` — Whether deleted messages are removed from the moderation queue (default: keep, to catch ghost pings)
-- `settings` — View and manage current preferences with an interactive interface
-- `reset` — Reset all preferences to their default values
-
-#### `/mod` — Manual Moderation Actions
-Take direct moderation action against users:
-- `warn` — Warn a user with a reason
-- `timeout` — Timeout a user (1–40,320 minutes)
-- `kick` — Kick a user from the server
-- `ban` — Ban a user (1–365 days)
-- `unban` — Unban a previously banned user
-
-### Additional Commands
-
-- `/status` — Check bot health, ping, uptime, and guild count
-- `/exclude` — Exclude users, roles, or channels from AI moderation
-- `/rollback` — Undo previous moderation actions
-- `/appeal` — Appeal or review moderation decisions
-- `/shutdown` — Gracefully shut down the bot
-
----
-
-## ⚙️ Configuration
-
-### `config/app_config.yml`
-
-Main settings file with database, caching, moderation timing, and AI inference config:
+`config/app_config.yml` holds the database connection, cache refresh times, moderation timing, retention windows, and AI settings. The database password comes from `POSTGRES_DB_PASSWORD`.
 
 ```yaml
-database:
-  url: "jdbc:postgresql://host:port/database"
-  username: "your_db_user"
-  # Password loaded from POSTGRES_DB_PASSWORD env var
-
-cache:
-  rules_cache_refresh: 60                 # Seconds
-  channel_guidelines_cache_refresh: 60    # Seconds
-
 moderation:
-  moderation_queue_duration: 30           # Seconds before processing batch
-  num_history_context_messages: 50        # Messages to fetch for context
-  history_context_max_age: 86400          # Max age in seconds
+  moderation_queue_duration: 30     # seconds before a batch is processed
+  num_history_context_messages: 50
+  history_context_max_age: 86400    # seconds
 
 ai_settings:
   base_url: "https://your-api-endpoint/v1"
   model_name: "your-model-name"
-  api_request_timeout: 3600               # Seconds
-
-generic_server_rules: |
-  1. Be respectful to other users and the server.
-  2. No spamming.
-  ...
-
-generic_channel_guidelines: "No specific guidelines."
+  api_request_timeout: 300          # seconds
 ```
 
-See [`config/app_config.yml`](config/app_config.yml) for the full configuration file.
+`config/system_prompt.md` is the system prompt that guides the LLM's decisions. Edit it to fit your community.
 
-### `config/system_prompt.md`
-
-The system prompt guides the LLM on moderation philosophy and decision-making. Customize this to fit your community's values.
-
-### Environment Variables (`.env`)
-
-- `DISCORD_BOT_TOKEN` — Your Discord bot token
-- `OPENAI_API_KEY` — OpenAI API key (or your LLM provider's key)
-- `POSTGRES_DB_PASSWORD` — Database password
-
----
-
-## 🧪 Testing
-
-### Unit Tests
+## Testing
 
 ```bash
-./gradlew test
+./gradlew test              # unit tests, no network
+./gradlew integrationTest   # needs Docker for a Testcontainers Postgres
 ```
 
-### Integration Tests
+Some integration tests also need a live Discord bot or an LLM API key, and skip themselves if those aren't available.
 
-Some tests require a live Discord bot connection and a test guild:
+## Data handling and privacy
 
-```bash
-./gradlew test --include-group integration
-```
+This describes what the code does. It is not a privacy policy or terms of service. If you run a public instance, you are the operator and need your own policy and terms that match your deployment.
 
-Tests use JUnit `Assumptions` to skip gracefully if the bot isn't connected.
+**Stored in PostgreSQL:** guild settings (preferences, rules, channel guidelines, exclusions) and moderation records (target user ID, action, reason, durations, deleted message IDs, reversals, and appeals including the appeal text).
 
----
+**Not stored:** message content. Messages are held in memory only while a batch is processed. The old `ai_log` table, which held AI conversations, was dropped in migration `changelog-v23.sql`.
 
-## 🚧 Current Scope
+**Sent to your LLM provider:** the batch's message text, images, usernames, user IDs, roles, and your guild's rules, sent to the endpoint in `ai_settings.base_url`. That provider's terms govern what happens to it. Pick one that fits your needs, or self-host a model.
 
-Modcord includes the core pieces of an AI moderation pipeline:
+**Retention:** a daily task enforces the `retention` settings in `config/app_config.yml`.
 
-- ✅ Discord event ingestion and message batching
-- ✅ Conversation history context handling
-- ✅ Structured LLM output generation and parsing
-- ✅ Database-backed configuration and audit logging
-- ✅ Slash commands for health checks, preferences, and admin workflows
-- ✅ Appeals and rollback capabilities
-- ✅ Per-guild rules and per-channel guidelines
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `retention.actions_days` | 365 | Deletes older actions with their appeals, reversals, and deletions. Actions with an open appeal or an unexpired temporary ban are kept. |
+| `retention.appeal_text_days` | 90 | Redacts appeal text this long after the appeal is resolved. |
 
-The project is actively developing; check GitHub for ongoing work.
+If you change these, update your privacy policy to match.
 
----
+**Operators** of a self-hosted instance are responsible for publishing their own privacy policy and terms (including that message content goes to a third-party LLM), complying with the [Discord Terms](https://discord.com/terms), [Developer Policy](https://discord.com/developers/docs/policies-and-agreements/developer-policy), and applicable privacy law, and securing their database and credentials. The maintainers do not receive data from self-hosted instances.
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! See [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines.
+Contributions are welcome. Run `./gradlew test` and `./gradlew spotlessApply` before opening a PR. By submitting a contribution you agree it is licensed under the [GPL-3.0](#license) like the rest of the project, and that you have the right to submit it.
 
-### Development Setup
+## License
 
-```bash
-git clone https://github.com/HoneyBerries/Modcord.git
-cd Modcord
+Modcord is licensed under the [GNU General Public License v3.0](LICENSE). Earlier versions of this README described a custom license, which no longer applies.
 
-./gradlew dependencies
-./gradlew test
-./gradlew spotlessApply
-```
+In short (the license text controls):
 
----
+- You can use, modify, and redistribute Modcord, including commercially, under the GPL.
+- If you distribute it or a modified version (source or the compiled JAR), you must do so under the GPL-3.0, provide the corresponding source, mark your changes, and keep the copyright and license notices.
+- The GPL-3.0 is not the AGPL. Running a modified version privately, including as a hosted bot, does not require you to publish your source.
+- There is no warranty and no liability for moderation decisions, missed violations, or data loss (sections 15 and 16). AI moderation can be wrong, so staff should review actions and appeals.
 
-## 🆘 Support
+Modcord depends on third-party libraries (JDA, HikariCP, Liquibase, Resilience4j, and others), each under its own license. It is not affiliated with Discord Inc., OpenAI, or any LLM provider.
 
-- **GitHub Issues** — [Report bugs or request features](https://github.com/HoneyBerries/Modcord/issues)
-- **GitHub Discussions** — [Ask questions and discuss ideas](https://github.com/HoneyBerries/Modcord/discussions)
-- **Email** — [henry.rainbowfish@gmail.com](mailto:henry.rainbowfish@gmail.com)
+Copyright (C) 2026 Henry Ng and Modcord contributors.
 
----
+## Support
 
-## 📄 License
-
-Modcord uses a custom license rather than a standard OSI license. Personal, educational, non-profit, and evaluation use are allowed. Commercial use requires a separate license unless you qualify through contribution tiers.
-
-See [`LICENSE.md`](LICENSE.md) for full terms.
-
----
+- [GitHub Issues](https://github.com/HoneyBerries/Modcord/issues)
+- [GitHub Discussions](https://github.com/HoneyBerries/Modcord/discussions)
+- Email: [henry.rainbowfish@gmail.com](mailto:henry.rainbowfish@gmail.com)
 
 ## Stack
 
-- **Java 25+**
-- **Gradle** — build tool
-- **JDA** — Discord Java library
-- **PostgreSQL** — persistent storage
-- **Liquibase** — schema migrations
-- **OpenAI-compatible API** — LLM inference (GPT-4, Ollama, etc.)
+Java 25, Gradle, JDA, PostgreSQL, Liquibase, Resilience4j, and an OpenAI-compatible API.
 
----
-
-## Previous Versions
-
-For the previous Python-based version, check out the [`old-python-version` branch](https://github.com/HoneyBerries/Modcord/tree/old-python-version).
-
-The current Java version (v3.2.0) is the main branch.
+The previous Python version is on the [`old-python-version` branch](https://github.com/HoneyBerries/Modcord/tree/old-python-version). It predates the switch to GPL-3.0 and may have different license terms.

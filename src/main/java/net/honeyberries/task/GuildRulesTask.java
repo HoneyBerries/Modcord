@@ -62,7 +62,7 @@ public class GuildRulesTask extends AbstractScheduledTask {
 
             // Ensure guild exists in guild preferences database before inserting guild rules
             // This prevents foreign key constraint violations
-            if (!GuildEnsurer.ensureGuildExists(guildId, guild)) {
+            if (GuildEnsurer.guildNotExists(guildId, guild)) {
                 return TaskOutcome.FAILED;
             }
 
