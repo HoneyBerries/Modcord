@@ -68,7 +68,7 @@ public class ChannelGuidelinesTask extends AbstractScheduledTask {
 
             // Ensure guild exists in guild_preferences table before inserting channel guidelines
             // This prevents foreign key constraint violations
-            if (!GuildEnsurer.ensureGuildExists(guildId, guild)) {
+            if (GuildEnsurer.guildNotExists(guildId, guild)) {
                 return TaskOutcome.FAILED;
             }
 

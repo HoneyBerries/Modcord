@@ -33,7 +33,7 @@ An AI-powered Discord moderation bot. Instead of matching keywords, Modcord send
 4. The response is parsed into actions (warn, delete, timeout, kick, ban). The user is notified and a summary is posted to the audit log channel.
 5. The action is recorded in the database for auditing and appeals.
 
-If nothing is wrong, the message is left alone. LLM calls go through retry and circuit-breaker handling (Resilience4j), and state is shown in `/status`.
+If nothing is wrong, the message is left alone. LLM calls are retried (Resilience4j), and the last success/failure time is shown in `/status`.
 
 ## Quick start
 
@@ -89,7 +89,7 @@ moderation:
 ai_settings:
   base_url: "https://your-api-endpoint/v1"
   model_name: "your-model-name"
-  api_request_timeout: 3600         # seconds
+  api_request_timeout: 300          # seconds
 ```
 
 `config/system_prompt.md` is the system prompt that guides the LLM's decisions. Edit it to fit your community.
