@@ -5,7 +5,7 @@ database:
   # Format: jdbc:postgresql://host:port/database
   # Keep the query parameters: socketTimeout defaults to infinite in the driver, so a silently dead
   # connection would otherwise hang its thread (and pin a pool connection) forever.
-  url: "jdbc:postgresql://modcord-postgres-prod.postgres.database.azure.com:5432/postgres?connectTimeout=5&socketTimeout=30&tcpKeepAlive=true"
+  url: "jdbc:postgresql://modcord-test-db.postgres.database.azure.com:5432/postgres?connectTimeout=5&socketTimeout=30&tcpKeepAlive=true"
   
   # PostgreSQL database username
   username: "ModcordDBAdmin"
