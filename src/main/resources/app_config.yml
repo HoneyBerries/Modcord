@@ -74,6 +74,11 @@ ai_settings:
   # Timeout for the AI inference request (seconds)
   api_request_timeout: 300 # 5 minutes
 
+  # Reasoning effort sent as `reasoning_effort` on each request. Supported values depend on the
+  # provider/model; W&B Inference accepts none, minimal, low, medium, high, xhigh, max.
+  # Leave blank to omit the field and use the model's default.
+  reasoning_effort: "max"
+
 
 # Default server rules for all servers. Used if no server-specific rules are defined.
 generic_server_rules: |

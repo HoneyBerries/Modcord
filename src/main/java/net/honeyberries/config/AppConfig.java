@@ -349,6 +349,18 @@ public class AppConfig {
     }
 
     /**
+     * Returns the reasoning effort to request from the model (e.g. {@code low}, {@code high}, {@code max}).
+     * Passed through verbatim, so valid values depend on the inference provider.
+     *
+     * @return the configured effort, or {@code null} if unset/blank (the model default applies)
+     */
+    @Nullable
+    public String getAIReasoningEffort() {
+        String value = readStringSetting("ai_settings", "reasoning_effort");
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    /**
      * Returns the API request timeout for AI API requests in seconds.
      * Default: Long.MAX_VALUE if not specified in config.
      *
