@@ -5,7 +5,7 @@ database:
   # Format: jdbc:postgresql://host:port/database
   # Keep the query parameters: socketTimeout defaults to infinite in the driver, so a silently dead
   # connection would otherwise hang its thread (and pin a pool connection) forever.
-  url: "jdbc:postgresql://modcord-postgres-prod.postgres.database.azure.com:5432/postgres?connectTimeout=5&socketTimeout=30&tcpKeepAlive=true"
+  url: "jdbc:postgresql://modcord-test-db.postgres.database.azure.com:5432/postgres?connectTimeout=5&socketTimeout=30&tcpKeepAlive=true"
   
   # PostgreSQL database username
   username: "ModcordDBAdmin"
@@ -73,6 +73,11 @@ ai_settings:
 
   # Timeout for the AI inference request (seconds)
   api_request_timeout: 300 # 5 minutes
+
+  # Reasoning effort sent as `reasoning_effort` on each request. Supported values depend on the
+  # provider/model; W&B Inference accepts none, minimal, low, medium, high, xhigh, max.
+  # Leave blank to omit the field and use the model's default.
+  reasoning_effort: "max"
 
 
 # Default server rules for all servers. Used if no server-specific rules are defined.

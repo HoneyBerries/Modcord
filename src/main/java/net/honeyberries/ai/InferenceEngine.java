@@ -2,6 +2,7 @@ package net.honeyberries.ai;
 
 import com.openai.client.OpenAIClientAsync;
 import com.openai.client.okhttp.OpenAIOkHttpClientAsync;
+import com.openai.core.JsonValue;
 import com.openai.errors.OpenAIException;
 import com.openai.models.ResponseFormatJsonSchema;
 import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
@@ -40,6 +41,10 @@ public class InferenceEngine {
     private static final Logger logger = LoggerFactory.getLogger(InferenceEngine.class);
 
     private final String modelName;
+
+    /** Value for the {@code reasoning_effort} request field, or {@code null} to use the model default. */
+    @Nullable
+    private final String reasoningEffort;
     /** Stored for log messages only. */
 
     private final String endpoint;
@@ -61,6 +66,7 @@ public class InferenceEngine {
         String apiKey = TokenManager.getOpenAIKey();
         this.endpoint = AppConfig.getInstance().getAIEndpoint();
         this.modelName = AppConfig.getInstance().getAIModelName();
+        this.reasoningEffort = AppConfig.getInstance().getAIReasoningEffort();
 
         this.openAIClient = OpenAIOkHttpClientAsync.builder()
                 .apiKey(apiKey)
@@ -71,7 +77,7 @@ public class InferenceEngine {
         this.retry = buildRetry();
         this.retryScheduler = Executors.newSingleThreadScheduledExecutor();
 
-        logger.info("InferenceEngine initialized: endpoint={}, model={}", endpoint, modelName);
+        logger.info("InferenceEngine initialized: endpoint={}, model={}, reasoningEffort={}", endpoint, modelName, reasoningEffort);
     }
 
     @NotNull
@@ -113,6 +119,11 @@ public class InferenceEngine {
 
         if (responseFormat != null) {
             builder.responseFormat(responseFormat);
+        }
+
+        // Sent as a raw body property: the SDK's ReasoningEffort enum doesn't cover provider-specific values like "max".
+        if (reasoningEffort != null) {
+            builder.putAdditionalBodyProperty("reasoning_effort", JsonValue.from(reasoningEffort));
         }
 
         ChatCompletionCreateParams params = builder.build();
