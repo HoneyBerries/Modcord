@@ -24,6 +24,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew spotlessApply
 ```
 
+There is no `spotlessCheck` task, only `spotlessApply`.
+
 Set log level via JVM flag: `-DLOG_LEVEL=INFO|DEBUG|WARN|ERROR` (defaults to DEBUG in Gradle tasks, INFO in production).
 
 ## Environment Setup
@@ -40,8 +42,10 @@ Runtime config lives in `config/app_config.yml`:
 - **Database:** PostgreSQL connection (host, port, database, username; password from env var)
 - **Cache:** Refresh intervals for guild rules and channel guidelines (default: 60s)
 - **Moderation:** Queue duration (default: 30s), history context window (default: 50 messages, max age 24h)
-- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 300s)
+- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 300s), `reasoning_effort` (default `max`, blank = omit; sent as a raw `reasoning_effort` body property because the SDK enum lacks `max`)
 - **Generic rules/guidelines:** Fallback text for servers with no custom configuration
+
+`config/` is git-ignored; the tracked copy of the config is `src/main/resources/app_config.yml`. Edit both when adding a setting.
 
 The system prompt is in `config/system_prompt.md` — customize to fit your community's values.
 
@@ -110,6 +114,18 @@ All major services are singletons accessed via `getInstance()`: `Database`, `App
 Failures in integration tests don't block CI if bot is unavailable (graceful skip).
 
 **CI gating:** `.github/workflows/unit-tests.yml` runs `./gradlew test` on every push/PR and is also a reusable workflow (`workflow_call`). `deploy.yml` and `release.yml` call it and `needs:` it, so a main push only deploys or releases if unit tests pass. Integration tests (`test.yml`) run separately and don't gate deploys, because they depend on live third-party APIs.
+
+## Production VM
+
+- `ssh ModcordVM` (user ModcordUser). The bot is `modcord.service`; files are in `~/Modcord` (`Modcord.jar`, `config/app_config.yml`, `.env`, `logs/latest.log`). It is not a git checkout.
+- A push to `main` triggers `deploy.yml`, which builds, copies the JAR and restarts the service. The VM's `config/` is separate from the repo, so apply config changes there by hand (back up first).
+- `InferenceEngine` initializes lazily, so its startup log line only appears after the first moderated batch.
+- Prod DB is Azure Postgres; the password is only in the VM's `.env`, and `psql` is installed on the VM. Query read-only.
+- The DB stores moderation actions and AI reasons but no message text, and the `ai_log` table no longer exists.
+
+## Git Gotchas
+
+`src/main/java/net/honeyberries/config/` matches the `config/` ignore rule. Its files are tracked, but `git add` warns and exits non-zero, so don't chain commit/push after it with `&&`.
 
 ## Java 25+ Features
 
