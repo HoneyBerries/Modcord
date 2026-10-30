@@ -57,7 +57,7 @@ Modcord is an AI-powered Discord moderation bot. Java 25, Gradle, JDA, PostgreSQ
 
 1. `Database.initialize(AppConfig)` — opens HikariCP pool, runs Liquibase migrations
 2. `JDAManager.getInstance()` — connects to Discord, registers all slash commands and event listeners
-3. Scheduled tasks start: `UnbanWatcherTask`, `GuildRulesTask`, `ChannelGuidelinesTask` (thread pool: 8 threads)
+3. Scheduled tasks start: `UnbanWatcherTask`, `GuildRulesTask`, `ChannelGuidelinesTask` (8-thread scheduler in `Main`; `GlobalOrchestrationService` and `InferenceEngine` own separate schedulers)
 4. `GlobalOrchestrationService` is implicitly initialized on first message — maintains per-guild queues and scheduling logic
 
 **Shutdown flow:** gracefully stops tasks, drops pending moderation queues, shuts down the bot, closes database. Safe even if startup failed partway through.
@@ -76,7 +76,7 @@ The core flow is message → batch → AI → action. Resilience is built in at 
    - Builds the dynamic system prompt via `DynamicSystemPrompt` (injects guild-specific rules and channel guidelines from DB)
    - Calls `InferenceEngine.generateResponse()` (async, wrapped in Resilience4j retry)
    - Parses the JSON response via `ActionDataJSONParser` into `ActionData` objects
-   - Logs to DB (`AILogRepository`, `GuildModerationActionsRepository`)
+   - Logs actions to DB (`GuildModerationActionsRepository`); AI conversations are no longer stored
    - Executes actions in parallel via `ActionHandler`
 4. **`ActionHandler`** (singleton) executes each `ActionData`: sends user DM → deletes flagged messages → applies moderation action (timeout/kick/ban/unban) → posts to audit log channel
 
