@@ -16,6 +16,12 @@ import java.util.Objects;
 public class DiscordUtils {
 
     /**
+     * The permission that gates {@code /setup}, {@code /preferences} and visibility of the
+     * auto-created audit channel. Keep all "who counts as a Modcord admin" checks on this one value.
+     */
+    public static final Permission MODCORD_ADMIN_PERMISSION = Permission.MANAGE_SERVER;
+
+    /**
      * Determines whether the provided member has administrative privileges.
      * A member is considered an administrator if they explicitly have the
      * {@link Permission#ADMINISTRATOR} permission or are listed as a special user

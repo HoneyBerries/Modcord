@@ -81,7 +81,7 @@ public class PreferenceCommandHelper {
         }
 
         Member member = event.getMember();
-        if (member == null || (!member.hasPermission(Permission.MANAGE_SERVER)
+        if (member == null || (!member.hasPermission(DiscordUtils.MODCORD_ADMIN_PERMISSION)
                 && !specialUsersRepo.isSpecialUser(event.getUser()))) {
             event.reply("You need the **Manage Server** permission or higher to use this command.")
                     .setEphemeral(true).queue();

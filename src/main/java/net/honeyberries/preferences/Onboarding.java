@@ -1,18 +1,23 @@
 package net.honeyberries.preferences;
 
+import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.requests.restaction.ChannelAction;
 import net.honeyberries.database.repository.GuildPreferencesRepository;
 import net.honeyberries.datatypes.discord.ChannelID;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
+import net.honeyberries.util.DiscordUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -41,6 +46,9 @@ public class Onboarding {
     // ---------------------------------------------------------------
 
     private static final Logger logger = LoggerFactory.getLogger(Onboarding.class);
+
+    /** Name of the audit channel Modcord creates when none can be found. Must match {@link #AUDIT_PATTERN}. */
+    private static final String AUDIT_CHANNEL_NAME = "modcord-audit-log";
 
     /**
      * Matches common rules/guidelines channel names.
@@ -76,7 +84,7 @@ public class Onboarding {
      * @param guild the guild to set up
      * @return {@code true} if preferences were successfully persisted
      */
-    public boolean setupGuild(@NotNull Guild guild) {
+    public synchronized boolean setupGuild(@NotNull Guild guild) {
         GuildID guildID = GuildID.fromGuild(guild);
         GuildPreferencesRepository repository = GuildPreferencesRepository.getInstance();
 
@@ -204,7 +212,8 @@ public class Onboarding {
      *   <li>Guild's community safety alerts channel.</li>
      *   <li>Regex match — if exactly one match, use it; if ambiguous, pick the
      *       best candidate via {@link #scoreAuditChannel(TextChannel)}.</li>
-     *   <li>{@code null}.</li>
+     *   <li>A newly created private channel (see {@link #createAuditChannel(Guild)}),
+     *       or {@code null} if that fails.</li>
      * </ol>
      */
     @Nullable
@@ -222,7 +231,8 @@ public class Onboarding {
                 .toList();
 
         if (matches.isEmpty()) {
-            return null;
+            // 3. Nothing suitable exists, so create one
+            return createAuditChannel(guild);
         }
 
         if (matches.size() == 1) {
@@ -243,6 +253,37 @@ public class Onboarding {
         );
 
         return best;
+    }
+
+    /**
+     * Creates a private audit channel. It is hidden from {@code @everyone} and visible to the bot and to
+     * roles holding {@link DiscordUtils#MODCORD_ADMIN_PERMISSION}. The name matches {@link #AUDIT_PATTERN},
+     * so later runs find it instead of creating another.
+     *
+     * @return the new channel, or {@code null} if Discord refused (for example, missing Manage Channels)
+     */
+    @Nullable
+    private TextChannel createAuditChannel(@NotNull Guild guild) {
+        Set<Permission> view = EnumSet.of(Permission.VIEW_CHANNEL);
+
+        ChannelAction<TextChannel> action = guild.createTextChannel(AUDIT_CHANNEL_NAME)
+                .addPermissionOverride(guild.getPublicRole(), null, view)
+                .addMemberPermissionOverride(guild.getSelfMember().getIdLong(),
+                        EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_SEND, Permission.MESSAGE_EMBED_LINKS),
+                        null);
+
+        guild.getRoles().stream()
+                .filter(r -> !r.isPublicRole() && !r.isManaged() && r.hasPermission(DiscordUtils.MODCORD_ADMIN_PERMISSION))
+                .forEach(r -> action.addRolePermissionOverride(r.getIdLong(), view, null));
+
+        try {
+            TextChannel created = action.complete();
+            logger.info("[{}] Created audit channel #{}", guild.getName(), created.getName());
+            return created;
+        } catch (Exception e) {
+            logger.warn("[{}] Could not create an audit channel: {}", guild.getName(), e.getMessage());
+            return null;
+        }
     }
 
     // ---------------------------------------------------------------

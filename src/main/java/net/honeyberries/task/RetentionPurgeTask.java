@@ -17,6 +17,24 @@ public class RetentionPurgeTask extends AbstractScheduledTask {
 
     private final RetentionRepository retentionRepository = RetentionRepository.getInstance();
 
+    /**
+     * Processes the retention rules configured in the application by performing two operations:
+     * <p>
+     * 1. Purges moderation actions that are older than the configured retention period, along with their
+     *    associated appeals, reversals, and deletions.
+     * <p>
+     * 2. Redacts the free text of resolved appeals that are older than the configured retention period.
+     * <p>
+     * Moderation actions with open appeals or unexpired temporary bans are not purged.
+     * Appeals that are still open or already redacted are not modified.
+     * <p>
+     * Logs the number of moderation actions purged and resolved appeals redacted, if any.
+     *
+     * @return a list of {@link TaskOutcome} results for each operation:
+     *         - The first element indicates whether any moderation actions were purged.
+     *         - The second element indicates whether any resolved appeals were redacted.
+     *         {@code UPDATED} if changes were made, {@code SKIPPED} if no changes were needed.
+     */
     @Override
     protected List<TaskOutcome> processItems() {
         AppConfig config = AppConfig.getInstance();
