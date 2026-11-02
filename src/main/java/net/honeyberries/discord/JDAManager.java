@@ -18,6 +18,7 @@ import net.honeyberries.discord.slashCommands.HelpCommands;
 import net.honeyberries.discord.slashCommands.ModerationCommands;
 import net.honeyberries.discord.slashCommands.PreferencesCommands;
 import net.honeyberries.discord.slashCommands.RollbackCommands;
+import net.honeyberries.discord.slashCommands.SetupCommands;
 import net.honeyberries.discord.slashCommands.ShutdownCommands;
 import net.honeyberries.discord.slashCommands.StatusCommands;
 import net.honeyberries.util.TokenManager;
@@ -90,6 +91,7 @@ public class JDAManager {
         registerCommandHandler(new ActionCommands(), ActionCommands::registerActionCommands, "ActionCommands", commands);
         registerCommandHandler(new RollbackCommands(), RollbackCommands::registerRollbackCommands, "RollbackCommands", commands);
         registerCommandHandler(new AppealCommands(), AppealCommands::registerAppealCommands, "AppealCommands", commands);
+        registerCommandHandler(new SetupCommands(), SetupCommands::registerSetupCommands, "SetupCommands", commands);
         registerCommandHandler(new HelpCommands(), HelpCommands::registerHelpCommands, "HelpCommands", commands);
 
         commands.queue();
