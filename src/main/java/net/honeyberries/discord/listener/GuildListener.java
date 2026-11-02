@@ -3,7 +3,7 @@ package net.honeyberries.discord.listener;
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent;
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.honeyberries.database.repository.GuildPreferencesRepository;
+import net.honeyberries.database.repository.GuildDataRepository;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.preferences.Onboarding;
 import net.honeyberries.services.GlobalOrchestrationService;
@@ -40,7 +40,8 @@ public class GuildListener extends ListenerAdapter {
 
     /**
      * Cleans up bot state when leaving a guild.
-     * Removes stored preferences to avoid orphaned configuration.
+     * Evicts in-memory state, then deletes all of the guild's stored data (rules, guidelines, exemptions,
+     * moderation actions and dependents, appeals, preferences).
      *
      * @param event the guild leave event from Discord
      * @throws NullPointerException if {@code event} is {@code null}
@@ -50,8 +51,20 @@ public class GuildListener extends ListenerAdapter {
         logger.debug("Left guild: {}", event.getGuild().getName());
         GuildID guildId = GuildID.fromGuild(event.getGuild());
 
-        GuildPreferencesRepository.getInstance().deleteGuildPreferences(guildId);
-        GlobalOrchestrationService.getInstance().evictGuild(guildId);
+        // Each step is isolated so one failure cannot skip the other or propagate out of the listener.
+        try {
+            GlobalOrchestrationService.getInstance().evictGuild(guildId);
+        } catch (RuntimeException e) {
+            logger.error("Failed to evict in-memory state for guild {}", guildId.value(), e);
+        }
+
+        try {
+            if (!GuildDataRepository.getInstance().purgeGuildData(guildId)) {
+                logger.error("Stored data for guild {} could not be purged after leaving it", guildId.value());
+            }
+        } catch (RuntimeException e) {
+            logger.error("Failed to purge stored data for guild {}", guildId.value(), e);
+        }
     }
 
 }
