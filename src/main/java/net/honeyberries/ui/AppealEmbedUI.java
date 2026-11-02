@@ -104,7 +104,7 @@ public class AppealEmbedUI {
 
         EmbedHelper.addDurationField(embed, action.action(), action.timestamp(),
                 action.action() == ActionType.TIMEOUT ? action.timeoutDuration() : action.banDuration(),
-                "Duration");
+                "Duration", "expires");
 
         return embed;
     }
@@ -228,7 +228,7 @@ public class AppealEmbedUI {
 
         EmbedHelper.addDurationField(embed, action.action(), action.timestamp(),
                 action.action() == ActionType.TIMEOUT ? action.timeoutDuration() : action.banDuration(),
-                "Duration");
+                "Duration", "expires");
 
         return new MessageCreateBuilder()
                 .setEmbeds(embed.build())

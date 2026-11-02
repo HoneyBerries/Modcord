@@ -42,7 +42,7 @@ public class ActionEmbedUI {
 
         EmbedHelper.addDurationField(embed, actionData.action(), actionData.timestamp(),
                 actionData.action() == ActionType.TIMEOUT ? actionData.timeoutDuration() : actionData.banDuration(),
-                "Duration");
+                "Duration", "expires");
 
         return new MessageCreateBuilder().setEmbeds(embed.build()).build();
     }

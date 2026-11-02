@@ -30,25 +30,6 @@ public class EmbedHelper {
         return sb.toString().trim();
     }
 
-    /**
-     * Adds duration fields to an embed for TIMEOUT or BAN actions.
-     * For TIMEOUT: shows the duration with expiration time.
-     * For BAN: shows "Permanent" if infinite, otherwise shows duration with expiration.
-     *
-     * @param embed the embed to add fields to, must not be {@code null}
-     * @param actionType the action type, must not be {@code null}
-     * @param actionTimestamp the timestamp when the action was created, must not be {@code null}
-     * @param duration the duration in seconds (ignored if action type doesn't support it)
-     * @param fieldLabel the label for the duration field (e.g., "Duration" or "Original Duration")
-     */
-    public static void addDurationField(
-            @NotNull EmbedBuilder embed,
-            @NotNull ActionType actionType,
-            @NotNull Instant actionTimestamp,
-            long duration,
-            @NotNull String fieldLabel) {
-        addDurationField(embed, actionType, actionTimestamp, duration, fieldLabel, "expires");
-    }
 
     /**
      * Adds duration fields to an embed for TIMEOUT or BAN actions, using a custom expiry verb phrase.
@@ -69,6 +50,7 @@ public class EmbedHelper {
             long duration,
             @NotNull String fieldLabel,
             @NotNull String expiryVerb) {
+
         if (actionType == ActionType.TIMEOUT && duration > 0) {
             Instant expiresAt = actionTimestamp.plusSeconds(duration);
             embed.addField(fieldLabel,
