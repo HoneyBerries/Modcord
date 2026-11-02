@@ -1,11 +1,16 @@
 package net.honeyberries.discord.listener;
 
+import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent;
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.honeyberries.database.repository.GuildDataRepository;
 import net.honeyberries.datatypes.discord.GuildID;
+import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.preferences.Onboarding;
+import net.honeyberries.preferences.PreferencesManager;
+import net.honeyberries.ui.WelcomeEmbedUI;
 import net.honeyberries.services.GlobalOrchestrationService;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -36,6 +41,34 @@ public class GuildListener extends ListenerAdapter {
         if (!success) {
             logger.error("Failed to onboard guild {}", event.getGuild().getName());
         }
+
+        try {
+            postWelcome(event.getGuild());
+        } catch (RuntimeException e) {
+            logger.warn("Failed to post welcome message in guild {}", event.getGuild().getName(), e);
+        }
+    }
+
+    /**
+     * Posts the welcome message to the guild's audit channel, if one is set and the bot can talk in it.
+     */
+    private void postWelcome(@NotNull Guild guild) {
+        GuildPreferences prefs = PreferencesManager.getInstance()
+                .getOrDefaultPreferences(GuildID.fromGuild(guild));
+        if (prefs.auditLogChannelId() == null) {
+            logger.info("No audit channel set for the welcome message in guild {}", guild.getName());
+            return;
+        }
+
+        // Cache lookup is safe here: onboarding just resolved or created this channel from the same guild cache.
+        TextChannel audit = guild.getTextChannelById(prefs.auditLogChannelId().value());
+        if (audit == null || !audit.canTalk()) {
+            logger.info("Audit channel unusable for the welcome message in guild {}", guild.getName());
+            return;
+        }
+
+        audit.sendMessageEmbeds(WelcomeEmbedUI.build(prefs)).queue(
+                null, e -> logger.warn("Could not post welcome in guild {}", guild.getName(), e));
     }
 
     /**

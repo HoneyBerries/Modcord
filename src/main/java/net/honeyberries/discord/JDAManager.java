@@ -10,17 +10,7 @@ import net.honeyberries.discord.listener.GuildListener;
 import net.honeyberries.discord.listener.MessageListener;
 import net.honeyberries.discord.listener.RoleListener;
 import net.honeyberries.discord.listener.UserListener;
-import net.honeyberries.discord.slashCommands.ActionCommands;
-import net.honeyberries.discord.slashCommands.AppealCommands;
-import net.honeyberries.discord.slashCommands.DebugCommands;
-import net.honeyberries.discord.slashCommands.ExcludeCommand;
-import net.honeyberries.discord.slashCommands.HelpCommands;
-import net.honeyberries.discord.slashCommands.ModerationCommands;
-import net.honeyberries.discord.slashCommands.PreferencesCommands;
-import net.honeyberries.discord.slashCommands.RollbackCommands;
-import net.honeyberries.discord.slashCommands.SetupCommands;
-import net.honeyberries.discord.slashCommands.ShutdownCommands;
-import net.honeyberries.discord.slashCommands.StatusCommands;
+import net.honeyberries.discord.slashCommands.*;
 import net.honeyberries.util.TokenManager;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -93,6 +83,7 @@ public class JDAManager {
         registerCommandHandler(new AppealCommands(), AppealCommands::registerAppealCommands, "AppealCommands", commands);
         registerCommandHandler(new SetupCommands(), SetupCommands::registerSetupCommands, "SetupCommands", commands);
         registerCommandHandler(new HelpCommands(), HelpCommands::registerHelpCommands, "HelpCommands", commands);
+        registerCommandHandler(new FAQCommands(), FAQCommands::registerFaqCommands, "FAQCommands", commands);
 
         commands.queue();
         logger.info("All slash commands synced — bot setup complete");
