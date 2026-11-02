@@ -2,6 +2,9 @@ package net.honeyberries.discord.slashCommands;
 
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -31,25 +34,28 @@ public class PreferencesCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(PreferencesCommands.class);
 
+    /** Every component ID the preferences UI creates starts with this, so this listener can claim them. */
+    private static final String ID_PREFIX = "pref_";
+
     private final PreferenceCommandHelper helper = new PreferenceCommandHelper();
 
     @Override
-    public void onButtonInteraction(@NotNull net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
-        if (event.getComponentId().startsWith("pref_")) {
+    public void onButtonInteraction(@NotNull ButtonInteractionEvent event) {
+        if (event.getComponentId().startsWith(ID_PREFIX)) {
             helper.handleButtonInteraction(event);
         }
     }
 
     @Override
-    public void onStringSelectInteraction(@NotNull net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent event) {
-        if (event.getComponentId().startsWith("pref_")) {
+    public void onStringSelectInteraction(@NotNull StringSelectInteractionEvent event) {
+        if (event.getComponentId().startsWith(ID_PREFIX)) {
             helper.handleStringSelectInteraction(event);
         }
     }
 
     @Override
-    public void onEntitySelectInteraction(@NotNull net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent event) {
-        if (event.getComponentId().startsWith("pref_")) {
+    public void onEntitySelectInteraction(@NotNull EntitySelectInteractionEvent event) {
+        if (event.getComponentId().startsWith(ID_PREFIX)) {
             helper.handleEntitySelectInteraction(event);
         }
     }

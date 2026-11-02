@@ -1,11 +1,15 @@
 package net.honeyberries.util;
 
 import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.components.actionrow.ActionRow;
+import net.dv8tion.jda.api.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.utils.TimeFormat;
 import net.honeyberries.datatypes.action.ActionType;
+import net.honeyberries.ui.NavPage;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.Instant;
+import java.util.List;
 
 public class EmbedHelper {
 
@@ -66,6 +70,21 @@ public class EmbedHelper {
                         false);
             }
         }
+    }
+
+    /**
+     * Builds a single-row select menu for switching between embed pages.
+     *
+     * @param menuId  the component ID the click handler matches on
+     * @param current the {@link NavPage#value()} of the page being shown
+     * @param pages   the pages to offer, in display order
+     * @return an action row containing the menu
+     */
+    @NotNull
+    public static ActionRow navigationRow(@NotNull String menuId, @NotNull String current, @NotNull List<NavPage> pages) {
+        StringSelectMenu.Builder menu = StringSelectMenu.create(menuId);
+        pages.forEach(p -> menu.addOption(p.label(), p.value(), p.description()));
+        return ActionRow.of(menu.setDefaultValues(current).build());
     }
 
 }

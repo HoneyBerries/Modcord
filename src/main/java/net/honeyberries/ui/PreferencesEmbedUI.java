@@ -5,13 +5,13 @@ import net.dv8tion.jda.api.components.actionrow.ActionRow;
 import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.components.buttons.ButtonStyle;
 import net.dv8tion.jda.api.components.selections.EntitySelectMenu;
-import net.dv8tion.jda.api.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.GuildID;
 import net.honeyberries.datatypes.preferences.GuildPreferences;
 import net.honeyberries.preferences.PreferencesManager;
+import net.honeyberries.util.EmbedHelper;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
@@ -200,14 +200,10 @@ public class PreferencesEmbedUI {
      */
     private static ActionRow buildNavigationRow(@NotNull String currentCategory) {
         Objects.requireNonNull(currentCategory, "currentCategory must not be null");
-        return ActionRow.of(
-                StringSelectMenu.create("pref_nav")
-                        .addOption("General Settings", "general", "AI, Rules, Audit Logs")
-                        .addOption("Automated Actions", "actions", "Toggles for Warn, Ban, etc.")
-                        .addOption("Feature Flags", "flags", "Additional one-off toggles")
-                        .setDefaultValues(currentCategory)
-                        .build()
-        );
+        return EmbedHelper.navigationRow("pref_nav", currentCategory, List.of(
+                new NavPage("General Settings", "general", "AI, Rules, Audit Logs"),
+                new NavPage("Automated Actions", "actions", "Toggles for Warn, Ban, etc."),
+                new NavPage("Feature Flags", "flags", "Additional one-off toggles")));
     }
 
     /**
