@@ -126,14 +126,16 @@ public class SetupEmbedUI {
     public static MessageCreateData buildMessage(@NotNull Guild guild, @NotNull String page) {
         Objects.requireNonNull(guild, "guild must not be null");
         Objects.requireNonNull(page, "page must not be null");
-        String current = PAGES.stream().anyMatch(p -> p.value().equals(page)) ? page : STATUS;
+        String current = PAGES.stream().anyMatch(p -> p.value().equals(page)) ? page : "";
         Inspection inspection = inspect(guild);
 
         EmbedBuilder embed = switch (current) {
             case PERMISSIONS -> permissionsPage(inspection);
             case GUIDE -> guidePage();
-            default -> statusPage(inspection);
+            case STATUS -> statusPage(inspection);
+            default -> throw new IllegalStateException("Unexpected value: " + current);
         };
+        
         return new MessageCreateBuilder()
                 .setEmbeds(embed.build())
                 .setComponents(
@@ -142,7 +144,6 @@ public class SetupEmbedUI {
                 .build();
     }
 
-    // ---- Pages ----
 
     /**
      * Generates a status embed summarizing the current setup and configuration status for Modcord.
@@ -160,7 +161,7 @@ public class SetupEmbedUI {
                 ? OK + "No roles above Modcord"
                 : WARN + i.rolesAboveTotal() + " role(s) above Modcord";
 
-        int issues = (int) Stream.concat(config.stream(), Stream.of(permissions, roleOrder))
+        long issues = Stream.concat(config.stream(), Stream.of(permissions, roleOrder))
                 .filter(line -> !line.startsWith(OK))
                 .count();
         return new EmbedBuilder()

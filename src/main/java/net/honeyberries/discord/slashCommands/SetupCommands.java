@@ -69,9 +69,8 @@ public class SetupCommands extends ListenerAdapter {
             return;
         }
         Guild guild = helper.validateGuildAndPermissions(event);
-        if (guild == null) {
-            return; // helper already replied
-        }
+        if (guild == null) {return;}
+
         try {
             SlashCommandUtils.replyEphemeral(event, SetupEmbedUI.buildMessage(guild, SetupEmbedUI.STATUS));
         } catch (Exception e) {
