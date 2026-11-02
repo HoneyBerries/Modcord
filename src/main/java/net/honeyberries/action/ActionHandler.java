@@ -7,6 +7,8 @@ import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.exceptions.HierarchyException;
+import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionType;
@@ -145,6 +147,7 @@ public class ActionHandler {
                     actionData.action().name().toLowerCase() + " user " + actionData.userId().value(),
                     actionData, guild, e
             );
+            notifyHierarchyFailure(guild, actionData, e);
             return false;
         }
     }
@@ -224,6 +227,7 @@ public class ActionHandler {
             return true;
         } catch (Exception e) {
             logger.warn("Failed to ban user {}, error: {}", actionData.userId().value(), e.getMessage());
+            notifyHierarchyFailure(guild, actionData, e);
             return false;
         }
     }
@@ -294,6 +298,20 @@ public class ActionHandler {
                 ActionEmbedUI.buildNotificationEmbed(actionData, target));
     }
 
+
+    /**
+     * Posts a one-line audit-channel note when a timeout/kick/ban failed because of role hierarchy
+     * or missing permissions, pointing admins at {@code /setup}. Skips silently if no audit channel is set.
+     */
+    private void notifyHierarchyFailure(@NotNull Guild guild, @NotNull ActionData actionData, @NotNull Exception e) {
+        ActionType type = actionData.action();
+        if (type != ActionType.TIMEOUT && type != ActionType.KICK && type != ActionType.BAN) return;
+        if (!(e instanceof HierarchyException) && !DiscordUtils.isPermissionFailure(e)) return;
+
+        NotificationService.getInstance().postToAuditChannel(guild, MessageCreateData.fromContent(
+                "⚠️ Could not " + type.name().toLowerCase() + " <@" + actionData.userId().value()
+                        + ">: the Modcord role is too low or lacks permission. Run `/setup` to diagnose."));
+    }
 
     /**
      * Logs an action failure with appropriate severity based on the error type.

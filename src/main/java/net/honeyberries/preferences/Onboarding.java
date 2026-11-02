@@ -143,6 +143,14 @@ public class Onboarding {
             return preferences.withAuditLogChannelId(ChannelID.fromChannel(channel));
         }
 
+        // Fall back to the guild's default (system messages) channel so actions are never silent.
+        TextChannel systemChannel = guild.getSystemChannel();
+        if (systemChannel != null && systemChannel.canTalk()) {
+            logger.info("[{}] No audit channel found; falling back to system channel #{}",
+                    guild.getName(), systemChannel.getName());
+            return preferences.withAuditLogChannelId(ChannelID.fromChannel(systemChannel));
+        }
+
         logger.warn("[{}] No audit channel could be resolved — leaving unset.", guild.getName());
         return preferences;
     }
