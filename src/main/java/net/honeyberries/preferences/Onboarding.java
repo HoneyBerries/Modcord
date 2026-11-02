@@ -264,17 +264,16 @@ public class Onboarding {
      */
     @Nullable
     private TextChannel createAuditChannel(@NotNull Guild guild) {
-        Set<Permission> view = EnumSet.of(Permission.VIEW_CHANNEL);
 
         ChannelAction<TextChannel> action = guild.createTextChannel(AUDIT_CHANNEL_NAME)
-                .addPermissionOverride(guild.getPublicRole(), null, view)
+                .addPermissionOverride(guild.getPublicRole(), null, EnumSet.of(Permission.VIEW_CHANNEL))
                 .addMemberPermissionOverride(guild.getSelfMember().getIdLong(),
                         EnumSet.of(Permission.VIEW_CHANNEL, Permission.MESSAGE_SEND, Permission.MESSAGE_EMBED_LINKS),
                         null);
 
         guild.getRoles().stream()
                 .filter(r -> !r.isPublicRole() && !r.isManaged() && r.hasPermission(DiscordUtils.MODCORD_ADMIN_PERMISSION))
-                .forEach(r -> action.addRolePermissionOverride(r.getIdLong(), view, null));
+                .forEach(r -> action.addRolePermissionOverride(r.getIdLong(), EnumSet.of(Permission.VIEW_CHANNEL), null));
 
         try {
             TextChannel created = action.complete();
