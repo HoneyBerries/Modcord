@@ -42,7 +42,7 @@ Runtime config lives in `config/app_config.yml`:
 - **Database:** PostgreSQL connection (host, port, database, username; password from env var)
 - **Cache:** Refresh intervals for guild rules and channel guidelines (default: 60s)
 - **Moderation:** Queue duration (default: 30s), history context window (default: 50 messages, max age 24h)
-- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 300s), `reasoning_effort` (default `max`, blank = omit; sent as a raw `reasoning_effort` body property because the SDK enum lacks `max`)
+- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 300s), `reasoning_effort` (default `high`, blank = omit; sent as a raw `reasoning_effort` body property because the SDK enum lacks `max`)
 - **Generic rules/guidelines:** Fallback text for servers with no custom configuration
 
 `config/` is git-ignored; the tracked copy of the config is `src/main/resources/app_config.yml`. Edit both when adding a setting.

@@ -77,7 +77,7 @@ ai_settings:
   # Reasoning effort sent as `reasoning_effort` on each request. Supported values depend on the
   # provider/model; W&B Inference accepts none, minimal, low, medium, high, xhigh, max.
   # Leave blank to omit the field and use the model's default.
-  reasoning_effort: "max"
+  reasoning_effort: "high"
 
 
 # Default server rules for all servers. Used if no server-specific rules are defined.
