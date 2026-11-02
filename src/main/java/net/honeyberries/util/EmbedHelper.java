@@ -1,4 +1,4 @@
-package net.honeyberries.ui;
+package net.honeyberries.util;
 
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.utils.TimeFormat;

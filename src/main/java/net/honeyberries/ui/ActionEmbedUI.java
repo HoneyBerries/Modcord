@@ -9,6 +9,7 @@ import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.discord.UserID;
 import net.honeyberries.util.ActionHelper;
 import net.honeyberries.util.DiscordUtils;
+import net.honeyberries.util.EmbedHelper;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;

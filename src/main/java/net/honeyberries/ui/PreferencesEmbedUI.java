@@ -71,15 +71,19 @@ public class PreferencesEmbedUI {
         GuildPreferences prefs = PreferencesManager.getInstance().getOrDefaultPreferences(guildId);
         List<ActionRow> rows = new ArrayList<>();
 
-        if (category.equals("general")) {
-            rows.add(buildRulesChannelSelectRow(prefs));
-            rows.add(buildAuditChannelSelectRow(prefs));
-        } else if (category.equals("actions")) {
-            rows.add(buildAiToggleRow(prefs));
-            rows.add(buildActionToggleRow(prefs));
-        } else if (category.equals("flags")) {
-            rows.add(buildRemoveOnDeleteToggleRow(prefs));
-            rows.add(buildAppealsToggleRow(prefs));
+        switch (category) {
+            case "general" -> {
+                rows.add(buildRulesChannelSelectRow(prefs));
+                rows.add(buildAuditChannelSelectRow(prefs));
+            }
+            case "actions" -> {
+                rows.add(buildAiToggleRow(prefs));
+                rows.add(buildActionToggleRow(prefs));
+            }
+            case "flags" -> {
+                rows.add(buildRemoveOnDeleteToggleRow(prefs));
+                rows.add(buildAppealsToggleRow(prefs));
+            }
         }
 
         rows.add(buildNavigationRow(category));
