@@ -1,10 +1,9 @@
 package net.honeyberries.ai;
 
-import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
-import com.openai.models.chat.completions.ChatCompletionMessageParam;
-import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
+import com.openai.models.responses.EasyInputMessage;
+import com.openai.models.responses.ResponseInputItem;
 import net.honeyberries.ResourceInitializer;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -97,36 +96,25 @@ class InferenceEngineTest {
         @Test
         @DisplayName("Should successfully call AI inference with simple message")
         void testSimpleAIInference() throws ExecutionException, InterruptedException, TimeoutException {
-            ChatCompletionMessageParam userMessage = ChatCompletionMessageParam.ofUser(
-                ChatCompletionUserMessageParam.builder()
-                    .content("Say 'Hello HoneyBerries'")
-                    .build()
-            );
+            ResponseInputItem userMessage = userInput("Say 'Hello HoneyBerries'");
 
-            var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
-            String responseText = extractAssistantText(response);
+            var future = inferenceEngine.generateResponse(null, List.of(userMessage), null);
+            String responseText = future.get(180, TimeUnit.SECONDS);
 
-            assertNotNull(response, "AI should return a non-null response");
             assertNotNull(responseText, "AI should return text content");
-            assertTrue(responseText.toLowerCase().contains("hello honeyberries"), "AI response should contain 'Hello HoneyBerries'");
+            assertTrue(responseText.toLowerCase().contains("hello honeyberries"),
+                    "AI response should contain 'Hello HoneyBerries' but was: " + responseText);
             assertFalse(responseText.isEmpty(), "AI response should not be empty");
         }
 
         @Test
         @DisplayName("Should handle mathematical reasoning in AI")
         void testAIMathematicalReasoning() throws ExecutionException, InterruptedException, TimeoutException {
-            ChatCompletionMessageParam userMessage = ChatCompletionMessageParam.ofUser(
-                ChatCompletionUserMessageParam.builder()
-                    .content("What is 1 + 2 + 3 + ... + 100? Just answer with the number.")
-                    .build()
-            );
+            ResponseInputItem userMessage = userInput("What is 1 + 2 + 3 + ... + 100? Just answer with the number.");
 
-            var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
-            String responseText = extractAssistantText(response);
+            var future = inferenceEngine.generateResponse(null, List.of(userMessage), null);
+            String responseText = future.get(180, TimeUnit.SECONDS);
 
-            assertNotNull(response, "AI should return a response");
             assertNotNull(responseText, "AI should return text content");
             assertTrue(responseText.contains("5050"), "Response should contain the correct answer");
         }
@@ -134,17 +122,11 @@ class InferenceEngineTest {
         @Test
         @DisplayName("Should handle question answering")
         void testAIQuestionAnswering() throws ExecutionException, InterruptedException, TimeoutException {
-            ChatCompletionMessageParam userMessage = ChatCompletionMessageParam.ofUser(
-                ChatCompletionUserMessageParam.builder()
-                    .content("What is the capital of France and the United States")
-                    .build()
-            );
+            ResponseInputItem userMessage = userInput("What is the capital of France and the United States");
 
-            var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
-            String responseText = extractAssistantText(response);
+            var future = inferenceEngine.generateResponse(null, List.of(userMessage), null);
+            String responseText = future.get(180, TimeUnit.SECONDS);
 
-            assertNotNull(response, "AI should return a response");
             assertNotNull(responseText, "AI should return text content");
             assertTrue(responseText.toLowerCase().contains("paris"), "Response should mention Paris");
             assertTrue(responseText.toLowerCase().contains("washington"), "Response should mention Washington");
@@ -153,29 +135,15 @@ class InferenceEngineTest {
         @Test
         @DisplayName("Should handle multiple messages in conversation")
         void testAIConversationWithMultipleMessages() throws ExecutionException, InterruptedException, TimeoutException {
-            List<ChatCompletionMessageParam> messages = List.of(
-                ChatCompletionMessageParam.ofUser(
-                    ChatCompletionUserMessageParam.builder()
-                        .content("My name is John")
-                        .build()
-                ),
-                ChatCompletionMessageParam.ofUser(
-                    ChatCompletionUserMessageParam.builder()
-                        .content("Nice to meet you, John! How can I help you today?")
-                        .build()
-                ),
-                ChatCompletionMessageParam.ofUser(
-                    ChatCompletionUserMessageParam.builder()
-                        .content("What's my name?")
-                        .build()
-                )
+            List<ResponseInputItem> messages = List.of(
+                userInput("My name is John"),
+                userInput("Nice to meet you, John! How can I help you today?"),
+                userInput("What's my name?")
             );
 
-            var future = inferenceEngine.generateResponse(messages, null);
-            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
-            String responseText = extractAssistantText(response);
+            var future = inferenceEngine.generateResponse(null, messages, null);
+            String responseText = future.get(180, TimeUnit.SECONDS);
 
-            assertNotNull(response, "AI should return a response");
             assertNotNull(responseText, "AI should return text content");
             assertTrue(responseText.toLowerCase().contains("john"), "AI should remember the user's name");
         }
@@ -183,28 +151,21 @@ class InferenceEngineTest {
         @Test
         @DisplayName("Should return non-null even if responseFormat is null")
         void testAIInferenceWithNullResponseFormat() throws ExecutionException, InterruptedException, TimeoutException {
-            ChatCompletionMessageParam userMessage = ChatCompletionMessageParam.ofUser(
-                ChatCompletionUserMessageParam.builder()
-                    .content("Respond with 'OK'")
-                    .build()
-            );
+            ResponseInputItem userMessage = userInput("Respond with 'OK'");
 
-            var future = inferenceEngine.generateResponse(List.of(userMessage), null);
-            ChatCompletionAssistantMessageParam response = future.get(180, TimeUnit.SECONDS);
+            var future = inferenceEngine.generateResponse(null, List.of(userMessage), null);
+            String response = future.get(180, TimeUnit.SECONDS);
 
             assertNotNull(response, "AI should return a response even with null responseFormat");
         }
     }
 
-    @Nullable
-    private String extractAssistantText(@Nullable ChatCompletionAssistantMessageParam response) {
-        if (response == null) {
-            return null;
-        }
-
-        return response.content()
-                .filter(ChatCompletionAssistantMessageParam.Content::isText)
-                .map(ChatCompletionAssistantMessageParam.Content::asText)
-                .orElse(null);
+    @NotNull
+    private static ResponseInputItem userInput(@NotNull String text) {
+        return ResponseInputItem.ofEasyInputMessage(
+                EasyInputMessage.builder()
+                        .role(EasyInputMessage.Role.USER)
+                        .content(text)
+                        .build());
     }
 }

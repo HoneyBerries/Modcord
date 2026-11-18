@@ -3,7 +3,6 @@ package net.honeyberries.ai;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import net.honeyberries.datatypes.action.ActionData;
 import net.honeyberries.datatypes.action.ActionDataBuilder;
 import net.honeyberries.datatypes.action.ActionType;
@@ -66,7 +65,7 @@ public class ActionDataJSONParser {
      * Expects a JSON structure with a top-level "users" array, each containing action, reason, durations, and channels/deletions.
      * Creates a new {@code ActionData} instance per user with a random UUID.
      *
-     * @param response the response object returned by the AI inference engine
+     * @param json the JSON text returned by the AI inference engine
      * @param guildId the guild context for the moderation actions (may be {@code null} in test scenarios)
      * @param moderatorId the ID of the moderator performing the actions (must not be {@code null})
      * @return a list of {@code ActionData} objects, one per user in the batch
@@ -76,17 +75,12 @@ public class ActionDataJSONParser {
      */
     @NotNull
     public List<ActionData> parse(
-            @NotNull ChatCompletionAssistantMessageParam response,
+            @NotNull String json,
             @NotNull GuildID guildId,
             @NotNull UserID moderatorId)
             throws JsonProcessingException, ActionDataParseException {
 
-        String json = response.content()
-                .filter(ChatCompletionAssistantMessageParam.Content::isText)
-                .map(ChatCompletionAssistantMessageParam.Content::asText)
-                .orElse(null);
-
-        if (json == null || json.isBlank()) {
+        if (json.isBlank()) {
             logger.error("Empty AI response received, returning empty ActionData list.");
             return List.of();
         }

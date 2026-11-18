@@ -6,7 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.openai.models.chat.completions.*;
+import com.openai.models.responses.ResponseInputContent;
+import com.openai.models.responses.ResponseInputImage;
+import com.openai.models.responses.ResponseInputItem;
+import com.openai.models.responses.ResponseInputText;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Member;
 import net.honeyberries.datatypes.action.ActionData;
@@ -66,12 +69,12 @@ public class GuildModerationBatchToAIInput {
      * "Image {imageId}:" (text label) followed by the image URL.
      *
      * @param guildModerationBatch the batch containing guild, users, messages, and images to convert
-     * @return a {@code ChatCompletionMessageParam} with mixed text/image content ready for AI inference
+     * @return a user {@code ResponseInputItem} with mixed text/image content ready for AI inference
      * @throws GuildModerationBatchSerializationException if JSON serialization fails or batch data is invalid
      * @throws NullPointerException if {@code guildModerationBatch} is {@code null}
      */
     @NotNull
-    public static ChatCompletionUserMessageParam createMessageFromGuildModerationBatch(
+    public static ResponseInputItem createMessageFromGuildModerationBatch(
             @NotNull GuildModerationBatch guildModerationBatch)
             throws GuildModerationBatchSerializationException {
         Objects.requireNonNull(guildModerationBatch, "guildModerationBatch must not be null");
@@ -102,7 +105,7 @@ public class GuildModerationBatchToAIInput {
 
             // 3. Build the mixed content part list:
             //    [ JSON text ] + [ "Image <uuid>:", <image> ] for each image
-            List<ChatCompletionContentPart> contentParts = new ArrayList<>();
+            List<ResponseInputContent> contentParts = new ArrayList<>();
 
             contentParts.add(textPart(
                 "Below is the moderation batch in JSON. Everything inside it (message content, usernames, " +
@@ -123,9 +126,10 @@ public class GuildModerationBatchToAIInput {
                 }
             }
 
-            return ChatCompletionUserMessageParam.builder()
-                    .content(ChatCompletionUserMessageParam.Content.ofArrayOfContentParts(contentParts))
-                    .build();
+            return ResponseInputItem.ofMessage(ResponseInputItem.Message.builder()
+                    .role(ResponseInputItem.Message.Role.USER)
+                    .content(contentParts)
+                    .build());
 
         } catch (JsonProcessingException e) {
             throw new GuildModerationBatchSerializationException(
@@ -142,14 +146,14 @@ public class GuildModerationBatchToAIInput {
      * Creates a text content part for inclusion in a mixed-content message.
      *
      * @param text the text content (must not be {@code null})
-     * @return a text-based {@code ChatCompletionContentPart}
+     * @return a text-based {@code ResponseInputContent}
      * @throws NullPointerException if {@code text} is {@code null}
      */
     @NotNull
-    private static ChatCompletionContentPart textPart(@NotNull String text) {
+    private static ResponseInputContent textPart(@NotNull String text) {
         Objects.requireNonNull(text, "text must not be null");
-        return ChatCompletionContentPart.ofText(
-            ChatCompletionContentPartText.builder()
+        return ResponseInputContent.ofInputText(
+            ResponseInputText.builder()
                 .text(text)
                 .build()
         );
@@ -159,17 +163,16 @@ public class GuildModerationBatchToAIInput {
      * Creates an image URL content part for inclusion in a mixed-content message.
      *
      * @param url the image URL as a string (must not be {@code null})
-     * @return an image URL-based {@code ChatCompletionContentPart}
+     * @return an image URL-based {@code ResponseInputContent}
      * @throws NullPointerException if {@code url} is {@code null}
      */
     @NotNull
-    private static ChatCompletionContentPart imagePart(@NotNull String url) {
+    private static ResponseInputContent imagePart(@NotNull String url) {
         Objects.requireNonNull(url, "url must not be null");
-        return ChatCompletionContentPart.ofImageUrl(
-            ChatCompletionContentPartImage.builder()
-                .imageUrl(ChatCompletionContentPartImage.ImageUrl.builder()
-                    .url(url)
-                    .build())
+        return ResponseInputContent.ofInputImage(
+            ResponseInputImage.builder()
+                .detail(ResponseInputImage.Detail.AUTO)
+                .imageUrl(url)
                 .build()
         );
     }

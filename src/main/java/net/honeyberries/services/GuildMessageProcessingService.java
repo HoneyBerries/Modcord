@@ -1,11 +1,8 @@
 package net.honeyberries.services;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.openai.models.ResponseFormatJsonSchema;
-import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
-import com.openai.models.chat.completions.ChatCompletionMessageParam;
-import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
-import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
+import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
+import com.openai.models.responses.ResponseInputItem;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
@@ -406,12 +403,10 @@ public class GuildMessageProcessingService {
                 fetchPastActions(users)
         );
 
-        ChatCompletionUserMessageParam inputs;
-        ChatCompletionSystemMessageParam systemPrompt;
-        ResponseFormatJsonSchema schema;
-        ChatCompletionAssistantMessageParam response;
-
-        List<ChatCompletionMessageParam> conversation = new ArrayList<>();
+        ResponseInputItem inputs;
+        String systemPrompt;
+        ResponseFormatTextJsonSchemaConfig schema;
+        String response;
 
         logger.info("Creating data structures for AI input for guild {}", guildId.value());
 
@@ -436,15 +431,11 @@ public class GuildMessageProcessingService {
             return List.of();
         }
 
-        conversation.add(ChatCompletionMessageParam.ofSystem(systemPrompt));
-        conversation.add(ChatCompletionMessageParam.ofUser(inputs));
-
         logger.info("Submitting moderation batch for guild {} to LLM", guildId.value());
-        CompletableFuture<ChatCompletionAssistantMessageParam> inferenceFuture =
-                InferenceEngine.getInstance().generateResponse(conversation, schema);
+        CompletableFuture<String> inferenceFuture =
+                InferenceEngine.getInstance().generateResponse(systemPrompt, List.of(inputs), schema);
         try {
             response = inferenceFuture.join();
-            conversation.add(ChatCompletionMessageParam.ofAssistant(response));
         } catch (CompletionException e) {
             logger.error("Error during AI inference for guild {}", guildId, e.getCause());
             return List.of();
