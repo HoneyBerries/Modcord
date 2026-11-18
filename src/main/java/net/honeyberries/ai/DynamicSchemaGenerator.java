@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openai.core.JsonValue;
-import com.openai.models.ResponseFormatJsonSchema;
+import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
 import net.honeyberries.datatypes.action.ActionType;
 import net.honeyberries.datatypes.content.GuildModerationBatch;
 import net.honeyberries.datatypes.content.ModerationUser;
@@ -135,12 +135,12 @@ public class DynamicSchemaGenerator {
      * Handles empty batches gracefully by generating a schema that accepts zero users.
      *
      * @param batch the guild moderation batch containing users and context
-     * @return an OpenAI-compatible response format schema
+     * @return a strict Responses API JSON-schema text format
      * @throws DynamicSchemaGeneratorParseException if the batch has invalid or missing data
      * @throws NullPointerException if {@code batch} is {@code null}
      */
     @NotNull
-    public ResponseFormatJsonSchema createDynamicOutputSchema(@NotNull GuildModerationBatch batch)
+    public ResponseFormatTextJsonSchemaConfig createDynamicOutputSchema(@NotNull GuildModerationBatch batch)
             throws DynamicSchemaGeneratorParseException {
         Objects.requireNonNull(batch, "batch must not be null");
 
@@ -150,15 +150,14 @@ public class DynamicSchemaGenerator {
 
         schemaMap = mapper.convertValue(schemaNode, new TypeReference<>() {});
 
-        ResponseFormatJsonSchema.JsonSchema jsonSchema =
-                ResponseFormatJsonSchema.JsonSchema.builder()
-                        .name("dynamic_output_schema")
-                        .strict(true)
-                        .putAdditionalProperty("schema", JsonValue.from(schemaMap))
-                        .build();
+        // The Schema object's additional properties are the JSON-schema keywords themselves.
+        ResponseFormatTextJsonSchemaConfig.Schema.Builder schemaBuilder = ResponseFormatTextJsonSchemaConfig.Schema.builder();
+        schemaMap.forEach((key, value) -> schemaBuilder.putAdditionalProperty(key, JsonValue.from(value)));
 
-        return ResponseFormatJsonSchema.builder()
-                .jsonSchema(jsonSchema)
+        return ResponseFormatTextJsonSchemaConfig.builder()
+                .name("dynamic_output_schema")
+                .strict(true)
+                .schema(schemaBuilder.build())
                 .build();
     }
 

@@ -42,7 +42,7 @@ Runtime config lives in `config/app_config.yml`:
 - **Database:** PostgreSQL connection (host, port, database, username; password from env var)
 - **Cache:** Refresh intervals for guild rules and channel guidelines (default: 60s)
 - **Moderation:** Queue duration (default: 30s), history context window (default: 50 messages, max age 24h)
-- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 300s), `reasoning_effort` (default `high`, blank = omit; sent as a raw `reasoning_effort` body property because the SDK enum lacks `max`)
+- **AI Inference:** Base URL (OpenAI-compatible endpoint), model name, request timeout (default: 300s), `reasoning_effort` (default `high`, blank = omit; sent as `reasoning.effort`)
 - **Generic rules/guidelines:** Fallback text for servers with no custom configuration
 
 `config/` is git-ignored; the tracked copy of the config is `src/main/resources/app_config.yml`. Edit both when adding a setting.
@@ -80,7 +80,7 @@ The core flow is message → batch → AI → action.
    - Executes actions in parallel via `ActionHandler`
 4. **`ActionHandler`** (singleton) executes each `ActionData`: sends user DM → deletes flagged messages → applies moderation action (timeout/kick/ban/unban) → posts to audit log channel
 
-**Inference:** `InferenceEngine` makes a single attempt per call (no retries, no circuit breaker; SDK `maxRetries` is 0). Last success/failure times are exposed via `/status`.
+**Inference:** `InferenceEngine` calls the OpenAI Responses API (stateless, `store=false`) and makes a single attempt per call (no retries, no circuit breaker; SDK `maxRetries` is 0). Last success/failure times are exposed via `/status`.
 
 ### Key singletons
 

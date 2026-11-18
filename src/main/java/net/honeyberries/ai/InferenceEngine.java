@@ -2,12 +2,15 @@ package net.honeyberries.ai;
 
 import com.openai.client.OpenAIClientAsync;
 import com.openai.client.okhttp.OpenAIOkHttpClientAsync;
-import com.openai.core.JsonValue;
 import com.openai.errors.OpenAIException;
-import com.openai.models.ResponseFormatJsonSchema;
-import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
-import com.openai.models.chat.completions.ChatCompletionCreateParams;
-import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import com.openai.models.Reasoning;
+import com.openai.models.ReasoningEffort;
+import com.openai.models.responses.Response;
+import com.openai.models.responses.ResponseCreateParams;
+import com.openai.models.responses.ResponseFormatTextJsonSchemaConfig;
+import com.openai.models.responses.ResponseInputItem;
+import com.openai.models.responses.ResponseOutputMessage;
+import com.openai.models.responses.ResponseTextConfig;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.util.TokenManager;
 import org.jetbrains.annotations.NotNull;
@@ -24,7 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Provides asynchronous interface to OpenAI-compatible language models for inference.
+ * Provides asynchronous interface to OpenAI-compatible language models (Responses API) for inference.
  * Manages API client lifecycle, handles structured output formatting, and abstracts away client configuration.
  * Supports both unstructured text responses and structured JSON schema-based completions for moderation decisions.
  * <p>
@@ -36,7 +39,7 @@ public class InferenceEngine {
 
     private final String modelName;
 
-    /** Value for the {@code reasoning_effort} request field, or {@code null} to use the model default. */
+    /** Value for the {@code reasoning.effort} request field, or {@code null} to use the model default. */
     @Nullable
     private final String reasoningEffort;
     /** Stored for log messages only. */
@@ -85,40 +88,76 @@ public class InferenceEngine {
     }
 
     /**
-     * Sends a chat completion request to the language model.
+     * Sends a request to the language model through the Responses API.
+     * The request is stateless ({@code store=false}); nothing is retained server-side.
      *
-     * @param messages       the conversation so far; typically system prompt then user message
+     * @param instructions   the system prompt, or {@code null} for none
+     * @param input          the input items (typically a single user message)
      * @param responseFormat optional JSON schema for structured output; {@code null} for plain text
-     * @return a future that completes with the assistant's reply, or completes exceptionally on error
-     * @throws NullPointerException if {@code messages} is {@code null}
+     * @return a future that completes with the model's output text, or completes exceptionally on error
+     *         (including a refusal, an incomplete response, or a response with no text)
+     * @throws NullPointerException if {@code input} is {@code null}
      */
     @NotNull
-    public CompletableFuture<ChatCompletionAssistantMessageParam> generateResponse(
-            @NotNull List<ChatCompletionMessageParam> messages,
-            @Nullable ResponseFormatJsonSchema responseFormat) {
-        Objects.requireNonNull(messages, "messages must not be null");
+    public CompletableFuture<String> generateResponse(
+            @Nullable String instructions,
+            @NotNull List<ResponseInputItem> input,
+            @Nullable ResponseFormatTextJsonSchemaConfig responseFormat) {
+        Objects.requireNonNull(input, "input must not be null");
 
-        ChatCompletionCreateParams.Builder builder = ChatCompletionCreateParams.builder()
+        ResponseCreateParams.Builder builder = ResponseCreateParams.builder()
                 .model(modelName)
-                .messages(messages);
+                .inputOfResponse(input)
+                .store(false);
+
+        if (instructions != null) {
+            builder.instructions(instructions);
+        }
 
         if (responseFormat != null) {
-            builder.responseFormat(responseFormat);
+            builder.text(ResponseTextConfig.builder().format(responseFormat).build());
         }
 
-        // Sent as a raw body property: the SDK's ReasoningEffort enum doesn't cover provider-specific values like "max".
         if (reasoningEffort != null) {
-            builder.putAdditionalBodyProperty("reasoning_effort", JsonValue.from(reasoningEffort));
+            // ReasoningEffort.of() keeps provider-specific values the enum has no constant for.
+            builder.reasoning(Reasoning.builder().effort(ReasoningEffort.of(reasoningEffort)).build());
         }
 
-        ChatCompletionCreateParams params = builder.build();
-
-        return openAIClient.chat().completions().create(params)
-                .thenApply(completion -> completion.choices().stream()
-                        .findFirst()
-                        .map(choice -> choice.message().toParam())
-                        .orElseThrow(() -> new OpenAIException("No choices returned from LLM")))
+        return openAIClient.responses().create(builder.build())
+                .thenApply(InferenceEngine::extractOutputText)
                 .whenComplete((result, error) ->
                         (error == null ? lastSuccess : lastFailure).set(Instant.now()));
+    }
+
+    /**
+     * Concatenates the text of every output message in the response.
+     *
+     * @throws OpenAIException if the response is incomplete, failed, was refused, or has no text
+     */
+    @NotNull
+    private static String extractOutputText(@NotNull Response response) {
+        response.error().ifPresent(error -> {
+            throw new OpenAIException("LLM returned an error: " + error.message());
+        });
+        response.incompleteDetails().ifPresent(details -> {
+            throw new OpenAIException("LLM response incomplete: " + details.reason().map(Object::toString).orElse("unknown"));
+        });
+
+        StringBuilder text = new StringBuilder();
+        for (ResponseOutputMessage message : response.output().stream()
+                .flatMap(item -> item.message().stream())
+                .toList()) {
+            for (ResponseOutputMessage.Content content : message.content()) {
+                content.refusal().ifPresent(refusal -> {
+                    throw new OpenAIException("LLM refused the request: " + refusal.refusal());
+                });
+                content.outputText().ifPresent(outputText -> text.append(outputText.text()));
+            }
+        }
+
+        if (text.isEmpty()) {
+            throw new OpenAIException("No output text returned from LLM");
+        }
+        return text.toString();
     }
 }

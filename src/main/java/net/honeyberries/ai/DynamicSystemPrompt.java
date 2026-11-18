@@ -1,7 +1,5 @@
 package net.honeyberries.ai;
 
-import com.openai.models.chat.completions.ChatCompletionMessageParam;
-import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.database.repository.GuildRulesRepository;
 import net.honeyberries.datatypes.content.GuildRules;
@@ -42,11 +40,11 @@ public class DynamicSystemPrompt {
      * The template is expected to contain the placeholder {@code <|SERVER_RULES_INJECT|>}.
      *
      * @param guildId the guild for which to create the prompt
-     * @return a {@link ChatCompletionMessageParam} configured as a system message with injected rules
+     * @return the system prompt text (sent as the request {@code instructions}) with injected rules
      * @throws NullPointerException if {@code guildId} is {@code null}
      */
     @NotNull
-    public ChatCompletionSystemMessageParam createDynamicSystemPrompt(@NotNull GuildID guildId) {
+    public String createDynamicSystemPrompt(@NotNull GuildID guildId) {
         Objects.requireNonNull(guildId, "guildId must not be null");
         String template = AppConfig.getInstance().getSystemPromptTemplate();
 
@@ -59,10 +57,7 @@ public class DynamicSystemPrompt {
 
         String allowedActions = buildAllowedActions(guildPreferences);
 
-        return ChatCompletionSystemMessageParam.builder()
-                .content(
-                        template.replace("<|SERVER_RULES_INJECT|>", guildRulesText).replace("<|ALLOWED_ACTIONS_INJECT|>", allowedActions)
-                ).build();
+        return template.replace("<|SERVER_RULES_INJECT|>", guildRulesText).replace("<|ALLOWED_ACTIONS_INJECT|>", allowedActions);
     }
 
 

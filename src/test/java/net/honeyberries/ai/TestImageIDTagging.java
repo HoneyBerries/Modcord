@@ -2,11 +2,12 @@ package net.honeyberries.ai;
 
 import com.openai.client.OpenAIClientAsync;
 import com.openai.client.okhttp.OpenAIOkHttpClientAsync;
-import com.openai.models.chat.completions.ChatCompletion;
-import com.openai.models.chat.completions.ChatCompletionContentPart;
-import com.openai.models.chat.completions.ChatCompletionContentPartImage;
-import com.openai.models.chat.completions.ChatCompletionContentPartText;
-import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.openai.models.responses.Response;
+import com.openai.models.responses.ResponseCreateParams;
+import com.openai.models.responses.ResponseInputContent;
+import com.openai.models.responses.ResponseInputImage;
+import com.openai.models.responses.ResponseInputItem;
+import com.openai.models.responses.ResponseInputText;
 import net.honeyberries.ResourceInitializer;
 import net.honeyberries.config.AppConfig;
 import net.honeyberries.util.TokenManager;
@@ -43,20 +44,19 @@ public class TestImageIDTagging {
         logger.info("InferenceEngine initialized with endpoint={}, model={}", endpoint, modelName);
     }
 
-    private ChatCompletionContentPart textPart(String text) {
-        return ChatCompletionContentPart.ofText(
-            ChatCompletionContentPartText.builder()
+    private ResponseInputContent textPart(String text) {
+        return ResponseInputContent.ofInputText(
+            ResponseInputText.builder()
                 .text(text)
                 .build()
         );
     }
 
-    private ChatCompletionContentPart imagePart(String url) {
-        return ChatCompletionContentPart.ofImageUrl(
-            ChatCompletionContentPartImage.builder()
-                .imageUrl(ChatCompletionContentPartImage.ImageUrl.builder()
-                    .url(url)
-                    .build())
+    private ResponseInputContent imagePart(String url) {
+        return ResponseInputContent.ofInputImage(
+            ResponseInputImage.builder()
+                .detail(ResponseInputImage.Detail.AUTO)
+                .imageUrl(url)
                 .build()
         );
     }
@@ -67,9 +67,9 @@ public class TestImageIDTagging {
         String urlB = "https://pub-5b49e517109f46b7a979427602d9a9f0.r2.dev/minecraft-page-background.webp";
         String urlC = "https://pub-5b49e517109f46b7a979427602d9a9f0.r2.dev/gem-smp-background.webp";
 
-        ChatCompletionCreateParams params = ChatCompletionCreateParams.builder()
-            .model(this.modelName)
-            .addUserMessageOfArrayOfContentParts(List.of(
+        ResponseInputItem input = ResponseInputItem.ofMessage(ResponseInputItem.Message.builder()
+            .role(ResponseInputItem.Message.Role.USER)
+            .content(List.of(
                 textPart("User 123 sent images A and B. user 456 sent images C and A."),
 
                 textPart("This is Image C below:"),
@@ -84,9 +84,15 @@ public class TestImageIDTagging {
 
                 textPart("Can you describe to me what each user send. what are their similarities? differences?")
             ))
+            .build());
+
+        ResponseCreateParams params = ResponseCreateParams.builder()
+            .model(this.modelName)
+            .inputOfResponse(List.of(input))
+            .store(false)
             .build();
 
-        ChatCompletion result = openAIClient.chat().completions().create(params).join();
-        logger.info("Response: {}", result.choices().getFirst().message().content().orElse("(no content)"));
+        Response result = openAIClient.responses().create(params).join();
+        logger.info("Response: {}", result.output());
     }
 }
