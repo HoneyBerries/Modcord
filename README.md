@@ -33,7 +33,7 @@ An AI-powered Discord moderation bot. Instead of matching keywords, Modcord send
 4. The response is parsed into actions (warn, delete, timeout, kick, ban). The user is notified and a summary is posted to the audit log channel.
 5. The action is recorded in the database for auditing and appeals.
 
-If nothing is wrong, the message is left alone. LLM calls are retried (Resilience4j), and the last success/failure time is shown in `/status`.
+If nothing is wrong, the message is left alone. The last success/failure time is shown in `/status`.
 
 ## Quick start
 
@@ -139,7 +139,7 @@ In short (the license text controls):
 - The GPL-3.0 is not the AGPL. Running a modified version privately, including as a hosted bot, does not require you to publish your source.
 - There is no warranty and no liability for moderation decisions, missed violations, or data loss (sections 15 and 16). AI moderation can be wrong, so staff should review actions and appeals.
 
-Modcord depends on third-party libraries (JDA, HikariCP, Liquibase, Resilience4j, and others), each under its own license. It is not affiliated with Discord Inc., OpenAI, or any LLM provider.
+Modcord depends on third-party libraries (JDA, HikariCP, Liquibase, and others), each under its own license. It is not affiliated with Discord Inc., OpenAI, or any LLM provider.
 
 Copyright (C) 2026 Henry Ng and Modcord contributors.
 
@@ -151,6 +151,6 @@ Copyright (C) 2026 Henry Ng and Modcord contributors.
 
 ## Stack
 
-Java 25, Gradle, JDA, PostgreSQL, Liquibase, Resilience4j, and an OpenAI-compatible API.
+Java 25, Gradle, JDA, PostgreSQL, Liquibase, and an OpenAI-compatible API.
 
 The previous Python version is on the [`old-python-version` branch](https://github.com/HoneyBerries/Modcord/tree/old-python-version). It predates the switch to GPL-3.0 and may have different license terms.

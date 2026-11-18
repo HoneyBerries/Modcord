@@ -51,20 +51,20 @@ The system prompt is in `config/system_prompt.md` — customize to fit your comm
 
 ## Architecture
 
-Modcord is an AI-powered Discord moderation bot. Java 25, Gradle, JDA, PostgreSQL (via HikariCP), Liquibase for schema migrations, OpenAI-compatible inference client (with Resilience4j retry).
+Modcord is an AI-powered Discord moderation bot. Java 25, Gradle, JDA, PostgreSQL (via HikariCP), Liquibase for schema migrations, OpenAI-compatible inference client.
 
 ### Startup flow (`Main.java`)
 
 1. `Database.initialize(AppConfig)` — opens HikariCP pool, runs Liquibase migrations
 2. `JDAManager.getInstance()` — connects to Discord, registers all slash commands and event listeners
-3. Scheduled tasks start: `UnbanWatcherTask`, `GuildRulesTask`, `ChannelGuidelinesTask` (8-thread scheduler in `Main`; `GlobalOrchestrationService` and `InferenceEngine` own separate schedulers)
+3. Scheduled tasks start: `UnbanWatcherTask`, `GuildRulesTask`, `ChannelGuidelinesTask` (8-thread scheduler in `Main`; `GlobalOrchestrationService` owns its own scheduler)
 4. `GlobalOrchestrationService` is implicitly initialized on first message — maintains per-guild queues and scheduling logic
 
 **Shutdown flow:** gracefully stops tasks, drops pending moderation queues, shuts down the bot, closes database. Safe even if startup failed partway through.
 
 ### Message processing pipeline
 
-The core flow is message → batch → AI → action. Resilience is built in at the inference layer:
+The core flow is message → batch → AI → action.
 
 1. **`MessageListener`** receives Discord message events, calls `GlobalOrchestrationService.addMessage()`
 2. **`GlobalOrchestrationService`** (singleton) maintains per-guild queues and schedules a delayed processing run (default: 30s via config `queue_duration`). Coalesces rapid arrivals into a single batch. Prevents concurrent processing via an in-flight set; if new messages arrive during processing, reschedules a new run after the current one completes.
@@ -74,13 +74,13 @@ The core flow is message → batch → AI → action. Resilience is built in at 
    - Builds `GuildModerationBatch` with `ModerationUser` objects (user details, roles, per-channel message lists)
    - Generates a dynamic JSON schema via `DynamicSchemaGenerator` (constrains AI output to actual users/channels in the batch)
    - Builds the dynamic system prompt via `DynamicSystemPrompt` (injects guild-specific rules and channel guidelines from DB)
-   - Calls `InferenceEngine.generateResponse()` (async, wrapped in Resilience4j retry)
+   - Calls `InferenceEngine.generateResponse()` (async)
    - Parses the JSON response via `ActionDataJSONParser` into `ActionData` objects
    - Logs actions to DB (`GuildModerationActionsRepository`); AI conversations are no longer stored
    - Executes actions in parallel via `ActionHandler`
 4. **`ActionHandler`** (singleton) executes each `ActionData`: sends user DM → deletes flagged messages → applies moderation action (timeout/kick/ban/unban) → posts to audit log channel
 
-**Inference resilience (Resilience4j):** InferenceEngine retries failed OpenAI calls (Resilience4j defaults). There is no circuit breaker; last success/failure times are exposed via `/status`.
+**Inference:** `InferenceEngine` makes a single attempt per call (no retries, no circuit breaker; SDK `maxRetries` is 0). Last success/failure times are exposed via `/status`.
 
 ### Key singletons
 

@@ -49,7 +49,6 @@ dependencies {
     implementation(libs.postgresql)
     implementation(libs.hikari.cp)
     implementation(libs.liquibase.core)
-    implementation(libs.resilience4j.all)
 
 
     // Liquibase runtime classpath
