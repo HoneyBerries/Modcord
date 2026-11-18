@@ -113,12 +113,14 @@ All major services are singletons accessed via `getInstance()`: `Database`, `App
 
 Failures in integration tests don't block CI if bot is unavailable (graceful skip).
 
-**CI gating:** `.github/workflows/unit-tests.yml` runs `./gradlew test` on every push/PR and is also a reusable workflow (`workflow_call`). `deploy.yml` and `release.yml` call it and `needs:` it, so a main push only deploys or releases if unit tests pass. Integration tests (`test.yml`) run separately and don't gate deploys, because they depend on live third-party APIs.
+**CI gating:** `.github/workflows/unit-tests.yml` runs `./gradlew test` on every push/PR and is also a reusable workflow (`workflow_call`). `release.yml` calls it and `needs:` it, so a main push only releases or deploys if unit tests pass. Integration tests (`test.yml`) run separately and don't gate deploys, because they depend on live third-party APIs.
 
 ## Production VM
 
 - `ssh ModcordVM` (user ModcordUser). The bot is `modcord.service`; files are in `~/Modcord` (`Modcord.jar`, `config/app_config.yml`, `.env`, `logs/latest.log`). It is not a git checkout.
-- A push to `main` triggers `deploy.yml`, which builds, copies the JAR and restarts the service. The VM's `config/` is separate from the repo, so apply config changes there by hand (back up first).
+- Deploys happen only when a new release is created. `release.yml` runs on every push to `main`, creates release `v<project_version>` (from `gradle.properties`) if it doesn't exist yet, and only then its `deploy` job downloads the release JAR, copies it to the VM and restarts the service. So bump `project_version` to ship; pushes without a bump deploy nothing. (A separate `on: release` workflow wouldn't work: releases made with `GITHUB_TOKEN` don't trigger other workflows.)
+- Manual deploy/rollback: `gh workflow run release.yml` redeploys the current version, or `gh workflow run release.yml -f version=1.2.3` deploys an existing older release. Unit tests still run first.
+- The VM's `config/` is separate from the repo, so apply config changes there by hand (back up first).
 - `InferenceEngine` initializes lazily, so its startup log line only appears after the first moderated batch.
 - Prod DB is Azure Postgres; the password is only in the VM's `.env`, and `psql` is installed on the VM. Query read-only.
 - The DB stores moderation actions and AI reasons but no message text, and the `ai_log` table no longer exists.

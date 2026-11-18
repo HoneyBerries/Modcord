@@ -7,6 +7,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing release version to deploy (e.g. 1.2.3, no "v"). Leave blank for the current gradle.properties version.'
+        required: false
+        type: string
 
 jobs:
   unit-tests:
@@ -16,6 +22,9 @@ jobs:
   release:
     needs: unit-tests
     runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.check_release.outcome == 'failure' }}
+      version: ${{ steps.version.outputs.version }}
     env:
       DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -62,3 +71,46 @@ jobs:
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
+  deploy:
+    needs: release
+    if: needs.release.outputs.released == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download release JAR
+        run: gh release download "v$VERSION" --repo "$REPO" --pattern '*-all.jar' --dir dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version || needs.release.outputs.version }}
+          REPO: ${{ github.repository }}
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
+          # Waits until your VM is reachable before continuing
+          ping: modcordvm.tailfb2424.ts.net
+      - name: Copy JAR to VPS
+        uses: appleboy/scp-action@v1
+        with:
+          host: modcordvm.tailfb2424.ts.net
+          username: ModcordUser
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "dist/*-all.jar"
+          target: "/home/ModcordUser/Modcord/"
+          strip_components: 1
+      - name: Deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: modcordvm.tailfb2424.ts.net
+          username: ModcordUser
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/ModcordUser/Modcord
+            sudo systemctl stop modcord
+            mv *-all.jar Modcord.jar
+            sudo systemctl start modcord
+            sleep 3
+            systemctl is-active --quiet modcord && echo "✅ Modcord is running" || { echo "❌ Modcord failed to start"; exit 1; }
