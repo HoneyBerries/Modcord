@@ -101,8 +101,9 @@ class InferenceEngineTest {
             var future = inferenceEngine.generateResponse(null, List.of(userMessage), null);
             String responseText = future.get(180, TimeUnit.SECONDS);
 
-                        assertNotNull(responseText, "AI should return text content");
-            assertTrue(responseText.toLowerCase().contains("hello honeyberries"), "AI response should contain 'Hello HoneyBerries'");
+            assertNotNull(responseText, "AI should return text content");
+            assertTrue(responseText.toLowerCase().contains("hello honeyberries"),
+                    "AI response should contain 'Hello HoneyBerries' but was: " + responseText);
             assertFalse(responseText.isEmpty(), "AI response should not be empty");
         }
 
