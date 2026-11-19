@@ -31,8 +31,12 @@ services:
         -Ddb.url=jdbc:postgresql://postgres:5432/postgres
         -Ddb.username=ModcordDBAdmin
     volumes:
-      - ./config:/app/config
-      - ./logs:/app/logs
+      # Named volumes: Docker copies /app/config's modcord ownership from the image
+      # on first use, so the non-root user can write. Edit config with `docker compose exec`/`cp`.
+      - modcord_config:/app/config
+      - modcord_logs:/app/logs
 
 volumes:
   pgdata:
+  modcord_config:
+  modcord_logs:
