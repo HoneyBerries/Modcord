@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ModcordDBAdmin
+      POSTGRES_PASSWORD: ${POSTGRES_DB_PASSWORD:?set POSTGRES_DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ModcordDBAdmin -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  modcord:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Secrets come from .env on the host as plain environment variables;
+    # the .env file itself is never copied into the image or mounted.
+    env_file: .env
+    environment:
+      # Point the app at the compose Postgres instead of the URL in app_config.yml.
+      JAVA_OPTS: >-
+        -Xms512m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+        -XX:+ParallelRefProcEnabled -Dfile.encoding=UTF-8
+        -Ddb.url=jdbc:postgresql://postgres:5432/postgres
+        -Ddb.username=ModcordDBAdmin
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+
+volumes:
+  pgdata:
