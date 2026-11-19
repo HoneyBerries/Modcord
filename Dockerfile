@@ -11,26 +11,26 @@ RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon dependencies >
 
 COPY src ./src
 RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon shadowJar -x test \
-    && cp build/libs/*-all.jar /modcord.jar
+    && cp build/libs/*-all.jar /tmp/modcord-build.jar
 
 # ---- Runtime stage: slim JRE, non-root ----
 FROM eclipse-temurin:25-jre-alpine
 RUN addgroup -S modcord && adduser -S -G modcord modcord
 
 # The app resolves ./config relative to the working directory.
-WORKDIR /app
-COPY --from=build /modcord.jar /app/Modcord.jar
-RUN mkdir -p /app/config /app/logs && chown -R modcord:modcord /app
+WORKDIR /modcord
+COPY --from=build /tmp/modcord-build.jar /modcord/Modcord.jar
+RUN mkdir -p /modcord/config /modcord/logs && chown -R modcord:modcord /modcord
 
 USER modcord
 
-# Mount a volume at /app/config: missing app_config.yml / system_prompt.md are
+# Mount a volume at /modcord/config: missing app_config.yml / system_prompt.md are
 # seeded from the defaults bundled in the JAR on first start.
-VOLUME ["/app/config"]
+VOLUME ["/modcord/config"]
 
 # Same GC/heap settings as start.sh. Override with -e JAVA_OPTS=...
 ENV JAVA_OPTS="-Xms512m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+ParallelRefProcEnabled -Dfile.encoding=UTF-8"
 
 # Secrets (DISCORD_BOT_TOKEN, OPENAI_API_KEY, POSTGRES_DB_PASSWORD) are NOT baked in;
 # pass them at runtime (--env-file / compose env_file / secrets manager).
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/Modcord.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /modcord/Modcord.jar"]

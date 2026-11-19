@@ -1,13 +1,13 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: ModcordDBAdmin
       POSTGRES_PASSWORD: ${POSTGRES_DB_PASSWORD:?set POSTGRES_DB_PASSWORD in .env}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ModcordDBAdmin -d postgres"]
       interval: 5s
@@ -31,10 +31,10 @@ services:
         -Ddb.url=jdbc:postgresql://postgres:5432/postgres
         -Ddb.username=ModcordDBAdmin
     volumes:
-      # Named volumes: Docker copies /app/config's modcord ownership from the image
+      # Named volumes: Docker copies /modcord/config's modcord ownership from the image
       # on first use, so the non-root user can write. Edit config with `docker compose exec`/`cp`.
-      - modcord_config:/app/config
-      - modcord_logs:/app/logs
+      - modcord_config:/modcord/config
+      - modcord_logs:/modcord/logs
 
 volumes:
   pgdata:

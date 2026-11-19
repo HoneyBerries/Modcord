@@ -73,16 +73,16 @@ docker compose logs -f modcord
 ```
 
 - **Secrets** are passed to the container as environment variables from your `.env` (`env_file`). The file is never copied into the image.
-- **Config** lives in the `modcord_config` volume (mounted at `/app/config`). On first start the default `app_config.yml` and `system_prompt.md` are copied into it; after that the volume's copy is used. Logs live in `modcord_logs`.
+- **Config** lives in the `modcord_config` volume (mounted at `/modcord/config`). On first start the default `app_config.yml` and `system_prompt.md` are copied into it; after that the volume's copy is used. Logs live in `modcord_logs`.
 - **Database:** Compose overrides the database URL with `-Ddb.url` / `-Ddb.username` (via `JAVA_OPTS`) so the bot talks to the bundled Postgres. Migrations run automatically on startup.
 - **JVM flags** default to the ones in `start.sh`; override them with the `JAVA_OPTS` environment variable.
 
 Edit config by copying it out and back in, then restart:
 
 ```bash
-docker compose cp modcord:/app/config/app_config.yml ./app_config.yml
+docker compose cp modcord:/modcord/config/app_config.yml ./app_config.yml
 # edit it, then:
-docker compose cp ./app_config.yml modcord:/app/config/app_config.yml
+docker compose cp ./app_config.yml modcord:/modcord/config/app_config.yml
 docker compose restart modcord
 ```
 
@@ -90,7 +90,7 @@ To run only the bot against an external database (for example Azure Postgres), b
 
 ```bash
 docker build -t modcord .
-docker run -d --name modcord --env-file .env -v modcord_config:/app/config modcord
+docker run -d --name modcord --env-file .env -v modcord_config:/modcord/config modcord
 ```
 
 ## Commands
