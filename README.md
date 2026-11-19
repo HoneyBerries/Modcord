@@ -17,6 +17,7 @@ An AI-powered Discord moderation bot. Instead of matching keywords, Modcord send
 
 - [How it works](#how-it-works)
 - [Quick start](#quick-start)
+- [Running with Docker](#running-with-docker)
 - [Commands](#commands)
 - [Configuration](#configuration)
 - [Testing](#testing)
@@ -59,6 +60,37 @@ Review [`config/app_config.yml`](config/app_config.yml) (database, AI endpoint a
 ./gradlew run        # run the bot
 ./gradlew assemble   # build build/libs/modcord-all.jar
 ./gradlew runTest    # start and auto-shut down after 5s
+```
+
+## Running with Docker
+
+The repo ships a multi-stage `Dockerfile` (Alpine, Java 25, non-root) and a `docker-compose.yml` that runs the bot with a local PostgreSQL.
+
+```bash
+cp .env.example .env   # fill in DISCORD_BOT_TOKEN, OPENAI_API_KEY, POSTGRES_DB_PASSWORD
+docker compose up -d --build
+docker compose logs -f modcord
+```
+
+- **Secrets** are passed to the container as environment variables from your `.env` (`env_file`). The file is never copied into the image.
+- **Config** lives in the `modcord_config` volume (mounted at `/app/config`). On first start the default `app_config.yml` and `system_prompt.md` are copied into it; after that the volume's copy is used. Logs live in `modcord_logs`.
+- **Database:** Compose overrides the database URL with `-Ddb.url` / `-Ddb.username` (via `JAVA_OPTS`) so the bot talks to the bundled Postgres. Migrations run automatically on startup.
+- **JVM flags** default to the ones in `start.sh`; override them with the `JAVA_OPTS` environment variable.
+
+Edit config by copying it out and back in, then restart:
+
+```bash
+docker compose cp modcord:/app/config/app_config.yml ./app_config.yml
+# edit it, then:
+docker compose cp ./app_config.yml modcord:/app/config/app_config.yml
+docker compose restart modcord
+```
+
+To run only the bot against an external database (for example Azure Postgres), build the image and pass the secrets with `--env-file`, mounting a config whose `database.url` points at that database:
+
+```bash
+docker build -t modcord .
+docker run -d --name modcord --env-file .env -v modcord_config:/app/config modcord
 ```
 
 ## Commands
