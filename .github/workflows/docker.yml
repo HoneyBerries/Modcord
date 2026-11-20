@@ -1,0 +1,65 @@
+name: Docker Image
+
+permissions:
+  contents: read
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  # Called by release.yml (with publish: true) to push the image to GHCR after a new release
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version (no "v") used to tag the image'
+        required: true
+        type: string
+      publish:
+        description: 'Push the image to GHCR instead of only building it'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Pushes, PRs and manual runs only build; just release.yml passes publish: true
+      PUBLISH: ${{ inputs.publish == true }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Lowercases the repository name, which GHCR requires
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.publish == true }}
+            type=raw,value=latest,enable=${{ inputs.publish == true }}
+            type=sha,enable=${{ inputs.publish != true }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ inputs.publish == true }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
