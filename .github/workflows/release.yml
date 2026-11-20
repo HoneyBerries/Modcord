@@ -76,9 +76,9 @@ jobs:
     # Publish the image only for a newly created release
     if: needs.release.outputs.released == 'true'
     uses: ./.github/workflows/docker.yml
+    secrets: inherit
     permissions:
       contents: read
-      packages: write
     with:
       version: ${{ needs.release.outputs.version }}
       publish: true
