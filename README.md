@@ -86,7 +86,7 @@ docker compose cp ./app_config.yml modcord:/modcord/config/app_config.yml
 docker compose restart modcord
 ```
 
-Each release also publishes an image to Docker Hub (`honeyberries/modcord`, tagged with the version and `latest`), so you can `docker pull` it instead of building.
+Each release also publishes an image to Docker Hub (`honeyberries/modcord`, tagged with the version and `latest`; `amd64` and `arm64`), so you can `docker pull` it instead of building.
 
 To run only the bot against an external database (for example Azure Postgres), build the image and pass the secrets with `--env-file`, mounting a config whose `database.url` points at that database:
 

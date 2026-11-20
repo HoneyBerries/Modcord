@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build stage: compile the shadow JAR ----
-FROM eclipse-temurin:25-jdk-alpine AS build
+# The JAR is platform-independent, so build natively on the builder's platform
+# (fast) and only the small runtime stage below is built per target architecture
+FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jdk-alpine AS build
 WORKDIR /src
 
 # Resolve dependencies first so this layer is cached until the build files change.
