@@ -81,6 +81,7 @@ jobs:
       packages: write
     with:
       version: ${{ needs.release.outputs.version }}
+      publish: true
   deploy:
     needs: release
     if: needs.release.outputs.released == 'true' || github.event_name == 'workflow_dispatch'
