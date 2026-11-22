@@ -21,14 +21,14 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
           tags: tag:ci
           # Waits until your VM is reachable before continuing
-          ping: modcordvm.tailfb2424.ts.net
+          ping: modcordgay.tailfb2424.ts.net
       - name: Run on VPS
         uses: appleboy/ssh-action@v1
         env:
           COMMAND: ${{ inputs.command }}
         with:
-          host: modcordvm.tailfb2424.ts.net
-          username: ModcordUser
+          host: modcordgay.tailfb2424.ts.net
+          username: modcorduser
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: COMMAND
           command_timeout: 10m
@@ -38,23 +38,19 @@ jobs:
               exit $?
             fi
             echo "== service =="
-            systemctl is-active modcord || echo "NOT ACTIVE"
-            systemctl show modcord -p NRestarts -p ActiveEnterTimestamp -p MainPID
+            sudo -n rc-service modcord status || echo "NOT ACTIVE"
+            sudo -n rc-status --crashed || true
             echo "== uptime / load =="
             uptime
             echo "== memory =="
             free -m
             echo "== disk =="
             df -h /
-            echo "== failed services =="
-            systemctl --failed --no-legend || true
-            echo "== recent bot errors =="
-            (sudo -n journalctl -u modcord -n 300 --no-pager || journalctl -u modcord -n 300 --no-pager) 2>&1 | grep -i -E "error|exception|outofmemory|timeout|disconnect" | tail -30 || true
+            echo "== recent service stderr =="
+            tail -30 /var/log/modcord.err 2>&1 || true
             echo "== out-of-memory kills =="
-            (sudo -n dmesg -T || dmesg -T) 2>&1 | grep -i -E "out of memory|killed process" | tail -5 || true
+            (sudo -n dmesg || dmesg) 2>&1 | grep -i -E "out of memory|killed process" | tail -5 || true
             echo "== bot log errors (latest.log) =="
-            grep -i -E "error|exception|outofmemory|timeout|disconnect" /home/ModcordUser/Modcord/logs/latest.log 2>/dev/null | tail -30 || true
+            grep -i -E "error|exception|outofmemory|timeout|disconnect" /home/modcorduser/Modcord/logs/latest.log 2>/dev/null | tail -30 || true
             echo "== last 20 bot log lines (latest.log) =="
-            tail -20 /home/ModcordUser/Modcord/logs/latest.log 2>&1 || true
-            echo "== last 20 service log lines =="
-            (sudo -n journalctl -u modcord -n 20 --no-pager || journalctl -u modcord -n 20 --no-pager) 2>&1
+            tail -20 /home/modcorduser/Modcord/logs/latest.log 2>&1 || true

@@ -117,7 +117,7 @@ Failures in integration tests don't block CI if bot is unavailable (graceful ski
 
 ## Production VM
 
-- `ssh ModcordVM` (user ModcordUser). The bot is `modcord.service`; files are in `~/Modcord` (`Modcord.jar`, `config/app_config.yml`, `.env`, `logs/latest.log`). It is not a git checkout.
+- `ssh ModcordVPS` (host modcordgay.tailfb2424.ts.net, user modcorduser, Alpine Linux + OpenRC, passwordless sudo). The bot is the OpenRC service `modcord` (`sudo rc-service modcord start|stop|status`, launched via `~/Modcord/run.sh`; no systemd/journalctl, stderr in `/var/log/modcord.err`); files are in `~/Modcord` (`Modcord.jar`, `config/app_config.yml`, `.env`, `logs/latest.log`). It is not a git checkout.
 - Deploys happen only when a new release is created. `release.yml` runs on every push to `main`, creates release `v<project_version>` (from `gradle.properties`) if it doesn't exist yet, and only then its `deploy` job downloads the release JAR, copies it to the VM and restarts the service. So bump `project_version` to ship; pushes without a bump deploy nothing. (A separate `on: release` workflow wouldn't work: releases made with `GITHUB_TOKEN` don't trigger other workflows.)
 - Manual deploy/rollback: `gh workflow run release.yml` redeploys the current version, or `gh workflow run release.yml -f version=1.2.3` deploys an existing older release. Unit tests still run first.
 - The VM's `config/` is separate from the repo, so apply config changes there by hand (back up first).

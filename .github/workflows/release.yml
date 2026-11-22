@@ -102,26 +102,26 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
           tags: tag:ci
           # Waits until your VM is reachable before continuing
-          ping: modcordvm.tailfb2424.ts.net
+          ping: modcordgay.tailfb2424.ts.net
       - name: Copy JAR to VPS
         uses: appleboy/scp-action@v1
         with:
-          host: modcordvm.tailfb2424.ts.net
-          username: ModcordUser
+          host: modcordgay.tailfb2424.ts.net
+          username: modcorduser
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "dist/*-all.jar"
-          target: "/home/ModcordUser/Modcord/"
+          target: "/home/modcorduser/Modcord/"
           strip_components: 1
       - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
-          host: modcordvm.tailfb2424.ts.net
-          username: ModcordUser
+          host: modcordgay.tailfb2424.ts.net
+          username: modcorduser
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/ModcordUser/Modcord
-            sudo systemctl stop modcord
+            cd /home/modcorduser/Modcord
+            sudo rc-service modcord stop
             mv *-all.jar Modcord.jar
-            sudo systemctl start modcord
+            sudo rc-service modcord start
             sleep 3
-            systemctl is-active --quiet modcord && echo "✅ Modcord is running" || { echo "❌ Modcord failed to start"; exit 1; }
+            sudo rc-service modcord status > /dev/null 2>&1 && echo "✅ Modcord is running" || { echo "❌ Modcord failed to start"; exit 1; }
