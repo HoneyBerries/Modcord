@@ -91,6 +91,7 @@ liquibase {
 
 tasks.named<ShadowJar>("shadowJar") {
     manifest.attributes["Main-Class"] = "net.honeyberries.Main"
+    manifest.attributes["Implementation-Version"] = project.version
 }
 
 

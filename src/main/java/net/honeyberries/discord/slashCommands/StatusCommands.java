@@ -29,7 +29,14 @@ import java.util.Objects;
 public class StatusCommands extends ListenerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(StatusCommands.class);
+    /** Build version from the JAR manifest; "dev" when running from classes (e.g. Gradle run). */
+    private static final String VERSION = resolveVersion();
     private final long startTime;
+
+    private static String resolveVersion() {
+        String version = StatusCommands.class.getPackage().getImplementationVersion();
+        return version != null ? version : "dev";
+    }
 
     public StatusCommands() {
         this.startTime = System.currentTimeMillis();
@@ -115,6 +122,7 @@ public class StatusCommands extends ListenerAdapter {
         } else {
             healthStatus.append(":robot:  **Bot Status:** Operational\n\n");
         }
+        healthStatus.append(String.format(":label:  **Version:** %s\n\n", VERSION));
 
         if (Database.getInstance().isHealthy()) {
             healthStatus.append(":floppy_disk:  **Database Status:** Connected & Healthy\n");
@@ -183,8 +191,8 @@ public class StatusCommands extends ListenerAdapter {
         long seconds = (uptimeMillis / 1000) % 60;
 
         String uptimeMessage = String.format(
-                ":alarm_clock:  Bot uptime: %d weeks, %d days, %d hours, %d minutes, %d seconds",
-                weeks, days, hours, minutes, seconds
+                ":alarm_clock:  Bot uptime: %d weeks, %d days, %d hours, %d minutes, %d seconds\n:label:  **Version:** %s",
+                weeks, days, hours, minutes, seconds, VERSION
         );
 
         SlashCommandUtils.replyEphemeral(event, uptimeMessage);
